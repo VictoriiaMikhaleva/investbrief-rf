@@ -867,6 +867,10 @@
       renderPortfolio();
       setupTickerAutocomplete('pfAddTicker');
     }
+    if (tab === 'watchlist') {
+      renderPortfolioTableBody();
+      setupTickerAutocomplete('pfWatchAddTicker');
+    }
     if (tab === 'settings') renderAlerts();
   }
 

@@ -370,45 +370,219 @@
 
 
 
-  function addPortfolioPosition(raw) {
-    var tickerInput = document.getElementById('pfAddTicker');
-    var rawTicker = (raw != null ? raw : (tickerInput && tickerInput.value)) || '';
+  var PF_FORM_PREFIXES = ['', 'Watch'];
+
+
+
+  function pfFieldId(prefix, field) {
+    if (field === 'CancelEditBtn') return prefix ? 'pfWatchCancelEditBtn' : 'pfCancelEditBtn';
+    if (field === 'Btn') return prefix ? 'pfWatchAddBtn' : 'pfAddBtn';
+    if (field === 'FormTitle') return prefix ? 'pfWatchAddFormTitle' : 'pfAddFormTitle';
+    return 'pf' + prefix + 'Add' + field;
+  }
+
+
+
+  function readPortfolioForm(prefix) {
+    var tickerEl = document.getElementById(pfFieldId(prefix, 'Ticker'));
+    return {
+      ticker: tickerEl ? tickerEl.value : '',
+      qty: parseFloat((document.getElementById(pfFieldId(prefix, 'Qty')) || {}).value),
+      avg: parseFloat((document.getElementById(pfFieldId(prefix, 'Avg')) || {}).value),
+      buyDate: ((document.getElementById(pfFieldId(prefix, 'Date')) || {}).value) || '',
+      comment: ((document.getElementById(pfFieldId(prefix, 'Comment')) || {}).value || '').trim()
+    };
+  }
+
+
+
+  function clearPortfolioForm(prefix) {
+    var tickerEl = document.getElementById(pfFieldId(prefix, 'Ticker'));
+    if (tickerEl) tickerEl.value = '';
+    ['Qty', 'Avg', 'Comment', 'Date'].forEach(function (field) {
+      var el = document.getElementById(pfFieldId(prefix, field));
+      if (el) el.value = '';
+    });
+    var ac = acControllers[pfFieldId(prefix, 'Ticker')];
+    if (ac) ac.close();
+  }
+
+
+
+  function clearAllPortfolioForms() {
+    PF_FORM_PREFIXES.forEach(clearPortfolioForm);
+  }
+
+
+
+  function fillPortfolioForm(prefix, pos) {
+    var tickerEl = document.getElementById(pfFieldId(prefix, 'Ticker'));
+    if (tickerEl) tickerEl.value = pos.ticker || '';
+    var qtyEl = document.getElementById(pfFieldId(prefix, 'Qty'));
+    if (qtyEl) qtyEl.value = pos.qty != null && isFinite(Number(pos.qty)) ? String(pos.qty) : '';
+    var avgEl = document.getElementById(pfFieldId(prefix, 'Avg'));
+    if (avgEl) avgEl.value = pos.avgPrice != null && isFinite(Number(pos.avgPrice)) ? String(pos.avgPrice) : '';
+    var dateEl = document.getElementById(pfFieldId(prefix, 'Date'));
+    if (dateEl) dateEl.value = pos.buyDate || '';
+    var commentEl = document.getElementById(pfFieldId(prefix, 'Comment'));
+    if (commentEl) commentEl.value = pos.comment || '';
+  }
+
+
+
+  function fillAllPortfolioForms(pos) {
+    PF_FORM_PREFIXES.forEach(function (prefix) {
+      fillPortfolioForm(prefix, pos);
+    });
+  }
+
+
+
+  function updatePortfolioFormChrome() {
+    var editing = !!state.pfEditTicker;
+    PF_FORM_PREFIXES.forEach(function (prefix) {
+      var title = document.getElementById(pfFieldId(prefix, 'FormTitle'));
+      var btn = document.getElementById(pfFieldId(prefix, 'Btn'));
+      var cancel = document.getElementById(pfFieldId(prefix, 'CancelEditBtn'));
+      if (title) title.textContent = editing ? 'Редактировать позицию' : 'Новая позиция';
+      if (btn) btn.textContent = editing ? 'Сохранить изменения' : 'Добавить позицию в портфель';
+      if (cancel) cancel.hidden = !editing;
+    });
+  }
+
+
+
+  function startEditPortfolioPosition(ticker, formPrefix) {
+    ticker = normalizeTicker(ticker);
+    var pos = findPortfolioPosition(ticker);
+    if (!pos) return;
+    state.pfEditTicker = ticker;
+    state.pfEditPrefix = formPrefix || '';
+    fillAllPortfolioForms(pos);
+    updatePortfolioFormChrome();
+    showToast('Редактирование: ' + ticker);
+  }
+
+
+
+  function cancelPortfolioEdit() {
+    state.pfEditTicker = '';
+    state.pfEditPrefix = '';
+    clearAllPortfolioForms();
+    updatePortfolioFormChrome();
+  }
+
+
+
+  function mergePositionPurchase(existing, qty, avg, buyDate, comment) {
+    var oldQty = existing.qty;
+    var oldAvg = Number(existing.avgPrice);
+    if (isFinite(qty) && qty > 0 && isFinite(avg) && isFinite(oldQty) && oldQty > 0 && isFinite(oldAvg)) {
+      var totalQty = oldQty + qty;
+      existing.avgPrice = (oldQty * oldAvg + qty * avg) / totalQty;
+      existing.qty = totalQty;
+    } else if (isFinite(qty) && qty > 0) {
+      existing.qty = isFinite(oldQty) && oldQty > 0 ? oldQty + qty : qty;
+      if (isFinite(avg)) existing.avgPrice = avg;
+    } else if (isFinite(avg)) {
+      existing.avgPrice = avg;
+    }
+    if (buyDate) existing.buyDate = buyDate;
+    if (comment) {
+      existing.comment = existing.comment
+        ? existing.comment + ' · ' + comment
+        : comment;
+    }
+    return existing;
+  }
+
+
+
+  function removePortfolioPosition(ticker) {
+    ticker = normalizeTicker(ticker);
+    var portfolio = getPortfolio();
+    var next = portfolio.positions.filter(function (p) { return p.ticker !== ticker; });
+    if (next.length === portfolio.positions.length) return;
+    portfolio.positions = next;
+    setPortfolio(portfolio);
+    if (state.chartTicker === ticker) state.chartTicker = '';
+    if (state.pfEditTicker === ticker) cancelPortfolioEdit();
+    showToast('Удалено из портфеля: ' + ticker);
+    renderPortfolio();
+  }
+
+
+
+  function clearPortfolio() {
+    if (!confirm('Удалить все позиции из портфеля?')) return;
+    setPortfolio({ positions: [] });
+    cancelPortfolioEdit();
+    state.chartTicker = '';
+    state.folderOpen = false;
+    renderPortfolio();
+    showToast('Портфель очищен');
+  }
+
+
+
+  function addPortfolioPosition(raw, opts) {
+    opts = opts || {};
+    var prefix = opts.prefix != null ? opts.prefix : '';
+    var form = readPortfolioForm(prefix);
+    var rawTicker = raw != null ? raw : form.ticker;
     resolveTickerFromInput(rawTicker).then(function (t) {
       t = normalizeTicker(t);
       if (!t) {
         showToast('Укажите тикер');
         return;
       }
-      var qty = parseFloat(document.getElementById('pfAddQty').value);
-      var avg = parseFloat(document.getElementById('pfAddAvg').value);
-      var buyDate = document.getElementById('pfAddDate').value || '';
-      var comment = document.getElementById('pfAddComment').value.trim();
+      var qty = form.qty;
+      var avg = form.avg;
+      var buyDate = form.buyDate;
+      var comment = form.comment;
       var portfolio = getPortfolio();
-      if (findPortfolioPosition(t)) {
-        showToast('Позиция уже есть');
+      var existing = findPortfolioPosition(t);
+      var editing = state.pfEditTicker && normalizeTicker(state.pfEditTicker) === t;
+
+      if (editing) {
+        if (!existing) {
+          cancelPortfolioEdit();
+          return;
+        }
+        if (isFinite(qty)) existing.qty = qty;
+        if (isFinite(avg)) existing.avgPrice = avg;
+        if (buyDate) existing.buyDate = buyDate;
+        existing.comment = comment;
+        setPortfolio(portfolio);
+        cancelPortfolioEdit();
+        showToast('Позиция обновлена: ' + t);
+        renderPortfolio();
         return;
       }
+
       return fetchMoexLastPrice(t).catch(function () { return null; }).then(function (price) {
         var cur = price != null && isFinite(price) ? price : (isFinite(avg) ? avg : 100);
         if (!isFinite(avg)) avg = cur;
-        portfolio.positions.push(normalizePosition({
-          ticker: t,
-          qty: isFinite(qty) ? qty : null,
-          avgPrice: avg,
-          currentPrice: cur,
-          buyDate: buyDate,
-          comment: comment
-        }));
-        setPortfolio(portfolio);
-        if (tickerInput) tickerInput.value = '';
-        if (acControllers.pfAddTicker) acControllers.pfAddTicker.close();
-        ['pfAddQty', 'pfAddAvg', 'pfAddComment'].forEach(function (id) {
-          var el = document.getElementById(id);
-          if (el) el.value = '';
-        });
-        var dateEl = document.getElementById('pfAddDate');
-        if (dateEl) dateEl.value = '';
-        showToast('Добавлено в портфель: ' + t);
+
+        if (existing) {
+          mergePositionPurchase(existing, qty, avg, buyDate, comment);
+          if (cur != null && isFinite(cur)) existing.currentPrice = cur;
+          setPortfolio(portfolio);
+          clearPortfolioForm(prefix);
+          showToast('Докупка учтена, обновлена ср. цена: ' + t);
+        } else {
+          portfolio.positions.push(normalizePosition({
+            ticker: t,
+            qty: isFinite(qty) ? qty : null,
+            avgPrice: avg,
+            currentPrice: cur,
+            buyDate: buyDate,
+            comment: comment
+          }));
+          setPortfolio(portfolio);
+          clearPortfolioForm(prefix);
+          showToast('Добавлено в портфель: ' + t);
+        }
         renderPortfolio();
       });
     });
@@ -424,34 +598,79 @@
         showToast('Введите тикер или название');
         return;
       }
-      var pfTicker = document.getElementById('pfAddTicker');
-      if (pfTicker) pfTicker.value = t;
-      switchTab('portfolio');
-      addPortfolioPosition(t);
+      fillPortfolioForm('Watch', { ticker: t });
+      fillPortfolioForm('', { ticker: t });
+      addPortfolioPosition(t, { prefix: 'Watch' });
     });
   }
 
 
 
-  function renderPortfolioTableBody() {
-    var positions = getPortfolio().positions;
-    var tbody = document.getElementById('portfolioTableBody');
-    var cards = document.getElementById('portfolioCards');
-    if (!tbody || !cards) return;
-    tbody.innerHTML = positions.map(function (p) {
+  function handlePortfolioTableClick(e) {
+    var editBtn = e.target.closest('[data-pf-edit]');
+    if (editBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var wrap = editBtn.closest('[data-pf-form]');
+      var formPrefix = wrap ? wrap.getAttribute('data-pf-form') || '' : '';
+      startEditPortfolioPosition(editBtn.getAttribute('data-pf-edit'), formPrefix);
+      return;
+    }
+    var removeBtn = e.target.closest('[data-pf-remove]');
+    if (removeBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var ticker = removeBtn.getAttribute('data-pf-remove');
+      if (confirm('Удалить позицию ' + ticker + ' из портфеля?')) {
+        removePortfolioPosition(ticker);
+      }
+      return;
+    }
+    var row = e.target.closest('tr[data-chart-ticker]');
+    if (row && !e.target.closest('.pf-row-actions')) {
+      if (state.tab === 'watchlist') switchTab('portfolio');
+      selectPortfolioTicker(row.getAttribute('data-chart-ticker'));
+    }
+  }
+
+
+
+  function buildPortfolioTableRows(positions) {
+    if (!positions.length) {
+      return '<tr><td colspan="8" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
+    }
+    return positions.map(function (p) {
       var pnl = getPositionReturnPct(p);
       var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
       var avg = isFinite(Number(p.avgPrice)) ? Number(p.avgPrice).toFixed(2) : '—';
       var cur = isFinite(Number(p.currentPrice)) ? Number(p.currentPrice).toFixed(2) : '—';
-      return '<tr data-chart-ticker="' + escapeHtml(p.ticker) + '">' +
+      var editActive = state.pfEditTicker === p.ticker ? ' pf-row-editing' : '';
+      return '<tr class="pf-table-row' + editActive + '" data-chart-ticker="' + escapeHtml(p.ticker) + '">' +
         '<td class="ticker">' + escapeHtml(p.ticker) + '</td>' +
         '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
         '<td>' + escapeHtml(avg) + '</td>' +
         '<td>' + escapeHtml(formatPortfolioDate(p)) + '</td>' +
         '<td>' + escapeHtml(p.comment || '—') + '</td>' +
         '<td>' + escapeHtml(cur) + '</td>' +
-        '<td class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</td></tr>';
+        '<td class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</td>' +
+        '<td class="pf-row-actions">' +
+          '<button type="button" class="ghost small" data-pf-edit="' + escapeHtml(p.ticker) + '">Изменить</button> ' +
+          '<button type="button" class="danger small" data-pf-remove="' + escapeHtml(p.ticker) + '">Удалить</button>' +
+        '</td></tr>';
     }).join('');
+  }
+
+
+
+  function renderPortfolioTableBody() {
+    var positions = getPortfolio().positions;
+    var html = buildPortfolioTableRows(positions);
+    ['portfolioTableBody', 'portfolioWatchTableBody'].forEach(function (id) {
+      var tbody = document.getElementById(id);
+      if (tbody) tbody.innerHTML = html;
+    });
+    var cards = document.getElementById('portfolioCards');
+    if (!cards) return;
     cards.innerHTML = positions.map(function (p) {
       var pnl = getPositionReturnPct(p);
       var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';

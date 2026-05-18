@@ -546,7 +546,9 @@
     chartRequestId: 0,
     briefArticleReqId: 0,
     briefsLoading: true,
-    toastTimer: null
+    toastTimer: null,
+    pfEditTicker: '',
+    pfEditPrefix: ''
   };
 
   var CHART_HORIZONS = {

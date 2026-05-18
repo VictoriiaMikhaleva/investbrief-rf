@@ -255,7 +255,7 @@
   function getPortfolio() {
     var p = loadJSON(KEYS.portfolio, null);
     if (!p || !Array.isArray(p.positions)) {
-      return { positions: DEFAULT_PORTFOLIO.map(function (x) { return normalizePosition(x); }).filter(Boolean) };
+      return { positions: [] };
     }
     p.positions = p.positions.map(normalizePosition).filter(Boolean);
     return p;

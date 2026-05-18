@@ -602,19 +602,43 @@
     .checkbox-group label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
     .check-row {
       display: flex;
+      flex-direction: row;
       align-items: flex-start;
+      justify-content: flex-start;
       gap: 0.55rem;
       margin: 0.55rem 0;
+      width: 100%;
+      max-width: 100%;
       font-size: 0.88rem;
       line-height: 1.45;
       cursor: pointer;
     }
     .check-row input[type="checkbox"] {
-      margin-top: 0.2rem;
-      flex-shrink: 0;
+      width: 1.05rem;
+      min-width: 1.05rem;
+      max-width: 1.05rem;
+      height: 1.05rem;
+      margin: 0.2rem 0 0;
+      padding: 0;
+      flex: 0 0 auto;
       accent-color: var(--accent);
     }
+    .check-row .check-row-text,
+    .check-row > span {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-align: left;
+      font-weight: 400;
+      cursor: pointer;
+    }
+    .checkbox-group input[type="checkbox"] {
+      width: auto;
+      padding: 0;
+    }
     .check-row a { color: var(--accent); }
+    .auth-account #authSignedOut {
+      max-width: 28rem;
+    }
     .auth-google-legal { font-size: 0.85rem; margin: 0.65rem 0 0; line-height: 1.45; }
     .auth-google-legal a { color: var(--accent); }
     .settings-block { margin-bottom: 1.5rem; }
@@ -1412,6 +1436,22 @@
     }
     .portfolio-add-form .ticker-ac-list { z-index: 400; }
     .portfolio-charts { position: relative; z-index: 2; }
+    .pf-form-hint { font-size: 0.85rem; margin: 0 0 0.65rem; line-height: 1.45; }
+    .pf-form-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.65rem;
+      align-items: center;
+    }
+    .pf-row-actions {
+      white-space: nowrap;
+      text-align: right;
+    }
+    .pf-row-actions button { margin-left: 0.2rem; }
+    .pf-table-row.pf-row-editing { background: var(--accent-soft); }
+    #tab-watchlist .portfolio-add-form,
+    #tab-watchlist .table-wrap { margin-top: var(--space-block); }
 
     .settings-block { margin-bottom: 0.85rem; }
     .settings-block h3 { margin-top: 0; }

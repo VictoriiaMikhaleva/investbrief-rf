@@ -111,6 +111,44 @@
             </div>
             <div id="watchlistChips" class="chips"></div>
           </div>
+          <div class="glass portfolio-add-form" data-pf-form="Watch">
+            <h3 class="pf-form-title" id="pfWatchAddFormTitle">Новая позиция</h3>
+            <p class="muted pf-form-hint">Повторный тикер — докупка (пересчёт средней цены). Изменить позицию — кнопка «Изменить» в таблице.</p>
+            <div class="portfolio-form-grid">
+              <label class="pf-ticker-field">Тикер
+                <span class="ticker-ac-wrap">
+                  <input id="pfWatchAddTicker" placeholder="Тикер или название: Сбер, Газпром…" autocomplete="off" spellcheck="false" />
+                </span>
+              </label>
+              <label>Количество<input id="pfWatchAddQty" type="number" min="0" step="1" placeholder="10" /></label>
+              <label>Средняя цена<input id="pfWatchAddAvg" type="number" min="0" step="0.01" placeholder="250" /></label>
+              <label>Дата покупки<input id="pfWatchAddDate" type="date" /></label>
+              <label class="span-2">Комментарий<input id="pfWatchAddComment" placeholder="Долгосрочная позиция" /></label>
+            </div>
+            <div class="pf-form-actions">
+              <button type="button" id="pfWatchAddBtn" class="primary">Добавить позицию в портфель</button>
+              <button type="button" id="pfWatchCancelEditBtn" class="ghost" hidden>Отмена</button>
+            </div>
+          </div>
+
+          <div class="glass table-wrap" data-pf-form="Watch">
+            <h3 style="margin-top:0;">Позиции в портфеле</h3>
+            <table class="portfolio-table" id="portfolioWatchTable">
+              <thead>
+                <tr>
+                  <th>Тикер</th>
+                  <th>Кол-во</th>
+                  <th>Ср. цена</th>
+                  <th>Дата</th>
+                  <th>Комментарий</th>
+                  <th>Текущая</th>
+                  <th>Доходн.</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="portfolioWatchTableBody" class="portfolio-table-body"></tbody>
+            </table>
+          </div>
         </section>
 
         <section id="tab-portfolio" class="panel" data-panel="portfolio">
@@ -175,8 +213,9 @@
             </div>
           </div>
 
-          <div class="glass portfolio-add-form">
-            <h3>Новая позиция</h3>
+          <div class="glass portfolio-add-form" data-pf-form="">
+            <h3 class="pf-form-title" id="pfAddFormTitle">Новая позиция</h3>
+            <p class="muted pf-form-hint">Повторный тикер — докупка (пересчёт средней цены). Изменить позицию — кнопка «Изменить» в таблице.</p>
             <div class="portfolio-form-grid">
               <label class="pf-ticker-field">Тикер
                 <span class="ticker-ac-wrap">
@@ -188,10 +227,13 @@
               <label>Дата покупки<input id="pfAddDate" type="date" /></label>
               <label class="span-2">Комментарий<input id="pfAddComment" placeholder="Долгосрочная позиция" /></label>
             </div>
-            <button type="button" id="pfAddBtn" class="primary" style="margin-top:0.65rem;">Добавить позицию в портфель</button>
+            <div class="pf-form-actions">
+              <button type="button" id="pfAddBtn" class="primary">Добавить позицию в портфель</button>
+              <button type="button" id="pfCancelEditBtn" class="ghost" hidden>Отмена</button>
+            </div>
           </div>
 
-          <div class="glass table-wrap">
+          <div class="glass table-wrap" data-pf-form="">
             <table class="portfolio-table" id="portfolioTable">
               <thead>
                 <tr>
@@ -202,13 +244,14 @@
                   <th>Комментарий</th>
                   <th>Текущая</th>
                   <th>Доходн.</th>
+                  <th></th>
                 </tr>
               </thead>
-              <tbody id="portfolioTableBody"></tbody>
+              <tbody id="portfolioTableBody" class="portfolio-table-body"></tbody>
             </table>
           </div>
           <div class="portfolio-cards" id="portfolioCards"></div>
-          <button type="button" id="resetPortfolioBtn" class="danger" style="margin-top:0.5rem;">Сбросить пример портфеля</button>
+          <button type="button" id="resetPortfolioBtn" class="danger" style="margin-top:0.5rem;">Очистить портфель</button>
         </section>
 
         <section id="tab-settings" class="panel" data-panel="settings">
@@ -224,17 +267,17 @@
               <input type="email" id="authEmail" autocomplete="email" placeholder="ivanov@mail.ru" style="margin-bottom:0.55rem;" />
               <label class="muted">Пароль</label>
               <input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••" style="margin-bottom:0.65rem;" />
-              <label class="check-row">
+              <div class="check-row">
                 <input type="checkbox" id="privacyConsent" />
-                <span>
+                <label for="privacyConsent" class="check-row-text">
                   Я согласен(на) с обработкой персональных данных и принимаю
                   <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политику конфиденциальности</a>
-                </span>
-              </label>
-              <label class="check-row">
+                </label>
+              </div>
+              <div class="check-row">
                 <input type="checkbox" id="digestConsent" />
-                <span>Я согласен(на) получать ежедневную сводку на email</span>
-              </label>
+                <label for="digestConsent" class="check-row-text">Я согласен(на) получать ежедневную сводку на email</label>
+              </div>
               <div class="auth-actions row" style="flex-wrap:wrap;gap:0.5rem;">
                 <button type="button" id="authSignInBtn" class="primary">Войти</button>
                 <button type="button" id="authSignUpBtn">Создать аккаунт</button>
@@ -274,10 +317,10 @@
               <input type="range" id="alertThreshold" min="0" max="3" step="1" value="2" />
               <span id="alertThresholdLabel" class="muted">Высокая и выше</span>
             </div>
-            <label class="check-row">
+            <div class="check-row">
               <input type="checkbox" id="digestConsentSettings" />
-              <span>Я согласен(на) получать ежедневную сводку на email</span>
-            </label>
+              <label for="digestConsentSettings" class="check-row-text">Я согласен(на) получать ежедневную сводку на email</label>
+            </div>
             <label class="muted">Email для дайджеста</label>
             <input type="email" id="digestEmailSettings" placeholder="ivanov@mail.ru" style="margin-bottom:0.65rem;" />
             <label class="muted">Telegram (чат)</label>
@@ -366,10 +409,10 @@
       <h2 id="digestModalTitle">Дайджест на эл. почту</h2>
       <p class="muted">Настройка сохраняется только в этом браузере.</p>
       <label class="muted">Адрес эл. почты</label>
-      <label class="check-row">
+      <div class="check-row">
         <input type="checkbox" id="digestConsentModal" />
-        <span>Я согласен(на) получать ежедневную сводку на email</span>
-      </label>
+        <label for="digestConsentModal" class="check-row-text">Я согласен(на) получать ежедневную сводку на email</label>
+      </div>
       <input type="email" id="digestEmail" placeholder="ivanov@mail.ru" style="margin-bottom:0.75rem;" />
       <label class="muted">Время отправки</label>
       <input type="time" id="digestTimeModal" value="08:00" />

@@ -118,6 +118,7 @@
     setupTickerAutocomplete('marketTickerInput');
     setupTickerAutocomplete('tickerInput');
     setupTickerAutocomplete('pfAddTicker');
+    setupTickerAutocomplete('pfWatchAddTicker');
     setupTickerAutocomplete('feedAsset', { onSelect: function () { syncFiltersFromUI(); } });
     setupTickerAutocomplete('alertRuleTicker');
 
@@ -175,16 +176,15 @@
       }
     });
     var pfAddBtn = document.getElementById('pfAddBtn');
-    if (pfAddBtn) pfAddBtn.addEventListener('click', function () { addPortfolioPosition(); });
-    var pfAddTicker = document.getElementById('pfAddTicker');
-    if (pfAddTicker) {
-      pfAddTicker.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
-          if (acControllers.pfAddTicker) acControllers.pfAddTicker.handleEnter(e);
-          addPortfolioPosition();
-        }
-      });
-    }
+    if (pfAddBtn) pfAddBtn.addEventListener('click', function () { addPortfolioPosition(null, { prefix: '' }); });
+    var pfWatchAddBtn = document.getElementById('pfWatchAddBtn');
+    if (pfWatchAddBtn) pfWatchAddBtn.addEventListener('click', function () { addPortfolioPosition(null, { prefix: 'Watch' }); });
+    var pfCancelEditBtn = document.getElementById('pfCancelEditBtn');
+    if (pfCancelEditBtn) pfCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
+    var pfWatchCancelEditBtn = document.getElementById('pfWatchCancelEditBtn');
+    if (pfWatchCancelEditBtn) pfWatchCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
+    bindPortfolioFormEnter('pfAddTicker', '');
+    bindPortfolioFormEnter('pfWatchAddTicker', 'Watch');
     document.querySelectorAll('[data-preset]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         applyPreset(btn.getAttribute('data-preset'));
@@ -198,13 +198,7 @@
       el.addEventListener('input', syncFiltersFromUI);
     });
 
-    document.getElementById('resetPortfolioBtn').addEventListener('click', function () {
-      setPortfolio({ positions: DEFAULT_PORTFOLIO.slice() });
-      state.chartTicker = '';
-      state.folderOpen = false;
-      renderPortfolio();
-      showToast('Портфель сброшен');
-    });
+    document.getElementById('resetPortfolioBtn').addEventListener('click', clearPortfolio);
 
     document.getElementById('portfolioFolderHost').addEventListener('click', function (e) {
       var paper = e.target.closest('.paper[data-ticker]');
@@ -248,10 +242,8 @@
       });
     });
 
-    document.getElementById('portfolioTableBody').addEventListener('click', function (e) {
-      var row = e.target.closest('tr[data-chart-ticker]');
-      if (!row) return;
-      selectPortfolioTicker(row.getAttribute('data-chart-ticker'));
+    document.querySelectorAll('.portfolio-table-body').forEach(function (tbody) {
+      tbody.addEventListener('click', handlePortfolioTableClick);
     });
 
     document.getElementById('portfolioCards').addEventListener('click', function (e) {
@@ -380,9 +372,22 @@
 
 
 
+  function bindPortfolioFormEnter(inputId, prefix) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        if (acControllers[inputId]) acControllers[inputId].handleEnter(e);
+        addPortfolioPosition(null, { prefix: prefix });
+      }
+    });
+  }
+
+
+
   function init() {
     if (!localStorage.getItem(KEYS.portfolio)) {
-      setPortfolio({ positions: DEFAULT_PORTFOLIO.slice() });
+      setPortfolio({ positions: [] });
     }
     loadProfileToUI();
     loadFiltersToUI();
@@ -392,6 +397,7 @@
     renderMarketMacro();
     renderHomePage();
     renderPortfolio();
+    updatePortfolioFormChrome();
     renderMoexIndexBox();
     renderAlerts();
     bindEvents();
