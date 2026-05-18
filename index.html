@@ -1,6 +1,21 @@
 ﻿<!doctype html>
 <html lang="ru">
 <head>
+  <script>
+    /* GitHub Pages: фиксируем базу для /investbrief-rf/ (скрипты и стили не уезжают в корень домена). */
+    (function () {
+      var path = location.pathname || '/';
+      if (!path.endsWith('/')) {
+        var i = path.lastIndexOf('/');
+        path = i >= 0 ? path.slice(0, i + 1) : '/';
+      }
+      if (path.indexOf('investbrief-rf') !== -1) {
+        var base = document.createElement('base');
+        base.href = path;
+        document.head.appendChild(base);
+      }
+    })();
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#F0EBE1" />
@@ -10,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="app">
@@ -337,14 +352,14 @@
     </div>
   </div>
 
-  <script type="module" src="firebase-init.mjs"></script>
+  <script type="module" src="./firebase-init.mjs"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="storage.js"></script>
-  <script src="ui.js"></script>
-  <script src="moex.js"></script>
-  <script src="news.js"></script>
-  <script src="portfolio.js"></script>
-  <script src="firebase-sync.js"></script>
-  <script src="app.js"></script>
+  <script src="./storage.js"></script>
+  <script src="./ui.js"></script>
+  <script src="./moex.js"></script>
+  <script src="./news.js"></script>
+  <script src="./portfolio.js"></script>
+  <script src="./firebase-sync.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>

@@ -164,14 +164,26 @@
 
   function mapAuthError(err) {
     var code = err && err.code ? String(err.code) : '';
+    var msg = err && err.message ? String(err.message) : '';
+    if (code.indexOf('unauthorized-domain') >= 0 || msg.indexOf('unauthorized-domain') >= 0) {
+      return 'Вход с этой страницы недоступен. Откройте приложение по ссылке victoriiamikhaleva.github.io/investbrief-rf/';
+    }
+    if (code.indexOf('popup-blocked') >= 0) return 'Браузер заблокировал окно входа — разрешите всплывающие окна';
     if (code.indexOf('invalid-email') >= 0) return 'Некорректный адрес почты';
     if (code.indexOf('wrong-password') >= 0 || code.indexOf('invalid-credential') >= 0) {
       return 'Неверный email или пароль';
     }
     if (code.indexOf('email-already-in-use') >= 0) return 'Этот email уже зарегистрирован';
     if (code.indexOf('weak-password') >= 0) return 'Пароль слишком простой (минимум 6 символов)';
-    if (code.indexOf('popup-closed') >= 0) return 'Вход отменён';
-    if (code.indexOf('network') >= 0) return 'Нет связи с сервером';
+    if (code.indexOf('popup-closed') >= 0 || code.indexOf('cancelled-popup-request') >= 0) {
+      return 'Вход отменён';
+    }
+    if (code.indexOf('network') >= 0 || code.indexOf('network-request-failed') >= 0) {
+      return 'Нет связи с сервером';
+    }
+    if (code.indexOf('operation-not-allowed') >= 0) {
+      return 'Этот способ входа отключён в настройках проекта';
+    }
     return 'Не удалось выполнить вход. Попробуйте ещё раз';
   }
 
@@ -290,9 +302,17 @@
   window.loadUserDataFromFirebase = loadUserDataFromFirebase;
   window.scheduleFirebaseSave = scheduleFirebaseSave;
 
-  window.addEventListener('ibrf-firebase-ready', initFirebaseSync);
-  if (getFb()) initFirebaseSync();
-  document.addEventListener('DOMContentLoaded', function () {
+  function tryInitFirebaseSync() {
     if (getFb()) initFirebaseSync();
+  }
+
+  window.addEventListener('ibrf-firebase-ready', tryInitFirebaseSync);
+  window.addEventListener('ibrf-firebase-error', function () {
+    if (typeof showToast === 'function') {
+      showToast('Синхронизация недоступна, данные сохранены на этом устройстве');
+    }
   });
+  document.addEventListener('DOMContentLoaded', tryInitFirebaseSync);
+  setTimeout(tryInitFirebaseSync, 0);
+  setTimeout(tryInitFirebaseSync, 800);
 })();
