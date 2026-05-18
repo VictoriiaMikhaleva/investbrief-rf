@@ -143,6 +143,34 @@
 
 
 
+  function cyrillicLetterRatio(text) {
+    var s = String(text || '');
+    var cyr = 0;
+    var lat = 0;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c >= 0x0400 && c <= 0x04FF) cyr += 1;
+      else if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) lat += 1;
+    }
+    var letters = cyr + lat;
+    if (!letters) return 1;
+    return cyr / letters;
+  }
+
+
+
+  /** В ленте только материалы на русском (заголовок/анонс). */
+  function isRussianBriefText(title, summary) {
+    var combined = (title || '') + ' ' + (summary || '');
+    if (!combined.trim()) return false;
+    var ratio = cyrillicLetterRatio(combined);
+    var longLatin = /[a-zA-Z]{5,}/.test(combined);
+    if (longLatin && ratio < 0.4) return false;
+    return ratio >= 0.15;
+  }
+
+
+
   function detectNewsTone(text) {
     var t = String(text || '').toLowerCase();
     var pos = 0;
@@ -200,7 +228,11 @@
 
 
   function getAllBriefs() {
-    return LIVE_BRIEFS.length ? LIVE_BRIEFS : DEMO_BRIEFS;
+    var list = LIVE_BRIEFS.length ? LIVE_BRIEFS : DEMO_BRIEFS;
+    if (!LIVE_BRIEFS.length) return list;
+    return list.filter(function (b) {
+      return isRussianBriefText(b.title, b.summary);
+    });
   }
 
 
@@ -467,11 +499,13 @@
 
 
   function mapRssItemToBrief(rssItem, feed) {
+    var title = stripHtmlText(rssItem.title);
     var plain = stripHtmlText([rssItem.title, rssItem.description, rssItem.content].join(' '));
     var body = stripHtmlText(rssItem.content || rssItem.description || '');
     if (!body) body = plain;
     var summary = stripHtmlText(rssItem.description || body);
     if (summary.length > 320) summary = summary.slice(0, 317) + '…';
+    if (!isRussianBriefText(title, summary)) return null;
     var asset = matchNewsTicker(plain, feed);
     var eventType = detectNewsEventType(plain);
     var tone = detectNewsTone(plain);
@@ -485,8 +519,8 @@
       eventType: eventType,
       tone: tone,
       importance: importanceNumToLevel(calcNewsImportance(eventType, feed.kind)),
-      title: stripHtmlText(rssItem.title),
-      summary: summary || stripHtmlText(rssItem.title),
+      title: title,
+      summary: summary || title,
       body: body,
       sourceUrl: rssItem.link,
       sourceName: feed.name,
@@ -546,7 +580,7 @@
         .then(function (items) {
           var part = items.map(function (item) {
             return mapRssItemToBrief(item, feed);
-          });
+          }).filter(function (b) { return b; });
           if (part.length) {
             collected = collected.concat(part);
             mergeLiveBriefsPartial(collected);

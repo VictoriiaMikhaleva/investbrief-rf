@@ -20,7 +20,11 @@
 
   var IMPORTANCE_ORDER = { low: 0, medium: 1, high: 2, critical: 3 };
   var THRESHOLD_LABELS = ['Любая', 'Средняя и выше', 'Высокая и выше', 'Только критическая'];
-  var TONE_LABELS = { positive: 'Позитив', negative: 'Негатив', neutral: 'Нейтрально' };
+  var TONE_LABELS = {
+    positive: 'Хорошие новости',
+    negative: 'Тревожные новости',
+    neutral: 'Для информации'
+  };
   var IMPORTANCE_LABELS = { low: 'Низкая', medium: 'Средняя', high: 'Высокая', critical: 'Критическая' };
   var EVENT_TYPE_LABELS = {
     earnings: 'Отчётность',
