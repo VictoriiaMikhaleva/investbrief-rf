@@ -105,6 +105,7 @@
 
     setupTickerAutocomplete('marketTickerInput');
     setupTickerAutocomplete('tickerInput');
+    setupTickerAutocomplete('pfAddTicker');
     setupTickerAutocomplete('feedAsset', { onSelect: function () { syncFiltersFromUI(); } });
     setupTickerAutocomplete('alertRuleTicker');
 
@@ -163,6 +164,15 @@
     });
     var pfAddBtn = document.getElementById('pfAddBtn');
     if (pfAddBtn) pfAddBtn.addEventListener('click', function () { addPortfolioPosition(); });
+    var pfAddTicker = document.getElementById('pfAddTicker');
+    if (pfAddTicker) {
+      pfAddTicker.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          if (acControllers.pfAddTicker) acControllers.pfAddTicker.handleEnter(e);
+          addPortfolioPosition();
+        }
+      });
+    }
     document.querySelectorAll('[data-preset]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         applyPreset(btn.getAttribute('data-preset'));

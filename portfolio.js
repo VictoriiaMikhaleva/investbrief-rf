@@ -401,6 +401,7 @@
         }));
         setPortfolio(portfolio);
         if (tickerInput) tickerInput.value = '';
+        if (acControllers.pfAddTicker) acControllers.pfAddTicker.close();
         ['pfAddQty', 'pfAddAvg', 'pfAddComment'].forEach(function (id) {
           var el = document.getElementById(id);
           if (el) el.value = '';
