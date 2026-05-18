@@ -297,22 +297,81 @@
 
 
 
-  function fetchRssXml(feedUrl) {
-    var tryUrls = [];
-    if (location.protocol !== 'file:') {
-      tryUrls.push('/api/rss?url=' + encodeURIComponent(feedUrl));
+  /** Локальный бэкенд (npm start) — на GitHub Pages API нет, только RSS через прокси. */
+  function hasLocalNewsApi() {
+    if (location.protocol === 'file:') return false;
+    var host = (location.hostname || '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1';
+  }
+
+
+
+  function rssProxyUrls(feedUrl) {
+    var enc = encodeURIComponent(feedUrl);
+    var urls = [];
+    if (hasLocalNewsApi()) {
+      urls.push('/api/rss?url=' + enc);
     }
-    tryUrls.push('https://api.allorigins.win/raw?url=' + encodeURIComponent(feedUrl));
+    urls.push('https://api.allorigins.win/raw?url=' + enc);
+    urls.push('https://corsproxy.io/?' + enc);
+    urls.push('https://api.codetabs.com/v1/proxy?quest=' + enc);
+    return urls;
+  }
+
+
+
+  function fetchRssXmlRaw(feedUrl) {
+    var tryUrls = rssProxyUrls(feedUrl);
     var idx = 0;
     function next() {
       if (idx >= tryUrls.length) return Promise.reject(new Error('rss fetch failed'));
       var url = tryUrls[idx++];
-      return fetch(url, { credentials: 'omit' }).then(function (res) {
+      return fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
         if (!res.ok) throw new Error('http ' + res.status);
         return res.text();
       }).catch(next);
     }
     return next();
+  }
+
+
+
+  /** JSON-прокси для GitHub Pages (браузер не может читать RSS напрямую). */
+  function fetchRssViaRss2Json(feedUrl) {
+    var api =
+      'https://rss2json.com/api.json?rss_url=' +
+      encodeURIComponent(feedUrl) +
+      '&count=25';
+    return fetch(api, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+      if (!res.ok) throw new Error('rss2json ' + res.status);
+      return res.json();
+    }).then(function (data) {
+      if (!data || data.status !== 'ok' || !Array.isArray(data.items)) {
+        throw new Error('rss2json empty');
+      }
+      return data.items.map(function (item) {
+        return {
+          title: item.title || '',
+          link: item.link || item.guid || '',
+          pubDate: item.pubDate || '',
+          description: item.description || '',
+          content: item.content || item.description || ''
+        };
+      }).filter(function (item) {
+        return item.title && item.link;
+      });
+    });
+  }
+
+
+
+  function fetchRssFeedItems(feedUrl) {
+    if (hasLocalNewsApi()) {
+      return fetchRssXmlRaw(feedUrl).then(parseRssItems);
+    }
+    return fetchRssViaRss2Json(feedUrl).catch(function () {
+      return fetchRssXmlRaw(feedUrl).then(parseRssItems);
+    });
   }
 
 
@@ -362,19 +421,19 @@
 
 
   function fetchLiveBriefsFromRss() {
-    var collected = [];
-    var chain = Promise.resolve();
-    NEWS_FEEDS.forEach(function (feed) {
-      chain = chain.then(function () {
-        return fetchRssXml(feed.url).then(function (xml) {
-          var items = parseRssItems(xml).slice(0, 25);
-          items.forEach(function (item) {
-            collected.push(mapRssItemToBrief(item, feed));
-          });
-        }).catch(function () { /* источник недоступен */ });
+    return Promise.all(NEWS_FEEDS.map(function (feed) {
+      return fetchRssFeedItems(feed.url).then(function (items) {
+        return items.map(function (item) {
+          return mapRssItemToBrief(item, feed);
+        });
+      }).catch(function () {
+        return [];
       });
-    });
-    return chain.then(function () {
+    })).then(function (chunks) {
+      var collected = [];
+      chunks.forEach(function (part) {
+        collected = collected.concat(part);
+      });
       return dedupeBriefs(collected).sort(function (a, b) {
         return new Date(b.publishedAt) - new Date(a.publishedAt);
       }).slice(0, 120);
@@ -384,7 +443,7 @@
 
 
   function fetchLiveBriefsFromApi() {
-    if (location.protocol === 'file:') return Promise.reject(new Error('no api'));
+    if (!hasLocalNewsApi()) return Promise.reject(new Error('no api'));
     return fetch('/api/briefs?limit=120&sort=newest', { credentials: 'omit' })
       .then(function (res) {
         if (!res.ok) throw new Error('api ' + res.status);
@@ -403,7 +462,8 @@
     BRIEFS_SOURCE = source;
     writeBriefsCache(items);
     state.briefsLoading = false;
-    renderBriefing();
+    if (typeof renderHomePage === 'function') renderHomePage();
+    else renderBriefing();
     renderFeed();
     updateStats();
   }
@@ -420,15 +480,19 @@
       renderFeed();
     }
 
-    fetchLiveBriefsFromApi()
-      .catch(function () { return fetchLiveBriefsFromRss(); })
+    var livePromise = hasLocalNewsApi()
+      ? fetchLiveBriefsFromApi().catch(function () { return fetchLiveBriefsFromRss(); })
+      : fetchLiveBriefsFromRss();
+
+    livePromise
       .then(function (items) {
         if (items && items.length) {
           applyLiveBriefs(items, 'live');
         } else if (!LIVE_BRIEFS.length) {
           BRIEFS_SOURCE = 'demo';
           state.briefsLoading = false;
-          renderBriefing();
+          if (typeof renderHomePage === 'function') renderHomePage();
+          else renderBriefing();
           renderFeed();
         }
       })
@@ -436,7 +500,8 @@
         if (!LIVE_BRIEFS.length) {
           BRIEFS_SOURCE = 'demo';
           state.briefsLoading = false;
-          renderBriefing();
+          if (typeof renderHomePage === 'function') renderHomePage();
+          else renderBriefing();
           renderFeed();
         }
       });
@@ -869,7 +934,7 @@
     var sourceLine = isLiveBriefsActive()
       ? 'Новости с официальных источников: Мосбиржа, Банк России, РБК, Интерфакс и др.'
       : (BRIEFS_SOURCE === 'demo'
-        ? 'Источники временно недоступны — показаны примеры материалов. Запустите сервер (npm start) и откройте страницу через localhost.'
+        ? 'Сейчас не удалось загрузить ленту — показаны примеры материалов. Обновите страницу через минуту.'
         : 'Загружаем ленту с новостных источников…');
     if (scope === 'mine') {
       if (positions.length) {
