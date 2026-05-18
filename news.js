@@ -400,26 +400,21 @@
 
 
 
-  /** JSON-прокси для GitHub Pages (браузер не может читать RSS напрямую). */
+  /** JSON-прокси для GitHub Pages. Только rss2json.com — api.rss2json.com редиректит на /proxy/ и ломается с <base href>. */
   function fetchRssViaRss2Json(feedUrl) {
-    var enc = encodeURIComponent(feedUrl);
-    var endpoints = [
-      'https://rss2json.com/api.json?rss_url=' + enc + '&count=' + RSS2JSON_ITEM_COUNT,
-      'https://api.rss2json.com/v1/api.json?rss_url=' + enc + '&count=' + RSS2JSON_ITEM_COUNT
-    ];
-    var idx = 0;
-    function nextEndpoint() {
-      if (idx >= endpoints.length) return Promise.reject(new Error('rss2json failed'));
-      var api = endpoints[idx++];
-      return fetchWithTimeout(
-        fetch(api, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
-          if (!res.ok) throw new Error('rss2json ' + res.status);
-          return res.json();
-        }),
-        RSS_FETCH_TIMEOUT_MS
-      ).then(mapRss2JsonItems).catch(nextEndpoint);
-    }
-    return nextEndpoint();
+    var api =
+      'https://rss2json.com/api.json?rss_url=' +
+      encodeURIComponent(feedUrl) +
+      '&count=' +
+      RSS2JSON_ITEM_COUNT;
+    return fetchWithTimeout(
+      fetch(api, { credentials: 'omit', cache: 'no-store', redirect: 'follow' }).then(function (res) {
+        if (!res.ok) throw new Error('rss2json ' + res.status);
+        if (res.url && /\/proxy\//i.test(res.url)) throw new Error('rss2json redirect');
+        return res.json();
+      }),
+      RSS_FETCH_TIMEOUT_MS
+    ).then(mapRss2JsonItems);
   }
 
 
@@ -458,15 +453,6 @@
     }
     return fetchRssViaRss2Json(feedUrl)
       .catch(function () { return fetchRssViaAllOrigins(feedUrl); })
-      .catch(function () {
-        return fetchWithTimeout(
-          fetchRssXmlRaw(feedUrl).then(function (xml) {
-            var parsed = parseRssItems(xml);
-            return parsed.length ? parsed : [];
-          }),
-          RSS_FETCH_TIMEOUT_MS
-        );
-      })
       .catch(function () { return []; });
   }
 
