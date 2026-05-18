@@ -176,6 +176,65 @@
 
 
 
+  /** Мосбиржа, ЦБ, Smart-Lab — узкие ленты; РБК/Интерфакс — только с проверкой темы. */
+  var CURATED_INVESTMENT_FEEDS = { moex: true, cbr: true, cbr_press: true, smartlab: true };
+
+  var INVESTMENT_TOPIC_KEYWORDS = [
+    'акци', 'облигац', 'офз', 'бирж', 'мосбирж', 'moex', 'imoex', 'индекс',
+    'инвест', 'инвестиц', 'портфел', 'дивиденд', 'котиров', 'торг', 'лот', 'стакан',
+    'эмитент', 'размещен', 'ipo', 'spo', 'байбэк', 'buyback',
+    'ключев', 'ставк', 'цб ', 'банк росс', 'инфляц', 'дефляц',
+    'рубл', 'доллар', 'евро', 'юан', 'валют', 'курс', 'нефт', 'brent', 'urals',
+    'газ', 'золот', 'металл', 'никел', 'паллад', 'алюмин',
+    'прибыл', 'убыт', 'выручк', 'ebitda', 'отчёт', 'отчет', 'мсфо', 'рсбу', 'квартал',
+    'санкц', 'экспорт', 'импорт', 'таргет', 'рекомендац', 'рейтинг',
+    'аукцион', 'минфин', 'гособлигац', 'купон', 'доходност', 'дюрац',
+    'капитал', 'акционер', 'собран', 'дивполит',
+    'фондов', 'etf', 'бпиф', 'фьючерс', 'опцион', 'ликвидност', 'волатильност',
+    's&p', 'nasdaq', 'фрс', 'fed', 'opec', 'опек',
+    'сбер', 'газпром', 'лукойл', 'новатэк', 'норникел', 'втб', 'роснефт', 'татнефт',
+    'кредит', 'займ', 'еврооблигац', 'облигационн', 'syndicated'
+  ];
+
+  var NON_INVESTMENT_TOPIC_KEYWORDS = [
+    'стрельб', 'убийств', 'погиб', 'жертв', 'ранен', 'пострадав',
+    'террор', 'взрыв', 'пожар', 'дтп', 'авария', 'изнасил', 'похищ',
+    'футбол', 'хоккей', 'теннис', 'олимпиад', 'чемпионат мир',
+    'кино', 'сериал', 'актёр', 'актрис', 'певец', 'певиц', 'шоу-бизнес',
+    'свадьб', 'развод', 'беремен', 'родил', 'скончал', 'похорон',
+    'землетряс', 'ураган', 'наводнен', 'извержен',
+    'исламск', 'мечет', 'церков', 'религиозн',
+    'подростк', 'школьник', 'полици', 'задержан', 'арестован',
+    'калифорни', 'техас', 'флорид', 'кентукки'
+  ];
+
+
+
+  function countInvestmentTopicHits(text) {
+    var t = (' ' + String(text || '').toLowerCase() + ' ');
+    var hits = 0;
+    for (var i = 0; i < INVESTMENT_TOPIC_KEYWORDS.length; i++) {
+      if (t.indexOf(INVESTMENT_TOPIC_KEYWORDS[i]) >= 0) hits += 1;
+    }
+    return hits;
+  }
+
+
+
+  function isInvestmentRelevantBrief(title, summary, body, feed) {
+    if (feed && CURATED_INVESTMENT_FEEDS[feed.id]) return true;
+    var text = (title || '') + ' ' + (summary || '') + ' ' + (body || '');
+    var t = (' ' + text.toLowerCase() + ' ');
+    var investHits = countInvestmentTopicHits(text);
+    if (!investHits) return false;
+    for (var i = 0; i < NON_INVESTMENT_TOPIC_KEYWORDS.length; i++) {
+      if (t.indexOf(NON_INVESTMENT_TOPIC_KEYWORDS[i]) >= 0 && investHits < 2) return false;
+    }
+    return true;
+  }
+
+
+
   function buildLiveRssBody(rssItem) {
     var desc = stripHtmlText(rssItem.description || '');
     var content = stripHtmlText(rssItem.content || '');
@@ -249,7 +308,8 @@
     var list = LIVE_BRIEFS.length ? LIVE_BRIEFS : DEMO_BRIEFS;
     if (!LIVE_BRIEFS.length) return list;
     return list.filter(function (b) {
-      return isRussianBriefText(b.title, b.summary, null);
+      if (!isRussianBriefText(b.title, b.summary, null)) return false;
+      return isInvestmentRelevantBrief(b.title, b.summary, b.body || b.summary, null);
     });
   }
 
@@ -525,6 +585,7 @@
     var summary = stripHtmlText(rssItem.description || body);
     if (summary.length > 320) summary = summary.slice(0, 317) + '…';
     if (!isRussianBriefText(title, summary, feed)) return null;
+    if (!isInvestmentRelevantBrief(title, summary, body, feed)) return null;
     var asset = matchNewsTicker(plain, feed);
     var eventType = detectNewsEventType(plain);
     var tone = detectNewsTone(plain);
@@ -702,7 +763,7 @@
 
   var LIVE_BRIEFS = [];
   var BRIEFS_SOURCE = 'loading';
-  var BRIEFS_CACHE_KEY = 'ibrf.liveBriefs';
+  var BRIEFS_CACHE_KEY = 'ibrf.liveBriefs.v2';
   var BRIEFS_CACHE_TTL = 12 * 60 * 1000;
 
   var NEWS_FEEDS = [
@@ -710,7 +771,7 @@
     { id: 'cbr', name: 'Банк России', url: 'https://www.cbr.ru/rss/RssNews', kind: 'macro', macroTicker: 'MOEX' },
     { id: 'interfax', name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', kind: 'news', macroTicker: 'MOEX' },
     { id: 'cbr_press', name: 'Банк России — пресс-релизы', url: 'https://www.cbr.ru/rss/RssPress', kind: 'macro', macroTicker: 'MOEX' },
-    { id: 'rbc', name: 'РБК', url: 'https://rssexport.rbc.ru/rbcnews/news/30/full.rss', kind: 'news', macroTicker: 'MOEX' },
+    { id: 'rbc', name: 'РБК — экономика', url: 'https://rssexport.rbc.ru/rbcnews/category/economics/30/full.rss', kind: 'news', macroTicker: 'MOEX' },
     { id: 'smartlab', name: 'Smart-Lab', url: 'https://smart-lab.ru/bonds/rss/all/', kind: 'analytics', macroTicker: 'MOEX' }
   ];
 
@@ -1158,7 +1219,7 @@
     var positions = getPositionTickers();
     var scope = getSettings().briefingScope;
     var sourceLine = isLiveBriefsActive()
-      ? 'Новости из официальных источников: Мосбиржа, Банк России, РБК, Интерфакс и др.'
+      ? 'Только новости рынка и инвестиций: Мосбиржа, Банк России, РБК (экономика), Интерфакс, Smart-Lab.'
       : (BRIEFS_SOURCE === 'demo'
         ? 'Сейчас не удалось загрузить ленту — показаны примеры материалов. Обновите страницу через минуту.'
         : (state.briefsLoading
