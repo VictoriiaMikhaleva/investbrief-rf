@@ -1075,7 +1075,7 @@
     var positions = getPositionTickers();
     var scope = getSettings().briefingScope;
     var sourceLine = isLiveBriefsActive()
-      ? 'Новости с официальных источников: Мосбиржа, Банк России, РБК, Интерфакс и др.'
+      ? 'Новости из официальных источников: Мосбиржа, Банк России, РБК, Интерфакс и др.'
       : (BRIEFS_SOURCE === 'demo'
         ? 'Сейчас не удалось загрузить ленту — показаны примеры материалов. Обновите страницу через минуту.'
         : (state.briefsLoading
