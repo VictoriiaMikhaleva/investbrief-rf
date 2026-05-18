@@ -600,6 +600,23 @@
     .slider-row input[type="range"] { width: 100%; accent-color: var(--accent); }
     .checkbox-group { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0.75rem 0; }
     .checkbox-group label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+    .check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      margin: 0.55rem 0;
+      font-size: 0.88rem;
+      line-height: 1.45;
+      cursor: pointer;
+    }
+    .check-row input[type="checkbox"] {
+      margin-top: 0.2rem;
+      flex-shrink: 0;
+      accent-color: var(--accent);
+    }
+    .check-row a { color: var(--accent); }
+    .auth-google-legal { font-size: 0.85rem; margin: 0.65rem 0 0; line-height: 1.45; }
+    .auth-google-legal a { color: var(--accent); }
     .settings-block { margin-bottom: 1.5rem; }
     .settings-block h3 { color: var(--accent); }
     .bottom-nav {

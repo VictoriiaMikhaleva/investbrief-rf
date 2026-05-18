@@ -12,8 +12,11 @@
     filters: 'ibrf.filters',
     lastVisit: 'ibrf.lastVisit',
     marketTiles: 'ibrf.marketTiles',
-    tickerNames: 'ibrf.tickerNames'
+    tickerNames: 'ibrf.tickerNames',
+    consents: 'ibrf.consents'
   };
+
+  var PRIVACY_POLICY_VERSION = '1.0';
 
   var IMPORTANCE_ORDER = { low: 0, medium: 1, high: 2, critical: 3 };
   var THRESHOLD_LABELS = ['Любая', 'Средняя и выше', 'Высокая и выше', 'Только критическая'];
@@ -192,14 +195,58 @@
 
 
 
+  function normalizeDigest(d) {
+    d = d && typeof d === 'object' ? d : {};
+    return {
+      email: String(d.email || '').trim(),
+      time: d.time || '08:00',
+      emailConsent: !!d.emailConsent
+    };
+  }
+
+
+
   function getDigest() {
-    return loadJSON(KEYS.digest, { email: '', time: '08:00' });
+    return normalizeDigest(loadJSON(KEYS.digest, null));
   }
 
 
 
   function setDigest(d) {
-    saveJSON(KEYS.digest, d);
+    saveJSON(KEYS.digest, normalizeDigest(Object.assign({}, getDigest(), d || {})));
+    if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
+  }
+
+
+
+  function getConsents() {
+    var c = loadJSON(KEYS.consents, null);
+    if (!c || typeof c !== 'object') {
+      return {
+        privacyAccepted: false,
+        privacyAcceptedAt: null,
+        privacyPolicyVersion: null,
+        digestEmail: false
+      };
+    }
+    return {
+      privacyAccepted: !!c.privacyAccepted,
+      privacyAcceptedAt: c.privacyAcceptedAt || null,
+      privacyPolicyVersion: c.privacyPolicyVersion || null,
+      digestEmail: !!c.digestEmail
+    };
+  }
+
+
+
+  function setConsents(c) {
+    var cur = getConsents();
+    saveJSON(KEYS.consents, {
+      privacyAccepted: c.privacyAccepted != null ? !!c.privacyAccepted : cur.privacyAccepted,
+      privacyAcceptedAt: c.privacyAcceptedAt != null ? c.privacyAcceptedAt : cur.privacyAcceptedAt,
+      privacyPolicyVersion: c.privacyPolicyVersion != null ? c.privacyPolicyVersion : cur.privacyPolicyVersion,
+      digestEmail: c.digestEmail != null ? !!c.digestEmail : cur.digestEmail
+    });
     if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
   }
 
@@ -260,6 +307,7 @@
       settings: getSettings(),
       alerts: getAlerts(),
       digest: getDigest(),
+      consents: getConsents(),
       portfolio: getPortfolio(),
       filters: getFilters(),
       marketTiles: getMarketTickers(),
@@ -292,7 +340,8 @@
     if (data.watchlist) saveJSON(KEYS.watchlist, data.watchlist);
     if (data.settings) saveJSON(KEYS.settings, data.settings);
     if (data.alerts) saveJSON(KEYS.alerts, data.alerts);
-    if (data.digest) saveJSON(KEYS.digest, data.digest);
+    if (data.digest) saveJSON(KEYS.digest, normalizeDigest(data.digest));
+    if (data.consents) saveJSON(KEYS.consents, data.consents);
     if (data.portfolio) saveJSON(KEYS.portfolio, data.portfolio);
     if (data.filters) saveJSON(KEYS.filters, data.filters);
     if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);

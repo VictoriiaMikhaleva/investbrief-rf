@@ -875,6 +875,8 @@
   function openDigestModal() {
     var d = getDigest();
     document.getElementById('digestEmail').value = d.email || '';
+    var consentModal = document.getElementById('digestConsentModal');
+    if (consentModal) consentModal.checked = !!d.emailConsent;
     var timeEl = document.getElementById('digestTimeModal') || document.getElementById('digestTime');
     if (timeEl) timeEl.value = d.time || '08:00';
     var modal = document.getElementById('digestModal');

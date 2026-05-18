@@ -26,6 +26,7 @@
       settings: getSettings(),
       alerts: getAlerts(),
       digest: getDigest(),
+      consents: getConsents(),
       marketTiles: getMarketTickers()
     };
   }
@@ -39,10 +40,24 @@
       if (data.portfolio) saveJSON(KEYS.portfolio, data.portfolio);
       if (data.settings) saveJSON(KEYS.settings, data.settings);
       if (data.alerts) saveJSON(KEYS.alerts, data.alerts);
-      if (data.digest) saveJSON(KEYS.digest, data.digest);
+      if (data.digest) saveJSON(KEYS.digest, normalizeDigest(data.digest));
+      if (data.consents) saveJSON(KEYS.consents, data.consents);
       if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);
     } finally {
       window._ibrfApplyingCloudData = false;
+    }
+
+    var cloudConsents = getConsents();
+    var cloudDigest = getDigest();
+    if (cloudConsents.digestEmail !== cloudDigest.emailConsent) {
+      window._ibrfApplyingCloudData = true;
+      try {
+        saveJSON(KEYS.digest, normalizeDigest(Object.assign({}, cloudDigest, {
+          emailConsent: cloudConsents.digestEmail
+        })));
+      } finally {
+        window._ibrfApplyingCloudData = false;
+      }
     }
 
     if (typeof loadProfileToUI === 'function') loadProfileToUI();
@@ -197,6 +212,52 @@
     }
   }
 
+  function isPrivacyConsentChecked() {
+    var el = document.getElementById('privacyConsent');
+    return el && el.checked;
+  }
+
+  function isDigestConsentChecked() {
+    var el = document.getElementById('digestConsent');
+    return el && el.checked;
+  }
+
+  function applySignupConsents(email) {
+    var now = new Date().toISOString();
+    setConsents({
+      privacyAccepted: true,
+      privacyAcceptedAt: now,
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+      digestEmail: isDigestConsentChecked()
+    });
+    var digest = getDigest();
+    var next = {
+      emailConsent: isDigestConsentChecked(),
+      time: digest.time || '08:00'
+    };
+    if (isDigestConsentChecked() && email && !digest.email) {
+      next.email = email;
+    }
+    setDigest(Object.assign({}, digest, next));
+    var settingsConsent = document.getElementById('digestConsentSettings');
+    if (settingsConsent) settingsConsent.checked = next.emailConsent;
+  }
+
+  function applyGoogleSignInConsents(user) {
+    var cur = getConsents();
+    if (cur.privacyAccepted) return;
+    var email = user && user.email ? user.email : '';
+    setConsents({
+      privacyAccepted: true,
+      privacyAcceptedAt: new Date().toISOString(),
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+      digestEmail: cur.digestEmail
+    });
+    if (email && !getDigest().email) {
+      setDigest({ email: email });
+    }
+  }
+
   function bindAuthUI() {
     var emailEl = document.getElementById('authEmail');
     var passEl = document.getElementById('authPassword');
@@ -239,10 +300,18 @@
           showToast('Введите email и пароль');
           return;
         }
+        if (!isPrivacyConsentChecked()) {
+          showToast('Подтвердите согласие с Политикой конфиденциальности');
+          return;
+        }
         withAuthBusy(function () {
-          return fb.createUserWithEmailAndPassword(fb.auth, email, pass).catch(function (err) {
-            showToast(mapAuthError(err));
-          });
+          return fb.createUserWithEmailAndPassword(fb.auth, email, pass)
+            .then(function () {
+              applySignupConsents(email);
+            })
+            .catch(function (err) {
+              showToast(mapAuthError(err));
+            });
         });
       });
     }
@@ -255,9 +324,13 @@
           return;
         }
         withAuthBusy(function () {
-          return fb.signInWithPopup(fb.auth, fb.googleProvider).catch(function (err) {
-            showToast(mapAuthError(err));
-          });
+          return fb.signInWithPopup(fb.auth, fb.googleProvider)
+            .then(function (cred) {
+              if (cred && cred.user) applyGoogleSignInConsents(cred.user);
+            })
+            .catch(function (err) {
+              showToast(mapAuthError(err));
+            });
         });
       });
     }
@@ -269,6 +342,10 @@
         withAuthBusy(function () {
           return fb.signOut(fb.auth).then(function () {
             setAuthSyncStatus('');
+            var privacy = document.getElementById('privacyConsent');
+            var digestC = document.getElementById('digestConsent');
+            if (privacy) privacy.checked = false;
+            if (digestC) digestC.checked = false;
             showToast('Вы вышли из аккаунта');
           });
         });
@@ -288,6 +365,7 @@
     fb.onAuthStateChanged(fb.auth, function (user) {
       setCurrentFirebaseUser(user);
       if (user) {
+        applyGoogleSignInConsents(user);
         loadUserDataFromFirebase();
       } else {
         setAuthSyncStatus('');

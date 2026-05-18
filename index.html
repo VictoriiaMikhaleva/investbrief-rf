@@ -224,11 +224,26 @@
               <input type="email" id="authEmail" autocomplete="email" placeholder="ivanov@mail.ru" style="margin-bottom:0.55rem;" />
               <label class="muted">Пароль</label>
               <input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••" style="margin-bottom:0.65rem;" />
+              <label class="check-row">
+                <input type="checkbox" id="privacyConsent" />
+                <span>
+                  Я согласен(на) с обработкой персональных данных и принимаю
+                  <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политику конфиденциальности</a>
+                </span>
+              </label>
+              <label class="check-row">
+                <input type="checkbox" id="digestConsent" />
+                <span>Я согласен(на) получать ежедневную сводку на email</span>
+              </label>
               <div class="auth-actions row" style="flex-wrap:wrap;gap:0.5rem;">
                 <button type="button" id="authSignInBtn" class="primary">Войти</button>
                 <button type="button" id="authSignUpBtn">Создать аккаунт</button>
-                <button type="button" id="authGoogleBtn">Войти через Google</button>
               </div>
+              <p class="muted auth-google-legal">
+                Продолжая вход через Google, вы соглашаетесь с
+                <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политикой конфиденциальности</a>.
+              </p>
+              <button type="button" id="authGoogleBtn" class="ghost" style="margin-top:0.35rem;">Войти через Google</button>
             </div>
 
             <div id="authSignedIn" hidden>
@@ -259,6 +274,10 @@
               <input type="range" id="alertThreshold" min="0" max="3" step="1" value="2" />
               <span id="alertThresholdLabel" class="muted">Высокая и выше</span>
             </div>
+            <label class="check-row">
+              <input type="checkbox" id="digestConsentSettings" />
+              <span>Я согласен(на) получать ежедневную сводку на email</span>
+            </label>
             <label class="muted">Email для дайджеста</label>
             <input type="email" id="digestEmailSettings" placeholder="ivanov@mail.ru" style="margin-bottom:0.65rem;" />
             <label class="muted">Telegram (чат)</label>
@@ -309,6 +328,7 @@
           <div class="glass">
             <h3>О приложении</h3>
             <p class="muted">ИнвестБриф РФ — сводка для частного инвестора. Котировки: Московская биржа. Без входа данные хранятся в браузере; после входа — синхронизация между устройствами.</p>
+            <p class="muted"><a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a></p>
           </div>
         </section>
       </main>
@@ -346,6 +366,10 @@
       <h2 id="digestModalTitle">Дайджест на эл. почту</h2>
       <p class="muted">Настройка сохраняется только в этом браузере.</p>
       <label class="muted">Адрес эл. почты</label>
+      <label class="check-row">
+        <input type="checkbox" id="digestConsentModal" />
+        <span>Я согласен(на) получать ежедневную сводку на email</span>
+      </label>
       <input type="email" id="digestEmail" placeholder="ivanov@mail.ru" style="margin-bottom:0.75rem;" />
       <label class="muted">Время отправки</label>
       <input type="time" id="digestTimeModal" value="08:00" />

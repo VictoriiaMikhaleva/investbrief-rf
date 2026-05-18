@@ -54,8 +54,11 @@
     if (briefFormat) briefFormat.value = s.briefFormat || 'concise';
     var briefingScope = document.getElementById('briefingScope');
     if (briefingScope) briefingScope.value = s.briefingScope || 'market';
+    var digest = getDigest();
     var digestEmail = document.getElementById('digestEmailSettings');
-    if (digestEmail) digestEmail.value = getDigest().email || '';
+    if (digestEmail) digestEmail.value = digest.email || '';
+    var digestConsentSettings = document.getElementById('digestConsentSettings');
+    if (digestConsentSettings) digestConsentSettings.checked = !!digest.emailConsent;
     var telegram = document.getElementById('telegramChatId');
     if (telegram) telegram.value = (getAlerts().telegramChat || '');
     var digestTime = document.getElementById('digestTime');
@@ -80,10 +83,19 @@
     });
     var digestEmail = document.getElementById('digestEmailSettings');
     if (digestEmail) {
+      var emailVal = digestEmail.value.trim();
+      var consentEl = document.getElementById('digestConsentSettings');
+      var emailConsent = consentEl ? consentEl.checked : getDigest().emailConsent;
+      if (emailVal && !emailConsent) {
+        showToast('Включите согласие на email-дайджест или очистите поле email');
+        return;
+      }
       setDigest({
-        email: digestEmail.value.trim(),
-        time: (document.getElementById('digestTime') || {}).value || getDigest().time || '08:00'
+        email: emailVal,
+        time: (document.getElementById('digestTime') || {}).value || getDigest().time || '08:00',
+        emailConsent: emailConsent
       });
+      setConsents({ digestEmail: emailConsent });
     }
     var telegram = document.getElementById('telegramChatId');
     if (telegram) {
@@ -310,12 +322,23 @@
     document.getElementById('digestBtnBrief').addEventListener('click', openDigestModal);
     document.getElementById('digestCancelBtn').addEventListener('click', closeDigestModal);
     document.getElementById('digestSaveBtn').addEventListener('click', function () {
+      var emailVal = document.getElementById('digestEmail').value.trim();
+      var consentEl = document.getElementById('digestConsentModal');
+      var emailConsent = consentEl ? consentEl.checked : false;
+      if (emailVal && !emailConsent) {
+        showToast('Отметьте согласие на получение дайджеста на email');
+        return;
+      }
       setDigest({
-        email: document.getElementById('digestEmail').value.trim(),
-        time: (document.getElementById('digestTimeModal') || document.getElementById('digestTime')).value || '08:00'
+        email: emailVal,
+        time: (document.getElementById('digestTimeModal') || document.getElementById('digestTime')).value || '08:00',
+        emailConsent: emailConsent
       });
+      setConsents({ digestEmail: emailConsent });
       var digestEmailSettings = document.getElementById('digestEmailSettings');
-      if (digestEmailSettings) digestEmailSettings.value = document.getElementById('digestEmail').value.trim();
+      if (digestEmailSettings) digestEmailSettings.value = emailVal;
+      var digestConsentSettings = document.getElementById('digestConsentSettings');
+      if (digestConsentSettings) digestConsentSettings.checked = emailConsent;
       closeDigestModal();
       showToast('Дайджест сохранён');
     });
