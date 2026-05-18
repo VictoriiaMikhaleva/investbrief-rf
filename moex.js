@@ -840,9 +840,90 @@
 
 
 
-  function renderMacroTile(label, valueHtml, subHtml) {
+  function fetchExternalText(url) {
+    if (typeof fetchTextViaProxies === 'function') {
+      return fetchTextViaProxies(url);
+    }
+    return fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+      if (!res.ok) throw new Error('http ' + res.status);
+      return res.text();
+    });
+  }
+
+
+
+  function cbrDateReq(d) {
+    var dd = String(d.getDate()).padStart(2, '0');
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    return dd + '/' + mm + '/' + d.getFullYear();
+  }
+
+
+
+  function parseCbrDailyXml(xml) {
+    var doc = new DOMParser().parseFromString(xml, 'text/xml');
+    if (doc.querySelector('parsererror')) return null;
+    var out = {};
+    var nodes = doc.querySelectorAll('Valute');
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      var codeEl = node.querySelector('CharCode');
+      var valEl = node.querySelector('Value');
+      var nomEl = node.querySelector('Nominal');
+      if (!codeEl || !valEl) continue;
+      var code = (codeEl.textContent || '').trim();
+      var nominal = parseFloat((nomEl && nomEl.textContent) ? nomEl.textContent : '1');
+      var val = parseFloat(String(valEl.textContent || '').replace(',', '.'));
+      if (!code || !isFinite(val)) continue;
+      if (!isFinite(nominal) || nominal <= 0) nominal = 1;
+      out[code] = val / nominal;
+    }
+    return out;
+  }
+
+
+
+  function fetchCbrFxRates() {
+    var cacheKey = 'cbr.fx';
+    var cached = moexCacheGet(cacheKey);
+    if (cached) return Promise.resolve(cached);
+    var today = new Date();
+    var yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    var urlToday = 'https://www.cbr.ru/scripts/XML_daily.asp?date_req=' + cbrDateReq(today);
+    var urlPrev = 'https://www.cbr.ru/scripts/XML_daily.asp?date_req=' + cbrDateReq(yesterday);
+    return fetchExternalText(urlToday).then(function (xml) {
+      var todayRates = parseCbrDailyXml(xml);
+      if (!todayRates) throw new Error('cbr parse');
+      return fetchExternalText(urlPrev).catch(function () { return ''; }).then(function (prevXml) {
+        var prevRates = prevXml ? parseCbrDailyXml(prevXml) : null;
+        var result = { USD: null, EUR: null, CNY: null };
+        ['USD', 'EUR', 'CNY'].forEach(function (code) {
+          var cur = todayRates[code];
+          if (!isFinite(cur)) return;
+          var prev = prevRates && isFinite(prevRates[code]) ? prevRates[code] : null;
+          var changePct = null;
+          if (prev && prev > 0) changePct = ((cur - prev) / prev) * 100;
+          result[code] = { price: cur, changePct: changePct };
+        });
+        moexCacheSet(cacheKey, result, 60 * 60 * 1000);
+        return result;
+      });
+    });
+  }
+
+
+
+  function formatFxPrice(price) {
+    if (price == null || !isFinite(price)) return '—';
+    return Number(price).toFixed(2) + ' ₽';
+  }
+
+
+
+  function renderMacroTile(id, label, valueHtml, subHtml) {
     return (
-      '<div class="macro-tile">' +
+      '<div class="macro-tile" data-macro-id="' + escapeHtml(id) + '">' +
         '<div class="macro-tile-lbl">' + escapeHtml(label) + '</div>' +
         '<div class="macro-tile-val">' + valueHtml + '</div>' +
         (subHtml ? '<div class="macro-tile-sub ' + (subHtml.cls || 'muted') + '">' + subHtml.text + '</div>' : '') +
@@ -855,44 +936,61 @@
   function renderMarketMacro() {
     var row = document.getElementById('marketMacroRow');
     if (!row) return;
-    row.innerHTML = renderMacroTile('Индекс', '…', { text: 'IMOEX', cls: 'muted' }) +
-      renderMacroTile('Ставка', escapeHtml(MACRO_KEY_RATE_LABEL), { text: 'Ключевая', cls: 'muted' }) +
-      renderMacroTile('Нефть', '…', { text: 'LKOH', cls: 'muted' }) +
-      renderMacroTile('Рубль', '…', { text: 'USD/RUB', cls: 'muted' }) +
-      renderMacroTile('ОФЗ', '…', { text: '26241', cls: 'muted' });
+    row.innerHTML =
+      renderMacroTile('imoex', 'Индекс', '…', { text: 'IMOEX', cls: 'muted' }) +
+      renderMacroTile('rate', 'Ставка', escapeHtml(MACRO_KEY_RATE_LABEL), { text: 'Ключевая', cls: 'muted' }) +
+      renderMacroTile('usd', 'USD', '…', { text: 'ЦБ РФ', cls: 'muted' }) +
+      renderMacroTile('eur', 'EUR', '…', { text: 'ЦБ РФ', cls: 'muted' }) +
+      renderMacroTile('cny', 'CNY', '…', { text: 'ЦБ РФ', cls: 'muted' }) +
+      renderMacroTile('oil', 'Нефть', '…', { text: 'LKOH', cls: 'muted' }) +
+      renderMacroTile('ofz', 'ОФЗ', '…', { text: '26241', cls: 'muted' });
+
     fetchMoexQuote('IMOEX').then(function (q) {
       var ch = formatMacroChange(q && q.changePct);
       var val = q && q.price != null ? formatChartPrice(q.price, 'IMOEX') : '—';
-      patchMacroTile(row, 0, val, ch);
-    }).catch(function () { patchMacroTile(row, 0, '—', { text: 'нет данных', cls: 'muted' }); });
+      patchMacroTile(row, 'imoex', val, ch);
+    }).catch(function () { patchMacroTile(row, 'imoex', '—', { text: 'нет данных', cls: 'muted' }); });
 
     fetchMoexQuote('LKOH').then(function (q) {
       var ch = formatMacroChange(q && q.changePct);
       var val = q && q.price != null ? formatChartPrice(q.price, 'LKOH') : '—';
-      patchMacroTile(row, 2, val, ch);
-    }).catch(function () { patchMacroTile(row, 2, '—', { text: 'нет данных', cls: 'muted' }); });
+      patchMacroTile(row, 'oil', val, ch);
+    }).catch(function () { patchMacroTile(row, 'oil', '—', { text: 'нет данных', cls: 'muted' }); });
 
     fetchMoexQuote('OFZ_26241').then(function (q) {
       var ch = formatMacroChange(q && q.changePct);
       var val = q && q.price != null ? formatChartPrice(q.price, 'OFZ_26241') : '—';
-      patchMacroTile(row, 4, val, ch);
-    }).catch(function () { patchMacroTile(row, 4, '—', { text: 'нет данных', cls: 'muted' }); });
+      patchMacroTile(row, 'ofz', val, ch);
+    }).catch(function () { patchMacroTile(row, 'ofz', '—', { text: 'нет данных', cls: 'muted' }); });
 
-    fetchMoexQuote('USD000UTSTOM').then(function (q) {
-      if (!q || q.price == null) return fetchMoexQuote('SiM5');
-      return q;
-    }).then(function (q) {
-      if (!q) return;
-      var ch = formatMacroChange(q.changePct);
-      var val = q.price != null ? Number(q.price).toFixed(2) : '—';
-      patchMacroTile(row, 3, val, ch);
-    }).catch(function () { patchMacroTile(row, 3, '—', { text: 'нет данных', cls: 'muted' }); });
+    fetchCbrFxRates().then(function (fx) {
+      if (!fx) return;
+      ['USD', 'EUR', 'CNY'].forEach(function (code) {
+        var item = fx[code];
+        var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
+        if (!item || item.price == null) {
+          patchMacroTile(row, id, '—', { text: 'ЦБ РФ', cls: 'muted' });
+          return;
+        }
+        patchMacroTile(row, id, formatFxPrice(item.price), formatMacroChange(item.changePct));
+      });
+    }).catch(function () {
+      fetchMoexQuote('USD000UTSTOM').then(function (q) {
+        if (!q || q.price == null) return fetchMoexQuote('SiM5');
+        return q;
+      }).then(function (q) {
+        if (!q || q.price == null) return;
+        patchMacroTile(row, 'usd', formatFxPrice(q.price), formatMacroChange(q.changePct));
+      }).catch(function () {
+        patchMacroTile(row, 'usd', '—', { text: 'нет данных', cls: 'muted' });
+      });
+    });
   }
 
 
 
-  function patchMacroTile(row, index, value, change) {
-    var tile = row.children[index];
+  function patchMacroTile(row, id, value, change) {
+    var tile = row.querySelector('[data-macro-id="' + id + '"]');
     if (!tile) return;
     var valEl = tile.querySelector('.macro-tile-val');
     var subEl = tile.querySelector('.macro-tile-sub');

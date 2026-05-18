@@ -297,6 +297,11 @@
 
 
 
+  var RSS_FETCH_TIMEOUT_MS = 11000;
+  var BRIEFS_LOAD_TIMEOUT_MS = 24000;
+
+
+
   /** Локальный бэкенд (npm start) — на GitHub Pages API нет, только RSS через прокси. */
   function hasLocalNewsApi() {
     if (location.protocol === 'file:') return false;
@@ -306,8 +311,19 @@
 
 
 
-  function rssProxyUrls(feedUrl) {
-    var enc = encodeURIComponent(feedUrl);
+  function fetchWithTimeout(promise, ms) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, reject) {
+        setTimeout(function () { reject(new Error('timeout')); }, ms);
+      })
+    ]);
+  }
+
+
+
+  function proxyUrlsFor(targetUrl) {
+    var enc = encodeURIComponent(targetUrl);
     var urls = [];
     if (hasLocalNewsApi()) {
       urls.push('/api/rss?url=' + enc);
@@ -320,18 +336,27 @@
 
 
 
-  function fetchRssXmlRaw(feedUrl) {
-    var tryUrls = rssProxyUrls(feedUrl);
+  function fetchTextViaProxies(targetUrl) {
+    var tryUrls = proxyUrlsFor(targetUrl);
     var idx = 0;
     function next() {
-      if (idx >= tryUrls.length) return Promise.reject(new Error('rss fetch failed'));
+      if (idx >= tryUrls.length) return Promise.reject(new Error('proxy fetch failed'));
       var url = tryUrls[idx++];
-      return fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
-        if (!res.ok) throw new Error('http ' + res.status);
-        return res.text();
-      }).catch(next);
+      return fetchWithTimeout(
+        fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+          if (!res.ok) throw new Error('http ' + res.status);
+          return res.text();
+        }),
+        RSS_FETCH_TIMEOUT_MS
+      ).catch(next);
     }
     return next();
+  }
+
+
+
+  function fetchRssXmlRaw(feedUrl) {
+    return fetchTextViaProxies(feedUrl);
   }
 
 
@@ -342,10 +367,13 @@
       'https://rss2json.com/api.json?rss_url=' +
       encodeURIComponent(feedUrl) +
       '&count=25';
-    return fetch(api, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
-      if (!res.ok) throw new Error('rss2json ' + res.status);
-      return res.json();
-    }).then(function (data) {
+    return fetchWithTimeout(
+      fetch(api, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+        if (!res.ok) throw new Error('rss2json ' + res.status);
+        return res.json();
+      }),
+      RSS_FETCH_TIMEOUT_MS
+    ).then(function (data) {
       if (!data || data.status !== 'ok' || !Array.isArray(data.items)) {
         throw new Error('rss2json empty');
       }
@@ -366,12 +394,16 @@
 
 
   function fetchRssFeedItems(feedUrl) {
-    if (hasLocalNewsApi()) {
-      return fetchRssXmlRaw(feedUrl).then(parseRssItems);
-    }
-    return fetchRssViaRss2Json(feedUrl).catch(function () {
-      return fetchRssXmlRaw(feedUrl).then(parseRssItems);
-    });
+    return fetchWithTimeout(
+      fetchRssXmlRaw(feedUrl).then(function (xml) {
+        var parsed = parseRssItems(xml);
+        if (parsed.length) return parsed;
+        return fetchRssViaRss2Json(feedUrl);
+      }).catch(function () {
+        return fetchRssViaRss2Json(feedUrl).catch(function () { return []; });
+      }),
+      RSS_FETCH_TIMEOUT_MS
+    );
   }
 
 
@@ -470,8 +502,26 @@
 
 
 
+  function finishBriefsLoading(fallbackDemo) {
+    state.briefsLoading = false;
+    if (LIVE_BRIEFS.length) {
+      if (BRIEFS_SOURCE === 'loading') BRIEFS_SOURCE = 'live';
+    } else if (fallbackDemo) {
+      BRIEFS_SOURCE = 'demo';
+    } else if (BRIEFS_SOURCE === 'loading') {
+      BRIEFS_SOURCE = 'demo';
+    }
+    if (typeof renderHomePage === 'function') renderHomePage();
+    else renderBriefing();
+    renderFeed();
+    updateStats();
+  }
+
+
+
   function loadLiveBriefs() {
     state.briefsLoading = true;
+    BRIEFS_SOURCE = 'loading';
     var cached = readBriefsCache();
     if (cached && cached.length) {
       applyLiveBriefs(cached, 'cache');
@@ -484,26 +534,19 @@
       ? fetchLiveBriefsFromApi().catch(function () { return fetchLiveBriefsFromRss(); })
       : fetchLiveBriefsFromRss();
 
-    livePromise
+    fetchWithTimeout(livePromise, BRIEFS_LOAD_TIMEOUT_MS)
       .then(function (items) {
         if (items && items.length) {
           applyLiveBriefs(items, 'live');
-        } else if (!LIVE_BRIEFS.length) {
-          BRIEFS_SOURCE = 'demo';
-          state.briefsLoading = false;
-          if (typeof renderHomePage === 'function') renderHomePage();
-          else renderBriefing();
-          renderFeed();
+          return;
         }
+        finishBriefsLoading(!LIVE_BRIEFS.length);
       })
       .catch(function () {
-        if (!LIVE_BRIEFS.length) {
-          BRIEFS_SOURCE = 'demo';
-          state.briefsLoading = false;
-          if (typeof renderHomePage === 'function') renderHomePage();
-          else renderBriefing();
-          renderFeed();
-        }
+        finishBriefsLoading(!LIVE_BRIEFS.length);
+      })
+      .finally(function () {
+        if (state.briefsLoading) finishBriefsLoading(!LIVE_BRIEFS.length);
       });
   }
 
@@ -882,11 +925,11 @@
 
 
 
-  function filterBriefsForBriefing() {
+  function filterBriefsForBriefingFrom(briefs) {
     var horizon = state.horizon;
     var scope = getSettings().briefingScope;
     var positions = getPositionTickers();
-    return getAllBriefs().filter(function (b) {
+    return briefs.filter(function (b) {
       if (!isInHorizon(b.publishedAt, horizon)) return false;
       if (scope === 'mine' && positions.length) {
         return positions.indexOf(normalizeTicker(b.ticker)) !== -1;
@@ -895,6 +938,12 @@
     }).sort(function (a, b) {
       return new Date(b.publishedAt) - new Date(a.publishedAt);
     });
+  }
+
+
+
+  function filterBriefsForBriefing() {
+    return filterBriefsForBriefingFrom(getAllBriefs());
   }
 
 
@@ -937,7 +986,11 @@
       ? 'Новости с официальных источников: Мосбиржа, Банк России, РБК, Интерфакс и др.'
       : (BRIEFS_SOURCE === 'demo'
         ? 'Сейчас не удалось загрузить ленту — показаны примеры материалов. Обновите страницу через минуту.'
-        : 'Загружаем ленту с новостных источников…');
+        : (state.briefsLoading
+          ? 'Загружаем ленту с новостных источников… Пока показаны примеры.'
+          : (BRIEFS_SOURCE === 'loading'
+            ? 'Не удалось обновить ленту — показаны примеры. Обновите страницу.'
+            : 'Загружаем ленту с новостных источников…')));
     if (scope === 'mine') {
       if (positions.length) {
         return escapeHtml('Сводка по вашим бумагам: ' + positions.join(', ') + '.') +
@@ -954,6 +1007,11 @@
   function renderBriefListInto(el, list, emptyMsg) {
     if (!el) return;
     if (state.briefsLoading && !list.length) {
+      var interim = filterBriefsForBriefingFrom(DEMO_BRIEFS);
+      if (interim.length) {
+        el.innerHTML = interim.map(renderBriefCard).join('');
+        return;
+      }
       el.innerHTML = '<div class="empty-state glass">Загружаем новости…</div>';
       return;
     }
