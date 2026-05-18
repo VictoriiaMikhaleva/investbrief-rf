@@ -3,6 +3,9 @@
     opts = opts || {};
     var input = document.getElementById(inputId);
     if (!input) return null;
+    if (input.dataset.tickerAcBound === '1' && acControllers[inputId]) {
+      return acControllers[inputId];
+    }
     var wrap = input.closest('.ticker-ac-wrap');
     if (!wrap) {
       wrap = document.createElement('div');
@@ -130,6 +133,7 @@
       },
       close: closeList
     };
+    input.dataset.tickerAcBound = '1';
     acControllers[inputId] = ctrl;
     return ctrl;
   }
@@ -861,6 +865,7 @@
     }
     if (tab === 'portfolio') {
       renderPortfolio();
+      setupTickerAutocomplete('pfAddTicker');
     }
     if (tab === 'settings') renderAlerts();
   }
