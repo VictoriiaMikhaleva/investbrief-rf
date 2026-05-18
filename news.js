@@ -205,8 +205,25 @@
     'землетряс', 'ураган', 'наводнен', 'извержен',
     'исламск', 'мечет', 'церков', 'религиозн',
     'подростк', 'школьник', 'полици', 'задержан', 'арестован',
-    'калифорни', 'техас', 'флорид', 'кентукки'
+    'калифорни', 'техас', 'флорид', 'кентукки',
+    'бпла', 'беспилотн', 'беспилотник', ' дрон', 'дронов', 'дроны',
+    'сбит', 'сбили', 'сбитых', 'сбито', 'перехват', 'перехвачен',
+    'обстрел', 'ракетн', ' атак', 'атакован', 'удар по', 'воздушн', 'тревог',
+    ' пво', 'фронт', 'мобилизац', 'военнослуж', 'артиллер'
   ];
+
+
+
+  function isMilitaryConflictNews(text) {
+    var t = (' ' + String(text || '').toLowerCase() + ' ');
+    if (t.indexOf('бпла') >= 0) return true;
+    if (t.indexOf('беспилотн') >= 0) return true;
+    if (/\bдрон/.test(t) || t.indexOf(' дрон') >= 0 || t.indexOf('дронов') >= 0) return true;
+    if (t.indexOf('сбит') >= 0 || t.indexOf('перехват') >= 0) return true;
+    if (t.indexOf('обстрел') >= 0 || t.indexOf('ракет') >= 0) return true;
+    if (t.indexOf('воздушн') >= 0 && t.indexOf('тревог') >= 0) return true;
+    return false;
+  }
 
 
 
@@ -224,6 +241,7 @@
   function isInvestmentRelevantBrief(title, summary, body, feed) {
     if (feed && CURATED_INVESTMENT_FEEDS[feed.id]) return true;
     var text = (title || '') + ' ' + (summary || '') + ' ' + (body || '');
+    if (isMilitaryConflictNews(title) || isMilitaryConflictNews(text)) return false;
     var t = (' ' + text.toLowerCase() + ' ');
     var investHits = countInvestmentTopicHits(text);
     if (!investHits) return false;
@@ -763,7 +781,7 @@
 
   var LIVE_BRIEFS = [];
   var BRIEFS_SOURCE = 'loading';
-  var BRIEFS_CACHE_KEY = 'ibrf.liveBriefs.v2';
+  var BRIEFS_CACHE_KEY = 'ibrf.liveBriefs.v3';
   var BRIEFS_CACHE_TTL = 12 * 60 * 1000;
 
   var NEWS_FEEDS = [
