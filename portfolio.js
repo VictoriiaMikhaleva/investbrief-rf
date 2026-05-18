@@ -146,7 +146,7 @@
     var list = getWatchlist();
     var el = document.getElementById('watchlistChips');
     if (list.length === 0) {
-      el.innerHTML = '<span class="muted">Список пуст</span>';
+      el.innerHTML = '<span class="muted hint-frame">Список пуст</span>';
       return;
     }
     el.innerHTML = list.map(function (t) {
@@ -296,7 +296,7 @@
     if (!positions.length) {
       if (emptyEl) {
         emptyEl.hidden = false;
-        emptyEl.textContent = 'Добавьте бумаги в портфель (кроме IMOEX)';
+        emptyEl.innerHTML = '<span class="hint-frame">' + escapeHtml('Добавьте бумаги в портфель (кроме IMOEX)') + '</span>';
       }
       if (wrap) wrap.hidden = true;
       if (statsEl) statsEl.hidden = true;
@@ -314,7 +314,7 @@
     if (!state.chartTicker || !findPortfolioPosition(state.chartTicker)) {
       if (emptyEl) {
         emptyEl.hidden = false;
-        emptyEl.textContent = 'Выберите бумагу в папке — откроется график котировок';
+        emptyEl.innerHTML = '<span class="hint-frame">' + escapeHtml('Выберите бумагу в папке') + '</span>';
       }
       if (wrap) wrap.hidden = true;
       if (statsEl) statsEl.hidden = true;
@@ -658,7 +658,7 @@
 
   function buildPortfolioTableRows(positions) {
     if (!positions.length) {
-      return '<tr><td colspan="8" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
+      return '<tr><td colspan="8"><span class="muted hint-frame">Портфель пуст — добавьте позицию выше</span></td></tr>';
     }
     return positions.map(function (p) {
       var pnl = getPositionReturnPct(p);

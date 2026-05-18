@@ -441,10 +441,14 @@
     .briefing-data-notice strong { color: var(--accent); font-weight: 600; }
     .hint-frame {
       position: relative;
-      display: block;
-      padding: 0.65rem 0.95rem;
+      display: inline-block;
+      width: fit-content;
+      max-width: min(40rem, 100%);
+      padding: 0.55rem 0.75rem;
       margin: 0 0 1rem;
-      max-width: 40rem;
+      vertical-align: top;
+      box-sizing: border-box;
+      text-align: left;
     }
     .hint-frame::before {
       content: "";
@@ -467,10 +471,19 @@
     .briefing-data-notice.hint-frame {
       background: var(--accent-soft);
     }
-    .portfolio-folder-section .hint-frame {
+    #briefingFilterHint .hint-frame,
+    .sidebar-brand .tagline.hint-frame {
+      margin-bottom: 0.65rem;
+    }
+    .portfolio-folder-section .hint-frame,
+    .chart-empty .hint-frame,
+    .header .hint-frame {
       margin-left: auto;
       margin-right: auto;
     }
+    .chart-empty .hint-frame { margin-bottom: 0; }
+    .chart-source.hint-frame { margin-top: 0.35rem; }
+    .auth-google-legal.hint-frame { font-size: 0.82rem; line-height: 1.45; }
     .filters-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

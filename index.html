@@ -25,14 +25,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250530" />
+  <link rel="stylesheet" href="./styles.css?v=20250531" />
 </head>
 <body>
   <div class="app">
     <aside class="sidebar" aria-label="Навигация">
       <div class="sidebar-brand">
         <div class="logo">ИнвестБриф РФ</div>
-        <div class="tagline">Ежедневная инвестиционная сводка</div>
+        <div class="tagline hint-frame">Ежедневная инвестиционная сводка</div>
       </div>
       <nav class="sidebar-nav" id="sidebarNav">
         <button type="button" data-tab="briefing" class="active">Сводка новостей <span class="badge" id="sidebarBriefBadge" hidden>0</span></button>
@@ -46,7 +46,7 @@
     <div class="main">
       <header class="header header-mobile-only">
         <h1>ИнвестБриф РФ</h1>
-        <p class="subtitle">Ежедневная инвестиционная сводка · данные на вашем устройстве</p>
+        <p class="subtitle hint-frame">Ежедневная инвестиционная сводка · данные на вашем устройстве</p>
       </header>
 
       <main class="content">
@@ -176,7 +176,7 @@
             <div class="chart-canvas-wrap index-chart-wrap">
               <canvas id="imoexMiniChart" aria-label="График индекса IMOEX"></canvas>
             </div>
-            <p class="muted chart-source" id="imoexSource">Загрузка…</p>
+            <p class="muted chart-source hint-frame" id="imoexSource">Загрузка…</p>
           </article>
 
           <div class="glass portfolio-folder-section">
@@ -188,7 +188,7 @@
 
           <div class="glass portfolio-charts" id="portfolioStockChartSection">
             <h3 class="portfolio-chart-title">Динамика: <span class="chart-ticker-label" id="portfolioChartTickerLabel">—</span></h3>
-            <p class="muted chart-source" id="chartSourceLabel" style="margin:0;">Выберите бумагу из портфеля</p>
+            <p class="muted chart-source hint-frame" id="chartSourceLabel" style="margin:0;">Выберите бумагу из портфеля</p>
             <div class="chart-toolbar" id="chartToolbar" hidden>
               <div class="grow">
                 <label for="chartTickerSelect">Бумага</label>
@@ -201,7 +201,7 @@
               <button type="button" data-chart-horizon="month">Месяц</button>
               <button type="button" data-chart-horizon="year">Год</button>
             </div>
-            <div id="portfolioChartEmpty" class="chart-empty">Выберите бумагу в папке</div>
+            <div id="portfolioChartEmpty" class="chart-empty"><span class="hint-frame">Выберите бумагу в папке</span></div>
             <div class="chart-canvas-wrap" id="portfolioChartWrap" hidden>
               <canvas id="portfolioPriceChart" aria-label="График цены"></canvas>
             </div>
@@ -282,7 +282,7 @@
                 <button type="button" id="authSignInBtn" class="primary">Войти</button>
                 <button type="button" id="authSignUpBtn">Создать аккаунт</button>
               </div>
-              <p class="muted auth-google-legal">
+              <p class="muted auth-google-legal hint-frame">
                 Продолжая вход через Google, вы соглашаетесь с
                 <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политикой конфиденциальности</a>.
               </p>
