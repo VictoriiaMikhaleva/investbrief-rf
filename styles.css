@@ -982,10 +982,10 @@
       will-change: transform;
       box-sizing: border-box;
       flex: 0 0 auto;
-      width: calc(var(--paper-ch, 5) * 0.78em + 1.15rem);
-      min-width: calc(var(--paper-ch, 5) * 0.78em + 1.15rem);
-      min-height: 3.35rem;
-      padding: 0.4rem 0.55rem;
+      width: max(calc(var(--paper-ch, 5) * 0.72em + 1.35rem), 6.35rem);
+      min-width: max(calc(var(--paper-ch, 5) * 0.72em + 1.35rem), 6.35rem);
+      min-height: 3.55rem;
+      padding: 0.38rem 0.5rem;
       background: var(--paper-bg, #fff);
       border-radius: 8px;
       border: 1px solid var(--border);
@@ -994,10 +994,10 @@
       cursor: pointer;
       display: flex;
       flex-direction: column;
-      align-items: center;
+      align-items: stretch;
       justify-content: center;
-      gap: 0.2rem;
-      font-size: 0.68rem;
+      gap: 0.18rem;
+      font-size: 0.64rem;
       overflow: visible;
       transform-origin: center center;
     }
@@ -1006,39 +1006,43 @@
       letter-spacing: 0.01em;
       color: var(--text);
       white-space: nowrap;
-      line-height: 1.2;
+      line-height: 1.15;
       text-align: center;
-      max-width: 100%;
+      font-size: 0.7rem;
       overflow: visible;
     }
     .pf-papers-strip .paper .paper-pnl {
       width: 100%;
-      font-size: 0.62rem;
-      line-height: 1.2;
+      font-size: 0.56rem;
+      line-height: 1.15;
     }
     .pf-papers-strip .paper .paper-pnl-rows {
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 0.12rem;
+      gap: 0.1rem;
       width: 100%;
     }
     .pf-papers-strip .paper .paper-pnl-row {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      gap: 0.25rem;
-      white-space: nowrap;
+      gap: 0.35rem;
+      width: 100%;
     }
     .pf-papers-strip .paper .paper-pnl-lbl {
       color: var(--text-muted);
       font-weight: 500;
-      font-size: 0.58rem;
-      text-transform: lowercase;
+      font-size: 0.52rem;
+      flex-shrink: 0;
+      white-space: nowrap;
     }
     .pf-papers-strip .paper .paper-pnl-val {
       font-weight: 600;
-      font-size: 0.62rem;
+      font-size: 0.54rem;
+      flex-shrink: 0;
+      text-align: right;
+      white-space: nowrap;
     }
     .pf-papers-strip .paper:hover { z-index: 5; }
     .pf-papers-strip .paper.paper-active {

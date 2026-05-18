@@ -56,7 +56,7 @@
           '<span class="paper-pnl-val ' + dayCls + '">' + escapeHtml(dayText) + '</span>' +
         '</span>' +
         '<span class="paper-pnl-row">' +
-          '<span class="paper-pnl-lbl">портф.</span>' +
+          '<span class="paper-pnl-lbl">портфель</span>' +
           '<span class="paper-pnl-val ' + portCls + '">' + escapeHtml(portText) + '</span>' +
         '</span>' +
       '</span>'
