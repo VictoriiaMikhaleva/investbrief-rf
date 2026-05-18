@@ -328,8 +328,6 @@
     if (hasLocalNewsApi()) {
       urls.push('/api/rss?url=' + enc);
     }
-    urls.push('https://api.allorigins.win/raw?url=' + enc);
-    urls.push('https://corsproxy.io/?' + enc);
     urls.push('https://api.codetabs.com/v1/proxy?quest=' + enc);
     return urls;
   }
@@ -394,16 +392,27 @@
 
 
   function fetchRssFeedItems(feedUrl) {
-    return fetchWithTimeout(
-      fetchRssXmlRaw(feedUrl).then(function (xml) {
-        var parsed = parseRssItems(xml);
-        if (parsed.length) return parsed;
-        return fetchRssViaRss2Json(feedUrl);
-      }).catch(function () {
-        return fetchRssViaRss2Json(feedUrl).catch(function () { return []; });
-      }),
-      RSS_FETCH_TIMEOUT_MS
-    );
+    if (hasLocalNewsApi()) {
+      return fetchWithTimeout(
+        fetchRssXmlRaw(feedUrl).then(function (xml) {
+          var parsed = parseRssItems(xml);
+          if (parsed.length) return parsed;
+          return fetchRssViaRss2Json(feedUrl);
+        }).catch(function () {
+          return fetchRssViaRss2Json(feedUrl).catch(function () { return []; });
+        }),
+        RSS_FETCH_TIMEOUT_MS
+      );
+    }
+    return fetchRssViaRss2Json(feedUrl).catch(function () {
+      return fetchWithTimeout(
+        fetchRssXmlRaw(feedUrl).then(function (xml) {
+          var parsed = parseRssItems(xml);
+          return parsed.length ? parsed : [];
+        }),
+        RSS_FETCH_TIMEOUT_MS
+      ).catch(function () { return []; });
+    });
   }
 
 

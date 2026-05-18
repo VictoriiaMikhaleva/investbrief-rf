@@ -883,10 +883,46 @@
 
 
 
-  function fetchCbrFxRates() {
-    var cacheKey = 'cbr.fx';
-    var cached = moexCacheGet(cacheKey);
-    if (cached) return Promise.resolve(cached);
+  function parseCbrDailyJson(data) {
+    if (!data || !data.Valute) return null;
+    var result = { USD: null, EUR: null, CNY: null };
+    ['USD', 'EUR', 'CNY'].forEach(function (code) {
+      var v = data.Valute[code];
+      if (!v) return;
+      var nominal = Number(v.Nominal) || 1;
+      var price = Number(v.Value) / nominal;
+      if (!isFinite(price)) return;
+      var prevRaw = Number(v.Previous);
+      var changePct = null;
+      if (isFinite(prevRaw) && prevRaw > 0) {
+        var prev = prevRaw / nominal;
+        changePct = ((price - prev) / prev) * 100;
+      }
+      result[code] = { price: price, changePct: changePct };
+    });
+    return result;
+  }
+
+
+
+  function fetchCbrFxRatesFromJson() {
+    var timeoutMs = typeof RSS_FETCH_TIMEOUT_MS === 'number' ? RSS_FETCH_TIMEOUT_MS : 10000;
+    var fetchP = fetch('https://www.cbr-xml-daily.ru/daily_json.js', {
+      credentials: 'omit',
+      cache: 'no-store'
+    }).then(function (res) {
+      if (!res.ok) throw new Error('cbr json ' + res.status);
+      return res.json();
+    });
+    if (typeof fetchWithTimeout === 'function') {
+      return fetchWithTimeout(fetchP, timeoutMs);
+    }
+    return fetchP;
+  }
+
+
+
+  function fetchCbrFxRatesViaXml() {
     var today = new Date();
     var yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -906,6 +942,24 @@
           if (prev && prev > 0) changePct = ((cur - prev) / prev) * 100;
           result[code] = { price: cur, changePct: changePct };
         });
+        return result;
+      });
+    });
+  }
+
+
+
+  function fetchCbrFxRates() {
+    var cacheKey = 'cbr.fx';
+    var cached = moexCacheGet(cacheKey);
+    if (cached) return Promise.resolve(cached);
+    return fetchCbrFxRatesFromJson().then(function (data) {
+      var result = parseCbrDailyJson(data);
+      if (!result || (!result.USD && !result.EUR && !result.CNY)) throw new Error('cbr json empty');
+      moexCacheSet(cacheKey, result, 60 * 60 * 1000);
+      return result;
+    }).catch(function () {
+      return fetchCbrFxRatesViaXml().then(function (result) {
         moexCacheSet(cacheKey, result, 60 * 60 * 1000);
         return result;
       });
