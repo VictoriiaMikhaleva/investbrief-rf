@@ -1,8 +1,8 @@
 /* SplitText-style hint animation (vanilla port of React Bits SplitText + GSAP). */
 (function (global) {
   var DEFAULTS = {
-    delay: 80,
-    duration: 1.8,
+    delay: 64,
+    duration: 1.44,
     ease: 'power3.out',
     splitType: 'chars',
     from: { opacity: 0, y: 40 },
