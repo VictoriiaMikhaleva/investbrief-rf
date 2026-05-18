@@ -86,7 +86,7 @@
     if (!positions.length) {
       scene.innerHTML = '<p class="muted hint-split" style="padding:1rem;">Добавьте бумаги в портфель (кроме индекса IMOEX)</p>';
       var emptyHint = scene.querySelector('.hint-split');
-      if (emptyHint && typeof HintSplit !== 'undefined') HintSplit.refresh(emptyHint);
+      if (emptyHint && typeof HintType !== 'undefined') HintType.refresh(emptyHint);
       return;
     }
 

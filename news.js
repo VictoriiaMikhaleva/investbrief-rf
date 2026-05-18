@@ -1289,7 +1289,7 @@
       if (hint.innerHTML !== hintHtml) {
         hint.innerHTML = hintHtml;
         var hintP = hint.querySelector('.briefing-data-notice');
-        if (hintP && typeof HintSplit !== 'undefined') HintSplit.refresh(hintP);
+        if (hintP && typeof HintType !== 'undefined') HintType.refresh(hintP);
       }
     }
     if (!topEl && !myEl) {

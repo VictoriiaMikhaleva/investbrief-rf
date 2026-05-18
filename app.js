@@ -10,7 +10,7 @@
     if (!a.rules || a.rules.length === 0) {
       rulesEl.innerHTML = '<p class="muted hint-split">Правил уведомлений пока нет</p>';
       var rulesHint = rulesEl.querySelector('.hint-split');
-      if (rulesHint && typeof HintSplit !== 'undefined') HintSplit.refresh(rulesHint);
+      if (rulesHint && typeof HintType !== 'undefined') HintType.refresh(rulesHint);
       return;
     }
     rulesEl.innerHTML = a.rules.map(function (r, i) {
@@ -406,7 +406,7 @@
     bindChartHover(document.getElementById('portfolioPriceChart'));
     bindChartHover(document.getElementById('imoexMiniChart'));
     initHash();
-    if (typeof HintSplit !== 'undefined') HintSplit.init();
+    if (typeof HintType !== 'undefined') HintType.init();
   }
 
   if (document.readyState === 'loading') {
