@@ -159,14 +159,32 @@
 
 
 
-  /** В ленте только материалы на русском (заголовок/анонс). */
-  function isRussianBriefText(title, summary) {
-    var combined = (title || '') + ' ' + (summary || '');
-    if (!combined.trim()) return false;
+  /** В ленте — русский заголовок; англоязычные дубли Мосбиржи отсекаем. */
+  function isRussianBriefText(title, summary, feed) {
+    var titleText = String(title || '').trim();
+    if (!titleText) return false;
+    if (feed && feed.id === 'moex' && cyrillicLetterRatio(titleText) < 0.12 && /[a-zA-Z]{5,}/.test(titleText)) {
+      return false;
+    }
+    if (cyrillicLetterRatio(titleText) >= 0.2) return true;
+    var combined = titleText + ' ' + String(summary || '');
     var ratio = cyrillicLetterRatio(combined);
-    var longLatin = /[a-zA-Z]{5,}/.test(combined);
-    if (longLatin && ratio < 0.4) return false;
-    return ratio >= 0.15;
+    var longLatin = /[a-zA-Z]{6,}/.test(combined);
+    if (longLatin && ratio < 0.35) return false;
+    return ratio >= 0.1;
+  }
+
+
+
+  function buildLiveRssBody(rssItem) {
+    var desc = stripHtmlText(rssItem.description || '');
+    var content = stripHtmlText(rssItem.content || '');
+    var parts = [];
+    if (desc) parts.push(desc);
+    if (content && content !== desc) parts.push(content);
+    var body = parts.join('\n\n').trim();
+    if (body.length > 8000) body = body.slice(0, 7997) + '…';
+    return body;
   }
 
 
@@ -231,7 +249,7 @@
     var list = LIVE_BRIEFS.length ? LIVE_BRIEFS : DEMO_BRIEFS;
     if (!LIVE_BRIEFS.length) return list;
     return list.filter(function (b) {
-      return isRussianBriefText(b.title, b.summary);
+      return isRussianBriefText(b.title, b.summary, null);
     });
   }
 
@@ -330,10 +348,11 @@
 
 
   var RSS_FETCH_TIMEOUT_MS = 12000;
-  var BRIEFS_LOAD_TIMEOUT_MS = 55000;
-  var RSS_FEED_STAGGER_MS = 700;
+  var BRIEFS_LOAD_TIMEOUT_MS = 75000;
+  var RSS_FEED_BATCH_SIZE = 3;
+  var RSS_FEED_BATCH_PAUSE_MS = 250;
   var RSS_FEED_RETRY_COUNT = 2;
-  var RSS2JSON_ITEM_COUNT = 12;
+  var RSS2JSON_ITEM_COUNT = 15;
 
 
 
@@ -501,11 +520,11 @@
   function mapRssItemToBrief(rssItem, feed) {
     var title = stripHtmlText(rssItem.title);
     var plain = stripHtmlText([rssItem.title, rssItem.description, rssItem.content].join(' '));
-    var body = stripHtmlText(rssItem.content || rssItem.description || '');
+    var body = buildLiveRssBody(rssItem);
     if (!body) body = plain;
     var summary = stripHtmlText(rssItem.description || body);
     if (summary.length > 320) summary = summary.slice(0, 317) + '…';
-    if (!isRussianBriefText(title, summary)) return null;
+    if (!isRussianBriefText(title, summary, feed)) return null;
     var asset = matchNewsTicker(plain, feed);
     var eventType = detectNewsEventType(plain);
     var tone = detectNewsTone(plain);
@@ -569,28 +588,33 @@
 
   function fetchLiveBriefsFromRss() {
     var collected = [];
-    return NEWS_FEEDS.reduce(function (chain, feed, feedIndex) {
-      return chain
-        .then(function () {
-          if (feedIndex > 0) return delayMs(RSS_FEED_STAGGER_MS);
-        })
-        .then(function () {
-          return fetchRssFeedItemsWithRetry(feed.url);
-        })
+
+    function fetchOneFeed(feed) {
+      return fetchRssFeedItemsWithRetry(feed.url)
         .then(function (items) {
-          var part = items.map(function (item) {
+          return items.map(function (item) {
             return mapRssItemToBrief(item, feed);
           }).filter(function (b) { return b; });
-          if (part.length) {
-            collected = collected.concat(part);
-            mergeLiveBriefsPartial(collected);
-          }
-          return part;
         })
-        .catch(function () {
-          return [];
+        .catch(function () { return []; });
+    }
+
+    function runBatch(start) {
+      var batch = NEWS_FEEDS.slice(start, start + RSS_FEED_BATCH_SIZE);
+      if (!batch.length) return Promise.resolve();
+      return Promise.all(batch.map(fetchOneFeed))
+        .then(function (parts) {
+          parts.forEach(function (part) {
+            if (part.length) collected = collected.concat(part);
+          });
+          if (collected.length) mergeLiveBriefsPartial(collected);
+          return delayMs(RSS_FEED_BATCH_PAUSE_MS).then(function () {
+            return runBatch(start + RSS_FEED_BATCH_SIZE);
+          });
         });
-    }, Promise.resolve()).then(function () {
+    }
+
+    return runBatch(0).then(function () {
       return sortBriefsNewest(dedupeBriefs(collected)).slice(0, 120);
     });
   }
@@ -826,7 +850,15 @@
 
 
   function buildBriefBody(b) {
-    if (b.isLive && b.body) return b.body;
+    if (b.isLive) {
+      var liveBody = stripHtmlText(b.body || '');
+      var liveSummary = stripHtmlText(b.summary || '');
+      if (liveBody && liveSummary && liveBody !== liveSummary && liveBody.indexOf(liveSummary) === -1) {
+        return liveSummary + '\n\n' + liveBody;
+      }
+      if (liveBody) return liveBody;
+      if (liveSummary) return liveSummary;
+    }
     if (b.body) return b.body;
     if (BRIEF_BODIES_BY_ID[b.id]) return BRIEF_BODIES_BY_ID[b.id];
     var company = getTickerSubtitle(b.ticker);
@@ -881,6 +913,13 @@
       var text = (metas[i].getAttribute('content') || '').trim();
       if (text.length > 40) return text;
     }
+    var paras = doc.querySelectorAll('article p, .article__text p, .article_text p, .news-text p, .l-col p, p');
+    var chunks = [];
+    for (var j = 0; j < paras.length && chunks.length < 4; j++) {
+      var p = (paras[j].textContent || '').replace(/\s+/g, ' ').trim();
+      if (p.length > 60) chunks.push(p);
+    }
+    if (chunks.length) return chunks.join('\n\n');
     return null;
   }
 
@@ -888,14 +927,48 @@
 
   function fetchBriefSourceExcerpt(url) {
     if (!url || url === '#') return Promise.resolve(null);
-    var proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-    return fetch(proxyUrl)
-      .then(function (res) {
-        if (!res.ok) throw new Error('fetch failed');
-        return res.text();
-      })
+    var fetchHtml = typeof fetchTextViaProxies === 'function'
+      ? fetchTextViaProxies(url)
+      : fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url))
+        .then(function (res) { return res.json(); })
+        .then(function (data) { return data && data.contents ? data.contents : ''; });
+    return fetchHtml
       .then(extractBriefExcerptFromHtml)
       .catch(function () { return null; });
+  }
+
+
+
+  function enrichBriefArticleBody(b, content, reqId, bodyEl, noticeEl) {
+    var mainBody = content.body || '';
+    var sourceLabel = getSourceLabel(b.sourceUrl, b.sourceName);
+
+    function renderWithExcerpt(excerpt) {
+      if (reqId !== state.briefArticleReqId) return;
+      var html = '';
+      if (mainBody.length > 40) {
+        html += '<p class="brief-excerpt-label">Краткое содержание</p>' + formatBriefBodyHtml(mainBody);
+      }
+      if (excerpt && excerpt.length > 40) {
+        var excerptStart = mainBody.slice(0, Math.min(mainBody.length, excerpt.length));
+        if (excerptStart !== excerpt) {
+          html +=
+            '<div class="brief-source-excerpt">' +
+              '<p class="brief-excerpt-label">С сайта «' + escapeHtml(sourceLabel) + '»</p>' +
+              formatBriefBodyHtml(excerpt) +
+            '</div>';
+        }
+      }
+      bodyEl.innerHTML = html || formatBriefBodyHtml(mainBody);
+      if (noticeEl) {
+        noticeEl.textContent = 'Полная публикация — на сайте источника (ссылка ниже).';
+        noticeEl.hidden = false;
+      }
+    }
+
+    fetchBriefSourceExcerpt(b.sourceUrl).then(renderWithExcerpt).catch(function () {
+      renderWithExcerpt(null);
+    });
   }
 
 
@@ -961,31 +1034,7 @@
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
 
-    if (b.isLive) {
-      if (noticeEl) {
-        noticeEl.textContent = 'Краткий текст с сайта «' + getSourceLabel(b.sourceUrl, b.sourceName) +
-          '». Полная версия — по ссылке ниже.';
-        noticeEl.hidden = false;
-      }
-      return;
-    }
-
-    fetchBriefSourceExcerpt(b.sourceUrl).then(function (excerpt) {
-      if (reqId !== state.briefArticleReqId) return;
-      if (excerpt && excerpt.length > 40) {
-        bodyEl.innerHTML =
-          '<div class="brief-source-excerpt">' +
-            '<p class="brief-excerpt-label">С сайта источника</p>' +
-            formatBriefBodyHtml(excerpt) +
-          '</div>' +
-          '<p class="brief-excerpt-label">Сводка InvestBrief</p>' +
-          formatBriefBodyHtml(content.body);
-        if (noticeEl) noticeEl.hidden = true;
-      } else if (noticeEl) {
-        noticeEl.textContent = 'Полный текст публикации — на сайте источника (ссылка ниже).';
-        noticeEl.hidden = false;
-      }
-    });
+    enrichBriefArticleBody(b, content, reqId, bodyEl, noticeEl);
   }
 
 
