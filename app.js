@@ -8,7 +8,9 @@
     });
     var rulesEl = document.getElementById('alertRulesList');
     if (!a.rules || a.rules.length === 0) {
-      rulesEl.innerHTML = '<p class="muted">Правил уведомлений пока нет</p>';
+      rulesEl.innerHTML = '<p class="muted hint-split">Правил уведомлений пока нет</p>';
+      var rulesHint = rulesEl.querySelector('.hint-split');
+      if (rulesHint && typeof HintSplit !== 'undefined') HintSplit.refresh(rulesHint);
       return;
     }
     rulesEl.innerHTML = a.rules.map(function (r, i) {
@@ -404,6 +406,7 @@
     bindChartHover(document.getElementById('portfolioPriceChart'));
     bindChartHover(document.getElementById('imoexMiniChart'));
     initHash();
+    if (typeof HintSplit !== 'undefined') HintSplit.init();
   }
 
   if (document.readyState === 'loading') {

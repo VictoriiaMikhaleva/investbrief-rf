@@ -444,6 +444,15 @@
       color: var(--text-muted);
     }
     .briefing-data-notice strong { color: var(--accent); font-weight: 600; }
+    .hint-split.split-parent {
+      overflow: hidden;
+      display: block;
+    }
+    .split-char {
+      display: inline-block;
+      will-change: transform, opacity;
+    }
+    .hint-split--done .split-char { will-change: auto; }
     .filters-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

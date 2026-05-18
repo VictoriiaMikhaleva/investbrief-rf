@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250526" />
+  <link rel="stylesheet" href="./styles.css?v=20250527" />
 </head>
 <body>
   <div class="app">
@@ -58,7 +58,7 @@
 
           <section class="home-block">
             <h3 class="home-block-title">Котировки</h3>
-            <p class="muted home-hint">МосБиржа · нажмите на карточку для графика</p>
+            <p class="muted home-hint hint-split">МосБиржа · нажмите на карточку для графика</p>
             <div class="row market-tiles-toolbar">
               <div class="ticker-ac-wrap grow">
                 <input id="marketTickerInput" placeholder="Тикер или название…" autocomplete="off" spellcheck="false" />
@@ -94,7 +94,7 @@
 
         <section id="tab-watchlist" class="panel" data-panel="watchlist">
           <h2>Мои бумаги</h2>
-          <p class="muted">Наблюдение и портфель сохраняются в браузере на этом устройстве.</p>
+          <p class="muted hint-split">Наблюдение и портфель сохраняются в браузере на этом устройстве.</p>
           <div class="glass">
             <div class="ticker-ac-wrap grow" style="margin-bottom:0.65rem;">
               <input id="tickerInput" placeholder="Тикер или название: Сбер, ОФЗ…" autocomplete="off" spellcheck="false" />
@@ -113,7 +113,7 @@
           </div>
           <div class="glass portfolio-add-form" data-pf-form="Watch">
             <h3 class="pf-form-title" id="pfWatchAddFormTitle">Новая позиция</h3>
-            <p class="muted pf-form-hint">Повторный тикер — докупка (пересчёт средней цены). Изменить позицию — кнопка «Изменить» в таблице.</p>
+            <p class="muted pf-form-hint hint-split">Повторный тикер — докупка (пересчёт средней цены). Изменить позицию — кнопка «Изменить» в таблице.</p>
             <div class="portfolio-form-grid">
               <label class="pf-ticker-field">Тикер
                 <span class="ticker-ac-wrap">
@@ -153,7 +153,7 @@
 
         <section id="tab-portfolio" class="panel" data-panel="portfolio">
           <h2>Мой портфель</h2>
-          <p class="muted">Позиции хранятся локально. Котировки и графики — с МосБиржи.<br>Не является индивидуальной инвестиционной рекомендацией.</p>
+          <p class="muted hint-split">Позиции хранятся локально. Котировки и графики — с МосБиржи.<br>Не является индивидуальной инвестиционной рекомендацией.</p>
 
           <article class="glass index-box portfolio-imoex" id="moexIndexBox" aria-label="Индекс МосБиржи">
             <div class="index-box-head">
@@ -180,7 +180,7 @@
           </article>
 
           <div class="glass portfolio-folder-section">
-            <p class="muted">Нажмите на папку, чтобы открыть портфель.<br>Выберите бумагу для отображения графика.<br><span style="font-size:0.92em">На карточке: <strong>сутки</strong> — изменение за торговый день;<br><strong>портфель</strong> — изменение к вашей средней цене покупки в портфеле.</span></p>
+            <p class="muted hint-split">Нажмите на папку, чтобы открыть портфель.<br>Выберите бумагу для отображения графика.<br>На карточке: сутки — изменение за торговый день;<br>портфель — изменение к вашей средней цене покупки в портфеле.</p>
             <div class="portfolio-folder-host" id="portfolioFolderHost">
               <div class="pf-folder-scene" id="portfolioFolderScene"></div>
             </div>
@@ -215,7 +215,7 @@
 
           <div class="glass portfolio-add-form" data-pf-form="">
             <h3 class="pf-form-title" id="pfAddFormTitle">Новая позиция</h3>
-            <p class="muted pf-form-hint">Повторный тикер — докупка (пересчёт средней цены). Изменить позицию — кнопка «Изменить» в таблице.</p>
+            <p class="muted pf-form-hint hint-split">Повторный тикер — докупка (пересчёт средней цены). Изменить позицию — кнопка «Изменить» в таблице.</p>
             <div class="portfolio-form-grid">
               <label class="pf-ticker-field">Тикер
                 <span class="ticker-ac-wrap">
@@ -259,7 +259,7 @@
 
           <div class="glass settings-block auth-account" id="authAccountBlock">
             <h3>Вход в аккаунт</h3>
-            <p class="muted auth-account-lead">Войдите, чтобы сохранять список бумаг, портфель и настройки между устройствами.</p>
+            <p class="muted auth-account-lead hint-split">Войдите, чтобы сохранять список бумаг, портфель и настройки между устройствами.</p>
             <p class="auth-sync-status muted" id="authSyncStatus" hidden></p>
 
             <div id="authSignedOut">
@@ -352,7 +352,7 @@
 
           <div class="glass settings-block">
             <h3>Данные</h3>
-            <p class="muted">Скачайте или восстановите настройки и списки с этого устройства.</p>
+            <p class="muted hint-split">Скачайте или восстановите настройки и списки с этого устройства.</p>
             <div class="row" style="flex-wrap:wrap;gap:0.5rem;">
               <button type="button" id="exportJsonBtn" class="primary">Скачать настройки</button>
               <button type="button" id="importFileBtn">Загрузить настройки</button>
@@ -370,7 +370,7 @@
 
           <div class="glass">
             <h3>О приложении</h3>
-            <p class="muted">ИнвестБриф РФ — сводка для частного инвестора. Котировки: Московская биржа. Без входа данные хранятся в браузере; после входа — синхронизация между устройствами.</p>
+            <p class="muted hint-split">ИнвестБриф РФ — сводка для частного инвестора. Котировки: Московская биржа. Без входа данные хранятся в браузере; после входа — синхронизация между устройствами.</p>
             <p class="muted"><a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a></p>
           </div>
         </section>
@@ -407,7 +407,7 @@
   <div class="modal-overlay" id="digestModal" role="dialog" aria-labelledby="digestModalTitle" aria-modal="true" hidden>
     <div class="modal">
       <h2 id="digestModalTitle">Дайджест на эл. почту</h2>
-      <p class="muted">Настройка сохраняется только в этом браузере.</p>
+      <p class="muted hint-split">Настройка сохраняется только в этом браузере.</p>
       <label class="muted">Адрес эл. почты</label>
       <div class="check-row">
         <input type="checkbox" id="digestConsentModal" />
@@ -425,6 +425,8 @@
 
   <script type="module" src="./firebase-init.mjs"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+  <script src="./split-text.js?v=20250527"></script>
   <script src="./storage.js?v=20250527"></script>
   <script src="./ui.js?v=20250519"></script>
   <script src="./news.js?v=20250524"></script>

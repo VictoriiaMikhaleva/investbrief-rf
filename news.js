@@ -1285,7 +1285,12 @@
     var hint = document.getElementById('briefingFilterHint');
     destroyBriefingBento();
     if (hint) {
-      hint.innerHTML = '<p class="briefing-data-notice">' + getBriefingHintHtml() + '</p>';
+      var hintHtml = '<p class="briefing-data-notice hint-split">' + getBriefingHintHtml() + '</p>';
+      if (hint.innerHTML !== hintHtml) {
+        hint.innerHTML = hintHtml;
+        var hintP = hint.querySelector('.briefing-data-notice');
+        if (hintP && typeof HintSplit !== 'undefined') HintSplit.refresh(hintP);
+      }
     }
     if (!topEl && !myEl) {
       if (legacyEl) {

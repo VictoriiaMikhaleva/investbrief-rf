@@ -872,6 +872,11 @@
       setupTickerAutocomplete('pfWatchAddTicker');
     }
     if (tab === 'settings') renderAlerts();
+    if (typeof HintSplit !== 'undefined') {
+      var activePanel = document.querySelector('.panel.active');
+      if (activePanel) HintSplit.initPendingIn(activePanel);
+      HintSplit.refreshScroll();
+    }
   }
 
 
@@ -886,6 +891,7 @@
     var modal = document.getElementById('digestModal');
     modal.hidden = false;
     modal.classList.add('open');
+    if (typeof HintSplit !== 'undefined') HintSplit.animateInModal(modal);
   }
 
 
