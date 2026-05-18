@@ -84,9 +84,7 @@
     var open = state.folderOpen;
 
     if (!positions.length) {
-      scene.innerHTML = '<p class="muted hint-split" style="padding:1rem;">Добавьте бумаги в портфель (кроме индекса IMOEX)</p>';
-      var emptyHint = scene.querySelector('.hint-split');
-      if (emptyHint && typeof HintType !== 'undefined') HintType.refresh(emptyHint);
+      scene.innerHTML = '<p class="muted hint-frame" style="padding:1rem;">Добавьте бумаги в портфель (кроме индекса IMOEX)</p>';
       return;
     }
 

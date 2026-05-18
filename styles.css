@@ -434,27 +434,43 @@
       font-size: 0.78rem;
     }
     .briefing-data-notice {
-      margin: 0 0 1rem;
-      padding: 0.75rem 0.9rem;
-      border-radius: 8px;
-      border: 1px solid var(--border-accent);
-      background: var(--accent-soft);
       font-size: 0.85rem;
       line-height: 1.55;
       color: var(--text-muted);
     }
     .briefing-data-notice strong { color: var(--accent); font-weight: 600; }
-    .text-type {
-      display: inline-block;
-      white-space: pre-wrap;
-      max-width: 100%;
+    .hint-frame {
+      position: relative;
+      display: block;
+      padding: 0.65rem 0.95rem;
+      margin: 0 0 1rem;
+      max-width: 40rem;
     }
-    .text-type__cursor {
-      margin-left: 0.25rem;
-      display: inline-block;
-      opacity: 1;
+    .hint-frame::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      --hf-c: var(--accent-muted);
+      --hf-l: 12px;
+      --hf-t: 1.5px;
+      background:
+        linear-gradient(90deg, var(--hf-c), var(--hf-c)) 0 0 / var(--hf-l) var(--hf-t) no-repeat,
+        linear-gradient(180deg, var(--hf-c), var(--hf-c)) 0 0 / var(--hf-t) var(--hf-l) no-repeat,
+        linear-gradient(270deg, var(--hf-c), var(--hf-c)) 100% 0 / var(--hf-l) var(--hf-t) no-repeat,
+        linear-gradient(180deg, var(--hf-c), var(--hf-c)) 100% 0 / var(--hf-t) var(--hf-l) no-repeat,
+        linear-gradient(90deg, var(--hf-c), var(--hf-c)) 0 100% / var(--hf-l) var(--hf-t) no-repeat,
+        linear-gradient(0deg, var(--hf-c), var(--hf-c)) 0 100% / var(--hf-t) var(--hf-l) no-repeat,
+        linear-gradient(270deg, var(--hf-c), var(--hf-c)) 100% 100% / var(--hf-l) var(--hf-t) no-repeat,
+        linear-gradient(0deg, var(--hf-c), var(--hf-c)) 100% 100% / var(--hf-t) var(--hf-l) no-repeat;
     }
-    .text-type__cursor--hidden { display: none; }
+    .briefing-data-notice.hint-frame {
+      background: var(--accent-soft);
+    }
+    .portfolio-folder-section .hint-frame {
+      margin-left: auto;
+      margin-right: auto;
+    }
     .filters-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

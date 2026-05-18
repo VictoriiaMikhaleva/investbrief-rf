@@ -1285,12 +1285,7 @@
     var hint = document.getElementById('briefingFilterHint');
     destroyBriefingBento();
     if (hint) {
-      var hintHtml = '<p class="briefing-data-notice hint-split">' + getBriefingHintHtml() + '</p>';
-      if (hint.innerHTML !== hintHtml) {
-        hint.innerHTML = hintHtml;
-        var hintP = hint.querySelector('.briefing-data-notice');
-        if (hintP && typeof HintType !== 'undefined') HintType.refresh(hintP);
-      }
+      hint.innerHTML = '<p class="briefing-data-notice hint-frame">' + getBriefingHintHtml() + '</p>';
     }
     if (!topEl && !myEl) {
       if (legacyEl) {
