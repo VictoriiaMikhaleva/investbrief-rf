@@ -297,8 +297,11 @@
 
 
 
-  var RSS_FETCH_TIMEOUT_MS = 11000;
-  var BRIEFS_LOAD_TIMEOUT_MS = 24000;
+  var RSS_FETCH_TIMEOUT_MS = 12000;
+  var BRIEFS_LOAD_TIMEOUT_MS = 55000;
+  var RSS_FEED_STAGGER_MS = 700;
+  var RSS_FEED_RETRY_COUNT = 2;
+  var RSS2JSON_ITEM_COUNT = 12;
 
 
 
@@ -322,13 +325,32 @@
 
 
 
+  function delayMs(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+
+
+  function fetchWithRetry(task, retries) {
+    return task().catch(function (err) {
+      if (retries <= 0) throw err;
+      return delayMs(900).then(function () {
+        return fetchWithRetry(task, retries - 1);
+      });
+    });
+  }
+
+
+
   function proxyUrlsFor(targetUrl) {
     var enc = encodeURIComponent(targetUrl);
     var urls = [];
     if (hasLocalNewsApi()) {
       urls.push('/api/rss?url=' + enc);
     }
-    urls.push('https://api.codetabs.com/v1/proxy?quest=' + enc);
+    urls.push('https://api.allorigins.win/raw?url=' + enc);
     return urls;
   }
 
@@ -359,33 +381,63 @@
 
 
 
+  function mapRss2JsonItems(data) {
+    if (!data || data.status !== 'ok' || !Array.isArray(data.items)) {
+      throw new Error('rss2json empty');
+    }
+    return data.items.map(function (item) {
+      return {
+        title: item.title || '',
+        link: item.link || item.guid || '',
+        pubDate: item.pubDate || '',
+        description: item.description || '',
+        content: item.content || item.description || ''
+      };
+    }).filter(function (item) {
+      return item.title && item.link;
+    });
+  }
+
+
+
   /** JSON-прокси для GitHub Pages (браузер не может читать RSS напрямую). */
   function fetchRssViaRss2Json(feedUrl) {
-    var api =
-      'https://rss2json.com/api.json?rss_url=' +
-      encodeURIComponent(feedUrl) +
-      '&count=25';
+    var enc = encodeURIComponent(feedUrl);
+    var endpoints = [
+      'https://rss2json.com/api.json?rss_url=' + enc + '&count=' + RSS2JSON_ITEM_COUNT,
+      'https://api.rss2json.com/v1/api.json?rss_url=' + enc + '&count=' + RSS2JSON_ITEM_COUNT
+    ];
+    var idx = 0;
+    function nextEndpoint() {
+      if (idx >= endpoints.length) return Promise.reject(new Error('rss2json failed'));
+      var api = endpoints[idx++];
+      return fetchWithTimeout(
+        fetch(api, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+          if (!res.ok) throw new Error('rss2json ' + res.status);
+          return res.json();
+        }),
+        RSS_FETCH_TIMEOUT_MS
+      ).then(mapRss2JsonItems).catch(nextEndpoint);
+    }
+    return nextEndpoint();
+  }
+
+
+
+  function fetchRssViaAllOrigins(feedUrl) {
+    var api = 'https://api.allorigins.win/get?url=' + encodeURIComponent(feedUrl);
     return fetchWithTimeout(
       fetch(api, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
-        if (!res.ok) throw new Error('rss2json ' + res.status);
+        if (!res.ok) throw new Error('allorigins ' + res.status);
         return res.json();
       }),
       RSS_FETCH_TIMEOUT_MS
     ).then(function (data) {
-      if (!data || data.status !== 'ok' || !Array.isArray(data.items)) {
-        throw new Error('rss2json empty');
-      }
-      return data.items.map(function (item) {
-        return {
-          title: item.title || '',
-          link: item.link || item.guid || '',
-          pubDate: item.pubDate || '',
-          description: item.description || '',
-          content: item.content || item.description || ''
-        };
-      }).filter(function (item) {
-        return item.title && item.link;
-      });
+      var xml = data && data.contents;
+      if (!xml) throw new Error('allorigins empty');
+      var parsed = parseRssItems(xml);
+      if (!parsed.length) throw new Error('allorigins parse');
+      return parsed;
     });
   }
 
@@ -404,15 +456,26 @@
         RSS_FETCH_TIMEOUT_MS
       );
     }
-    return fetchRssViaRss2Json(feedUrl).catch(function () {
-      return fetchWithTimeout(
-        fetchRssXmlRaw(feedUrl).then(function (xml) {
-          var parsed = parseRssItems(xml);
-          return parsed.length ? parsed : [];
-        }),
-        RSS_FETCH_TIMEOUT_MS
-      ).catch(function () { return []; });
-    });
+    return fetchRssViaRss2Json(feedUrl)
+      .catch(function () { return fetchRssViaAllOrigins(feedUrl); })
+      .catch(function () {
+        return fetchWithTimeout(
+          fetchRssXmlRaw(feedUrl).then(function (xml) {
+            var parsed = parseRssItems(xml);
+            return parsed.length ? parsed : [];
+          }),
+          RSS_FETCH_TIMEOUT_MS
+        );
+      })
+      .catch(function () { return []; });
+  }
+
+
+
+  function fetchRssFeedItemsWithRetry(feedUrl) {
+    return fetchWithRetry(function () {
+      return fetchRssFeedItems(feedUrl);
+    }, RSS_FEED_RETRY_COUNT);
   }
 
 
@@ -461,23 +524,54 @@
 
 
 
+  function sortBriefsNewest(list) {
+    return list.sort(function (a, b) {
+      return new Date(b.publishedAt) - new Date(a.publishedAt);
+    });
+  }
+
+
+
+  function mergeLiveBriefsPartial(collected) {
+    if (!collected.length) return;
+    LIVE_BRIEFS = dedupeBriefs(collected).sort(function (a, b) {
+      return new Date(b.publishedAt) - new Date(a.publishedAt);
+    }).slice(0, 120);
+    BRIEFS_SOURCE = 'live';
+    writeBriefsCache(LIVE_BRIEFS);
+    if (typeof renderHomePage === 'function') renderHomePage();
+    else renderBriefing();
+    renderFeed();
+    updateStats();
+  }
+
+
+
   function fetchLiveBriefsFromRss() {
-    return Promise.all(NEWS_FEEDS.map(function (feed) {
-      return fetchRssFeedItems(feed.url).then(function (items) {
-        return items.map(function (item) {
-          return mapRssItemToBrief(item, feed);
+    var collected = [];
+    return NEWS_FEEDS.reduce(function (chain, feed, feedIndex) {
+      return chain
+        .then(function () {
+          if (feedIndex > 0) return delayMs(RSS_FEED_STAGGER_MS);
+        })
+        .then(function () {
+          return fetchRssFeedItemsWithRetry(feed.url);
+        })
+        .then(function (items) {
+          var part = items.map(function (item) {
+            return mapRssItemToBrief(item, feed);
+          });
+          if (part.length) {
+            collected = collected.concat(part);
+            mergeLiveBriefsPartial(collected);
+          }
+          return part;
+        })
+        .catch(function () {
+          return [];
         });
-      }).catch(function () {
-        return [];
-      });
-    })).then(function (chunks) {
-      var collected = [];
-      chunks.forEach(function (part) {
-        collected = collected.concat(part);
-      });
-      return dedupeBriefs(collected).sort(function (a, b) {
-        return new Date(b.publishedAt) - new Date(a.publishedAt);
-      }).slice(0, 120);
+    }, Promise.resolve()).then(function () {
+      return sortBriefsNewest(dedupeBriefs(collected)).slice(0, 120);
     });
   }
 
@@ -533,7 +627,10 @@
     BRIEFS_SOURCE = 'loading';
     var cached = readBriefsCache();
     if (cached && cached.length) {
-      applyLiveBriefs(cached, 'cache');
+      LIVE_BRIEFS = cached;
+      BRIEFS_SOURCE = 'cache';
+      renderBriefing();
+      renderFeed();
     } else {
       renderBriefing();
       renderFeed();
@@ -567,9 +664,9 @@
   var NEWS_FEEDS = [
     { id: 'moex', name: 'Мосбиржа', url: 'https://www.moex.com/export/news.aspx?limit=40&lang=ru', kind: 'market', macroTicker: 'MOEX' },
     { id: 'cbr', name: 'Банк России', url: 'https://www.cbr.ru/rss/RssNews', kind: 'macro', macroTicker: 'MOEX' },
+    { id: 'interfax', name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', kind: 'news', macroTicker: 'MOEX' },
     { id: 'cbr_press', name: 'Банк России — пресс-релизы', url: 'https://www.cbr.ru/rss/RssPress', kind: 'macro', macroTicker: 'MOEX' },
     { id: 'rbc', name: 'РБК', url: 'https://rssexport.rbc.ru/rbcnews/news/30/full.rss', kind: 'news', macroTicker: 'MOEX' },
-    { id: 'interfax', name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', kind: 'news', macroTicker: 'MOEX' },
     { id: 'smartlab', name: 'Smart-Lab', url: 'https://smart-lab.ru/bonds/rss/all/', kind: 'analytics', macroTicker: 'MOEX' }
   ];
 
