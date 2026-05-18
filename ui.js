@@ -852,9 +852,10 @@
     document.querySelectorAll('.panel').forEach(function (p) {
       p.classList.toggle('active', p.getAttribute('data-panel') === tab);
     });
-    document.querySelectorAll('.sidebar-nav button, .bottom-nav button').forEach(function (btn) {
+    document.querySelectorAll('.book-nav[data-tab]').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
     });
+    if (typeof NavBooks !== 'undefined') NavBooks.onTabChange(tab);
     if (location.hash !== '#' + tab) {
       history.replaceState(null, '', '#' + tab);
     }

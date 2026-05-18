@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250531" />
+  <link rel="stylesheet" href="./styles.css?v=20250601" />
 </head>
 <body>
   <div class="app">
@@ -34,11 +34,56 @@
         <div class="logo">ИнвестБриф РФ</div>
         <div class="tagline hint-frame">Ежедневная инвестиционная сводка</div>
       </div>
-      <nav class="sidebar-nav" id="sidebarNav">
-        <button type="button" data-tab="briefing" class="active">Сводка новостей <span class="badge" id="sidebarBriefBadge" hidden>0</span></button>
-        <button type="button" data-tab="watchlist">Мои бумаги</button>
-        <button type="button" data-tab="portfolio">Мой портфель</button>
-        <button type="button" data-tab="settings">Настройки</button>
+      <nav class="sidebar-nav" id="sidebarNav" aria-label="Разделы">
+        <button type="button" class="book-nav active" data-tab="briefing" style="--book-color:#3D5C47;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured">
+              <span class="book-nav__title" data-typing="Сводка"></span>
+            </span>
+          </span>
+          <span class="book-nav__text">
+            <span class="book-nav__name">Сводка новостей</span>
+            <span class="badge" id="sidebarBriefBadge" hidden>0</span>
+          </span>
+        </button>
+        <button type="button" class="book-nav" data-tab="watchlist" style="--book-color:#9A7B4F;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured">
+              <span class="book-nav__title" data-typing="Бумаги"></span>
+            </span>
+          </span>
+          <span class="book-nav__text">
+            <span class="book-nav__name">Мои бумаги</span>
+          </span>
+        </button>
+        <button type="button" class="book-nav" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured">
+              <span class="book-nav__title" data-typing="Портфель"></span>
+            </span>
+          </span>
+          <span class="book-nav__text">
+            <span class="book-nav__name">Мой портфель</span>
+          </span>
+        </button>
+        <button type="button" class="book-nav" data-tab="settings" style="--book-color:#2E4838;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured">
+              <span class="book-nav__title" data-typing="Настройки"></span>
+            </span>
+          </span>
+          <span class="book-nav__text">
+            <span class="book-nav__name">Настройки</span>
+          </span>
+        </button>
       </nav>
       <button type="button" class="primary" id="digestBtnSidebar" style="display:none; margin-top: auto;">Дайджест</button>
     </aside>
@@ -377,10 +422,47 @@
       </main>
 
       <nav class="bottom-nav" id="bottomNav" aria-label="Разделы">
-        <button type="button" data-tab="briefing" class="active">Сегодня<span class="badge" id="navBriefBadge" hidden>0</span></button>
-        <button type="button" data-tab="watchlist">Мои бумаги</button>
-        <button type="button" data-tab="portfolio">Портфель</button>
-        <button type="button" data-tab="settings">Настройки</button>
+        <button type="button" class="book-nav book-nav--bottom active" data-tab="briefing" style="--book-color:#3D5C47;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
+              <span class="book-nav__title" data-typing="Сегодня"></span>
+            </span>
+          </span>
+          <span class="book-nav__name">Сегодня</span>
+          <span class="badge" id="navBriefBadge" hidden>0</span>
+        </button>
+        <button type="button" class="book-nav book-nav--bottom" data-tab="watchlist" style="--book-color:#9A7B4F;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
+              <span class="book-nav__title" data-typing="Бумаги"></span>
+            </span>
+          </span>
+          <span class="book-nav__name">Бумаги</span>
+        </button>
+        <button type="button" class="book-nav book-nav--bottom" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
+              <span class="book-nav__title" data-typing="Портфель"></span>
+            </span>
+          </span>
+          <span class="book-nav__name">Портфель</span>
+        </button>
+        <button type="button" class="book-nav book-nav--bottom" data-tab="settings" style="--book-color:#2E4838;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
+              <span class="book-nav__title" data-typing="Опции"></span>
+            </span>
+          </span>
+          <span class="book-nav__name">Настройки</span>
+        </button>
       </nav>
     </div>
   </div>
@@ -425,6 +507,7 @@
 
   <script type="module" src="./firebase-init.mjs"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="./nav-books.js?v=20250531"></script>
   <script src="./storage.js?v=20250527"></script>
   <script src="./ui.js?v=20250519"></script>
   <script src="./news.js?v=20250524"></script>
