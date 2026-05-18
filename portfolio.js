@@ -20,23 +20,47 @@
 
 
 
-  function getPaperDisplayPct(pos) {
-    var day = pos.dayChangePct;
-    if (day != null && isFinite(Number(day))) return Number(day);
-    return getPositionReturnPct(pos);
-  }
-
-
-
   function getPaperPnlTitle(pos) {
     var parts = [];
     var day = pos.dayChangePct;
     if (day != null && isFinite(Number(day))) {
-      parts.push('За день: ' + formatSignedPct(Number(day)));
+      parts.push('За сутки: ' + formatSignedPct(Number(day)));
     }
     var ret = getPositionReturnPct(pos);
-    if (ret != null) parts.push('От ср. цены: ' + formatSignedPct(ret));
+    if (ret != null) parts.push('В портфеле (к цене покупки): ' + formatSignedPct(ret));
     return parts.join(' · ');
+  }
+
+
+
+  function buildPaperPnlHtml(pos) {
+    var day = pos.dayChangePct;
+    var port = getPositionReturnPct(pos);
+    var dayCls = 'muted';
+    var portCls = 'muted';
+    var dayText = '—';
+    var portText = '—';
+    if (day != null && isFinite(Number(day))) {
+      day = Number(day);
+      dayText = formatSignedPct(day, 2);
+      dayCls = day >= 0 ? 'pnl-pos' : 'pnl-neg';
+    }
+    if (port != null && isFinite(port)) {
+      portText = formatSignedPct(port, 2);
+      portCls = port >= 0 ? 'pnl-pos' : 'pnl-neg';
+    }
+    return (
+      '<span class="paper-pnl-rows">' +
+        '<span class="paper-pnl-row">' +
+          '<span class="paper-pnl-lbl">сутки</span>' +
+          '<span class="paper-pnl-val ' + dayCls + '">' + escapeHtml(dayText) + '</span>' +
+        '</span>' +
+        '<span class="paper-pnl-row">' +
+          '<span class="paper-pnl-lbl">портф.</span>' +
+          '<span class="paper-pnl-val ' + portCls + '">' + escapeHtml(portText) + '</span>' +
+        '</span>' +
+      '</span>'
+    );
   }
 
 
@@ -69,20 +93,17 @@
     }, 4);
 
     var papersHtml = positions.map(function (p, i) {
-      var pct = getPaperDisplayPct(p);
-      var cls = 'muted';
-      if (pct != null && isFinite(pct)) cls = pct >= 0 ? 'pnl-pos' : 'pnl-neg';
-      var pctText = formatSignedPct(pct, 2);
       var tip = getPaperPnlTitle(p);
       var active = state.chartTicker === p.ticker ? ' paper-active' : '';
       var bg = i % 3 === 0 ? darkenColor('#ffffff', 0.1) : (i % 3 === 1 ? darkenColor('#ffffff', 0.05) : '#ffffff');
       return (
         '<div class="paper paper-' + (i + 1) + active + '" data-ticker="' + escapeHtml(p.ticker) + '" ' +
           'style="--paper-bg:' + bg + ';" role="button" tabindex="0" ' +
-          'aria-label="' + escapeHtml(p.ticker) + (pctText !== '—' ? ', ' + pctText : '') + '">' +
+          'aria-label="' + escapeHtml(p.ticker) + (tip ? ', ' + tip : '') + '">' +
           '<span class="paper-ticker">' + escapeHtml(p.ticker) + '</span>' +
-          '<span class="paper-pnl ' + cls + '"' + (tip ? ' title="' + escapeHtml(tip) + '"' : '') + '>' +
-            escapeHtml(pctText) + '</span>' +
+          '<span class="paper-pnl"' + (tip ? ' title="' + escapeHtml(tip) + '"' : '') + '>' +
+            buildPaperPnlHtml(p) +
+          '</span>' +
         '</div>'
       );
     }).join('');

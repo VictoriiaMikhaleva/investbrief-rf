@@ -984,7 +984,7 @@
       flex: 0 0 auto;
       width: calc(var(--paper-ch, 5) * 0.78em + 1.15rem);
       min-width: calc(var(--paper-ch, 5) * 0.78em + 1.15rem);
-      min-height: 2.85rem;
+      min-height: 3.35rem;
       padding: 0.4rem 0.55rem;
       background: var(--paper-bg, #fff);
       border-radius: 8px;
@@ -1012,10 +1012,33 @@
       overflow: visible;
     }
     .pf-papers-strip .paper .paper-pnl {
-      font-weight: 600;
-      font-size: 0.65rem;
-      line-height: 1.15;
+      width: 100%;
+      font-size: 0.62rem;
+      line-height: 1.2;
+    }
+    .pf-papers-strip .paper .paper-pnl-rows {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.12rem;
+      width: 100%;
+    }
+    .pf-papers-strip .paper .paper-pnl-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.25rem;
       white-space: nowrap;
+    }
+    .pf-papers-strip .paper .paper-pnl-lbl {
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 0.58rem;
+      text-transform: lowercase;
+    }
+    .pf-papers-strip .paper .paper-pnl-val {
+      font-weight: 600;
+      font-size: 0.62rem;
     }
     .pf-papers-strip .paper:hover { z-index: 5; }
     .pf-papers-strip .paper.paper-active {
