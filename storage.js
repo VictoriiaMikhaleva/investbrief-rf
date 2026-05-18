@@ -140,7 +140,7 @@
     if (!isFinite(avg)) avg = null;
     var cur = parseFloat(raw.currentPrice);
     if (!isFinite(cur)) cur = avg;
-    return {
+    var out = {
       ticker: t,
       qty: qty,
       avgPrice: avg,
@@ -148,6 +148,9 @@
       buyDate: raw.buyDate ? String(raw.buyDate).slice(0, 10) : '',
       comment: String(raw.comment || '').trim()
     };
+    var dayChg = parseFloat(raw.dayChangePct);
+    if (isFinite(dayChg)) out.dayChangePct = dayChg;
+    return out;
   }
 
 
@@ -268,6 +271,9 @@
 
 
   function setPortfolio(p) {
+    if (p && Array.isArray(p.positions)) {
+      p.positions = p.positions.map(normalizePosition).filter(Boolean);
+    }
     saveJSON(KEYS.portfolio, p);
     if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
   }
