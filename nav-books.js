@@ -1,4 +1,4 @@
-/* Печать на обложках: десктоп — короткий текст + подпись сбоку; мобильная — альбомная книга с полным названием. */
+/* Мобильная навигация: альбомные книги с текстом на обложке. Десктоп: чистые обложки, подпись сбоку. */
 (function (global) {
   var timers = {};
   var mqMobile = global.matchMedia ? global.matchMedia('(max-width: 899px)') : null;
@@ -18,11 +18,17 @@
     }
   }
 
+  function formatMobileText(raw) {
+    return String(raw || '')
+      .replace(/\|/g, '\n')
+      .trim();
+  }
+
   function getTypingText(btn, title) {
     if (btn.classList.contains('book-nav--bottom') && isMobileNav()) {
-      return (title.getAttribute('data-typing-mobile') || title.getAttribute('data-typing') || '').trim();
+      return formatMobileText(title.getAttribute('data-typing-mobile') || title.getAttribute('data-typing') || '');
     }
-    return (title.getAttribute('data-typing') || title.textContent || '').trim();
+    return '';
   }
 
   function fitBookNavSize(btn) {
@@ -30,7 +36,6 @@
     var title = btn.querySelector('.book-nav__title');
     if (!box || !title) return;
 
-    var text = getTypingText(btn, title);
     var isBottom = btn.classList.contains('book-nav--bottom');
     var isSidebar = !!btn.closest('.sidebar-nav');
 
@@ -38,15 +43,14 @@
     box.classList.remove('book-nav__3d--landscape');
 
     if (isSidebar) {
+      title.textContent = '';
       box.style.removeProperty('--book-w');
       box.style.removeProperty('--book-h');
       title.style.removeProperty('--book-font');
       return;
     }
 
-    if (!isBottom) return;
-
-    if (!isMobileNav()) {
+    if (!isBottom || !isMobileNav()) {
       box.style.removeProperty('--book-w');
       box.style.removeProperty('--book-h');
       title.style.removeProperty('--book-font');
@@ -54,23 +58,36 @@
     }
 
     box.classList.add('book-nav__3d--landscape');
-    var len = Math.max(text.length, 1);
-    var words = text.split(/\s+/).filter(Boolean);
-    var multiline = words.length >= 2 && len > 8;
+    var text = getTypingText(btn, title);
+    var lines = text.split('\n').filter(function (l) { return l.length; });
+    var multiline = lines.length > 1;
+    var longest = lines.reduce(function (max, line) {
+      return Math.max(max, line.length);
+    }, 0);
+
     title.classList.toggle('book-nav__title--multiline', multiline);
 
-    var wRem = Math.min(5.75, Math.max(3.35, len * 0.24 + 1.35));
-    var hRem = Math.max(2.15, wRem * 0.56);
-    if (multiline) {
-      hRem = Math.max(2.45, wRem * 0.62);
+    var wRem = Math.min(7rem, Math.max(3.85, longest * 0.3 + 1.55));
+    var hRem = multiline ? Math.max(2.75, wRem * 0.62) : Math.max(2.45, wRem * 0.54);
+
+    if (longest > 11) {
+      title.style.setProperty('--book-font', '0.54rem');
+    } else if (longest > 8) {
+      title.style.setProperty('--book-font', '0.58rem');
+    } else {
+      title.style.setProperty('--book-font', '0.62rem');
     }
 
-    if (len > 12) {
-      title.style.setProperty('--book-font', '0.52rem');
-    } else if (len > 9) {
+    if (btn.getAttribute('data-tab') === 'settings') {
+      wRem = Math.max(wRem, 5.15);
+      hRem = Math.max(hRem, 2.95);
       title.style.setProperty('--book-font', '0.56rem');
-    } else {
-      title.style.setProperty('--book-font', '0.6rem');
+    }
+
+    if (btn.getAttribute('data-tab') === 'briefing') {
+      wRem = Math.max(wRem, 4.55);
+      hRem = Math.max(hRem, 2.95);
+      title.style.setProperty('--book-font', '0.58rem');
     }
 
     box.style.setProperty('--book-w', wRem.toFixed(2) + 'rem');
@@ -84,7 +101,9 @@
   function typeTitle(el, text, speed) {
     if (!el || !text) return;
     var btn = el.closest('.book-nav');
-    var key = (btn && btn.getAttribute('data-tab')) || String(Math.random());
+    if (!btn || btn.closest('.sidebar-nav')) return;
+
+    var key = btn.getAttribute('data-tab') || String(Math.random());
     clearTimer(key);
     fitBookNavSize(btn);
 
@@ -97,7 +116,8 @@
     var i = 0;
     function tick() {
       if (i < text.length) {
-        el.textContent += text.charAt(i++);
+        var ch = text.charAt(i++);
+        el.textContent += ch;
         timers[key] = setTimeout(tick, speed || 42);
       }
     }
@@ -105,24 +125,30 @@
   }
 
   function typeActiveInScope(scope) {
-    (scope || document).querySelectorAll('.book-nav.active .book-nav__title').forEach(function (el) {
+    if (!scope || scope.closest('.sidebar-nav')) return;
+    scope.querySelectorAll('.book-nav.active .book-nav__title').forEach(function (el) {
       var btn = el.closest('.book-nav');
       typeTitle(el, getTypingText(btn, el), 42);
     });
   }
 
-  function init() {
-    document.querySelectorAll('.book-nav__title').forEach(function (el) {
+  function showMobileTitlesInstant() {
+    document.querySelectorAll('.book-nav--bottom .book-nav__title').forEach(function (el) {
       var btn = el.closest('.book-nav');
       var text = getTypingText(btn, el);
-      if (!el.getAttribute('data-typing')) {
-        el.setAttribute('data-typing', text);
-      }
+      el.textContent = text;
+      fitBookNavSize(btn);
+    });
+  }
+
+  function init() {
+    document.querySelectorAll('.sidebar-nav .book-nav__title').forEach(function (el) {
+      el.textContent = '';
     });
 
     fitAllBookNavSizes();
 
-    document.querySelectorAll('.book-nav').forEach(function (btn) {
+    document.querySelectorAll('.book-nav--bottom').forEach(function (btn) {
       btn.addEventListener('click', function () {
         global.requestAnimationFrame(function () {
           if (!btn.classList.contains('active')) return;
@@ -135,27 +161,28 @@
     if (mqMobile && mqMobile.addEventListener) {
       mqMobile.addEventListener('change', function () {
         fitAllBookNavSizes();
-        var sidebar = document.querySelector('.sidebar-nav');
-        var bottom = document.querySelector('.bottom-nav');
         if (isMobileNav()) {
-          typeActiveInScope(bottom);
+          showMobileTitlesInstant();
+          typeActiveInScope(document.querySelector('.bottom-nav'));
         } else {
-          typeActiveInScope(sidebar);
+          document.querySelectorAll('.sidebar-nav .book-nav__title').forEach(function (el) {
+            el.textContent = '';
+          });
         }
       });
     }
 
     if (isMobileNav()) {
+      showMobileTitlesInstant();
       typeActiveInScope(document.querySelector('.bottom-nav'));
-    } else {
-      typeActiveInScope(document.querySelector('.sidebar-nav'));
     }
   }
 
   function onTabChange(tab) {
-    document.querySelectorAll('.book-nav[data-tab="' + tab + '"].active').forEach(function (btn) {
-      var el = btn.querySelector('.book-nav__title');
-      if (el) typeTitle(el, getTypingText(btn, el), 38);
+    if (!isMobileNav()) return;
+    document.querySelectorAll('.book-nav--bottom[data-tab="' + tab + '"].active .book-nav__title').forEach(function (el) {
+      var btn = el.closest('.book-nav');
+      typeTitle(el, getTypingText(btn, el), 38);
     });
   }
 

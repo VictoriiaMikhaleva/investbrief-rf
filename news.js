@@ -883,20 +883,7 @@
 
 
   function updateStats() {
-    var n = countNewBriefs();
-    var badges = [
-      document.getElementById('sidebarBriefBadge'),
-      document.getElementById('navBriefBadge')
-    ];
-    badges.forEach(function (badge) {
-      if (!badge) return;
-      if (n > 0) {
-        badge.hidden = false;
-        badge.textContent = n > 99 ? '99+' : String(n);
-      } else {
-        badge.hidden = true;
-      }
-    });
+    /* Счётчик непрочитанных в навигации отключён. */
   }
 
 
