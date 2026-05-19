@@ -614,7 +614,11 @@
       margin-bottom: 0.65rem;
     }
     .chart-empty .hint-frame { margin-bottom: 0; }
-    .chart-source.hint-frame { margin-top: 0.35rem; }
+    .chart-source.hint-frame { margin-top: 0.35rem; margin-bottom: 0; }
+    .imoex-chart-panel {
+      display: block;
+      width: 100%;
+    }
     .auth-google-legal.hint-frame { font-size: 0.82rem; line-height: 1.45; }
     .filters-grid {
       display: grid;
@@ -1126,23 +1130,41 @@
     .portfolio-imoex .index-chart-wrap { height: 200px; }
     .portfolio-imoex .horizon-tabs { margin-top: 0.5rem; }
     @media (max-width: 899px) {
+      .portfolio-imoex.index-box {
+        padding-bottom: 2mm;
+      }
       .portfolio-imoex .imoex-chart-panel {
         display: flex;
         flex-direction: column;
+        align-items: flex-start;
+        width: 100%;
         margin-top: 0.25rem;
-        min-height: calc(200px + 2mm + 2.75rem);
+        min-height: 16.5rem;
       }
       .portfolio-imoex .imoex-chart-panel .index-chart-wrap {
-        flex: 0 0 200px;
+        order: 0;
+        flex: 0 0 auto;
+        width: 100%;
         height: 200px;
-        margin-top: 0;
-        margin-bottom: 0;
+        margin: 0;
+      }
+      .portfolio-imoex .imoex-chart-panel::after {
+        content: "";
+        order: 1;
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 0.65rem;
       }
       .portfolio-imoex .imoex-chart-panel .chart-source.hint-frame,
       .portfolio-imoex .imoex-chart-panel #imoexSource {
-        position: static;
-        margin: 0 0 2mm;
-        margin-top: auto;
+        order: 2;
+        display: inline-block;
+        width: fit-content;
+        max-width: 100%;
+        flex: 0 0 auto;
+        align-self: flex-start;
+        margin: 0;
+        padding: 0.55rem 0.75rem;
       }
     }
     .portfolio-folder-section {
