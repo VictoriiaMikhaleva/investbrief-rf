@@ -819,7 +819,12 @@
     .settings-block h3 { color: var(--accent); }
     @media (max-width: 899px) {
       :root {
-        --bottom-nav-h: 100px;
+        --bottom-nav-h: 108px;
+      }
+      .book-nav--bottom .book-nav__title {
+        display: block !important;
+        visibility: visible;
+        opacity: 1;
       }
     }
     .bottom-nav {
@@ -852,8 +857,8 @@
       max-width: 25%;
     }
     .book-nav--bottom .book-nav__3d {
-      width: var(--book-w, 4.95rem);
-      height: var(--book-h, 2.85rem);
+      width: var(--book-w, 5.1rem);
+      height: var(--book-h, 3rem);
     }
     .book-nav--bottom .book-nav__3d.book-nav__3d--landscape {
       transform-origin: center center;
@@ -872,16 +877,21 @@
       border-radius: 3px 4px 4px 3px;
     }
     .book-nav--bottom .book-nav__title {
-      font-size: var(--book-font, 0.62rem);
-      line-height: 1.2;
-      padding: 0.3rem 0.36rem 0.3rem 0.44rem;
+      font-size: var(--book-font, 0.58rem);
+      line-height: 1.18;
+      padding: 0.28rem 0.32rem 0.28rem 0.4rem;
       text-align: center;
       text-transform: none;
       white-space: pre-line;
       word-break: keep-all;
       overflow-wrap: normal;
+      hyphens: none;
       width: 100%;
       box-sizing: border-box;
+      align-self: center;
+    }
+    .book-nav--bottom .book-nav__title--multiline {
+      line-height: 1.14;
     }
     .book-nav--bottom .book-nav__cover--simple .book-nav__title {
       font-size: var(--book-font, 0.58rem);
