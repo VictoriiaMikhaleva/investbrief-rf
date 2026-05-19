@@ -1074,28 +1074,44 @@
       display: flex;
       flex-direction: column;
       align-items: flex-start;
+      width: 100%;
+      min-height: 34rem;
+      box-sizing: border-box;
+      padding-bottom: 1.75rem;
     }
     .portfolio-folder-section .hint-frame {
-      margin-bottom: 1.35rem;
+      margin-bottom: 1.5rem;
       position: relative;
       z-index: 2;
+      flex-shrink: 0;
     }
     .portfolio-folder-host {
       display: flex;
       justify-content: center;
       align-items: flex-end;
       width: 100%;
-      min-height: 320px;
-      padding: 0.75rem 0 1rem;
-      margin-top: 0.25rem;
+      flex: 1;
+      min-height: 27rem;
+      padding: 0 0.25rem 1.25rem;
       position: relative;
       overflow: visible;
+      box-sizing: border-box;
+    }
+    .portfolio-folder-stage {
+      width: 100%;
+      max-width: 100%;
+      min-height: 24rem;
+      padding-top: 5.5rem;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      box-sizing: border-box;
     }
     .pf-folder-scene {
       display: flex;
       flex-direction: column;
       align-items: center;
-      transform: scale(1.85);
+      transform: scale(1.55);
       transform-origin: center bottom;
       max-width: 100%;
       width: 100%;
@@ -1130,14 +1146,15 @@
       opacity: 1;
       transform: translateY(0);
       pointer-events: auto;
-      margin-bottom: 1.6rem;
+      margin-bottom: 1.85rem;
+      min-height: 4.25rem;
       padding-top: 0.5rem;
       padding-bottom: 0.35rem;
     }
     .pf-folder.folder {
       position: relative;
       z-index: 3;
-      margin-top: 5mm;
+      margin-top: 8mm;
       transition: transform 0.2s ease-in;
       cursor: pointer;
     }
