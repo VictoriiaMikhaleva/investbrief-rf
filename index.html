@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250609" />
+  <link rel="stylesheet" href="./styles.css?v=20250610" />
 </head>
 <body>
   <div class="app">
@@ -217,10 +217,12 @@
               <button type="button" data-imoex-horizon="month" class="active">Месяц</button>
               <button type="button" data-imoex-horizon="year">Год</button>
             </div>
-            <div class="chart-canvas-wrap index-chart-wrap">
-              <canvas id="imoexMiniChart" aria-label="График индекса IMOEX"></canvas>
+            <div class="imoex-chart-panel">
+              <div class="chart-canvas-wrap index-chart-wrap">
+                <canvas id="imoexMiniChart" aria-label="График индекса IMOEX"></canvas>
+              </div>
+              <p class="muted chart-source hint-frame" id="imoexSource">Загрузка…</p>
             </div>
-            <p class="muted chart-source hint-frame" id="imoexSource">Загрузка…</p>
           </article>
 
           <div class="glass portfolio-folder-section">

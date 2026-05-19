@@ -1126,17 +1126,23 @@
     .portfolio-imoex .index-chart-wrap { height: 200px; }
     .portfolio-imoex .horizon-tabs { margin-top: 0.5rem; }
     @media (max-width: 899px) {
-      .portfolio-imoex.index-box {
-        position: relative;
-        padding-bottom: calc(2mm + 2rem);
+      .portfolio-imoex .imoex-chart-panel {
+        display: flex;
+        flex-direction: column;
+        margin-top: 0.25rem;
+        min-height: calc(200px + 2mm + 2.75rem);
       }
-      .portfolio-imoex .chart-source.hint-frame,
-      .portfolio-imoex #imoexSource {
-        position: absolute;
-        left: 1.5rem;
-        bottom: 2mm;
-        margin: 0;
-        max-width: calc(100% - 3rem);
+      .portfolio-imoex .imoex-chart-panel .index-chart-wrap {
+        flex: 0 0 200px;
+        height: 200px;
+        margin-top: 0;
+        margin-bottom: 0;
+      }
+      .portfolio-imoex .imoex-chart-panel .chart-source.hint-frame,
+      .portfolio-imoex .imoex-chart-panel #imoexSource {
+        position: static;
+        margin: 0 0 2mm;
+        margin-top: auto;
       }
     }
     .portfolio-folder-section {
