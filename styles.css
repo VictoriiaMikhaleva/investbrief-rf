@@ -1125,6 +1125,20 @@
     .index-chart-wrap { height: 100px; margin-top: 0.25rem; }
     .portfolio-imoex .index-chart-wrap { height: 200px; }
     .portfolio-imoex .horizon-tabs { margin-top: 0.5rem; }
+    @media (max-width: 899px) {
+      .portfolio-imoex.index-box {
+        position: relative;
+        padding-bottom: calc(2mm + 2rem);
+      }
+      .portfolio-imoex .chart-source.hint-frame,
+      .portfolio-imoex #imoexSource {
+        position: absolute;
+        left: 1.5rem;
+        bottom: 2mm;
+        margin: 0;
+        max-width: calc(100% - 3rem);
+      }
+    }
     .portfolio-folder-section {
       margin-bottom: var(--space-block);
       text-align: left;
