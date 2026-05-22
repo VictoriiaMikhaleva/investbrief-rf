@@ -515,7 +515,11 @@
   function sliceVolumeSeries(dailyHistory, days) {
     var rows = dailyHistory.filter(function (h) { return h.value != null && h.value > 0; });
     return rows.slice(-days).map(function (h) {
-      return { t: h.t, v: h.value / 1e9, label: h.date.slice(5).replace('-', '.') };
+      var iso = String(h.date || '').slice(0, 10);
+      var label = iso.length >= 10
+        ? iso.slice(8, 10) + '.' + iso.slice(5, 7)
+        : '';
+      return { t: h.t, v: h.value / 1e9, date: iso, label: label };
     });
   }
 

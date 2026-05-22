@@ -643,24 +643,51 @@
 
 
 
-  function drawBarValueLabel(ctx, text, cx, topY, plotWidth) {
-    if (!text) return;
+  function formatBarChartDate(point) {
+    if (!point) return '';
+    if (point.dateLabel) return String(point.dateLabel);
+    var d = point.date ? String(point.date).slice(0, 10) : '';
+    if (d.length >= 10) {
+      return d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(2, 4);
+    }
+    return point.label ? String(point.label) : '';
+  }
+
+
+
+  function formatBarChartValueWithUnit(v, opts) {
+    var val = formatBarChartValue(v, opts);
+    if (!val) return '';
+    if (opts && opts.valueMode === 'bln') return val + ' млрд ₽';
+    return val;
+  }
+
+
+
+  function drawBarHoverTooltip(ctx, lines, cx, topY, plotWidth) {
+    lines = (lines || []).filter(Boolean);
+    if (!lines.length) return;
     ctx.save();
     ctx.font = '600 10px Golos Text, sans-serif';
-    var m = ctx.measureText(text);
-    var padX = 5;
-    var bw = m.width + padX * 2;
-    var bh = 14;
-    var maxW = plotWidth || 280;
+    var lineH = 13;
+    var maxW = 0;
+    lines.forEach(function (ln) {
+      maxW = Math.max(maxW, ctx.measureText(ln).width);
+    });
+    var padX = 6;
+    var padY = 4;
+    var bw = maxW + padX * 2;
+    var bh = lines.length * lineH + padY * 2;
+    var maxPlotW = plotWidth || 280;
     var bx = Math.max(2, cx - bw / 2);
-    var by = Math.max(2, topY - bh - 3);
-    if (bx + bw > maxW - 2) bx = maxW - bw - 2;
-    ctx.fillStyle = 'rgba(247, 244, 238, 0.95)';
-    ctx.strokeStyle = 'rgba(61, 92, 71, 0.22)';
+    var by = Math.max(2, topY - bh - 4);
+    if (bx + bw > maxPlotW - 2) bx = maxPlotW - bw - 2;
+    ctx.fillStyle = 'rgba(247, 244, 238, 0.96)';
+    ctx.strokeStyle = 'rgba(61, 92, 71, 0.25)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     if (ctx.roundRect) {
-      ctx.roundRect(bx, by, bw, bh, 4);
+      ctx.roundRect(bx, by, bw, bh, 5);
     } else {
       ctx.rect(bx, by, bw, bh);
     }
@@ -669,8 +696,17 @@
     ctx.fillStyle = '#1F1E1C';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, bx + bw / 2, by + bh / 2);
+    lines.forEach(function (ln, idx) {
+      ctx.fillText(ln, bx + bw / 2, by + padY + lineH * idx + lineH / 2);
+    });
     ctx.restore();
+  }
+
+
+
+  function drawBarValueLabel(ctx, text, cx, topY, plotWidth) {
+    if (!text) return;
+    drawBarHoverTooltip(ctx, [text], cx, topY, plotWidth);
   }
 
 
@@ -750,7 +786,9 @@
     var dense = vals.length > 14;
     var alwaysValues = options.showValues === true;
     var showValues = options.showValues !== false && (alwaysValues || !dense);
-    var pad = { l: 36, r: 12, t: showValues ? 22 : 14, b: 28 };
+    var padTop = showValues ? 22 : 14;
+    if (hoverIndex >= 0) padTop = Math.max(padTop, 38);
+    var pad = { l: 36, r: 12, t: padTop, b: 28 };
     var plotW = w - pad.l - pad.r;
     var plotH = h - pad.t - pad.b;
     var barGap = vals.length > 20 ? 2 : 4;
@@ -782,18 +820,36 @@
 
       var showVal = v > 0 && (showValues || isHover);
       if (showVal) {
-        var valText = series[i].valueLabel != null
-          ? String(series[i].valueLabel)
-          : formatBarChartValue(v, options);
-        if (valText) drawBarValueLabel(ctx, valText, x + barW / 2, y, w);
+        if (isHover) {
+          var hoverLines = series[i].hoverLines;
+          if (!hoverLines || !hoverLines.length) {
+            var dt = formatBarChartDate(series[i]);
+            var valPart = series[i].valueLabel != null
+              ? String(series[i].valueLabel)
+              : formatBarChartValueWithUnit(v, options);
+            if (dt && valPart) hoverLines = [dt, valPart];
+            else if (valPart) hoverLines = [valPart];
+            else if (dt) hoverLines = [dt];
+          }
+          if (hoverLines && hoverLines.length) {
+            drawBarHoverTooltip(ctx, hoverLines, x + barW / 2, y, w);
+          }
+        } else {
+          var valText = series[i].valueLabel != null
+            ? String(series[i].valueLabel)
+            : formatBarChartValue(v, options);
+          if (valText) drawBarValueLabel(ctx, valText, x + barW / 2, y, w);
+        }
       }
-      if (options.showLabels !== false) {
+      if (options.showLabels !== false || (isHover && options.showLabels === false)) {
         var lbl = series[i].label || String(i + 1);
-        ctx.fillStyle = isHover ? '#1F1E1C' : '#6B6B6B';
-        ctx.font = (isHover ? '600 ' : '') + '9px Golos Text, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillText(lbl, x + barW / 2, h - 6);
+        if (isHover || options.showLabels !== false) {
+          ctx.fillStyle = isHover ? '#1F1E1C' : '#6B6B6B';
+          ctx.font = (isHover ? '600 ' : '') + '9px Golos Text, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText(lbl, x + barW / 2, h - 6);
+        }
       }
     });
 
@@ -896,6 +952,7 @@
         var volBars = (a.volumeByDay || []).map(function (p) {
           return {
             v: p.v,
+            date: p.date,
             label: p.label || '',
             valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
             forecast: false
@@ -911,7 +968,7 @@
       }
       if (volNote) {
         volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) +
-          ' торговых дней · наведите на столбец для суммы в млрд ₽';
+          ' торговых дней · наведите на столбец: дата и оборот в млрд ₽';
         volNote.className = 'analytics-chart-note chart-info-readable';
       }
       return fetchMoexHistory(ticker, horizon);
@@ -998,6 +1055,7 @@
         var volBars = (a.volumeByDay || []).map(function (p) {
           return {
             v: p.v,
+            date: p.date,
             label: p.label || '',
             valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
             forecast: false
@@ -1013,7 +1071,7 @@
       }
       if (volNote) {
         volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) +
-          ' торговых дней · наведите на столбец для суммы в млрд ₽';
+          ' торговых дней · наведите на столбец: дата и оборот в млрд ₽';
         volNote.className = 'analytics-chart-note chart-info-readable';
       }
     });
