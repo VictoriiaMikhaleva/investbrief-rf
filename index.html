@@ -56,7 +56,7 @@
             </span>
           </span>
           <span class="book-nav__text">
-            <span class="book-nav__name">Мои бумаги</span>
+            <span class="book-nav__name">Аналитика бумаг</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
@@ -98,7 +98,7 @@
 
           <section class="home-block">
             <h3 class="home-block-title">Котировки</h3>
-            <p class="muted home-hint hint-frame">МосБиржа · нажмите на карточку для графика</p>
+            <p class="muted home-hint hint-frame">МосБиржа · див. доходность 5л и мини‑графики · нажмите для подробной аналитики</p>
             <div class="row market-tiles-toolbar">
               <div class="ticker-ac-wrap grow">
                 <input id="marketTickerInput" placeholder="Тикер или название…" autocomplete="off" spellcheck="false" />
@@ -117,23 +117,8 @@
               <p class="muted imoex-panel-hint hint-frame">Объём торгов по индексу IMOEX за последние 7 торговых дней (млрд ₽, данные МосБиржи)</p>
               <div id="imoexVolumeBars" class="imoex-volume-bars" aria-live="polite">Загрузка…</div>
               <h4 class="imoex-subtitle">Топ‑20 по обороту за сутки</h4>
-              <div class="table-wrap imoex-top-wrap">
-                <table class="imoex-top-table" id="imoexTopVolumeTable" aria-label="Лидеры по обороту">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Тикер</th>
-                      <th>Название</th>
-                      <th>Оборот, млрд ₽</th>
-                      <th>Цена</th>
-                      <th>Изм.</th>
-                    </tr>
-                  </thead>
-                  <tbody id="imoexTopVolumeBody">
-                    <tr><td colspan="6" class="muted">Загрузка…</td></tr>
-                  </tbody>
-                </table>
-              </div>
+              <p class="muted imoex-panel-hint hint-frame" style="margin-top:0;">Карточки с дивидендной доходностью за 5 лет и мини‑графиками · нажмите для подробной аналитики</p>
+              <div class="imoex-top-cards quote-cards-grid" id="imoexTopVolumeCards">Загрузка…</div>
               <p class="muted chart-source hint-frame" id="imoexMarketSource"></p>
             </div>
           </section>
@@ -166,15 +151,14 @@
         </section>
 
         <section id="tab-watchlist" class="panel" data-panel="watchlist">
-          <h2>Мои бумаги</h2>
-          <p class="muted hint-frame">Наблюдение и портфель сохраняются в браузере на этом устройстве.</p>
+          <h2>Аналитика бумаг</h2>
+          <p class="muted hint-frame">Список наблюдения: дивидендная доходность за 5 лет, оборот и графики. Позиции и сделки — во вкладке «Мой портфель».</p>
           <div class="glass">
             <div class="ticker-ac-wrap grow" style="margin-bottom:0.65rem;">
-              <input id="tickerInput" placeholder="Тикер или название: Сбер, ОФЗ…" autocomplete="off" spellcheck="false" />
+              <input id="tickerInput" placeholder="Тикер или название: Сбер, Газпром…" autocomplete="off" spellcheck="false" />
             </div>
             <div class="row watchlist-actions">
-              <button type="button" id="addWatchlistBtn" class="primary">+ Добавить в наблюдение</button>
-              <button type="button" id="addPortfolioFromWatchBtn" class="ghost">+ Добавить в портфель</button>
+              <button type="button" id="addWatchlistBtn" class="primary">+ Добавить в аналитику</button>
             </div>
             <div class="preset-btns">
               <span class="muted" style="width:100%;margin:0;">Пресеты:</span>
@@ -184,44 +168,7 @@
             </div>
             <div id="watchlistChips" class="chips"></div>
           </div>
-          <div class="glass portfolio-add-form" data-pf-form="Watch">
-            <h3 class="pf-form-title" id="pfWatchAddFormTitle">Новая позиция</h3>
-            <p class="muted pf-form-hint hint-frame">Вы можете изменить количество активов в портфеле или добавить тикер повторно.<br>Будет учтена средняя цена.</p>
-            <div class="portfolio-form-grid">
-              <label class="pf-ticker-field">Тикер
-                <span class="ticker-ac-wrap">
-                  <input id="pfWatchAddTicker" placeholder="Тикер или название: Сбер, Газпром…" autocomplete="off" spellcheck="false" />
-                </span>
-              </label>
-              <label>Количество<input id="pfWatchAddQty" type="number" min="0" step="1" placeholder="10" /></label>
-              <label>Средняя цена<input id="pfWatchAddAvg" type="number" min="0" step="0.01" placeholder="250" /></label>
-              <label>Дата покупки<input id="pfWatchAddDate" type="date" /></label>
-              <label class="span-2">Комментарий<input id="pfWatchAddComment" placeholder="Долгосрочная позиция" /></label>
-            </div>
-            <div class="pf-form-actions">
-              <button type="button" id="pfWatchAddBtn" class="primary">Добавить позицию в портфель</button>
-              <button type="button" id="pfWatchCancelEditBtn" class="ghost" hidden>Отмена</button>
-            </div>
-          </div>
-
-          <div class="glass table-wrap" data-pf-form="Watch">
-            <h3 style="margin-top:0;">Позиции в портфеле</h3>
-            <table class="portfolio-table" id="portfolioWatchTable">
-              <thead>
-                <tr>
-                  <th>Тикер</th>
-                  <th>Кол-во</th>
-                  <th>Ср. цена</th>
-                  <th>Дата</th>
-                  <th>Комментарий</th>
-                  <th>Текущая</th>
-                  <th>Доходн.</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="portfolioWatchTableBody" class="portfolio-table-body"></tbody>
-            </table>
-          </div>
+          <div id="analyticsGrid" class="analytics-grid quote-cards-grid" aria-label="Аналитика по бумагам"></div>
         </section>
 
         <section id="tab-portfolio" class="panel" data-panel="portfolio">
@@ -489,10 +436,10 @@
             <span class="book-nav__spine"></span>
             <span class="book-nav__pages"></span>
             <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
-              <span class="book-nav__title" data-typing-mobile="Мои|бумаги">Мои&#10;бумаги</span>
+              <span class="book-nav__title" data-typing-mobile="Аналитика|бумаг">Аналитика&#10;бумаг</span>
             </span>
           </span>
-          <span class="book-nav__name">Бумаги</span>
+          <span class="book-nav__name">Аналитика</span>
         </button>
         <button type="button" class="book-nav book-nav--bottom" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
           <span class="book-nav__3d" aria-hidden="true">
@@ -520,6 +467,40 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <div class="modal-overlay" id="securityAnalyticsModal" role="dialog" aria-labelledby="securityAnalyticsTitle" aria-modal="true" hidden>
+    <div class="modal modal--analytics">
+      <div class="security-analytics-head">
+        <div class="brief-meta" id="securityAnalyticsMeta">—</div>
+        <h2 class="brief-article-modal-title" id="securityAnalyticsTitle">—</h2>
+      </div>
+      <div class="security-analytics-charts">
+        <div class="security-chart-block">
+          <h3 class="security-chart-lbl">Цена</h3>
+          <div class="chart-canvas-wrap security-chart-wrap">
+            <canvas id="securityAnalyticsPriceChart" aria-label="График цены"></canvas>
+          </div>
+        </div>
+        <div class="security-chart-block">
+          <h3 class="security-chart-lbl">Дивидендная доходность по годам</h3>
+          <p class="muted security-chart-note" id="securityAnalyticsDivNote">—</p>
+          <div class="chart-canvas-wrap security-chart-wrap security-chart-wrap--short">
+            <canvas id="securityAnalyticsDivChart" aria-label="Дивидендная доходность"></canvas>
+          </div>
+        </div>
+        <div class="security-chart-block">
+          <h3 class="security-chart-lbl">Оборот торгов</h3>
+          <p class="muted security-chart-note" id="securityAnalyticsVolNote">—</p>
+          <div class="chart-canvas-wrap security-chart-wrap security-chart-wrap--short">
+            <canvas id="securityAnalyticsVolChart" aria-label="Оборот"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="securityAnalyticsCloseBtn" class="primary">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="briefArticleModal" role="dialog" aria-labelledby="briefArticleTitle" aria-modal="true" hidden>
     <div class="modal modal--article">
       <div class="brief-article-modal-head">
@@ -542,9 +523,10 @@
   <script src="./nav-books.js?v=20250608"></script>
   <script src="./markets.js?v=20250614"></script>
   <script src="./storage.js?v=20250612"></script>
-  <script src="./ui.js?v=20250612"></script>
+  <script src="./ui.js?v=20250618"></script>
   <script src="./news.js?v=20250617"></script>
-  <script src="./moex.js?v=20250617"></script>
+  <script src="./moex.js?v=20250618"></script>
+  <script src="./analytics.js?v=20250618"></script>
   <script src="./portfolio.js?v=20250616"></script>
   <script src="./firebase-sync.js?v=20250612"></script>
   <script src="./app.js?v=20250612"></script>

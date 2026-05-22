@@ -822,8 +822,12 @@
               '<span class="market-tile-ticker">' + escapeHtml(tile.title) + '</span>' +
               '<span class="market-tile-sub">' + escapeHtml(tile.subtitle) + '</span>' +
             '</div>' +
-            '<span class="market-tile-price" data-price>…</span>' +
-            '<span class="market-tile-change muted" data-change>загрузка</span>' +
+            '<div class="market-tile-metrics">' +
+              '<span class="market-tile-price" data-price>…</span>' +
+              '<span class="market-tile-change muted" data-change>загрузка</span>' +
+              '<span class="market-tile-div muted" data-div-yield>Див. 5л: …</span>' +
+            '</div>' +
+            (typeof window.quoteCardChartsHtml === 'function' ? window.quoteCardChartsHtml(tile.ticker) : '') +
           '</button>' +
           '<button type="button" class="market-tile-remove" data-remove-ticker="' + escapeHtml(tile.ticker) +
             '" aria-label="Удалить ' + escapeHtml(tile.ticker) + '">×</button>' +
@@ -834,6 +838,7 @@
     ensureTickerNames(tickers);
 
     tickers.forEach(function (ticker) {
+      var wrap = el.querySelector('.market-tile-wrap[data-ticker="' + ticker + '"]');
       fetchMoexQuote(ticker).then(function (quote) {
         var btn = el.querySelector('.market-tile[data-ticker="' + ticker + '"]');
         updateMarketTileButton(btn, quote, ticker);
@@ -841,6 +846,7 @@
         var btn = el.querySelector('.market-tile[data-ticker="' + ticker + '"]');
         updateMarketTileButton(btn, null, ticker);
       });
+      if (typeof enrichQuoteCard === 'function' && wrap) enrichQuoteCard(wrap, ticker);
     });
 
     initMarketTilesBento();
@@ -1175,12 +1181,46 @@
 
 
   function renderImoexTopVolumeTable(rows) {
+    var grid = document.getElementById('imoexTopVolumeCards');
     var tbody = document.getElementById('imoexTopVolumeBody');
-    if (!tbody) return;
     if (!rows || !rows.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="muted">Нет данных</td></tr>';
+      if (grid) grid.innerHTML = '<p class="muted">Нет данных</p>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="muted">Нет данных</td></tr>';
       return;
     }
+    if (grid) {
+      grid.innerHTML = rows.map(function (r, i) {
+        var ch = formatMacroChange(r.changePct);
+        return (
+          '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '">' +
+            '<button type="button" class="quote-card" data-ticker="' + escapeHtml(r.ticker) + '">' +
+              '<div class="quote-card-top">' +
+                '<span class="quote-card-ticker">#' + (i + 1) + ' ' + escapeHtml(r.ticker) + '</span>' +
+                '<span class="quote-card-sub">' + escapeHtml(r.name || '') + '</span>' +
+              '</div>' +
+              '<div class="quote-card-metrics">' +
+                '<span class="quote-card-price">' + escapeHtml(formatChartPrice(r.price, r.ticker)) + '</span>' +
+                '<span class="quote-card-change ' + ch.cls + '">' + escapeHtml(ch.text) + '</span>' +
+                '<span class="quote-card-meta muted">Оборот ' + escapeHtml(formatBlnRub(r.valToday)) + ' млрд</span>' +
+                '<span class="quote-card-div muted" data-div-yield>Див. 5л: …</span>' +
+              '</div>' +
+              (typeof window.quoteCardChartsHtml === 'function' ? window.quoteCardChartsHtml(r.ticker) : '') +
+            '</button>' +
+          '</div>'
+        );
+      }).join('');
+      rows.forEach(function (r) {
+        var wrap = grid.querySelector('.quote-card-wrap[data-ticker="' + r.ticker + '"]');
+        if (wrap && typeof enrichQuoteCard === 'function') enrichQuoteCard(wrap, r.ticker);
+      });
+      grid.querySelectorAll('.quote-card').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var t = btn.getAttribute('data-ticker');
+          if (t && typeof openSecurityAnalyticsModal === 'function') openSecurityAnalyticsModal(t);
+        });
+      });
+    }
+    if (!tbody) return;
     tbody.innerHTML = rows.map(function (r, i) {
       var ch = formatMacroChange(r.changePct);
       return (
@@ -1197,7 +1237,7 @@
     tbody.querySelectorAll('.imoex-top-row').forEach(function (row) {
       row.addEventListener('click', function () {
         var t = row.getAttribute('data-chart-ticker');
-        if (t && typeof openPortfolioChart === 'function') openPortfolioChart(t);
+        if (t && typeof openSecurityAnalyticsModal === 'function') openSecurityAnalyticsModal(t);
       });
     });
   }

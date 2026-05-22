@@ -171,7 +171,6 @@
     setupTickerAutocomplete('marketTickerInput');
     setupTickerAutocomplete('tickerInput');
     setupTickerAutocomplete('pfAddTicker');
-    setupTickerAutocomplete('pfWatchAddTicker');
     setupTickerAutocomplete('feedAsset', { onSelect: function () { syncFiltersFromUI(); } });
     setupTickerAutocomplete('alertRuleTicker');
 
@@ -227,8 +226,34 @@
       var tile = e.target.closest('.market-tile');
       if (!tile) return;
       var ticker = tile.getAttribute('data-ticker');
-      if (ticker) openPortfolioChart(ticker);
+      if (ticker) {
+        if (typeof openSecurityAnalyticsModal === 'function') openSecurityAnalyticsModal(ticker);
+        else if (typeof openPortfolioChart === 'function') openPortfolioChart(ticker);
+      }
     });
+
+    var analyticsGrid = document.getElementById('analyticsGrid');
+    if (analyticsGrid) {
+      analyticsGrid.addEventListener('click', function (e) {
+        var card = e.target.closest('.quote-card[data-ticker]');
+        if (!card || e.target.closest('[data-remove-analytics]')) return;
+        var t = card.getAttribute('data-ticker');
+        if (t && typeof openSecurityAnalyticsModal === 'function') openSecurityAnalyticsModal(t);
+      });
+    }
+
+    var secClose = document.getElementById('securityAnalyticsCloseBtn');
+    if (secClose) secClose.addEventListener('click', function () {
+      if (typeof closeAnalyticsModal === 'function') closeAnalyticsModal();
+    });
+    var secModal = document.getElementById('securityAnalyticsModal');
+    if (secModal) {
+      secModal.addEventListener('click', function (e) {
+        if (e.target.id === 'securityAnalyticsModal' && typeof closeAnalyticsModal === 'function') {
+          closeAnalyticsModal();
+        }
+      });
+    }
 
     document.getElementById('addMarketTickerBtn').addEventListener('click', function () {
       addMarketTicker(document.getElementById('marketTickerInput').value);
@@ -247,10 +272,6 @@
         addTicker(document.getElementById('tickerInput').value);
       });
     }
-    var addPfFromWatch = document.getElementById('addPortfolioFromWatchBtn');
-    if (addPfFromWatch) {
-      addPfFromWatch.addEventListener('click', addPortfolioFromWatchInput);
-    }
     document.getElementById('tickerInput').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
         if (acControllers.tickerInput) acControllers.tickerInput.handleEnter(e);
@@ -259,14 +280,9 @@
     });
     var pfAddBtn = document.getElementById('pfAddBtn');
     if (pfAddBtn) pfAddBtn.addEventListener('click', function () { addPortfolioPosition(null, { prefix: '' }); });
-    var pfWatchAddBtn = document.getElementById('pfWatchAddBtn');
-    if (pfWatchAddBtn) pfWatchAddBtn.addEventListener('click', function () { addPortfolioPosition(null, { prefix: 'Watch' }); });
     var pfCancelEditBtn = document.getElementById('pfCancelEditBtn');
     if (pfCancelEditBtn) pfCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
-    var pfWatchCancelEditBtn = document.getElementById('pfWatchCancelEditBtn');
-    if (pfWatchCancelEditBtn) pfWatchCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
     bindPortfolioFormEnter('pfAddTicker', '');
-    bindPortfolioFormEnter('pfWatchAddTicker', 'Watch');
     document.querySelectorAll('[data-preset]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         applyPreset(btn.getAttribute('data-preset'));
@@ -408,7 +424,10 @@
       feedListEl.addEventListener('keydown', handleBriefListKeydown);
     }
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeBriefArticleModal();
+      if (e.key === 'Escape') {
+        closeBriefArticleModal();
+        if (typeof closeAnalyticsModal === 'function') closeAnalyticsModal();
+      }
     });
 
     document.addEventListener('visibilitychange', function () {
@@ -443,6 +462,7 @@
     loadProfileToUI();
     loadFiltersToUI();
     renderWatchlist();
+    if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
     loadLiveBriefs();
     renderMarketTiles();
     renderMarketMacro();

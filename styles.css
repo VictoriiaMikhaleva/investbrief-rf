@@ -1696,6 +1696,144 @@
     .market-tiles--compact .market-tile-price { font-size: 0.88rem; }
     .market-tiles--compact .market-tile-wrap.featured .market-tile-price { font-size: 0.95rem; }
     .market-tiles--compact .market-tile-change { font-size: 0.72rem; }
+    .market-tile-metrics,
+    .quote-card-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.2rem 0.45rem;
+      width: 100%;
+    }
+    .market-tile-div,
+    .quote-card-div {
+      font-size: 0.62rem;
+      font-weight: 600;
+      width: 100%;
+    }
+    .market-tiles--compact .market-tile-div { font-size: 0.58rem; }
+    .quote-card-meta {
+      font-size: 0.62rem;
+      width: 100%;
+    }
+    .quote-card-charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.25rem;
+      width: 100%;
+      margin-top: 0.2rem;
+    }
+    .quote-mini-chart-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+      min-height: 2rem;
+    }
+    .quote-mini-lbl {
+      font-size: 0.52rem;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      width: 2.1rem;
+    }
+    .quote-mini-chart {
+      flex: 1;
+      width: 100%;
+      height: 2rem;
+      display: block;
+    }
+    .quote-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.55rem;
+    }
+    @media (min-width: 640px) {
+      .quote-cards-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (min-width: 960px) {
+      .quote-cards-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .imoex-top-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    }
+    .quote-card-wrap {
+      position: relative;
+    }
+    .quote-card,
+    .market-tile.star-border-inner {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .quote-card {
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: var(--paper-bg, #fff);
+      border-radius: 8px;
+      padding: 0.4rem 0.45rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      font-family: inherit;
+    }
+    .quote-card-top { display: flex; flex-direction: column; gap: 0.05rem; }
+    .quote-card-ticker { font-weight: 700; font-size: 0.78rem; }
+    .quote-card-sub { font-size: 0.6rem; color: var(--text-muted); }
+    .quote-card-price { font-weight: 700; font-size: 0.88rem; }
+    .quote-card-change { font-size: 0.72rem; font-weight: 600; }
+    .quote-card-remove {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 1.25rem;
+      height: 1.25rem;
+      border: none;
+      border-radius: 50%;
+      background: rgba(43, 43, 43, 0.08);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 3;
+    }
+    .analytics-grid {
+      margin-top: var(--space-block);
+    }
+    .imoex-top-cards {
+      margin-top: 0.5rem;
+    }
+    .modal--analytics {
+      max-width: 42rem;
+      width: calc(100% - 2rem);
+      max-height: 92vh;
+      overflow-y: auto;
+    }
+    .security-analytics-charts {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .security-chart-lbl {
+      margin: 0 0 0.35rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .security-chart-note {
+      margin: 0 0 0.35rem;
+      font-size: 0.78rem;
+      line-height: 1.4;
+    }
+    .security-chart-wrap {
+      min-height: 140px;
+    }
+    .security-chart-wrap--short {
+      min-height: 100px;
+    }
+    .security-chart-wrap canvas {
+      width: 100%;
+      height: 140px;
+      display: block;
+    }
+    .security-chart-wrap--short canvas {
+      height: 100px;
+    }
     .market-tiles--compact .market-tile-remove {
       width: 22px;
       height: 22px;

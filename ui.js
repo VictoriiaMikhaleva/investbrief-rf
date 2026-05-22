@@ -507,6 +507,131 @@
 
 
 
+  function drawMiniBarChart(canvas, series, options) {
+    options = options || {};
+    if (!canvas) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(canvas.clientWidth || 120, 80);
+    var h = Math.max(canvas.clientHeight || 36, 28);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (!series || !series.length) {
+      ctx.fillStyle = '#9a9a9a';
+      ctx.font = '10px Golos Text, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('—', w / 2, h / 2);
+      return;
+    }
+    var vals = series.map(function (p) { return p.v != null ? p.v : p.y; });
+    var max = Math.max.apply(null, vals.concat([0.001]));
+    var pad = { l: 2, r: 2, t: 4, b: 4 };
+    var barW = Math.max(2, (w - pad.l - pad.r) / vals.length - 1);
+    var color = options.color || '#6B7A5A';
+    vals.forEach(function (v, i) {
+      var bh = Math.max(2, ((v / max) * (h - pad.t - pad.b)));
+      var x = pad.l + i * (barW + 1);
+      var y = h - pad.b - bh;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, barW, bh);
+    });
+  }
+
+
+
+  function paintQuoteMiniCharts(wrapEl, analytics) {
+    if (!wrapEl || !analytics) return;
+    var divCanvas = wrapEl.querySelector('[data-mini-chart="div"]');
+    var volCanvas = wrapEl.querySelector('[data-mini-chart="vol"]');
+    if (divCanvas && analytics.divYieldByYear && analytics.divYieldByYear.length) {
+      drawMiniBarChart(divCanvas, analytics.divYieldByYear.map(function (y) {
+        return { v: y.yieldPct != null && isFinite(y.yieldPct) ? y.yieldPct : 0 };
+      }), { color: '#9A7B4F' });
+    }
+    if (volCanvas && analytics.volumeByDay && analytics.volumeByDay.length) {
+      drawMiniBarChart(volCanvas, analytics.volumeByDay, { color: '#6B7A5A' });
+    }
+  }
+
+
+
+  function openAnalyticsModal(ticker) {
+    ticker = normalizeTicker(ticker);
+    var modal = document.getElementById('securityAnalyticsModal');
+    if (!modal) {
+      if (typeof openPortfolioChart === 'function') openPortfolioChart(ticker);
+      return;
+    }
+    var titleEl = document.getElementById('securityAnalyticsTitle');
+    var metaEl = document.getElementById('securityAnalyticsMeta');
+    var priceCanvas = document.getElementById('securityAnalyticsPriceChart');
+    var divCanvas = document.getElementById('securityAnalyticsDivChart');
+    var volCanvas = document.getElementById('securityAnalyticsVolChart');
+    var divNote = document.getElementById('securityAnalyticsDivNote');
+    var volNote = document.getElementById('securityAnalyticsVolNote');
+    if (titleEl) titleEl.textContent = ticker;
+    if (metaEl) metaEl.textContent = 'Загрузка…';
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      if (metaEl) metaEl.textContent = 'Рынок США · дивиденды и оборот МосБиржи недоступны';
+      if (divNote) divNote.textContent = 'Для US бумаг используйте отчётность эмитента.';
+      fetchMoexHistory(ticker, 'month').then(function (r) {
+        if (priceCanvas) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: 'month' });
+      });
+      return;
+    }
+
+    if (typeof buildSecurityAnalytics !== 'function') return;
+    buildSecurityAnalytics(ticker).then(function (a) {
+      if (metaEl) {
+        var parts = [a.name || getTickerSubtitle(ticker)];
+        if (a.divAvg5y != null) parts.push('Ср. див. доходность 5л: ' + formatDivYieldPct(a.divAvg5y));
+        metaEl.textContent = parts.join(' · ');
+      }
+      if (divCanvas) {
+        drawMiniBarChart(divCanvas, (a.divYieldByYear || []).map(function (y) {
+          return { v: y.yieldPct != null && isFinite(y.yieldPct) ? y.yieldPct : 0 };
+        }), { color: '#9A7B4F' });
+      }
+      if (divNote) {
+        divNote.textContent = (a.divYieldByYear || []).map(function (y) {
+          return y.year + ': ' + (y.yieldPct != null ? formatDivYieldPct(y.yieldPct) : '—');
+        }).join(' · ');
+      }
+      if (volCanvas) drawMiniBarChart(volCanvas, a.volumeByDay || [], { color: '#6B7A5A' });
+      if (volNote) volNote.textContent = 'Оборот TQBR, млрд ₽ · ' + (a.volumeByDay.length || 0) + ' торговых дней';
+      return fetchMoexHistory(ticker, 'month');
+    }).then(function (r) {
+      if (priceCanvas && r && r.series) {
+        drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: 'month' });
+      }
+    }).catch(function () {
+      if (metaEl) metaEl.textContent = 'Не удалось загрузить аналитику';
+    });
+  }
+
+
+
+  function closeAnalyticsModal() {
+    var modal = document.getElementById('securityAnalyticsModal');
+    if (!modal) return;
+    modal.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+
+
+  window.paintQuoteMiniCharts = paintQuoteMiniCharts;
+  window.openAnalyticsModal = openAnalyticsModal;
+  window.closeAnalyticsModal = closeAnalyticsModal;
+  window.drawMiniBarChart = drawMiniBarChart;
+
+
+
   function destroyPortfolioPapersMagnet() {
     if (portfolioPapersMagnetCleanup) {
       portfolioPapersMagnetCleanup();
@@ -889,8 +1014,8 @@
       setupTickerAutocomplete('pfAddTicker');
     }
     if (tab === 'watchlist') {
-      renderPortfolioTableBody();
-      setupTickerAutocomplete('pfWatchAddTicker');
+      renderWatchlist();
+      if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
     }
     if (tab === 'settings') renderAlerts();
   }

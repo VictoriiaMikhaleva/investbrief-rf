@@ -247,8 +247,10 @@
           return n.ticker !== ticker;
         }));
         showToast('Удалено: ' + ticker);
+        if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
       });
     });
+    if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
   }
 
 
@@ -269,6 +271,7 @@
       list.push(typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(item) : item.ticker);
       setWatchlist(list);
       showToast('Добавлено: ' + item.ticker);
+      if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
       document.getElementById('tickerInput').value = '';
       if (acControllers.tickerInput) acControllers.tickerInput.close();
     });
@@ -286,6 +289,7 @@
     });
     setWatchlist(list);
     showToast('Пресет: ' + name);
+    if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
   }
 
 
