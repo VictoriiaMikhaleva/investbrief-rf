@@ -849,7 +849,8 @@
         var btn = el.querySelector('.market-tile[data-ticker="' + ticker + '"]');
         updateMarketTileButton(btn, null, ticker);
       });
-      if (typeof enrichQuoteCard === 'function' && wrap) enrichQuoteCard(wrap, ticker);
+      if (typeof queueEnrichQuoteCard === 'function' && wrap) queueEnrichQuoteCard(wrap, ticker);
+      else if (typeof enrichQuoteCard === 'function' && wrap) enrichQuoteCard(wrap, ticker);
     });
 
     initMarketTilesBento();
@@ -868,7 +869,92 @@
 
 
 
+  var MACRO_HTTP_TIMEOUT_MS = 6000;
+  var MACRO_HTTP_DIRECT_MS = 4500;
+
+
+
+  function fetchWithTimeoutMs(promise, ms) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, reject) {
+        setTimeout(function () { reject(new Error('timeout')); }, ms);
+      })
+    ]);
+  }
+
+
+
+  function promiseAny(promises) {
+    return new Promise(function (resolve, reject) {
+      if (!promises.length) return reject(new Error('empty'));
+      var fails = 0;
+      var lastErr;
+      promises.forEach(function (p) {
+        Promise.resolve(p).then(resolve).catch(function (e) {
+          lastErr = e;
+          fails++;
+          if (fails >= promises.length) reject(lastErr || new Error('all failed'));
+        });
+      });
+    });
+  }
+
+
+
+  function hasLocalMacroApi() {
+    if (location.protocol === 'file:') return false;
+    var host = (location.hostname || '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1';
+  }
+
+
+
+  /** Быстрее, чем RSS-прокси (12 с): прямой запрос, затем параллельно cors-прокси. */
+  function fetchExternalTextFast(url) {
+    var enc = encodeURIComponent(url);
+    var proxyFetches = [
+      fetchWithTimeoutMs(
+        fetch('https://api.allorigins.win/raw?url=' + enc, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+          if (!res.ok) throw new Error('allorigins ' + res.status);
+          return res.text();
+        }),
+        MACRO_HTTP_TIMEOUT_MS
+      ),
+      fetchWithTimeoutMs(
+        fetch('https://corsproxy.io/?' + enc, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+          if (!res.ok) throw new Error('corsproxy ' + res.status);
+          return res.text();
+        }),
+        MACRO_HTTP_TIMEOUT_MS
+      )
+    ];
+    if (hasLocalMacroApi()) {
+      proxyFetches.unshift(
+        fetchWithTimeoutMs(
+          fetch('/api/rss?url=' + enc, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+            if (!res.ok) throw new Error('api rss ' + res.status);
+            return res.text();
+          }),
+          MACRO_HTTP_TIMEOUT_MS
+        )
+      );
+    }
+    return fetchWithTimeoutMs(
+      fetch(url, { credentials: 'omit', cache: 'default' }).then(function (res) {
+        if (!res.ok) throw new Error('direct ' + res.status);
+        return res.text();
+      }),
+      MACRO_HTTP_DIRECT_MS
+    ).catch(function () {
+      return promiseAny(proxyFetches);
+    });
+  }
+
+
+
   function fetchExternalText(url) {
+    if (/cbr\.ru/i.test(url)) return fetchExternalTextFast(url);
     if (typeof fetchTextViaProxies === 'function') {
       return fetchTextViaProxies(url);
     }
@@ -1082,11 +1168,38 @@
 
 
 
-  function invalidateMacroLiveCaches() {
-    ['cbr.fx', 'macro.fx', 'cbr.keyrate', 'imoex.turnover.week', 'moex.topvol.20',
-      'moex.fx.USD', 'moex.fx.EUR', 'moex.fx.CNY'].forEach(function (key) {
+  function invalidateMacroLiveCaches(hard) {
+    var keys = ['macro.fx', 'imoex.turnover.week', 'moex.topvol.20',
+      'moex.fx.USD', 'moex.fx.EUR', 'moex.fx.CNY'];
+    if (hard) keys.push('cbr.fx', 'cbr.keyrate');
+    keys.forEach(function (key) {
       try { localStorage.removeItem(MOEX_CACHE_PREFIX + key); } catch (e) { /* */ }
     });
+  }
+
+
+
+  function applyMacroBootstrap(row) {
+    if (!row) return;
+    var kr = moexCacheGet('cbr.keyrate');
+    if (kr && isFinite(kr.rate)) {
+      patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
+        macroChangeWithSource(kr.changePct, 'ЦБ РФ'));
+    }
+    var fx = moexCacheGet('macro.fx');
+    if (!fx) {
+      var cbr = moexCacheGet('cbr.fx');
+      if (cbr) fx = cbr;
+    }
+    if (fx) {
+      ['USD', 'EUR', 'CNY'].forEach(function (code) {
+        var item = fx[code];
+        var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
+        if (!item || item.price == null) return;
+        patchMacroTile(row, id, formatFxPrice(item.price),
+          macroChangeWithSource(item.changePct, item.source || 'ЦБ РФ'));
+      });
+    }
   }
 
 
@@ -1137,17 +1250,27 @@
 
 
 
+  var keyRateInflight = null;
+
   function fetchCbrKeyRate() {
     var cacheKey = 'cbr.keyrate';
     var cached = moexCacheGet(cacheKey);
     if (cached) return Promise.resolve(cached);
+    if (keyRateInflight) return keyRateInflight;
     var url = 'https://www.cbr.ru/hd_base/KeyRate/';
-    return fetchExternalText(url).then(function (html) {
+    keyRateInflight = fetchExternalTextFast(url).then(function (html) {
       var parsed = parseCbrKeyRateFromHtml(html);
       if (!parsed || !isFinite(parsed.rate)) throw new Error('cbr keyrate parse');
       moexCacheSet(cacheKey, parsed, 6 * 60 * 60 * 1000);
       return parsed;
+    }).then(function (r) {
+      keyRateInflight = null;
+      return r;
+    }, function (e) {
+      keyRateInflight = null;
+      throw e;
     });
+    return keyRateInflight;
   }
 
 
@@ -1329,7 +1452,8 @@
       }).join('');
       rows.forEach(function (r) {
         var wrap = grid.querySelector('.quote-card-wrap[data-ticker="' + r.ticker + '"]');
-        if (wrap && typeof enrichQuoteCard === 'function') enrichQuoteCard(wrap, r.ticker);
+        if (wrap && typeof queueEnrichQuoteCard === 'function') queueEnrichQuoteCard(wrap, r.ticker);
+        else if (wrap && typeof enrichQuoteCard === 'function') enrichQuoteCard(wrap, r.ticker);
       });
       grid.querySelectorAll('.quote-card').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -1408,7 +1532,7 @@
       renderImoexMarketPanel(forceRefresh);
       return;
     }
-    if (forceRefresh) invalidateMacroLiveCaches();
+    if (forceRefresh) invalidateMacroLiveCaches(false);
     row.hidden = false;
     row.innerHTML =
       renderMacroTile('imoex', 'Индекс', '…', { text: 'IMOEX · МосБиржа', cls: 'muted' }) +
@@ -1417,6 +1541,8 @@
       renderMacroTile('eur', 'EUR', '…', { text: 'загрузка…', cls: 'muted' }) +
       renderMacroTile('cny', 'CNY', '…', { text: 'загрузка…', cls: 'muted' }) +
       renderMacroTile('oil', 'LKOH', '…', { text: 'нефть · МосБиржа', cls: 'muted' });
+
+    applyMacroBootstrap(row);
 
     fetchCbrKeyRate().then(function (kr) {
       patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
@@ -1434,6 +1560,20 @@
       var val = q && q.price != null ? formatChartPrice(q.price, 'LKOH') : '—';
       patchMacroTile(row, 'oil', val, macroChangeWithSource(q && q.changePct, 'МосБиржа'));
     }).catch(function () { patchMacroTile(row, 'oil', '—', { text: 'нет данных', cls: 'muted' }); });
+
+    fetchCbrFxRatesFromJson().then(function (data) {
+      var quick = parseCbrDailyJson(data);
+      if (!quick) return;
+      var dated = data && data.Date ? String(data.Date).slice(0, 10) : '';
+      var src = dated ? 'ЦБ РФ · ' + dated : 'ЦБ РФ';
+      ['USD', 'EUR', 'CNY'].forEach(function (code) {
+        var item = quick[code];
+        var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
+        if (!item || item.price == null) return;
+        patchMacroTile(row, id, formatFxPrice(item.price),
+          macroChangeWithSource(item.changePct, src));
+      });
+    }).catch(function () { /* moex spot ниже */ });
 
     fetchMacroFxRates(!!forceRefresh).then(function (fx) {
       if (!fx) return;
@@ -1494,12 +1634,12 @@
       if (document.visibilityState !== 'visible') return;
       if (!state || state.tab !== 'briefing') return;
       if (typeof renderMarketMacro !== 'function') return;
-      renderMarketMacro(true);
+      renderMarketMacro(false);
     }, MACRO_REFRESH_MS);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
       if (!state || state.tab !== 'briefing') return;
-      if (typeof renderMarketMacro === 'function') renderMarketMacro(true);
+      if (typeof renderMarketMacro === 'function') renderMarketMacro(false);
     });
   }
 

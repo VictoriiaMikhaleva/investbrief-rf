@@ -6,6 +6,9 @@
   var ANALYTICS_TTL = 30 * 60 * 1000;
   var VOLUME_YEAR_DAYS = 252;
   var YIELD_YEARS = 5;
+  var ENRICH_CONCURRENCY = 4;
+  var enrichQueue = [];
+  var enrichActive = 0;
 
   function analyticsCacheGet(key) {
     try {
@@ -332,6 +335,50 @@
     }
   }
 
+  function drainEnrichQueue() {
+    while (enrichActive < ENRICH_CONCURRENCY && enrichQueue.length) {
+      var job = enrichQueue.shift();
+      if (!job || !job.wrap) continue;
+      enrichActive++;
+      enrichQuoteCardImmediate(job.wrap, job.ticker).then(function () {
+        enrichActive--;
+        drainEnrichQueue();
+      }, function () {
+        enrichActive--;
+        drainEnrichQueue();
+      });
+    }
+  }
+
+
+
+  function queueEnrichQuoteCard(wrapEl, ticker) {
+    if (!wrapEl || !ticker) return;
+    enrichQueue.push({ wrap: wrapEl, ticker: normalizeTicker(ticker) });
+    drainEnrichQueue();
+  }
+
+
+
+  function enrichQuoteCardImmediate(wrapEl, ticker) {
+    return new Promise(function (resolve) {
+      enrichQuoteCard(wrapEl, ticker);
+      if (!isRuStockForAnalytics(ticker)) {
+        resolve();
+        return;
+      }
+      buildSecurityAnalytics(ticker).then(function (a) {
+        applyDivMetricsToWrap(wrapEl, a);
+        resolve();
+      }).catch(function () {
+        applyDivMetricsToWrap(wrapEl, { eligible: false });
+        resolve();
+      });
+    });
+  }
+
+
+
   function enrichQuoteCard(wrapEl, ticker) {
     if (!wrapEl || !ticker) return;
     ticker = normalizeTicker(ticker);
@@ -354,12 +401,7 @@
       applyDivMetricsToWrap(wrapEl, { eligible: false });
       return;
     }
-
-    buildSecurityAnalytics(ticker).then(function (a) {
-      applyDivMetricsToWrap(wrapEl, a);
-    }).catch(function () {
-      applyDivMetricsToWrap(wrapEl, { eligible: false });
-    });
+    applyDivMetricsToWrap(wrapEl, { eligible: true, divAvg5y: null, divForecast: { amount: null } });
   }
 
   function getWatchlistTickersForAnalytics() {
@@ -383,6 +425,9 @@
     var grid = document.getElementById('analyticsGrid');
     if (!grid) return;
     var tickers = getWatchlistTickersForAnalytics();
+
+    enrichQueue = [];
+    enrichActive = 0;
 
     if (!tickers.length) {
       grid.innerHTML = '<p class="muted hint-frame">Добавьте бумаги в список наблюдения — появятся дивидендная доходность и прогноз выплат.</p>';
@@ -420,7 +465,7 @@
           updateMarketTileButton(btn, q, ticker);
         }
       }).catch(function () {});
-      enrichQuoteCard(wrap, ticker);
+      queueEnrichQuoteCard(wrap, ticker);
     });
 
     grid.querySelectorAll('.quote-card-remove').forEach(function (btn) {
@@ -506,6 +551,7 @@
   window.selectAnalyticsTicker = selectAnalyticsTicker;
   window.openSecurityAnalyticsModal = openSecurityAnalyticsModal;
   window.quoteCardChartsHtml = quoteCardChartsHtml;
+  window.queueEnrichQuoteCard = queueEnrichQuoteCard;
   window.fetchPortfolioDivForecastHtml = fetchPortfolioDivForecastHtml;
   window.computeDividendForecast12m = computeDividendForecast12m;
 })();
