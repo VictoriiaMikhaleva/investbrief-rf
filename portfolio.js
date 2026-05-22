@@ -1,9 +1,31 @@
 /* portfolio.js */
   function getPositionReturnPct(pos) {
+    if (typeof Markets !== 'undefined' && Markets.isUsPosition(pos)) {
+      var curUs = Number(pos.currentPrice);
+      if (!isFinite(curUs)) return null;
+    }
     var avg = Number(pos.avgPrice);
     var cur = Number(pos.currentPrice);
     if (!isFinite(avg) || !isFinite(cur) || avg <= 0) return null;
     return ((cur - avg) / avg) * 100;
+  }
+
+  function formatPositionPrice(pos) {
+    var cur = Number(pos.currentPrice);
+    var currency = pos.currency || (typeof Markets !== 'undefined' && Markets.isUsPosition(pos) ? 'USD' : 'RUB');
+    if (typeof Markets !== 'undefined') {
+      return Markets.formatMoneyValue(isFinite(cur) ? cur : null, currency);
+    }
+    return isFinite(cur) ? cur.toFixed(2) : '—';
+  }
+
+  function formatPositionAvg(pos) {
+    var avg = Number(pos.avgPrice);
+    var currency = pos.currency || 'RUB';
+    if (typeof Markets !== 'undefined') {
+      return Markets.formatMoneyValue(isFinite(avg) ? avg : null, currency);
+    }
+    return isFinite(avg) ? avg.toFixed(2) : '—';
   }
 
 
@@ -149,14 +171,25 @@
       el.innerHTML = '<span class="muted hint-frame">Список пуст</span>';
       return;
     }
-    el.innerHTML = list.map(function (t) {
-      return '<span class="chip">' + escapeHtml(t) +
-        '<button type="button" data-remove="' + escapeHtml(t) + '" aria-label="Удалить">×</button></span>';
+    el.innerHTML = list.map(function (item) {
+      var n = typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(item) : { ticker: item, market: 'RU' };
+      if (!n) return '';
+      var badge = typeof Markets !== 'undefined'
+        ? '<span class="market-badge market-badge--' + (n.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(n.market)) + '</span>'
+        : '';
+      return '<span class="chip">' + escapeHtml(n.ticker) + badge +
+        '<button type="button" data-remove="' + escapeHtml(n.ticker) + '" data-remove-market="' + escapeHtml(n.market) + '" aria-label="Удалить">×</button></span>';
     }).join('');
     el.querySelectorAll('[data-remove]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var ticker = btn.getAttribute('data-remove');
-        setWatchlist(getWatchlist().filter(function (x) { return x !== ticker; }));
+        var market = btn.getAttribute('data-remove-market');
+        setWatchlist(getWatchlist().filter(function (x) {
+          var n = typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(x) : { ticker: x, market: 'RU' };
+          if (!n) return false;
+          if (market && n.market !== market) return true;
+          return n.ticker !== ticker;
+        }));
         showToast('Удалено: ' + ticker);
       });
     });
@@ -165,20 +198,21 @@
 
 
   function addTicker(raw) {
-    resolveTickerFromInput(raw).then(function (t) {
-      t = normalizeTicker(t);
-      if (!t) {
-        showToast('Введите тикер или название');
-        return;
-      }
+    var resolveFn = typeof Markets !== 'undefined' ? Markets.resolveSecurityFromInput : function (r) {
+      return resolveTickerFromInput(r).then(function (t) {
+        return t ? { ticker: t, market: 'RU', currency: 'RUB', type: 'stock', name: '' } : null;
+      });
+    };
+    resolveFn(raw).then(function (item) {
+      if (!item || !item.ticker) return;
       var list = getWatchlist();
-      if (list.indexOf(t) !== -1) {
+      if (typeof Markets !== 'undefined' && Markets.watchlistHasTicker(list, item.ticker, item.market)) {
         showToast('Уже в списке');
         return;
       }
-      list.push(t);
+      list.push(typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(item) : item.ticker);
       setWatchlist(list);
-      showToast('Добавлено: ' + t);
+      showToast('Добавлено: ' + item.ticker);
       document.getElementById('tickerInput').value = '';
       if (acControllers.tickerInput) acControllers.tickerInput.close();
     });
@@ -334,8 +368,20 @@
     var pos = findPortfolioPosition(state.chartTicker);
     if (!pos) return;
 
+    if (typeof Markets !== 'undefined' && Markets.isUsPosition(pos)) {
+      if (emptyEl) {
+        emptyEl.hidden = false;
+        emptyEl.innerHTML = '<span class="hint-frame">' + escapeHtml('Графики по рынку США будут доступны после подключения источника данных.') + '</span>';
+      }
+      if (wrap) wrap.hidden = true;
+      if (statsEl) statsEl.hidden = true;
+      if (toolbar) toolbar.hidden = true;
+      setChartSourceLabel('Данные США скоро');
+      return;
+    }
+
     var reqId = ++state.chartRequestId;
-    setChartSourceLabel('Загрузка данных МосБиржи…', false);
+    setChartSourceLabel('Загрузка…', false);
 
     var ctx = canvas.getContext('2d');
     var rect = canvas.getBoundingClientRect();
@@ -551,12 +597,17 @@
     var prefix = opts.prefix != null ? opts.prefix : '';
     var form = readPortfolioForm(prefix);
     var rawTicker = raw != null ? raw : form.ticker;
-    resolveTickerFromInput(rawTicker).then(function (t) {
-      t = normalizeTicker(t);
-      if (!t) {
+    var resolveFn = typeof Markets !== 'undefined' ? Markets.resolveSecurityFromInput : function (r) {
+      return resolveTickerFromInput(r).then(function (tk) {
+        return tk ? { ticker: tk, market: 'RU', currency: 'RUB', type: 'stock' } : null;
+      });
+    };
+    resolveFn(rawTicker).then(function (sec) {
+      if (!sec || !sec.ticker) {
         showToast('Укажите тикер');
         return;
       }
+      var t = sec.ticker;
       var qty = form.qty;
       var avg = form.avg;
       var buyDate = form.buyDate;
@@ -581,7 +632,33 @@
         return;
       }
 
-      return fetchMoexLastPrice(t).catch(function () { return null; }).then(function (price) {
+      var isUs = typeof Markets !== 'undefined' && sec.market === 'US';
+      if (isUs) {
+        if (existing) {
+          mergePositionPurchase(existing, qty, avg, buyDate, comment);
+          existing.currentPrice = null;
+          existing.market = 'US';
+          existing.currency = 'USD';
+        } else {
+          portfolio.positions.push(normalizePosition({
+            ticker: t,
+            qty: isFinite(qty) ? qty : null,
+            avgPrice: isFinite(avg) ? avg : null,
+            currentPrice: null,
+            buyDate: buyDate,
+            comment: comment,
+            market: 'US',
+            currency: 'USD'
+          }));
+        }
+        setPortfolio(portfolio);
+        clearPortfolioForm(prefix);
+        showToast(existing ? 'Докупка учтена, обновлена ср. цена: ' + t : 'Добавлено в портфель: ' + t);
+        renderPortfolio();
+        return;
+      }
+
+      fetchMoexLastPrice(t).catch(function () { return null; }).then(function (price) {
         var cur = price != null && isFinite(price) ? price : (isFinite(avg) ? avg : 100);
         if (!isFinite(avg)) avg = cur;
 
@@ -598,7 +675,9 @@
             avgPrice: avg,
             currentPrice: cur,
             buyDate: buyDate,
-            comment: comment
+            comment: comment,
+            market: 'RU',
+            currency: 'RUB'
           }));
           setPortfolio(portfolio);
           clearPortfolioForm(prefix);
@@ -663,11 +742,14 @@
     return positions.map(function (p) {
       var pnl = getPositionReturnPct(p);
       var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-      var avg = isFinite(Number(p.avgPrice)) ? Number(p.avgPrice).toFixed(2) : '—';
-      var cur = isFinite(Number(p.currentPrice)) ? Number(p.currentPrice).toFixed(2) : '—';
+      var avg = formatPositionAvg(p);
+      var cur = formatPositionPrice(p);
+      var mBadge = typeof Markets !== 'undefined'
+        ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
+        : '';
       var editActive = state.pfEditTicker === p.ticker ? ' pf-row-editing' : '';
       return '<tr class="pf-table-row' + editActive + '" data-chart-ticker="' + escapeHtml(p.ticker) + '">' +
-        '<td class="ticker">' + escapeHtml(p.ticker) + '</td>' +
+        '<td class="ticker">' + escapeHtml(p.ticker) + mBadge + '</td>' +
         '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
         '<td>' + escapeHtml(avg) + '</td>' +
         '<td>' + escapeHtml(formatPortfolioDate(p)) + '</td>' +
@@ -695,9 +777,12 @@
     cards.innerHTML = positions.map(function (p) {
       var pnl = getPositionReturnPct(p);
       var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-      var avg = isFinite(Number(p.avgPrice)) ? Number(p.avgPrice).toFixed(2) : '—';
-      var cur = isFinite(Number(p.currentPrice)) ? Number(p.currentPrice).toFixed(2) : '—';
-      return '<div class="portfolio-card"><div class="ticker">' + escapeHtml(p.ticker) + '</div>' +
+      var avg = formatPositionAvg(p);
+      var cur = formatPositionPrice(p);
+      var mBadge = typeof Markets !== 'undefined'
+        ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
+        : '';
+      return '<div class="portfolio-card"><div class="ticker">' + escapeHtml(p.ticker) + mBadge + '</div>' +
         '<div class="grid"><span>Ср. цена</span><span>' + escapeHtml(avg) + '</span>' +
         '<span>Текущая</span><span>' + escapeHtml(cur) + '</span>' +
         '<span>Доходность</span><span class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span></div></div>';

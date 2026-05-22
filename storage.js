@@ -113,12 +113,14 @@
 
 
   function getWatchlist() {
-    return loadJSON(KEYS.watchlist, []);
+    var raw = loadJSON(KEYS.watchlist, []);
+    return typeof Markets !== 'undefined' ? Markets.normalizeWatchlist(raw) : raw;
   }
 
 
 
   function setWatchlist(list) {
+    if (typeof Markets !== 'undefined') list = Markets.normalizeWatchlist(list);
     saveJSON(KEYS.watchlist, list);
     renderWatchlist();
     if (typeof renderHomePage === 'function') renderHomePage();
@@ -138,15 +140,24 @@
     if (!isFinite(qty) || qty < 0) qty = raw.qty === 0 ? 0 : null;
     var avg = parseFloat(raw.avgPrice);
     if (!isFinite(avg)) avg = null;
+    var mk = typeof Markets !== 'undefined'
+      ? Markets.normalizePositionMarket(raw, t)
+      : { market: 'RU', currency: 'RUB' };
     var cur = parseFloat(raw.currentPrice);
-    if (!isFinite(cur)) cur = avg;
+    if (mk.market === 'US') {
+      cur = isFinite(cur) ? cur : null;
+    } else if (!isFinite(cur)) {
+      cur = avg;
+    }
     var out = {
       ticker: t,
       qty: qty,
       avgPrice: avg,
       currentPrice: cur,
       buyDate: raw.buyDate ? String(raw.buyDate).slice(0, 10) : '',
-      comment: String(raw.comment || '').trim()
+      comment: String(raw.comment || '').trim(),
+      market: mk.market,
+      currency: mk.currency
     };
     var dayChg = parseFloat(raw.dayChangePct);
     if (isFinite(dayChg)) out.dayChangePct = dayChg;
@@ -172,18 +183,30 @@
     var s = loadJSON(KEYS.settings, {});
     var briefFormat = s.briefFormat || s.essayStyle || 'concise';
     var briefingScope = s.briefingScope || 'market';
+    var markets = typeof Markets !== 'undefined'
+      ? Markets.normalizeMarketsSettings(s)
+      : { ru: true, us: false };
     return {
       briefFormat: briefFormat,
       briefingScope: briefingScope,
       essayStyle: briefFormat,
-      riskProfile: s.riskProfile || 'balanced'
+      riskProfile: s.riskProfile || 'balanced',
+      markets: markets,
+      baseCurrency: s.baseCurrency === 'USD' ? 'USD' : 'RUB'
     };
   }
 
 
 
   function setSettings(s) {
-    saveJSON(KEYS.settings, s);
+    var cur = getSettings();
+    var next = Object.assign({}, cur, s || {});
+    if (s && s.markets) {
+      next.markets = typeof Markets !== 'undefined'
+        ? Markets.normalizeMarketsSettings({ markets: s.markets })
+        : s.markets;
+    }
+    saveJSON(KEYS.settings, next);
     if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
   }
 
@@ -347,8 +370,21 @@
       return;
     }
     if (data.profile) saveJSON(KEYS.profile, data.profile);
-    if (data.watchlist) saveJSON(KEYS.watchlist, data.watchlist);
-    if (data.settings) saveJSON(KEYS.settings, data.settings);
+    if (data.watchlist) {
+      var wl = data.watchlist;
+      if (typeof Markets !== 'undefined') wl = Markets.normalizeWatchlist(wl);
+      saveJSON(KEYS.watchlist, wl);
+    }
+    if (data.settings) {
+      var imported = data.settings;
+      if (typeof Markets !== 'undefined') {
+        imported = Object.assign({}, imported, {
+          markets: Markets.normalizeMarketsSettings(imported),
+          baseCurrency: imported.baseCurrency === 'USD' ? 'USD' : 'RUB'
+        });
+      }
+      saveJSON(KEYS.settings, imported);
+    }
     if (data.alerts) saveJSON(KEYS.alerts, data.alerts);
     if (data.digest) saveJSON(KEYS.digest, normalizeDigest(data.digest));
     if (data.consents) saveJSON(KEYS.consents, data.consents);

@@ -229,6 +229,11 @@
 
 
   function resolveTickerFromInput(raw) {
+    if (typeof Markets !== 'undefined') {
+      return Markets.resolveSecurityFromInput(raw).then(function (item) {
+        return item ? item.ticker : '';
+      });
+    }
     var trimmed = String(raw || '').trim();
     if (!trimmed) return Promise.resolve('');
     var t = normalizeTicker(trimmed);
@@ -237,12 +242,7 @@
     }
     return searchMoexSecurities(trimmed).then(function (items) {
       if (!items.length) return normalizeTicker(trimmed);
-      var want = normalizeTicker(trimmed);
-      var exact = null;
-      for (var i = 0; i < items.length; i++) {
-        if (items[i].ticker === want) { exact = items[i]; break; }
-      }
-      var pick = exact || items[0];
+      var pick = items[0];
       rememberTickerItem(pick);
       return pick.ticker;
     });
@@ -436,6 +436,9 @@
 
 
   function fetchMoexQuote(ticker) {
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      return Promise.resolve({ price: null, changePct: null, usPending: true });
+    }
     return resolveMoexInstrument(ticker).then(function (inst) {
       return moexFetchJson(moexMarketdataUrl(inst)).then(function (json) {
         var quote = parseMoexQuoteFromMd(json);
@@ -592,6 +595,11 @@
     var portfolio = getPortfolio();
     if (!portfolio.positions.length) return Promise.resolve();
     var jobs = portfolio.positions.map(function (p) {
+      if (typeof Markets !== 'undefined' && Markets.isUsPosition(p)) {
+        p.currentPrice = null;
+        delete p.dayChangePct;
+        return Promise.resolve();
+      }
       return fetchMoexQuote(p.ticker).then(function (q) {
         if (q && q.price != null && isFinite(q.price)) p.currentPrice = q.price;
         if (q && q.changePct != null && isFinite(q.changePct)) p.dayChangePct = q.changePct;
@@ -607,6 +615,10 @@
 
   function getTickerSubtitle(ticker) {
     ticker = normalizeTicker(ticker);
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      var us = Markets.getUsTickerInfo(ticker);
+      return us ? us.name : 'Рынок США';
+    }
     if (TICKER_SUBTITLES[ticker]) return TICKER_SUBTITLES[ticker];
     var saved = getTickerNamesMap()[ticker];
     if (saved) return saved;
@@ -747,10 +759,11 @@
     var wrap = btn.closest('.market-tile-wrap');
     var priceEl = btn.querySelector('[data-price]');
     var changeEl = btn.querySelector('[data-change]');
+    var isUs = typeof Markets !== 'undefined' && Markets.isUsTicker(ticker);
     if (!quote || quote.price == null) {
       if (priceEl) priceEl.textContent = '—';
       if (changeEl) {
-        changeEl.textContent = 'нет данных';
+        changeEl.textContent = isUs ? 'Данные США скоро' : 'нет данных';
         changeEl.className = 'market-tile-change muted';
       }
       applyStarBorderHighlight(wrap, quote);
@@ -785,7 +798,9 @@
     var el = document.getElementById('marketTiles');
     if (!el) return;
     destroyMarketTilesBento();
-    var tickers = getMarketTickers();
+    var tickers = typeof Markets !== 'undefined'
+      ? Markets.getVisibleMarketTickers(getMarketTickers())
+      : getMarketTickers();
     if (!tickers.length) {
       el.innerHTML = '<p class="market-tiles-empty">Добавьте тикер в поле выше</p>';
       return;

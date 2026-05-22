@@ -16,7 +16,7 @@
 
   /* Запасная лента при недоступности источников новостей. */
   var DEMO_BRIEFS = [
-    { id: 'b1', ticker: 'SBER', type: 'stock', publishedAt: daysAgo(1), eventType: 'earnings', tone: 'positive', importance: 'high',
+    { id: 'b1', ticker: 'SBER', type: 'stock', market: 'RU', publishedAt: daysAgo(1), eventType: 'earnings', tone: 'positive', importance: 'high',
       title: 'Сбербанк: I квартал сильнее ожиданий рынка',
       summary: 'Чистая прибыль и ROE превысили консенсус-прогноз. Розничный блок тянет результат, резервы растут умеренно — дивидендный сценарий без сюрпризов.',
       sourceUrl: 'https://www.sberbank.com/ru/investor-relations' },
@@ -72,10 +72,26 @@
       title: 'Норникель: никель с премией, ремонты в календаре',
       summary: 'Цены LME поддерживают маржу выше среднего за пять лет. Компания обновила график плановых остановок — рынок оценивает влияние на квартальный объём.',
       sourceUrl: 'https://www.nornickel.ru/investors/' },
-    { id: 'b15', ticker: 'ROSN', type: 'stock', publishedAt: hoursAgo(7), eventType: 'dividend', tone: 'neutral', importance: 'low',
+    { id: 'b15', ticker: 'ROSN', type: 'stock', market: 'RU', publishedAt: hoursAgo(7), eventType: 'dividend', tone: 'neutral', importance: 'low',
       title: 'Роснефть: календарь раскрытий без сюрпризов',
       summary: 'Даты МСФО и собрания акционеров подтверждены, дивидендную политику не меняли. Оценка по-прежнему завязана на Urals и налог на сверхприбыль.',
-      sourceUrl: 'https://www.rosneft.ru/investors/' }
+      sourceUrl: 'https://www.rosneft.ru/investors/' },
+    { id: 'b16', ticker: 'AAPL', type: 'stock', market: 'US', publishedAt: hoursAgo(3), eventType: 'earnings', tone: 'positive', importance: 'high',
+      title: 'Apple: ожидания по выручке сервисов выше консенсуса',
+      summary: 'Аналитики повышают прогноз по подпискам и экосистеме. Рынок ждёт деталей маржинальности iPhone в следующем квартале.',
+      sourceUrl: 'https://www.apple.com/newsroom/' },
+    { id: 'b17', ticker: 'NVDA', type: 'stock', market: 'US', publishedAt: hoursAgo(5), eventType: 'rating', tone: 'positive', importance: 'critical',
+      title: 'NVIDIA: спрос на ускорители ИИ остаётся ключевым драйвером',
+      summary: 'Инвесторы обсуждают очередность поставок и долю в дата-центрах. Волатильность высокая, но интерес к сектору сохраняется.',
+      sourceUrl: 'https://nvidianews.nvidia.com/' },
+    { id: 'b18', ticker: 'MSFT', type: 'stock', market: 'US', publishedAt: daysAgo(1), eventType: 'earnings', tone: 'neutral', importance: 'medium',
+      title: 'Microsoft: облако и Copilot в фокусе отчётности',
+      summary: 'Рынок смотрит на темпы роста Azure и монетизацию ИИ-функций. Рекомендации домов в основном удерживают позитивный взгляд.',
+      sourceUrl: 'https://news.microsoft.com/' },
+    { id: 'b19', ticker: 'TSLA', type: 'stock', market: 'US', publishedAt: hoursAgo(8), eventType: 'macro', tone: 'negative', importance: 'high',
+      title: 'Tesla: давление на маржу из-за ценовой конкуренции',
+      summary: 'Инвесторы обсуждают скидки и объёмы поставок. Краткосрочно бумага чувствительна к макро и новостям по автономному вождению.',
+      sourceUrl: 'https://www.tesla.com/' }
   ];
 
   var BRIEF_BODIES_BY_ID = {
@@ -93,6 +109,10 @@
     b12: 'Новатэк после отчётности остаётся в фокусе LNG-темы: большинство брокеров сохранили рекомендации «покупать», спор развернулся вокруг итогового дивиденда на акцию, а не вокруг операционного провала. Проекты по сжиженному газу по-прежнему задают долгосрочный нарратив.\n\nРынок обсуждает валютную составляющую выручки: укрепление рубля формально давит на отчётность в рублях, но частично компенсируется hedging и контрактной структурой. Слабый рубль, наоборот, поддерживает дивидендную историю для локальных держателей.\n\nБлижайшие катализаторы — guidance по объёмам отгрузки и любые новости по санкционным ограничениям на оборудование. Это акция с премией за качество бизнеса и дисконтом за геополитику.',
     b13: 'Торговая сессия на МосБирже завершилась без драматургии: IMOEX закрылся ближе к середине недельного диапазона. Лидировали SBER и LKOH, металлурги и отдельные имена второго эшелона отставали — картина типичная для «выборочного» риск-он.\n\nОбъём торгов сопоставим со средним за пять сессий: крупных перераспределений между акциями и облигациями не видно. Завтра на календаре инфляционная статистика и аукцион ОФЗ — оба события могут задать тон открытию.\n\nЕсли вы торгуете индексными идеями, следите за динамикой ставок: при росте доходности длинных ОФЗ акции часто теряют краткосрочный импульс, даже при хороших микроновостях по отдельным эмитентам.',
     b14: 'Норникель обновил календарь плановых ремонтов на квартал — рынок оценивает, насколько остановки срежут объём при текущих ценах на никель с премией к LME. Маржа сегмента остаётся выше среднего за пять лет, что поддерживает оптимизм по дивидендам.\n\nESG-инвесторы отмечают прогресс в раскрытии выбросов, но ждут цифр по инвестициям в «зелёную» металлургию — без них премия за устойчивость не расширится. Для чисто финансового инвестора важнее цикл LME и курс рубля.\n\nКраткосрочно бумага может ходить в корреляции с глобальными металлургическими ETF; долгосрочно — в связке с политикой выплат и дисциплиной долга.',
+    b16: 'Apple остаётся в центре внимания перед отчётностью: рынок закладывает устойчивый рост сервисной выручки. Для держателей важно отделить краткосрочные ожидания по iPhone от долгосрочной модели экосистемы.\n\nВолатильность по технологическому сектору США остаётся повышенной — новости по ставке ФРС и мультипликаторам влияют на весь кластер.',
+    b17: 'NVIDIA продолжает задавать тон сектору полупроводников: спрос на GPU для дата-центров остаётся главной темой для инвесторов. Любые сигналы о сроках поставок или конкуренции быстро отражаются в котировках.\n\nПозиция в портфеле имеет смысл только при понимании цикличности и концентрации риска в одном имени.',
+    b18: 'Microsoft готовится к очередному раскрытию: рынок ждёт цифр по облаку и прогрессу в монетизации ИИ-инструментов. Исторически бумага менее волатильна, чем чистые «чиповые» истории, но чувствительна к оценке сектора в целом.',
+    b19: 'Tesla снова в фокусе из-за ценовой политики и темпов поставок. Инвесторы обсуждают, насколько скидки съедают маржу и как это соотносится с долгосрочной стратегией по автономному вождению.\n\nДля краткосрочного трейда бумага остаётся одной из самых новостных в индексе технологических компаний.',
     b15: 'Роснефть опубликовала обновлённый календарь корпоративных событий: даты раскрытия МСФО и годового собрания без сдвигов, изменений в дивидендной политике не анонсировали. Для рынка это «техническая» новость, но полезная для планирования.\n\nОценка акций по-прежнему завязана на Urals и налог на сверхприбыль — любой сигнал по ставке или льготам двигает модели быстрее, чем операционные мелочи. В секторе Роснефть часто воспринимают как ставку на дисциплину государственного участия и дивидендный поток.\n\nЕсли бумага есть в портфеле ради дохода, сверьте её вес с другими «нефтяными» именами — концентрация в одном факторе (цена нефти) легко превращается в скрытый макро-риск.'
   };
 
@@ -811,6 +831,7 @@
   var state = {
     tab: 'briefing',
     horizon: 'today',
+    newsMarketFilter: 'all',
     chartHorizon: 'week',
     imoexHorizon: 'month',
     chartTicker: '',
@@ -1065,9 +1086,13 @@
 
 
   function renderBriefMetaHtml(b) {
+    b = normalizeBriefMarket(b);
     var toneClass = 'tag-tone-' + (b.tone || 'neutral');
+    var marketLabel = typeof Markets !== 'undefined' ? Markets.marketBadgeLabel(b.market) : 'Россия';
+    var marketCls = b.market === 'US' ? 'us' : 'ru';
     return (
       '<span class="ticker">' + escapeHtml(b.ticker) + '</span>' +
+      '<span class="market-badge market-badge--' + marketCls + '">' + escapeHtml(marketLabel) + '</span>' +
       '<span class="tag tag-importance">' + escapeHtml(IMPORTANCE_LABELS[b.importance] || b.importance) + '</span>' +
       '<span class="tag ' + escapeHtml(toneClass) + '">' + escapeHtml(TONE_LABELS[b.tone] || b.tone) + '</span>' +
       '<span class="muted">' + escapeHtml(new Date(b.publishedAt).toLocaleString('ru-RU', {
@@ -1142,8 +1167,9 @@
 
   function getPositionTickers() {
     var map = {};
-    getWatchlist().forEach(function (t) {
-      t = normalizeTicker(t);
+    getWatchlist().forEach(function (item) {
+      var n = typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(item) : { ticker: item };
+      var t = normalizeTicker(n && n.ticker);
       if (t) map[t] = true;
     });
     getPortfolio().positions.forEach(function (p) {
@@ -1166,11 +1192,20 @@
 
 
 
+  function normalizeBriefMarket(b) {
+    if (!b) return b;
+    if (b.market === 'US' || b.market === 'RU') return b;
+    var mk = typeof Markets !== 'undefined' && Markets.isUsTicker(b.ticker) ? 'US' : 'RU';
+    return Object.assign({}, b, { market: mk });
+  }
+
   function filterBriefsForBriefingFrom(briefs) {
     var horizon = state.horizon;
     var scope = getSettings().briefingScope;
     var positions = getPositionTickers();
-    return briefs.filter(function (b) {
+    var list = briefs.map(normalizeBriefMarket);
+    if (typeof Markets !== 'undefined') list = Markets.filterBriefsByMarket(list);
+    return list.filter(function (b) {
       if (!isInHorizon(b.publishedAt, horizon)) return false;
       if (scope === 'mine' && positions.length) {
         return positions.indexOf(normalizeTicker(b.ticker)) !== -1;
@@ -1237,10 +1272,44 @@
         return escapeHtml('Сводка по вашим бумагам: ' + positions.join(', ') + '.') +
           '<br>' + escapeHtml(sourceLine);
       }
-      return escapeHtml('Добавьте бумаги в наблюдение или портфель — сводка покажет только их.') +
+      return escapeHtml('Добавьте интересующие позиции, чтобы видеть только релевантные события.') +
         '<br>' + escapeHtml(sourceLine);
     }
-    return escapeHtml(sourceLine);
+    return escapeHtml('Сейчас показана общая сводка по выбранным рынкам. Добавьте интересующие позиции, чтобы видеть только релевантные события.') +
+      '<br>' + escapeHtml(sourceLine);
+  }
+
+  function renderNewsMarketFilterTabs() {
+    var el = document.getElementById('newsMarketFilterTabs');
+    if (!el) return;
+    var markets = typeof Markets !== 'undefined' ? Markets.getMarketsEnabled() : { ru: true, us: false };
+    if (!markets.ru && !markets.us) {
+      el.hidden = true;
+      return;
+    }
+    if (markets.ru && markets.us) {
+      el.hidden = false;
+      el.querySelectorAll('[data-news-market]').forEach(function (btn) {
+        btn.hidden = false;
+        btn.classList.toggle('active', btn.getAttribute('data-news-market') === (state.newsMarketFilter || 'all'));
+      });
+      return;
+    }
+    el.hidden = false;
+    el.querySelectorAll('[data-news-market]').forEach(function (btn) {
+      var code = btn.getAttribute('data-news-market');
+      if (code === 'all') {
+        btn.hidden = true;
+        return;
+      }
+      if (markets.ru && !markets.us) btn.hidden = code === 'US';
+      else if (markets.us && !markets.ru) btn.hidden = code === 'RU';
+      else btn.hidden = false;
+      btn.classList.toggle('active', (markets.ru && code === 'RU') || (markets.us && code === 'US'));
+    });
+    if (!markets.ru || !markets.us) {
+      state.newsMarketFilter = markets.us && !markets.ru ? 'US' : 'RU';
+    }
   }
 
 
@@ -1271,6 +1340,7 @@
     var legacyEl = document.getElementById('briefingList');
     var hint = document.getElementById('briefingFilterHint');
     destroyBriefingBento();
+    renderNewsMarketFilterTabs();
     if (hint) {
       hint.innerHTML = '<p class="briefing-data-notice hint-frame">' + getBriefingHintHtml() + '</p>';
     }
@@ -1289,7 +1359,7 @@
     renderBriefListInto(topEl, topList, 'Нет главных событий за выбранный горизонт.');
     renderBriefListInto(myEl, myList, positions.length
       ? 'Нет новостей по вашим бумагам за этот период.'
-      : 'Добавьте тикеры в наблюдение или портфель — здесь появятся связанные новости.');
+      : 'Добавьте интересующие позиции — здесь появятся связанные новости.');
     initBriefingBento();
     updateStats();
   }
@@ -1304,9 +1374,14 @@
 
   function applyFeedFilters(briefs) {
     var f = getFilters();
-    var wl = getWatchlist();
+    var wl = getWatchlist().map(function (item) {
+      var n = typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(item) : { ticker: item };
+      return normalizeTicker(n && n.ticker);
+    });
     var q = (f.search || '').toLowerCase();
-    var filtered = briefs.filter(function (b) {
+    var filtered = briefs.map(normalizeBriefMarket);
+    if (typeof Markets !== 'undefined') filtered = Markets.filterBriefsByMarket(filtered);
+    filtered = filtered.filter(function (b) {
       if (f.type && b.type !== f.type) return false;
       if (f.asset && normalizeTicker(b.ticker).indexOf(normalizeTicker(f.asset)) === -1) return false;
       if (f.eventType && b.eventType !== f.eventType) return false;

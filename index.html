@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250611" />
+  <link rel="stylesheet" href="./styles.css?v=20250612" />
 </head>
 <body>
   <div class="app">
@@ -122,6 +122,11 @@
             <button type="button" data-horizon="today" class="active">Сегодня</button>
             <button type="button" data-horizon="week">Неделя</button>
             <button type="button" data-horizon="month">Месяц</button>
+          </div>
+          <div class="market-filter-tabs" id="newsMarketFilterTabs" role="tablist" aria-label="Рынок в сводке" hidden>
+            <button type="button" data-news-market="all" class="active">Все</button>
+            <button type="button" data-news-market="RU">Россия</button>
+            <button type="button" data-news-market="US">США</button>
           </div>
           <div id="briefingFilterHint" class="briefing-filter-hint"></div>
 
@@ -343,6 +348,26 @@
             </div>
           </div>
 
+          <div class="glass settings-block market-settings-block">
+            <h3>Рынки</h3>
+            <p class="muted hint-frame">Выберите рынки, которые учитывать в сводке, поиске бумаг и портфеле.</p>
+            <div class="market-settings-grid" id="marketSettingsGrid">
+              <label class="market-setting-card">
+                <input type="checkbox" id="marketRu" checked />
+                <span class="market-setting-card__body">
+                  <span class="market-setting-card__title">Российский рынок</span>
+                </span>
+              </label>
+              <label class="market-setting-card">
+                <input type="checkbox" id="marketUs" />
+                <span class="market-setting-card__body">
+                  <span class="market-setting-card__title">Рынок США</span>
+                </span>
+              </label>
+            </div>
+            <p class="muted market-settings-hint hint-frame">После включения рынка США в поиске появятся американские акции, а в сводке — события по выбранным компаниям.</p>
+          </div>
+
           <div class="glass settings-block">
             <h3>Сводка</h3>
             <label class="muted">Формат</label>
@@ -510,12 +535,13 @@
   <script type="module" src="./firebase-init.mjs"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script src="./nav-books.js?v=20250608"></script>
-  <script src="./storage.js?v=20250527"></script>
-  <script src="./ui.js?v=20250519"></script>
-  <script src="./news.js?v=20250524"></script>
-  <script src="./moex.js?v=20250520"></script>
-  <script src="./portfolio.js?v=20250526"></script>
-  <script src="./firebase-sync.js?v=20250519"></script>
-  <script src="./app.js?v=20250519"></script>
+  <script src="./markets.js?v=20250612"></script>
+  <script src="./storage.js?v=20250612"></script>
+  <script src="./ui.js?v=20250612"></script>
+  <script src="./news.js?v=20250612"></script>
+  <script src="./moex.js?v=20250612"></script>
+  <script src="./portfolio.js?v=20250612"></script>
+  <script src="./firebase-sync.js?v=20250612"></script>
+  <script src="./app.js?v=20250612"></script>
 </body>
 </html>

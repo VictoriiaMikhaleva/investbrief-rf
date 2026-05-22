@@ -63,6 +63,57 @@
     if (telegram) telegram.value = (getAlerts().telegramChat || '');
     var digestTime = document.getElementById('digestTime');
     if (digestTime) digestTime.value = getDigest().time || '08:00';
+    loadMarketsToUI();
+  }
+
+  function updateMarketSettingsControls() {
+    var ruEl = document.getElementById('marketRu');
+    var usEl = document.getElementById('marketUs');
+    if (!ruEl || !usEl) return;
+    if (!usEl.checked) {
+      ruEl.checked = true;
+      ruEl.disabled = true;
+    } else {
+      ruEl.disabled = false;
+    }
+  }
+
+  function loadMarketsToUI() {
+    var m = getSettings().markets || { ru: true, us: false };
+    var ruEl = document.getElementById('marketRu');
+    var usEl = document.getElementById('marketUs');
+    if (!ruEl || !usEl) return;
+    ruEl.checked = !!m.ru;
+    usEl.checked = !!m.us;
+    updateMarketSettingsControls();
+  }
+
+  function saveMarketsFromUI() {
+    var ruEl = document.getElementById('marketRu');
+    var usEl = document.getElementById('marketUs');
+    if (!ruEl || !usEl) return;
+    var ru = ruEl.checked;
+    var us = usEl.checked;
+    if (!ru && !us) {
+      showToast('Должен быть выбран хотя бы один рынок.');
+      loadMarketsToUI();
+      return;
+    }
+    var s = getSettings();
+    setSettings({
+      briefFormat: s.briefFormat,
+      briefingScope: s.briefingScope,
+      essayStyle: s.essayStyle,
+      riskProfile: s.riskProfile,
+      markets: { ru: ru, us: us },
+      baseCurrency: us && !ru ? 'USD' : 'RUB'
+    });
+    updateMarketSettingsControls();
+    if (typeof renderNewsMarketFilterTabs === 'function') renderNewsMarketFilterTabs();
+    renderHomePage();
+    renderWatchlist();
+    renderMarketTiles();
+    renderPortfolio();
   }
 
 
@@ -79,7 +130,9 @@
       briefFormat: briefFormatEl ? briefFormatEl.value : s.briefFormat,
       briefingScope: scopeEl ? scopeEl.value : s.briefingScope,
       essayStyle: briefFormatEl ? briefFormatEl.value : s.briefFormat,
-      riskProfile: s.riskProfile || 'balanced'
+      riskProfile: s.riskProfile || 'balanced',
+      markets: s.markets,
+      baseCurrency: s.baseCurrency
     });
     var digestEmail = document.getElementById('digestEmailSettings');
     if (digestEmail) {
@@ -133,6 +186,34 @@
       });
       renderHomePage();
     });
+
+    var newsMarketTabs = document.getElementById('newsMarketFilterTabs');
+    if (newsMarketTabs) {
+      newsMarketTabs.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-news-market]');
+        if (!btn || btn.hidden) return;
+        state.newsMarketFilter = btn.getAttribute('data-news-market');
+        newsMarketTabs.querySelectorAll('[data-news-market]').forEach(function (b) {
+          b.classList.toggle('active', b === btn);
+        });
+        renderHomePage();
+      });
+    }
+
+    var marketRu = document.getElementById('marketRu');
+    var marketUs = document.getElementById('marketUs');
+    if (marketRu) {
+      marketRu.addEventListener('change', function () {
+        saveMarketsFromUI();
+        showToast('Настройки сохранены');
+      });
+    }
+    if (marketUs) {
+      marketUs.addEventListener('change', function () {
+        saveMarketsFromUI();
+        showToast('Настройки сохранены');
+      });
+    }
 
     document.getElementById('marketTiles').addEventListener('click', function (e) {
       var removeBtn = e.target.closest('[data-remove-ticker]');

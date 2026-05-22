@@ -41,11 +41,14 @@
         return;
       }
       list.innerHTML = acState.items.map(function (item, i) {
+        var kindText = typeof Markets !== 'undefined' && item.market === 'US'
+          ? Markets.marketBadgeLabel('US')
+          : kindLabel(item.kind || item.type);
         return (
           '<li role="option" class="ticker-ac-item' + (i === acState.active ? ' active' : '') + '" data-secid="' + escapeHtml(item.ticker) + '">' +
             '<span class="ticker-ac-secid">' + escapeHtml(item.ticker) + '</span>' +
-            '<span class="ticker-ac-name">' + escapeHtml(item.name) + '</span>' +
-            '<span class="ticker-ac-kind">' + escapeHtml(kindLabel(item.kind)) + '</span>' +
+            '<span class="ticker-ac-name">' + escapeHtml(item.name || '') + '</span>' +
+            '<span class="ticker-ac-kind">' + escapeHtml(kindText) + '</span>' +
           '</li>'
         );
       }).join('');
@@ -67,12 +70,22 @@
         return;
       }
       if (v.length < 2) {
-        acState.items = searchLocalTickers(v).slice(0, 12);
+        var shortItems = [];
+        if (typeof Markets === 'undefined' || Markets.isMarketEnabled('RU')) {
+          shortItems = shortItems.concat(searchLocalTickers(v).map(function (it) {
+            return { ticker: it.ticker, name: it.name, kind: it.kind, market: 'RU', currency: 'RUB' };
+          }));
+        }
+        if (typeof Markets !== 'undefined' && Markets.isMarketEnabled('US')) {
+          shortItems = shortItems.concat(Markets.searchUsSecurities(v));
+        }
+        acState.items = shortItems.slice(0, 12);
         acState.active = acState.items.length ? 0 : -1;
         renderList();
         return;
       }
-      searchMoexSecurities(v).then(function (items) {
+      var searchFn = typeof Markets !== 'undefined' ? Markets.searchSecurities : searchMoexSecurities;
+      searchFn(v).then(function (items) {
         acState.items = items;
         acState.active = items.length ? 0 : -1;
         renderList();
@@ -200,7 +213,14 @@
 
 
 
-  function formatChartPrice(value, ticker) {
+  function formatChartPrice(value, ticker, currency) {
+    if (value == null || !isFinite(Number(value))) return '—';
+    if (typeof Markets !== 'undefined' && currency === 'USD') {
+      return Markets.formatMoneyValue(value, 'USD');
+    }
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      return Markets.formatMoneyValue(value, 'USD');
+    }
     if (ticker === IMOEX_SECID || ticker === 'MOEX') {
       return Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' п.';
     }

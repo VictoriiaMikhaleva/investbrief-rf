@@ -61,6 +61,7 @@
     }
 
     if (typeof loadProfileToUI === 'function') loadProfileToUI();
+    if (typeof loadMarketsToUI === 'function') loadMarketsToUI();
     if (typeof loadFiltersToUI === 'function') loadFiltersToUI();
     if (typeof renderWatchlist === 'function') renderWatchlist();
     if (typeof renderHomePage === 'function') renderHomePage();
