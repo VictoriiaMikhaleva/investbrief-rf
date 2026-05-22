@@ -646,9 +646,8 @@
   function formatBarChartDate(point) {
     if (!point) return '';
     if (point.dateLabel) return String(point.dateLabel);
-    var d = point.date ? String(point.date).slice(0, 10) : '';
-    if (d.length >= 10) {
-      return d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(2, 4);
+    if (typeof formatTradeDateRu === 'function' && point.date) {
+      return formatTradeDateRu(point.date, !!point.dateWithYear);
     }
     return point.label ? String(point.label) : '';
   }

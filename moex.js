@@ -1285,13 +1285,18 @@
 
 
 
-  function formatVolTradeDate(iso) {
+  function formatVolTradeDate(iso, includeYear) {
     if (!iso) return '—';
+    if (typeof formatTradeDateRu === 'function') {
+      var lbl = formatTradeDateRu(iso, !!includeYear);
+      return lbl || '—';
+    }
     var parts = String(iso).trim().split('-');
     if (parts.length >= 3) {
       var day = parts[2].replace(/T.*/, '').slice(0, 2);
       var month = parts[1];
-      return day + '.' + month;
+      var base = day + '.' + month;
+      return includeYear ? base + '.' + parts[0] : base;
     }
     return String(iso);
   }
@@ -1404,8 +1409,9 @@
     el.className = 'imoex-volume-bars imoex-volume-bars--vertical';
     el.setAttribute('role', 'img');
     el.setAttribute('aria-label', 'Оборот IMOEX за 7 торговых дней, млрд ₽');
+    var withYear = typeof tradeDateSeriesNeedsYear === 'function' && tradeDateSeriesNeedsYear(days);
     el.innerHTML = days.map(function (d) {
-      var dt = formatVolTradeDate(d.date);
+      var dt = formatVolTradeDate(d.date, withYear);
       var bln = formatBlnRub(d.value);
       var pct = max > 0 ? Math.max(6, (d.value / max) * 100) : 0;
       return (

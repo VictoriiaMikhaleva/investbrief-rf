@@ -512,14 +512,48 @@
     return null;
   }
 
+  /** Нужен год в подписи, если период > 1 года или затрагивает несколько календарных лет. */
+  function tradeDateSeriesNeedsYear(rows) {
+    if (!rows || rows.length < 2) return false;
+    var first = String(rows[0].date || rows[0]).slice(0, 10);
+    var last = String(rows[rows.length - 1].date || rows[rows.length - 1]).slice(0, 10);
+    if (first.length < 10 || last.length < 10) return false;
+    if (first.slice(0, 4) !== last.slice(0, 4)) return true;
+    var t0 = new Date(first + 'T12:00:00').getTime();
+    var t1 = new Date(last + 'T12:00:00').getTime();
+    if (isNaN(t0) || isNaN(t1)) return false;
+    return (t1 - t0) > 365 * 24 * 60 * 60 * 1000;
+  }
+
+
+
+  /** Дата торгов: 23.05 или 23.05.2026 */
+  function formatTradeDateRu(iso, includeYear) {
+    var s = String(iso || '').slice(0, 10);
+    if (s.length < 10) return '';
+    var dd = s.slice(8, 10);
+    var mm = s.slice(5, 7);
+    if (includeYear) return dd + '.' + mm + '.' + s.slice(0, 4);
+    return dd + '.' + mm;
+  }
+
+
+
   function sliceVolumeSeries(dailyHistory, days) {
     var rows = dailyHistory.filter(function (h) { return h.value != null && h.value > 0; });
-    return rows.slice(-days).map(function (h) {
+    var slice = rows.slice(-days);
+    var withYear = tradeDateSeriesNeedsYear(slice);
+    return slice.map(function (h) {
       var iso = String(h.date || '').slice(0, 10);
-      var label = iso.length >= 10
-        ? iso.slice(8, 10) + '.' + iso.slice(5, 7)
-        : '';
-      return { t: h.t, v: h.value / 1e9, date: iso, label: label };
+      var label = formatTradeDateRu(iso, withYear);
+      return {
+        t: h.t,
+        v: h.value / 1e9,
+        date: iso,
+        label: label,
+        dateLabel: label,
+        dateWithYear: withYear
+      };
     });
   }
 
@@ -827,4 +861,6 @@
   window.buildPassiveIncome5y = buildPassiveIncome5y;
   window.formatDivMonthScheduleHtml = formatDivMonthScheduleHtml;
   window.formatDividendChartInfoHtml = formatDividendChartInfoHtml;
+  window.formatTradeDateRu = formatTradeDateRu;
+  window.tradeDateSeriesNeedsYear = tradeDateSeriesNeedsYear;
 })();
