@@ -629,9 +629,106 @@
 
 
 
+  function formatBarChartValue(v, opts) {
+    if (v == null || !isFinite(v) || v <= 0) return '';
+    opts = opts || {};
+    if (opts.valueMode === 'bln') {
+      return v >= 10 ? String(Math.round(v)) : v.toFixed(1).replace('.', ',');
+    }
+    if (v >= 1000) return Math.round(v).toLocaleString('ru-RU');
+    if (v >= 100) return String(Math.round(v));
+    if (v >= 10) return v.toFixed(1).replace('.', ',');
+    return v.toFixed(2).replace('.', ',');
+  }
+
+
+
+  function drawBarValueLabel(ctx, text, cx, topY, plotWidth) {
+    if (!text) return;
+    ctx.save();
+    ctx.font = '600 10px Golos Text, sans-serif';
+    var m = ctx.measureText(text);
+    var padX = 5;
+    var bw = m.width + padX * 2;
+    var bh = 14;
+    var maxW = plotWidth || 280;
+    var bx = Math.max(2, cx - bw / 2);
+    var by = Math.max(2, topY - bh - 3);
+    if (bx + bw > maxW - 2) bx = maxW - bw - 2;
+    ctx.fillStyle = 'rgba(247, 244, 238, 0.95)';
+    ctx.strokeStyle = 'rgba(61, 92, 71, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(bx, by, bw, bh, 4);
+    } else {
+      ctx.rect(bx, by, bw, bh);
+    }
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#1F1E1C';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, bx + bw / 2, by + bh / 2);
+    ctx.restore();
+  }
+
+
+
+  function bindBarChartMagnet(canvas) {
+    if (!canvas || canvas._barMagnetBound) return;
+    canvas._barMagnetBound = true;
+    var parent = canvas.parentElement;
+    if (parent && !parent.classList.contains('bar-chart-wrap')) {
+      parent.classList.add('bar-chart-wrap');
+    }
+
+    function pickBar(clientX) {
+      var st = canvas._barChartState;
+      if (!st || !st.bars.length) return -1;
+      var rect = canvas.getBoundingClientRect();
+      var mx = clientX - rect.left;
+      var best = -1;
+      var bestDist = Infinity;
+      st.bars.forEach(function (b) {
+        var cx = b.x + b.barW / 2;
+        var dist = Math.abs(mx - cx);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = b.index;
+        }
+      });
+      var magnet = st.bars[0] ? Math.max(22, st.bars[0].barW * 1.4) : 24;
+      return bestDist <= magnet ? best : -1;
+    }
+
+    function redraw(hoverIdx) {
+      var st = canvas._barChartState;
+      if (!st) return;
+      var opts = Object.assign({}, st.baseOptions, { hoverIndex: hoverIdx, _redraw: true });
+      drawFullBarChart(canvas, st.series, opts);
+    }
+
+    canvas.addEventListener('mousemove', function (e) {
+      var hit = pickBar(e.clientX);
+      var st = canvas._barChartState;
+      if (!st) return;
+      if (hit !== st.hover) redraw(hit);
+    });
+    canvas.addEventListener('mouseleave', function () {
+      var st = canvas._barChartState;
+      if (st && st.hover !== -1) redraw(-1);
+    });
+  }
+
+
+
   function drawFullBarChart(canvas, series, options) {
     options = options || {};
     if (!canvas) return;
+    var prevHover = options._redraw && canvas._barChartState ? canvas._barChartState.hover : -1;
+    var hoverIndex = options.hoverIndex != null ? options.hoverIndex : prevHover;
+
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var w = Math.max(canvas.clientWidth || 280, 200);
     var h = Math.max(canvas.clientHeight || 140, 100);
@@ -641,6 +738,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     if (!series || !series.length) {
+      canvas._barChartState = null;
       ctx.fillStyle = '#6B6B6B';
       ctx.font = '13px Golos Text, sans-serif';
       ctx.textAlign = 'center';
@@ -649,48 +747,96 @@
     }
     var vals = series.map(function (p) { return p.v != null ? p.v : (p.y != null ? p.y : 0); });
     var max = Math.max.apply(null, vals.concat([0.001]));
-    var pad = { l: 36, r: 12, t: 14, b: 28 };
+    var dense = vals.length > 14;
+    var alwaysValues = options.showValues === true;
+    var showValues = options.showValues !== false && (alwaysValues || !dense);
+    var pad = { l: 36, r: 12, t: showValues ? 22 : 14, b: 28 };
     var plotW = w - pad.l - pad.r;
     var plotH = h - pad.t - pad.b;
-    var barGap = 4;
-    var barW = Math.max(6, (plotW - barGap * (vals.length - 1)) / vals.length);
+    var barGap = vals.length > 20 ? 2 : 4;
+    var barW = Math.max(4, (plotW - barGap * (vals.length - 1)) / vals.length);
     var color = options.color || '#9A7B4F';
     var forecastColor = options.forecastColor || '#6B7A5A';
+    var barsMeta = [];
+
     vals.forEach(function (v, i) {
-      var bh = Math.max(3, (v / max) * plotH);
+      var isHover = i === hoverIndex;
+      var lift = isHover ? 5 : 0;
+      var bh = Math.max(3, (v / max) * plotH) * (isHover ? 1.06 : 1);
       var x = pad.l + i * (barW + barGap);
-      var y = pad.t + plotH - bh;
-      ctx.fillStyle = series[i].forecast ? forecastColor : color;
+      var y = pad.t + plotH - bh - lift;
+      var barColor = series[i].forecast ? forecastColor : color;
+      ctx.globalAlpha = hoverIndex >= 0 && !isHover ? 0.55 : 1;
+      ctx.fillStyle = barColor;
+      if (isHover) {
+        ctx.shadowColor = 'rgba(74, 115, 86, 0.35)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 2;
+      }
       ctx.fillRect(x, y, barW, bh);
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.globalAlpha = 1;
+
+      barsMeta.push({ x: x, y: y, barW: barW, bh: bh, index: i, v: v });
+
+      var showVal = v > 0 && (showValues || isHover);
+      if (showVal) {
+        var valText = series[i].valueLabel != null
+          ? String(series[i].valueLabel)
+          : formatBarChartValue(v, options);
+        if (valText) drawBarValueLabel(ctx, valText, x + barW / 2, y, w);
+      }
       if (options.showLabels !== false) {
         var lbl = series[i].label || String(i + 1);
-        ctx.fillStyle = '#6B6B6B';
-        ctx.font = '9px Golos Text, sans-serif';
+        ctx.fillStyle = isHover ? '#1F1E1C' : '#6B6B6B';
+        ctx.font = (isHover ? '600 ' : '') + '9px Golos Text, sans-serif';
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
         ctx.fillText(lbl, x + barW / 2, h - 6);
       }
     });
+
     if (options.ySuffix) {
       ctx.fillStyle = '#6B6B6B';
       ctx.font = '10px Golos Text, sans-serif';
       ctx.textAlign = 'right';
+      ctx.textBaseline = 'alphabetic';
       ctx.fillText(options.ySuffix, pad.l - 6, pad.t + 10);
     }
+
+    var baseOptions = {};
+    Object.keys(options).forEach(function (k) {
+      if (k !== 'hoverIndex' && k !== '_redraw') baseOptions[k] = options[k];
+    });
+    canvas._barChartState = {
+      series: series,
+      baseOptions: baseOptions,
+      bars: barsMeta,
+      hover: hoverIndex
+    };
+    if (!options._redraw) bindBarChartMagnet(canvas);
   }
+
+
 
   function buildDividendRubSeries(yearly, forecast) {
     var bars = (yearly || []).map(function (y) {
+      var v = y.totalDiv > 0 ? y.totalDiv : 0;
       return {
-        v: y.totalDiv > 0 ? y.totalDiv : 0,
+        v: v,
         label: String(y.year).slice(-2),
-        forecast: false
+        forecast: false,
+        valueLabel: v > 0 ? formatBarChartValue(v, {}) : ''
       };
     });
     if (forecast && forecast.amount != null && isFinite(forecast.amount)) {
+      var fv = forecast.amount;
       bars.push({
-        v: forecast.amount,
+        v: fv,
         label: '12м',
-        forecast: true
+        forecast: true,
+        valueLabel: formatBarChartValue(fv, {})
       });
     }
     return bars;
@@ -736,19 +882,32 @@
         drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
           color: '#9A7B4F',
           forecastColor: '#4A7356',
-          ySuffix: '₽/акц.'
+          ySuffix: '₽/акц.',
+          showValues: true
         });
       }
       if (divNote) {
         var fc = a.divForecast;
-        divNote.textContent = (a.divYieldByYear || []).map(function (y) {
-          return y.year + ': ' + (y.totalDiv > 0 ? y.totalDiv.toFixed(2) + ' ₽/акц.' : '—') +
-            (y.yieldPct != null ? ' (' + formatDivYieldPct(y.yieldPct) + ')' : '');
-        }).join(' · ') +
-          (fc && fc.amount != null ? ' · Прогноз 12 мес.: ' + formatDivRubPerShare(fc.amount) +
-            (fc.source ? ' (' + fc.source + ')' : '') : '');
+        divNote.textContent = (fc && fc.source ? fc.source + ' · ' : '') +
+          'Наведите на столбец — подсветка и сумма';
       }
-      if (volCanvas) drawFullBarChart(volCanvas, a.volumeByDay || [], { color: '#6B7A5A', ySuffix: 'млрд ₽', showLabels: false });
+      if (volCanvas) {
+        var volBars = (a.volumeByDay || []).map(function (p) {
+          return {
+            v: p.v,
+            label: p.label || '',
+            valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
+            forecast: false
+          };
+        });
+        drawFullBarChart(volCanvas, volBars, {
+          color: '#6B7A5A',
+          ySuffix: 'млрд ₽',
+          valueMode: 'bln',
+          showLabels: false,
+          showValues: false
+        });
+      }
       if (volNote) volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) + ' торговых дней';
       return fetchMoexHistory(ticker, horizon);
     }).then(function (r) {
@@ -779,9 +938,9 @@
     var kpisEl = document.getElementById('portfolioInsightsKpis');
     var priceCanvas = document.getElementById('portfolioInsightPriceChart');
     var divCanvas = document.getElementById('portfolioInsightDivChart');
-    var incomeCanvas = document.getElementById('portfolioInsightIncomeChart');
+    var volCanvas = document.getElementById('portfolioInsightVolChart');
     var divNote = document.getElementById('portfolioInsightDivNote');
-    var incomeNote = document.getElementById('portfolioInsightIncomeNote');
+    var volNote = document.getElementById('portfolioInsightVolNote');
     if (titleEl) titleEl.textContent = ticker;
     if (metaEl) metaEl.textContent = 'Загрузка…';
 
@@ -816,56 +975,39 @@
           '<div class="insight-kpi"><span class="insight-kpi-lbl">На позицию</span><span class="insight-kpi-val">' + escapeHtml(forecastTotal != null ? forecastTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>' +
           '<div class="insight-kpi"><span class="insight-kpi-lbl">Выплачено 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(paidTotal != null ? paidTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>';
       }
-      var schedule = a.monthlyForecast;
-      var buyDate = pos.buyDate || '';
-      var passive5y = typeof buildPassiveIncome5y === 'function'
-        ? buildPassiveIncome5y(a.dividends, qty, buyDate)
-        : [];
-
-      if (divCanvas && schedule && schedule.months) {
-        var monthBars = schedule.months.map(function (m) {
-          return {
-            v: qty > 0 ? m.perShare * qty : m.perShare,
-            label: String(m.month + 1).padStart(2, '0') + '.' + String(m.year).slice(-2),
-            forecast: m.estimated
-          };
-        });
-        drawFullBarChart(divCanvas, monthBars, {
+      if (divCanvas) {
+        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
           color: '#9A7B4F',
-          forecastColor: '#6B7A5A',
-          ySuffix: qty > 0 ? '₽ на позицию' : '₽/акц.',
-          showLabels: true
+          forecastColor: '#4A7356',
+          ySuffix: '₽/акц.',
+          showValues: true
         });
       }
-      var scheduleEl = document.getElementById('portfolioInsightDivSchedule');
-      if (scheduleEl && typeof formatDivMonthScheduleHtml === 'function') {
-        scheduleEl.innerHTML = formatDivMonthScheduleHtml(schedule, qty);
+      if (divNote) {
+        var fc = a.divForecast;
+        divNote.textContent = (fc && fc.source ? fc.source + ' · ' : '') +
+          'Наведите на столбец — подсветка и сумма';
       }
-      if (divNote && schedule) {
-        var tot = schedule.totalPerShare;
-        var totPos = qty > 0 && tot != null ? (tot * qty).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '';
-        divNote.textContent = 'Итого за 12 мес.: ' + formatDivRubPerShare(tot) +
-          (totPos ? ' · на позицию ' + totPos : '') +
-          (schedule.source ? ' · ' + schedule.source : '');
-      }
-      if (incomeCanvas && passive5y.length) {
-        var incomeBars = passive5y.map(function (y) {
+      if (volCanvas) {
+        var volBars = (a.volumeByDay || []).map(function (p) {
           return {
-            v: y.totalRub > 0 ? y.totalRub : 0,
-            label: String(y.year).slice(-2),
+            v: p.v,
+            label: p.label || '',
+            valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
             forecast: false
           };
         });
-        var sum5y = passive5y.reduce(function (s, y) { return s + (y.totalRub || 0); }, 0);
-        drawFullBarChart(incomeCanvas, incomeBars, { color: '#4A7356', ySuffix: '₽' });
-        if (incomeNote) {
-          incomeNote.textContent = qty > 0
-            ? ('Заработано на дивидендах за 5 лет: ' + sum5y.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽ · ' + qty + ' шт.' +
-              (buyDate ? ' · с ' + buyDate : ''))
-            : 'Сумма дивидендов на 1 акцию за 5 лет (укажите количество в портфеле)';
-        }
-      } else if (incomeNote) {
-        incomeNote.textContent = 'Нет выплат за последние 5 лет по данным МосБиржи';
+        drawFullBarChart(volCanvas, volBars, {
+          color: '#6B7A5A',
+          ySuffix: 'млрд ₽',
+          valueMode: 'bln',
+          showLabels: false,
+          showValues: false
+        });
+      }
+      if (volNote) {
+        volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) +
+          ' торговых дней · наведите на столбец';
       }
     });
     sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250626" />
+  <link rel="stylesheet" href="./styles.css?v=20250627" />
 </head>
 <body>
   <div class="app">
@@ -56,7 +56,7 @@
             </span>
           </span>
           <span class="book-nav__text">
-            <span class="book-nav__name">Аналитика бумаг</span>
+            <span class="book-nav__name">Аналитика</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
@@ -151,7 +151,7 @@
         </section>
 
         <section id="tab-watchlist" class="panel" data-panel="watchlist">
-          <h2>Аналитика бумаг</h2>
+          <h2>Аналитика</h2>
           <p class="muted hint-frame">Котировки, дивиденды и оборот · позиции и сделки — во вкладке «Мой портфель».</p>
 
           <div class="briefing-market-toolbar">
@@ -222,14 +222,14 @@
               <div class="analytics-chart-panel">
                 <h4 class="analytics-chart-lbl">Дивиденды · 5 лет и прогноз 12 мес.</h4>
                 <p class="muted analytics-chart-note" id="analyticsDivNote">—</p>
-                <div class="chart-canvas-wrap analytics-chart-wrap analytics-chart-wrap--mid">
+                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--mid">
                   <canvas id="analyticsDivChart" aria-label="Дивиденды"></canvas>
                 </div>
               </div>
               <div class="analytics-chart-panel">
                 <h4 class="analytics-chart-lbl">Оборот торгов · год</h4>
                 <p class="muted analytics-chart-note" id="analyticsVolNote">—</p>
-                <div class="chart-canvas-wrap analytics-chart-wrap analytics-chart-wrap--mid">
+                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--mid">
                   <canvas id="analyticsVolChart" aria-label="Оборот"></canvas>
                 </div>
               </div>
@@ -310,18 +310,17 @@
                 </div>
               </div>
               <div class="analytics-chart-panel">
-                <h4 class="analytics-chart-lbl">Прогноз дивидендов · 12 месяцев</h4>
+                <h4 class="analytics-chart-lbl">Дивиденды · 5 лет и прогноз 12 мес.</h4>
                 <p class="muted analytics-chart-note" id="portfolioInsightDivNote">—</p>
-                <div class="div-month-schedule" id="portfolioInsightDivSchedule"></div>
-                <div class="chart-canvas-wrap analytics-chart-wrap analytics-chart-wrap--mid">
-                  <canvas id="portfolioInsightDivChart" aria-label="Прогноз по месяцам"></canvas>
+                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--mid">
+                  <canvas id="portfolioInsightDivChart" aria-label="Дивиденды"></canvas>
                 </div>
               </div>
               <div class="analytics-chart-panel">
-                <h4 class="analytics-chart-lbl">Пассивный доход · дивиденды за 5 лет</h4>
-                <p class="muted analytics-chart-note" id="portfolioInsightIncomeNote">—</p>
-                <div class="chart-canvas-wrap analytics-chart-wrap analytics-chart-wrap--mid">
-                  <canvas id="portfolioInsightIncomeChart" aria-label="Доход от дивидендов"></canvas>
+                <h4 class="analytics-chart-lbl">Оборот торгов · год</h4>
+                <p class="muted analytics-chart-note" id="portfolioInsightVolNote">—</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--mid">
+                  <canvas id="portfolioInsightVolChart" aria-label="Оборот"></canvas>
                 </div>
               </div>
             </div>
@@ -575,7 +574,7 @@
   <script src="./nav-books.js?v=20250608"></script>
   <script src="./markets.js?v=20250623"></script>
   <script src="./storage.js?v=20250623"></script>
-  <script src="./ui.js?v=20250625"></script>
+  <script src="./ui.js?v=20250627"></script>
   <script src="./news.js?v=20250623"></script>
   <script src="./moex.js?v=20250626"></script>
   <script src="./analytics.js?v=20250626"></script>
