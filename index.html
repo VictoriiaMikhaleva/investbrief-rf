@@ -84,7 +84,6 @@
           </span>
         </button>
       </nav>
-      <button type="button" class="primary" id="digestBtnSidebar" style="display:none; margin-top: auto;">Дайджест</button>
     </aside>
 
     <div class="main">
@@ -95,10 +94,7 @@
 
       <main class="content">
         <section id="tab-briefing" class="panel active" data-panel="briefing">
-          <div class="home-head row">
-            <h2 style="margin:0;">Сводка новостей</h2>
-            <button type="button" id="digestBtnBrief" class="primary">Дайджест</button>
-          </div>
+          <h2 class="home-head">Сводка новостей</h2>
 
           <section class="home-block">
             <h3 class="home-block-title">Котировки</h3>
@@ -509,25 +505,6 @@
       </div>
       <div class="modal-actions">
         <button type="button" id="briefArticleCloseBtn" class="primary">Закрыть</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="digestModal" role="dialog" aria-labelledby="digestModalTitle" aria-modal="true" hidden>
-    <div class="modal">
-      <h2 id="digestModalTitle">Дайджест на эл. почту</h2>
-      <p class="muted hint-frame">Настройка сохраняется только в этом браузере.</p>
-      <label class="muted">Адрес эл. почты</label>
-      <div class="check-row">
-        <input type="checkbox" id="digestConsentModal" />
-        <label for="digestConsentModal" class="check-row-text">Я согласен(на) получать ежедневную сводку на email</label>
-      </div>
-      <input type="email" id="digestEmail" placeholder="ivanov@mail.ru" style="margin-bottom:0.75rem;" />
-      <label class="muted">Время отправки</label>
-      <input type="time" id="digestTimeModal" value="08:00" />
-      <div class="modal-actions">
-        <button type="button" id="digestCancelBtn">Отмена</button>
-        <button type="button" id="digestSaveBtn" class="primary">Сохранить</button>
       </div>
     </div>
   </div>

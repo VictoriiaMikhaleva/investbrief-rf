@@ -391,34 +391,6 @@
       reader.readAsText(file);
     });
 
-    document.getElementById('digestBtnSidebar').addEventListener('click', openDigestModal);
-    document.getElementById('digestBtnBrief').addEventListener('click', openDigestModal);
-    document.getElementById('digestCancelBtn').addEventListener('click', closeDigestModal);
-    document.getElementById('digestSaveBtn').addEventListener('click', function () {
-      var emailVal = document.getElementById('digestEmail').value.trim();
-      var consentEl = document.getElementById('digestConsentModal');
-      var emailConsent = consentEl ? consentEl.checked : false;
-      if (emailVal && !emailConsent) {
-        showToast('Отметьте согласие на получение дайджеста на email');
-        return;
-      }
-      setDigest({
-        email: emailVal,
-        time: (document.getElementById('digestTimeModal') || document.getElementById('digestTime')).value || '08:00',
-        emailConsent: emailConsent
-      });
-      setConsents({ digestEmail: emailConsent });
-      var digestEmailSettings = document.getElementById('digestEmailSettings');
-      if (digestEmailSettings) digestEmailSettings.value = emailVal;
-      var digestConsentSettings = document.getElementById('digestConsentSettings');
-      if (digestConsentSettings) digestConsentSettings.checked = emailConsent;
-      closeDigestModal();
-      showToast('Дайджест сохранён');
-    });
-    document.getElementById('digestModal').addEventListener('click', function (e) {
-      if (e.target.id === 'digestModal') closeDigestModal();
-    });
-
     document.getElementById('briefArticleCloseBtn').addEventListener('click', closeBriefArticleModal);
     document.getElementById('briefArticleModal').addEventListener('click', function (e) {
       if (e.target.id === 'briefArticleModal') closeBriefArticleModal();
@@ -435,10 +407,7 @@
       feedListEl.addEventListener('keydown', handleBriefListKeydown);
     }
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') {
-        closeBriefArticleModal();
-        closeDigestModal();
-      }
+      if (e.key === 'Escape') closeBriefArticleModal();
     });
 
     document.addEventListener('visibilitychange', function () {
