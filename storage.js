@@ -47,7 +47,7 @@
     { ticker: 'OFZ_26241', qty: 30, avgPrice: 92.1, currentPrice: 93.4, buyDate: '2025-03-01', comment: 'ОФЗ в ядре' }
   ];
 
-  var MACRO_KEY_RATE_LABEL = '21,00%';
+  var MACRO_KEY_RATE_LABEL = '…';
 
   var DEFAULT_MARKET_TICKERS = ['IMOEX', 'SBER', 'GAZP', 'LKOH', 'GMKN', 'TATN', 'NVTK'];
 

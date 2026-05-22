@@ -1784,6 +1784,100 @@
     .market-filter-tabs button[hidden] {
       display: none;
     }
+    .briefing-market-filter {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin: 0.25rem 0 0.65rem;
+    }
+    .briefing-market-filter-lbl {
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+    .briefing-market-filter .market-filter-tabs {
+      margin: 0;
+    }
+    .imoex-market-panel {
+      margin-top: 0.85rem;
+      padding: 0.85rem 1rem;
+    }
+    .imoex-panel-title {
+      margin: 0 0 0.35rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .imoex-panel-hint {
+      margin: 0 0 0.65rem;
+      font-size: 0.8rem;
+    }
+    .imoex-subtitle {
+      margin: 0.85rem 0 0.45rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .imoex-volume-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .imoex-vol-row {
+      display: grid;
+      grid-template-columns: 2.5rem 1fr 3.2rem;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.78rem;
+    }
+    .imoex-vol-date {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .imoex-vol-track {
+      height: 0.55rem;
+      background: rgba(61, 92, 71, 0.12);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .imoex-vol-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent) 0%, var(--bronze) 100%);
+      border-radius: 4px;
+      min-width: 2px;
+    }
+    .imoex-vol-val {
+      text-align: right;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .imoex-top-wrap {
+      max-height: 22rem;
+      overflow: auto;
+    }
+    .imoex-top-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .imoex-top-table th,
+    .imoex-top-table td {
+      padding: 0.35rem 0.45rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .imoex-top-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.72rem;
+    }
+    .imoex-top-table .ticker {
+      font-weight: 700;
+    }
+    .imoex-top-row {
+      cursor: pointer;
+    }
+    .imoex-top-row:hover {
+      background: rgba(61, 92, 71, 0.06);
+    }
     .market-badge {
       display: inline-flex;
       align-items: center;

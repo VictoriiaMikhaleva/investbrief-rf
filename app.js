@@ -197,6 +197,7 @@
           b.classList.toggle('active', b === btn);
         });
         renderHomePage();
+        if (typeof renderMarketMacro === 'function') renderMarketMacro();
       });
     }
 

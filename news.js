@@ -522,6 +522,10 @@
     return next();
   }
 
+  if (typeof window !== 'undefined') {
+    window.fetchTextViaProxies = fetchTextViaProxies;
+  }
+
 
 
   function fetchRssXmlRaw(feedUrl) {
@@ -1281,21 +1285,21 @@
 
   function renderNewsMarketFilterTabs() {
     var el = document.getElementById('newsMarketFilterTabs');
+    var wrap = el ? el.closest('.briefing-market-filter') : null;
     if (!el) return;
     var markets = typeof Markets !== 'undefined' ? Markets.getMarketsEnabled() : { ru: true, us: false };
     if (!markets.ru && !markets.us) {
-      el.hidden = true;
+      if (wrap) wrap.hidden = true;
       return;
     }
+    if (wrap) wrap.hidden = false;
     if (markets.ru && markets.us) {
-      el.hidden = false;
       el.querySelectorAll('[data-news-market]').forEach(function (btn) {
         btn.hidden = false;
         btn.classList.toggle('active', btn.getAttribute('data-news-market') === (state.newsMarketFilter || 'all'));
       });
       return;
     }
-    el.hidden = false;
     el.querySelectorAll('[data-news-market]').forEach(function (btn) {
       var code = btn.getAttribute('data-news-market');
       if (code === 'all') {
@@ -1341,6 +1345,7 @@
     var hint = document.getElementById('briefingFilterHint');
     destroyBriefingBento();
     renderNewsMarketFilterTabs();
+    if (typeof renderMarketMacro === 'function') renderMarketMacro();
     if (hint) {
       hint.innerHTML = '<p class="briefing-data-notice hint-frame">' + getBriefingHintHtml() + '</p>';
     }

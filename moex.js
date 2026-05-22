@@ -1006,16 +1006,261 @@
 
 
 
+  function formatKeyRateLabel(rate) {
+    if (rate == null || !isFinite(rate)) return '—';
+    return Number(rate).toFixed(2).replace('.', ',') + '%';
+  }
+
+
+
+  function parseCbrKeyRateFromHtml(html) {
+    if (!html) return null;
+    var re = /<td[^>]*>\s*(\d{2}\.\d{2}\.\d{4})\s*<\/td>\s*<td[^>]*>\s*([\d]+[,.][\d]+)\s*<\/td>/gi;
+    var rows = [];
+    var m;
+    while ((m = re.exec(html)) !== null) {
+      rows.push({ date: m[1], rate: parseFloat(String(m[2]).replace(',', '.')) });
+    }
+    if (!rows.length) return null;
+    var latest = rows[0];
+    var prev = rows.length > 1 ? rows[1] : null;
+    var changePct = null;
+    if (prev && isFinite(prev.rate) && prev.rate > 0 && isFinite(latest.rate)) {
+      changePct = ((latest.rate - prev.rate) / prev.rate) * 100;
+    }
+    return { rate: latest.rate, changePct: changePct, date: latest.date };
+  }
+
+
+
+  function fetchCbrKeyRate() {
+    var cacheKey = 'cbr.keyrate';
+    var cached = moexCacheGet(cacheKey);
+    if (cached) return Promise.resolve(cached);
+    var url = 'https://www.cbr.ru/hd_base/KeyRate/';
+    return fetchExternalText(url).then(function (html) {
+      var parsed = parseCbrKeyRateFromHtml(html);
+      if (!parsed || !isFinite(parsed.rate)) throw new Error('cbr keyrate parse');
+      moexCacheSet(cacheKey, parsed, 6 * 60 * 60 * 1000);
+      return parsed;
+    });
+  }
+
+
+
+  function shouldShowRuBriefingMarketBlocks() {
+    if (typeof Markets === 'undefined') return true;
+    var markets = Markets.getMarketsEnabled();
+    if (!markets.ru) return false;
+    var filter = state && state.newsMarketFilter ? state.newsMarketFilter : 'all';
+    return filter !== 'US';
+  }
+
+
+
+  function formatBlnRub(value) {
+    if (value == null || !isFinite(value)) return '—';
+    return (Number(value) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+
+
+  function fetchImoexTurnoverWeek() {
+    var cacheKey = 'imoex.turnover.week';
+    var cached = moexCacheGet(cacheKey);
+    if (cached) return Promise.resolve(cached);
+    var till = new Date();
+    var from = new Date(till);
+    from.setDate(from.getDate() - 14);
+    var url = 'https://iss.moex.com/iss/history/engines/stock/markets/index/securities/IMOEX.json' +
+      '?from=' + moexFormatDate(from) + '&till=' + moexFormatDate(till) +
+      '&iss.meta=off&history.columns=TRADEDATE,VALUE';
+    return moexFetchJson(url).then(function (json) {
+      var hist = json.history;
+      if (!hist || !hist.data || !hist.data.length) throw new Error('no imoex history');
+      var idxDate = hist.columns.indexOf('TRADEDATE');
+      var idxVal = hist.columns.indexOf('VALUE');
+      var days = hist.data.map(function (row) {
+        return {
+          date: row[idxDate],
+          value: row[idxVal] != null ? Number(row[idxVal]) : null
+        };
+      }).filter(function (d) { return d.value != null && isFinite(d.value); });
+      days = days.slice(-7);
+      if (!days.length) throw new Error('no turnover days');
+      moexCacheSet(cacheKey, days, 20 * 60 * 1000);
+      return days;
+    });
+  }
+
+
+
+  function fetchTopMoexSharesByVolume(limit) {
+    limit = limit || 20;
+    var cacheKey = 'moex.topvol.' + limit;
+    var cached = moexCacheGet(cacheKey);
+    if (cached) return Promise.resolve(cached);
+    var all = [];
+    var start = 0;
+    var page = 100;
+
+    function pageFetch() {
+      var url = 'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json' +
+        '?iss.meta=off&securities.columns=SECID,SHORTNAME' +
+        '&marketdata.columns=SECID,LAST,VALTODAY,LASTTOPREVPRICE&start=' + start + '&limit=' + page;
+      return moexFetchJson(url).then(function (json) {
+        if (!json.marketdata || !json.marketdata.data.length) return all;
+        var cols = json.marketdata.columns;
+        var names = {};
+        (json.securities.data || []).forEach(function (r) { names[r[0]] = r[1]; });
+        var iSec = cols.indexOf('SECID');
+        var iLast = cols.indexOf('LAST');
+        var iVal = cols.indexOf('VALTODAY');
+        var iChg = cols.indexOf('LASTTOPREVPRICE');
+        json.marketdata.data.forEach(function (row) {
+          var ticker = row[iSec];
+          var val = row[iVal];
+          var last = row[iLast];
+          if (!ticker || val == null || !isFinite(val) || val <= 0 || last == null || !isFinite(last)) return;
+          all.push({
+            ticker: ticker,
+            name: names[ticker] || getTickerSubtitle(ticker),
+            valToday: val,
+            price: last,
+            changePct: row[iChg] != null && isFinite(Number(row[iChg])) ? Number(row[iChg]) : null
+          });
+        });
+        var cursor = json.marketdata.cursor && json.marketdata.cursor.data && json.marketdata.cursor.data[0];
+        if (cursor && start + page < cursor[1]) {
+          start += page;
+          return pageFetch();
+        }
+        return all;
+      });
+    }
+
+    return pageFetch().then(function (list) {
+      list.sort(function (a, b) { return b.valToday - a.valToday; });
+      var top = list.slice(0, limit);
+      if (!top.length) throw new Error('no top volume');
+      moexCacheSet(cacheKey, top, 5 * 60 * 1000);
+      return top;
+    });
+  }
+
+
+
+  function renderImoexVolumeBars(days) {
+    var el = document.getElementById('imoexVolumeBars');
+    if (!el) return;
+    if (!days || !days.length) {
+      el.innerHTML = '<p class="muted">Нет данных по обороту</p>';
+      return;
+    }
+    var max = Math.max.apply(null, days.map(function (d) { return d.value; }));
+    el.innerHTML = days.map(function (d) {
+      var dt = d.date ? String(d.date).slice(5).replace('-', '.') : '—';
+      var bln = formatBlnRub(d.value);
+      var pct = max > 0 ? Math.max(8, (d.value / max) * 100) : 0;
+      return (
+        '<div class="imoex-vol-row">' +
+          '<span class="imoex-vol-date">' + escapeHtml(dt) + '</span>' +
+          '<div class="imoex-vol-track"><div class="imoex-vol-bar" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+          '<span class="imoex-vol-val">' + escapeHtml(bln) + '</span>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+
+
+  function renderImoexTopVolumeTable(rows) {
+    var tbody = document.getElementById('imoexTopVolumeBody');
+    if (!tbody) return;
+    if (!rows || !rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">Нет данных</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function (r, i) {
+      var ch = formatMacroChange(r.changePct);
+      return (
+        '<tr data-chart-ticker="' + escapeHtml(r.ticker) + '" class="imoex-top-row" tabindex="0" role="button">' +
+          '<td>' + (i + 1) + '</td>' +
+          '<td class="ticker">' + escapeHtml(r.ticker) + '</td>' +
+          '<td>' + escapeHtml(r.name || '—') + '</td>' +
+          '<td>' + escapeHtml(formatBlnRub(r.valToday)) + '</td>' +
+          '<td>' + escapeHtml(formatChartPrice(r.price, r.ticker)) + '</td>' +
+          '<td class="' + ch.cls + '">' + escapeHtml(ch.text) + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+    tbody.querySelectorAll('.imoex-top-row').forEach(function (row) {
+      row.addEventListener('click', function () {
+        var t = row.getAttribute('data-chart-ticker');
+        if (t && typeof openPortfolioChart === 'function') openPortfolioChart(t);
+      });
+    });
+  }
+
+
+
+  function renderImoexMarketPanel() {
+    var panel = document.getElementById('imoexMarketPanel');
+    if (!panel) return;
+    if (!shouldShowRuBriefingMarketBlocks()) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    var bars = document.getElementById('imoexVolumeBars');
+    var src = document.getElementById('imoexMarketSource');
+    if (bars) bars.innerHTML = '<p class="muted">Загрузка…</p>';
+    if (src) src.textContent = 'Загрузка данных МосБиржи…';
+
+    Promise.all([
+      fetchImoexTurnoverWeek(),
+      fetchTopMoexSharesByVolume(20)
+    ]).then(function (results) {
+      renderImoexVolumeBars(results[0]);
+      renderImoexTopVolumeTable(results[1]);
+      if (src) {
+        src.textContent = 'МосБиржа · IMOEX · оборот и TQBR · ' +
+          new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      }
+    }).catch(function () {
+      if (bars) bars.innerHTML = '<p class="muted hint-frame">Объём торгов временно недоступен</p>';
+      renderImoexTopVolumeTable([]);
+      if (src) src.textContent = 'Данные МосБиржи недоступны';
+    });
+  }
+
+
+
   function renderMarketMacro() {
     var row = document.getElementById('marketMacroRow');
     if (!row) return;
+    if (!shouldShowRuBriefingMarketBlocks()) {
+      row.hidden = true;
+      renderImoexMarketPanel();
+      return;
+    }
+    row.hidden = false;
     row.innerHTML =
       renderMacroTile('imoex', 'Индекс', '…', { text: 'IMOEX', cls: 'muted' }) +
-      renderMacroTile('rate', 'Ставка', escapeHtml(MACRO_KEY_RATE_LABEL), { text: 'Ключевая', cls: 'muted' }) +
+      renderMacroTile('rate', 'Ставка', '…', { text: 'Банк России', cls: 'muted' }) +
       renderMacroTile('usd', 'USD', '…', { text: 'ЦБ РФ', cls: 'muted' }) +
       renderMacroTile('eur', 'EUR', '…', { text: 'ЦБ РФ', cls: 'muted' }) +
       renderMacroTile('cny', 'CNY', '…', { text: 'ЦБ РФ', cls: 'muted' }) +
-      renderMacroTile('oil', 'Нефть', '…', { text: 'LKOH', cls: 'muted' });
+      renderMacroTile('oil', 'Нефть', '…', { text: 'LKOH · МосБиржа', cls: 'muted' });
+
+    fetchCbrKeyRate().then(function (kr) {
+      var ch = formatMacroChange(kr.changePct);
+      patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate), ch);
+      var tile = row.querySelector('[data-macro-id="rate"] .macro-tile-sub');
+      if (tile) tile.textContent = 'Ключевая · ЦБ РФ';
+    }).catch(function () {
+      patchMacroTile(row, 'rate', escapeHtml(MACRO_KEY_RATE_LABEL), { text: 'ЦБ РФ', cls: 'muted' });
+    });
 
     fetchMoexQuote('IMOEX').then(function (q) {
       var ch = formatMacroChange(q && q.changePct);
@@ -1051,6 +1296,8 @@
         patchMacroTile(row, 'usd', '—', { text: 'нет данных', cls: 'muted' });
       });
     });
+
+    renderImoexMarketPanel();
   }
 
 

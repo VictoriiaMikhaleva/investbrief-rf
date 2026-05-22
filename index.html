@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250612" />
+  <link rel="stylesheet" href="./styles.css?v=20250617" />
 </head>
 <body>
   <div class="app">
@@ -112,17 +112,45 @@
           <section class="home-block">
             <h3 class="home-block-title">Рынок в целом</h3>
             <div class="market-macro-row" id="marketMacroRow" aria-label="Макропоказатели"></div>
+            <div class="glass imoex-market-panel" id="imoexMarketPanel" hidden>
+              <h4 class="imoex-panel-title">Индекс МосБиржи · оборот и лидеры</h4>
+              <p class="muted imoex-panel-hint hint-frame">Объём торгов по индексу IMOEX за последние 7 торговых дней (млрд ₽, данные МосБиржи)</p>
+              <div id="imoexVolumeBars" class="imoex-volume-bars" aria-live="polite">Загрузка…</div>
+              <h4 class="imoex-subtitle">Топ‑20 по обороту за сутки</h4>
+              <div class="table-wrap imoex-top-wrap">
+                <table class="imoex-top-table" id="imoexTopVolumeTable" aria-label="Лидеры по обороту">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Тикер</th>
+                      <th>Название</th>
+                      <th>Оборот, млрд ₽</th>
+                      <th>Цена</th>
+                      <th>Изм.</th>
+                    </tr>
+                  </thead>
+                  <tbody id="imoexTopVolumeBody">
+                    <tr><td colspan="6" class="muted">Загрузка…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="muted chart-source hint-frame" id="imoexMarketSource"></p>
+            </div>
           </section>
+
+          <div class="briefing-market-filter">
+            <span class="briefing-market-filter-lbl muted">Рынок в сводке</span>
+            <div class="market-filter-tabs" id="newsMarketFilterTabs" role="tablist" aria-label="Рынок в сводке">
+              <button type="button" data-news-market="all" class="active">Все</button>
+              <button type="button" data-news-market="RU">Россия</button>
+              <button type="button" data-news-market="US">США</button>
+            </div>
+          </div>
 
           <div class="horizon-tabs" id="horizonTabs">
             <button type="button" data-horizon="today" class="active">Сегодня</button>
             <button type="button" data-horizon="week">Неделя</button>
             <button type="button" data-horizon="month">Месяц</button>
-          </div>
-          <div class="market-filter-tabs" id="newsMarketFilterTabs" role="tablist" aria-label="Рынок в сводке" hidden>
-            <button type="button" data-news-market="all" class="active">Все</button>
-            <button type="button" data-news-market="RU">Россия</button>
-            <button type="button" data-news-market="US">США</button>
           </div>
           <div id="briefingFilterHint" class="briefing-filter-hint"></div>
 
@@ -515,8 +543,8 @@
   <script src="./markets.js?v=20250614"></script>
   <script src="./storage.js?v=20250612"></script>
   <script src="./ui.js?v=20250612"></script>
-  <script src="./news.js?v=20250612"></script>
-  <script src="./moex.js?v=20250614"></script>
+  <script src="./news.js?v=20250617"></script>
+  <script src="./moex.js?v=20250617"></script>
   <script src="./portfolio.js?v=20250616"></script>
   <script src="./firebase-sync.js?v=20250612"></script>
   <script src="./app.js?v=20250612"></script>
