@@ -1857,8 +1857,11 @@
       width: 100%;
       max-width: 100%;
     }
+    .market-tiles--index-only {
+      overflow: hidden;
+    }
     .market-tiles--index-only .star-border-container {
-      overflow: visible;
+      overflow: hidden;
     }
     .market-tiles--index-only .market-tile-wrap {
       width: 100%;
@@ -1870,7 +1873,6 @@
       min-height: 5.5rem;
       padding: 0.7rem 1.1rem;
       align-items: stretch;
-      overflow: visible;
     }
     .market-tiles--index-only .market-tile-top {
       min-width: 0;
@@ -1895,7 +1897,13 @@
       }
       .market-tiles--index-only .market-tile-ticker { font-size: 1rem; }
     }
-    .home-head { margin: 0 0 0.75rem; }
+    .home-head { margin: 0 0 0.35rem; }
+    .panel-disclaimer {
+      margin: 0 0 0.85rem;
+      font-size: 0.82rem;
+      line-height: 1.4;
+      color: var(--text-muted);
+    }
 
     .market-tiles--compact {
       gap: 0.4rem;

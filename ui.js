@@ -1189,6 +1189,7 @@
     destroyMarketTilesBento();
     var grid = document.getElementById('marketTiles');
     if (!grid || !grid.classList.contains('bento-section')) return;
+    if (grid.classList.contains('market-tiles--index-only')) return;
     var cards = grid.querySelectorAll('.magic-bento-card');
     if (!cards.length) return;
 
