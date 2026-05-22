@@ -1539,8 +1539,7 @@
       renderMacroTile('rate', 'Ставка', '…', { text: 'ключевая · ЦБ РФ', cls: 'muted' }) +
       renderMacroTile('usd', 'USD', '…', { text: 'загрузка…', cls: 'muted' }) +
       renderMacroTile('eur', 'EUR', '…', { text: 'загрузка…', cls: 'muted' }) +
-      renderMacroTile('cny', 'CNY', '…', { text: 'загрузка…', cls: 'muted' }) +
-      renderMacroTile('oil', 'LKOH', '…', { text: 'нефть · МосБиржа', cls: 'muted' });
+      renderMacroTile('cny', 'CNY', '…', { text: 'загрузка…', cls: 'muted' });
 
     applyMacroBootstrap(row);
 
@@ -1555,11 +1554,6 @@
       var val = q && q.price != null ? formatChartPrice(q.price, 'IMOEX') : '—';
       patchMacroTile(row, 'imoex', val, macroChangeWithSource(q && q.changePct, 'МосБиржа'));
     }).catch(function () { patchMacroTile(row, 'imoex', '—', { text: 'нет данных', cls: 'muted' }); });
-
-    fetchMoexQuote('LKOH').then(function (q) {
-      var val = q && q.price != null ? formatChartPrice(q.price, 'LKOH') : '—';
-      patchMacroTile(row, 'oil', val, macroChangeWithSource(q && q.changePct, 'МосБиржа'));
-    }).catch(function () { patchMacroTile(row, 'oil', '—', { text: 'нет данных', cls: 'muted' }); });
 
     fetchCbrFxRatesFromJson().then(function (data) {
       var quick = parseCbrDailyJson(data);

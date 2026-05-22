@@ -2,8 +2,9 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v2.';
   var ANALYTICS_TTL = 30 * 60 * 1000;
+  var HISTORY_PAGE_LIMIT = 500;
   var VOLUME_YEAR_DAYS = 252;
   var YIELD_YEARS = 5;
   var ENRICH_CONCURRENCY = 4;
@@ -326,21 +327,20 @@
     from.setFullYear(from.getFullYear() - (yearsBack || YIELD_YEARS));
 
     function loadPage(start) {
-      var url = MOEX_ISS + '/history/engines/stock/markets/shares/securities/' +
+      var url = MOEX_ISS + '/history/engines/stock/markets/shares/boards/TQBR/securities/' +
         encodeURIComponent(ticker) + '.json?from=' + moexFormatDate(from) +
         '&till=' + moexFormatDate(till) +
-        '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE,BOARDID&start=' + start + '&limit=500';
+        '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE&start=' + start +
+        '&limit=' + HISTORY_PAGE_LIMIT;
       return moexFetchJson(url).then(function (json) {
         var hist = json.history;
-        if (!hist || !hist.data) return { rows: [], total: 0, next: start };
+        if (!hist || !hist.data) return { rows: [], rawLen: 0, next: start, hasMore: false };
         var cols = hist.columns;
         var iDate = cols.indexOf('TRADEDATE');
         var iClose = cols.indexOf('CLOSE');
         var iVal = cols.indexOf('VALUE');
-        var iBoard = cols.indexOf('BOARDID');
         var rows = [];
         hist.data.forEach(function (row) {
-          if (row[iBoard] !== 'TQBR') return;
           var d = String(row[iDate] || '').slice(0, 10);
           var close = Number(row[iClose]);
           var val = Number(row[iVal]);
@@ -352,10 +352,12 @@
             t: new Date(d + 'T12:00:00').getTime()
           });
         });
+        var rawLen = hist.data.length;
+        var next = start + rawLen;
         var cur = hist.cursor && hist.cursor.data && hist.cursor.data[0];
-        var total = cur ? cur[1] : rows.length;
-        var next = start + rows.length;
-        return { rows: rows, total: total, next: next };
+        var total = cur ? cur[1] : null;
+        var hasMore = rawLen > 0 && (cur ? next < total : rawLen >= 100);
+        return { rows: rows, rawLen: rawLen, next: next, hasMore: hasMore };
       });
     }
 
@@ -364,7 +366,7 @@
     function loop() {
       return loadPage(start).then(function (page) {
         all = all.concat(page.rows);
-        if (page.rows.length && page.next < page.total && page.next > start) {
+        if (page.hasMore) {
           start = page.next;
           return loop();
         }
@@ -402,18 +404,24 @@
       } else if (totalDiv > 0) {
         yieldPct = null;
       } else {
-        yieldPct = 0;
+        yieldPct = null;
       }
       out.push({ year: Number(y), yieldPct: yieldPct, totalDiv: totalDiv });
     });
     return out;
   }
 
-  function averageYield5y(yearly) {
+  function averageYield5y(yearly, quotePrice) {
     var vals = yearly.map(function (y) { return y.yieldPct; })
-      .filter(function (v) { return v != null && isFinite(v); });
-    if (!vals.length) return null;
-    return vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+      .filter(function (v) { return v != null && isFinite(v) && v > 0; });
+    if (vals.length) {
+      return vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+    }
+    var totalDiv = yearly.reduce(function (s, y) { return s + (y.totalDiv || 0); }, 0);
+    if (totalDiv > 0 && quotePrice != null && isFinite(quotePrice) && quotePrice > 0) {
+      return (totalDiv / quotePrice) * 100;
+    }
+    return null;
   }
 
   function sliceVolumeSeries(dailyHistory, days) {
@@ -455,7 +463,7 @@
         name: getTickerSubtitle(ticker),
         quote: quote,
         dividends: dividends,
-        divAvg5y: averageYield5y(yearly),
+        divAvg5y: averageYield5y(yearly, quote.price),
         divForecast: forecast,
         divYieldByYear: yearly,
         monthlyForecast: buildMonthlyDividendForecast12m(dividends, history, quote.price),
