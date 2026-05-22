@@ -521,12 +521,47 @@
 
   function readPortfolioForm(prefix) {
     var tickerEl = document.getElementById(pfFieldId(prefix, 'Ticker'));
+    var qtyRaw = (document.getElementById(pfFieldId(prefix, 'Qty')) || {}).value;
+    var avgRaw = (document.getElementById(pfFieldId(prefix, 'Avg')) || {}).value;
     return {
       ticker: tickerEl ? tickerEl.value : '',
-      qty: parseFloat((document.getElementById(pfFieldId(prefix, 'Qty')) || {}).value),
-      avg: parseFloat((document.getElementById(pfFieldId(prefix, 'Avg')) || {}).value),
+      qty: parseFloat(String(qtyRaw == null ? '' : qtyRaw).replace(',', '.')),
+      avg: parseFloat(String(avgRaw == null ? '' : avgRaw).replace(',', '.')),
       buyDate: ((document.getElementById(pfFieldId(prefix, 'Date')) || {}).value) || '',
       comment: ((document.getElementById(pfFieldId(prefix, 'Comment')) || {}).value || '').trim()
+    };
+  }
+
+
+
+  function readPortfolioFormMerged(primaryPrefix) {
+    var a = readPortfolioForm(primaryPrefix);
+    var altPrefix = primaryPrefix === 'Watch' ? '' : 'Watch';
+    var b = readPortfolioForm(altPrefix);
+    function pickNum(x, y) {
+      if (isFinite(x)) return x;
+      if (isFinite(y)) return y;
+      return NaN;
+    }
+    return {
+      ticker: String(a.ticker || b.ticker || '').trim(),
+      qty: pickNum(a.qty, b.qty),
+      avg: pickNum(a.avg, b.avg),
+      buyDate: a.buyDate || b.buyDate || '',
+      comment: a.comment || b.comment || ''
+    };
+  }
+
+
+
+  function capturePortfolioFormInput(primaryPrefix) {
+    var f = readPortfolioFormMerged(primaryPrefix);
+    return {
+      ticker: f.ticker,
+      qty: isFinite(f.qty) ? f.qty : null,
+      avg: isFinite(f.avg) ? f.avg : null,
+      buyDate: String(f.buyDate || '').trim(),
+      comment: f.comment
     };
   }
 
@@ -613,14 +648,16 @@
   function mergePositionPurchase(existing, qty, avg, buyDate, comment) {
     var oldQty = existing.qty;
     var oldAvg = Number(existing.avgPrice);
-    if (isFinite(qty) && qty > 0 && isFinite(avg) && isFinite(oldQty) && oldQty > 0 && isFinite(oldAvg)) {
+    var hasQty = qty != null && isFinite(qty) && qty > 0;
+    var hasAvg = avg != null && isFinite(avg);
+    if (hasQty && hasAvg && isFinite(oldQty) && oldQty > 0 && isFinite(oldAvg)) {
       var totalQty = oldQty + qty;
       existing.avgPrice = (oldQty * oldAvg + qty * avg) / totalQty;
       existing.qty = totalQty;
-    } else if (isFinite(qty) && qty > 0) {
+    } else if (hasQty) {
       existing.qty = isFinite(oldQty) && oldQty > 0 ? oldQty + qty : qty;
-      if (isFinite(avg)) existing.avgPrice = avg;
-    } else if (isFinite(avg)) {
+      if (hasAvg) existing.avgPrice = avg;
+    } else if (hasAvg) {
       existing.avgPrice = avg;
     }
     if (buyDate) existing.buyDate = buyDate;
@@ -664,8 +701,12 @@
   function addPortfolioPosition(raw, opts) {
     opts = opts || {};
     var prefix = opts.prefix != null ? opts.prefix : '';
-    var form = readPortfolioForm(prefix);
-    var rawTicker = raw != null ? raw : form.ticker;
+    var captured = capturePortfolioFormInput(prefix);
+    var rawTicker = raw != null ? String(raw).trim() : captured.ticker;
+    if (!rawTicker) {
+      showToast('Укажите тикер');
+      return;
+    }
     var resolveFn = typeof Markets !== 'undefined' ? Markets.resolveSecurityFromInput : function (r) {
       return resolveTickerFromInput(r).then(function (tk) {
         return tk ? { ticker: tk, market: 'RU', currency: 'RUB', type: 'stock' } : null;
@@ -677,21 +718,26 @@
         return;
       }
       var t = sec.ticker;
-      var qty = form.qty;
-      var avg = form.avg;
-      var buyDate = form.buyDate;
-      var comment = form.comment;
+      var qty = captured.qty;
+      var avg = captured.avg;
+      var buyDate = captured.buyDate;
+      var comment = captured.comment;
       var portfolio = getPortfolio();
       var existing = findPortfolioPosition(t);
       var editing = state.pfEditTicker && normalizeTicker(state.pfEditTicker) === t;
+
+      function clearFormsAfterSave() {
+        clearPortfolioForm(prefix);
+        clearPortfolioForm(prefix === 'Watch' ? '' : 'Watch');
+      }
 
       if (editing) {
         if (!existing) {
           cancelPortfolioEdit();
           return;
         }
-        if (isFinite(qty)) existing.qty = qty;
-        if (isFinite(avg)) existing.avgPrice = avg;
+        if (qty != null) existing.qty = qty;
+        if (avg != null) existing.avgPrice = avg;
         if (buyDate) existing.buyDate = buyDate;
         existing.comment = comment;
         setPortfolio(portfolio);
@@ -712,8 +758,8 @@
         } else {
           portfolio.positions.push(normalizePosition({
             ticker: t,
-            qty: isFinite(qty) ? qty : null,
-            avgPrice: isFinite(avg) ? avg : (cur != null && isFinite(cur) ? cur : null),
+            qty: qty,
+            avgPrice: avg != null ? avg : (cur != null && isFinite(cur) ? cur : null),
             currentPrice: cur != null && isFinite(cur) ? cur : null,
             buyDate: buyDate,
             comment: comment,
@@ -722,7 +768,7 @@
           }));
         }
         setPortfolio(portfolio);
-        clearPortfolioForm(prefix);
+        clearFormsAfterSave();
         showToast(existing ? 'Докупка учтена, обновлена ср. цена: ' + t : 'Добавлено в портфель: ' + t);
         state.chartTicker = t;
         state.folderOpen = true;
@@ -740,20 +786,20 @@
       }
 
       fetchMoexLastPrice(t).catch(function () { return null; }).then(function (price) {
-        var cur = price != null && isFinite(price) ? price : (isFinite(avg) ? avg : 100);
-        if (!isFinite(avg)) avg = cur;
+        var cur = price != null && isFinite(price) ? price : (avg != null ? avg : 100);
+        var avgPrice = avg != null ? avg : cur;
 
         if (existing) {
-          mergePositionPurchase(existing, qty, avg, buyDate, comment);
+          mergePositionPurchase(existing, qty, avgPrice, buyDate, comment);
           if (cur != null && isFinite(cur)) existing.currentPrice = cur;
           setPortfolio(portfolio);
-          clearPortfolioForm(prefix);
+          clearFormsAfterSave();
           showToast('Докупка учтена, обновлена ср. цена: ' + t);
         } else {
           portfolio.positions.push(normalizePosition({
             ticker: t,
-            qty: isFinite(qty) ? qty : null,
-            avgPrice: avg,
+            qty: qty,
+            avgPrice: avgPrice,
             currentPrice: cur,
             buyDate: buyDate,
             comment: comment,
@@ -761,7 +807,7 @@
             currency: 'RUB'
           }));
           setPortfolio(portfolio);
-          clearPortfolioForm(prefix);
+          clearFormsAfterSave();
           showToast('Добавлено в портфель: ' + t);
         }
         state.chartTicker = t;
@@ -783,7 +829,7 @@
       }
       fillPortfolioForm('Watch', { ticker: t });
       fillPortfolioForm('', { ticker: t });
-      addPortfolioPosition(t, { prefix: 'Watch' });
+      addPortfolioPosition(null, { prefix: 'Watch' });
     });
   }
 
