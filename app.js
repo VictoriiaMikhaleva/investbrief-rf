@@ -86,6 +86,9 @@
     ruEl.checked = !!m.ru;
     usEl.checked = !!m.us;
     updateMarketSettingsControls();
+    if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
+      Markets.renderBriefingMarketTabs();
+    }
   }
 
   function saveMarketsFromUI() {
@@ -108,8 +111,22 @@
       markets: { ru: ru, us: us },
       baseCurrency: us && !ru ? 'USD' : 'RUB'
     });
+    if (typeof state !== 'undefined') {
+      state.newsMarketFilter = ru && us ? 'all' : (us ? 'US' : 'RU');
+    }
     updateMarketSettingsControls();
+    if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
+      Markets.renderBriefingMarketTabs();
+    }
     if (typeof renderNewsMarketFilterTabs === 'function') renderNewsMarketFilterTabs();
+    var newsTabs = document.getElementById('newsMarketFilterTabs');
+    if (newsTabs && typeof state !== 'undefined') {
+      newsTabs.querySelectorAll('[data-news-market]').forEach(function (b) {
+        if (b.hidden) return;
+        b.classList.toggle('active', b.getAttribute('data-news-market') === (state.newsMarketFilter || 'all'));
+      });
+    }
+    if (typeof renderMarketMacro === 'function') renderMarketMacro(true);
     renderHomePage();
     renderWatchlist();
     renderMarketTiles();
@@ -168,7 +185,6 @@
       });
     });
 
-    setupTickerAutocomplete('marketTickerInput');
     setupTickerAutocomplete('tickerInput');
     setupTickerAutocomplete('pfAddTicker');
     setupTickerAutocomplete('feedAsset', { onSelect: function () { syncFiltersFromUI(); } });
@@ -185,6 +201,18 @@
       });
       renderHomePage();
     });
+
+    var briefingMarketTabs = document.getElementById('briefingMarketTabs');
+    if (briefingMarketTabs) {
+      briefingMarketTabs.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-briefing-market]');
+        if (!btn) return;
+        var mode = btn.getAttribute('data-briefing-market');
+        if (typeof Markets !== 'undefined' && Markets.applyBriefingMarkets) {
+          Markets.applyBriefingMarkets(mode);
+        }
+      });
+    }
 
     var newsMarketTabs = document.getElementById('newsMarketFilterTabs');
     if (newsMarketTabs) {
@@ -215,22 +243,18 @@
       });
     }
 
-    document.getElementById('marketTiles').addEventListener('click', function (e) {
-      var removeBtn = e.target.closest('[data-remove-ticker]');
-      if (removeBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        removeMarketTicker(removeBtn.getAttribute('data-remove-ticker'));
-        return;
-      }
-      var tile = e.target.closest('.market-tile');
-      if (!tile) return;
-      var ticker = tile.getAttribute('data-ticker');
-      if (ticker) {
-        if (typeof openSecurityAnalyticsModal === 'function') openSecurityAnalyticsModal(ticker);
-        else if (typeof openPortfolioChart === 'function') openPortfolioChart(ticker);
-      }
-    });
+    var marketTilesEl = document.getElementById('marketTiles');
+    if (marketTilesEl) {
+      marketTilesEl.addEventListener('click', function (e) {
+        var tile = e.target.closest('.market-tile');
+        if (!tile) return;
+        var ticker = tile.getAttribute('data-ticker');
+        if (ticker) {
+          if (typeof openSecurityAnalyticsModal === 'function') openSecurityAnalyticsModal(ticker);
+          else if (typeof openPortfolioChart === 'function') openPortfolioChart(ticker);
+        }
+      });
+    }
 
     var analyticsGrid = document.getElementById('analyticsGrid');
     if (analyticsGrid) {
@@ -254,17 +278,6 @@
         }
       });
     }
-
-    document.getElementById('addMarketTickerBtn').addEventListener('click', function () {
-      addMarketTicker(document.getElementById('marketTickerInput').value);
-    });
-    document.getElementById('marketTickerInput').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        if (acControllers.marketTickerInput) acControllers.marketTickerInput.handleEnter(e);
-        addMarketTicker(e.target.value);
-      }
-    });
-    document.getElementById('resetMarketTickersBtn').addEventListener('click', resetMarketTickers);
 
     var addWatchBtn = document.getElementById('addWatchlistBtn');
     if (addWatchBtn) {
@@ -467,6 +480,9 @@
     renderMarketTiles();
     renderMarketMacro();
     if (typeof scheduleMarketMacroRefresh === 'function') scheduleMarketMacroRefresh();
+    if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
+      Markets.renderBriefingMarketTabs();
+    }
     renderHomePage();
     renderPortfolio();
     updatePortfolioFormChrome();

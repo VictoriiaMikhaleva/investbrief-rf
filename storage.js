@@ -49,7 +49,8 @@
 
   var MACRO_KEY_RATE_LABEL = '…';
 
-  var DEFAULT_MARKET_TICKERS = ['IMOEX', 'SBER', 'GAZP', 'LKOH', 'GMKN', 'TATN', 'NVTK'];
+  var DEFAULT_MARKET_TICKERS = ['IMOEX'];
+  var BRIEFING_QUOTE_TICKERS = ['IMOEX'];
 
   var TICKER_SUBTITLES = {
     IMOEX: 'Индекс МосБиржи',

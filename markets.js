@@ -357,6 +357,62 @@
     });
   }
 
+
+
+  function briefingMarketsModeFromSettings() {
+    var m = getMarketsEnabled();
+    if (m.ru && m.us) return 'BOTH';
+    if (m.us) return 'US';
+    return 'RU';
+  }
+
+
+
+  function applyBriefingMarkets(mode) {
+    var ru = mode === 'RU' || mode === 'BOTH';
+    var us = mode === 'US' || mode === 'BOTH';
+    if (!ru && !us) ru = true;
+    var s = typeof getSettings === 'function' ? getSettings() : {};
+    if (typeof setSettings === 'function') {
+      setSettings({
+        briefFormat: s.briefFormat,
+        briefingScope: s.briefingScope,
+        essayStyle: s.essayStyle,
+        riskProfile: s.riskProfile,
+        markets: { ru: ru, us: us },
+        baseCurrency: us && !ru ? 'USD' : 'RUB'
+      });
+    }
+    if (typeof state !== 'undefined') {
+      state.newsMarketFilter = mode === 'US' ? 'US' : (mode === 'RU' ? 'RU' : 'all');
+    }
+    if (typeof loadMarketsToUI === 'function') loadMarketsToUI();
+    renderBriefingMarketTabs();
+    if (typeof renderNewsMarketFilterTabs === 'function') renderNewsMarketFilterTabs();
+    var newsTabs = document.getElementById('newsMarketFilterTabs');
+    if (newsTabs && typeof state !== 'undefined') {
+      newsTabs.querySelectorAll('[data-news-market]').forEach(function (b) {
+        if (b.hidden) return;
+        b.classList.toggle('active', b.getAttribute('data-news-market') === (state.newsMarketFilter || 'all'));
+      });
+    }
+    if (typeof renderMarketMacro === 'function') renderMarketMacro(true);
+    if (typeof renderHomePage === 'function') renderHomePage();
+    if (typeof renderMarketTiles === 'function') renderMarketTiles();
+    if (typeof renderWatchlist === 'function') renderWatchlist();
+  }
+
+
+
+  function renderBriefingMarketTabs() {
+    var el = document.getElementById('briefingMarketTabs');
+    if (!el) return;
+    var mode = briefingMarketsModeFromSettings();
+    el.querySelectorAll('[data-briefing-market]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-briefing-market') === mode);
+    });
+  }
+
   var US_CACHE_PREFIX = 'ibrf.us.';
   var US_FETCH_MS = 14000;
 
@@ -548,6 +604,9 @@
     formatMoneyValue: formatMoneyValue,
     filterBriefsByMarket: filterBriefsByMarket,
     getVisibleMarketTickers: getVisibleMarketTickers,
+    briefingMarketsModeFromSettings: briefingMarketsModeFromSettings,
+    applyBriefingMarkets: applyBriefingMarkets,
+    renderBriefingMarketTabs: renderBriefingMarketTabs,
     defaultCurrencyForMarket: defaultCurrencyForMarket,
     fetchUsQuote: fetchUsQuote,
     fetchUsHistory: fetchUsHistory

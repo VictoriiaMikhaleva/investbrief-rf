@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250617" />
+  <link rel="stylesheet" href="./styles.css?v=20250620" />
 </head>
 <body>
   <div class="app">
@@ -98,15 +98,15 @@
 
           <section class="home-block">
             <h3 class="home-block-title">Котировки</h3>
-            <p class="muted home-hint hint-frame">МосБиржа · див. доходность 5л и мини‑графики · нажмите для подробной аналитики</p>
-            <div class="row market-tiles-toolbar">
-              <div class="ticker-ac-wrap grow">
-                <input id="marketTickerInput" placeholder="Тикер или название…" autocomplete="off" spellcheck="false" />
+            <p class="muted home-hint hint-frame">Индекс МосБиржи · котировка и динамика</p>
+            <div class="briefing-market-toolbar">
+              <div class="market-filter-tabs" id="briefingMarketTabs" role="tablist" aria-label="Рынок в сводке">
+                <button type="button" data-briefing-market="RU" class="active">Рынок РФ</button>
+                <button type="button" data-briefing-market="US">Рынок США</button>
+                <button type="button" data-briefing-market="BOTH">Рынок РФ и США</button>
               </div>
-              <button type="button" id="addMarketTickerBtn" class="primary">Добавить</button>
-              <button type="button" id="resetMarketTickersBtn" class="ghost small" title="Список по умолчанию">Сброс</button>
             </div>
-            <div class="market-tiles market-tiles--compact bento-section" id="marketTiles" aria-label="Котировки"></div>
+            <div class="market-tiles market-tiles--compact bento-section market-tiles--index-only" id="marketTiles" aria-label="Индекс МосБиржи"></div>
           </section>
 
           <section class="home-block">
@@ -117,7 +117,7 @@
               <p class="muted imoex-panel-hint hint-frame">Оборот бумаг индекса IMOEX за 7 торговых дней (млрд ₽/день, МосБиржа)</p>
               <div id="imoexVolumeBars" class="imoex-volume-bars" aria-live="polite">Загрузка…</div>
               <h4 class="imoex-subtitle">Топ‑20 по обороту за сутки</h4>
-              <p class="muted imoex-panel-hint hint-frame" style="margin-top:0;">Карточки с дивидендной доходностью за 5 лет и мини‑графиками · нажмите для подробной аналитики</p>
+              <p class="muted imoex-panel-hint hint-frame" style="margin-top:0;">Карточки с дивидендной доходностью за 5 лет и мини‑графиками<br>нажмите для подробной аналитики</p>
               <div class="imoex-top-cards quote-cards-grid" id="imoexTopVolumeCards">Загрузка…</div>
               <p class="muted chart-source hint-frame" id="imoexMarketSource"></p>
             </div>
@@ -521,14 +521,14 @@
   <script type="module" src="./firebase-init.mjs"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script src="./nav-books.js?v=20250608"></script>
-  <script src="./markets.js?v=20250614"></script>
-  <script src="./storage.js?v=20250612"></script>
+  <script src="./markets.js?v=20250620"></script>
+  <script src="./storage.js?v=20250620"></script>
   <script src="./ui.js?v=20250619"></script>
   <script src="./news.js?v=20250617"></script>
-  <script src="./moex.js?v=20250619"></script>
+  <script src="./moex.js?v=20250620"></script>
   <script src="./analytics.js?v=20250618"></script>
   <script src="./portfolio.js?v=20250616"></script>
   <script src="./firebase-sync.js?v=20250612"></script>
-  <script src="./app.js?v=20250612"></script>
+  <script src="./app.js?v=20250620"></script>
 </body>
 </html>

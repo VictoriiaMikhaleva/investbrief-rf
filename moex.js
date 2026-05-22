@@ -730,8 +730,8 @@
   function buildMarketTileConfig(ticker) {
     return {
       ticker: ticker,
-      title: ticker,
-      subtitle: getTickerSubtitle(ticker),
+      title: ticker === 'IMOEX' ? 'Индекс МосБиржи' : ticker,
+      subtitle: ticker === 'IMOEX' ? 'IMOEX' : getTickerSubtitle(ticker),
       featured: ticker === 'IMOEX'
     };
   }
@@ -798,15 +798,21 @@
 
 
 
+  function getBriefingQuoteTickers() {
+    return (typeof BRIEFING_QUOTE_TICKERS !== 'undefined' && BRIEFING_QUOTE_TICKERS.length)
+      ? BRIEFING_QUOTE_TICKERS.slice()
+      : ['IMOEX'];
+  }
+
+
+
   function renderMarketTiles() {
     var el = document.getElementById('marketTiles');
     if (!el) return;
     destroyMarketTilesBento();
-    var tickers = typeof Markets !== 'undefined'
-      ? Markets.getVisibleMarketTickers(getMarketTickers())
-      : getMarketTickers();
+    var tickers = getBriefingQuoteTickers();
     if (!tickers.length) {
-      el.innerHTML = '<p class="market-tiles-empty">Добавьте тикер в поле выше</p>';
+      el.innerHTML = '<p class="market-tiles-empty muted">Индекс недоступен</p>';
       return;
     }
     el.innerHTML = tickers.map(function (ticker) {
@@ -829,8 +835,6 @@
             '</div>' +
             (typeof window.quoteCardChartsHtml === 'function' ? window.quoteCardChartsHtml(tile.ticker) : '') +
           '</button>' +
-          '<button type="button" class="market-tile-remove" data-remove-ticker="' + escapeHtml(tile.ticker) +
-            '" aria-label="Удалить ' + escapeHtml(tile.ticker) + '">×</button>' +
         '</div>'
       );
     }).join('');
@@ -1159,6 +1163,19 @@
 
 
 
+  function formatVolTradeDate(iso) {
+    if (!iso) return '—';
+    var parts = String(iso).trim().split('-');
+    if (parts.length >= 3) {
+      var day = parts[2].replace(/T.*/, '').slice(0, 2);
+      var month = parts[1];
+      return day + '.' + month;
+    }
+    return String(iso);
+  }
+
+
+
   function formatBlnRub(value) {
     if (value == null || !isFinite(value)) return '—';
     return (Number(value) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1260,7 +1277,7 @@
     }
     var max = Math.max.apply(null, days.map(function (d) { return d.value; }));
     el.innerHTML = days.map(function (d) {
-      var dt = d.date ? String(d.date).slice(5).replace('-', '.') : '—';
+      var dt = formatVolTradeDate(d.date);
       var bln = formatBlnRub(d.value);
       var pct = max > 0 ? Math.max(8, (d.value / max) * 100) : 0;
       return (

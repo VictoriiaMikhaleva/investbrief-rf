@@ -1669,6 +1669,14 @@
       margin: 0 0 0.35rem;
     }
     .home-hint { margin: 0 0 0.5rem; font-size: 0.82rem; }
+    .briefing-market-toolbar { margin: 0 0 0.65rem; }
+    .market-tiles--index-only {
+      grid-template-columns: minmax(0, 1fr);
+      max-width: 22rem;
+    }
+    @media (min-width: 560px) {
+      .market-tiles--index-only { grid-template-columns: minmax(0, 1fr); }
+    }
     .home-head { margin: 0 0 0.75rem; }
 
     .market-tiles--compact {
