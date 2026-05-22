@@ -816,25 +816,56 @@
           '<div class="insight-kpi"><span class="insight-kpi-lbl">На позицию</span><span class="insight-kpi-val">' + escapeHtml(forecastTotal != null ? forecastTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>' +
           '<div class="insight-kpi"><span class="insight-kpi-lbl">Выплачено 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(paidTotal != null ? paidTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>';
       }
-      if (divCanvas) {
-        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
+      var schedule = a.monthlyForecast;
+      var buyDate = pos.buyDate || '';
+      var passive5y = typeof buildPassiveIncome5y === 'function'
+        ? buildPassiveIncome5y(a.dividends, qty, buyDate)
+        : [];
+
+      if (divCanvas && schedule && schedule.months) {
+        var monthBars = schedule.months.map(function (m) {
+          return {
+            v: qty > 0 ? m.perShare * qty : m.perShare,
+            label: String(m.month + 1).padStart(2, '0') + '.' + String(m.year).slice(-2),
+            forecast: m.estimated
+          };
+        });
+        drawFullBarChart(divCanvas, monthBars, {
           color: '#9A7B4F',
-          forecastColor: '#4A7356',
-          ySuffix: '₽/акц.'
+          forecastColor: '#6B7A5A',
+          ySuffix: qty > 0 ? '₽ на позицию' : '₽/акц.',
+          showLabels: true
         });
       }
-      if (divNote && fc) {
-        divNote.textContent = 'Прогноз ' + formatDivRubPerShare(fc.amount) + (fc.source ? ' · ' + fc.source : '');
+      var scheduleEl = document.getElementById('portfolioInsightDivSchedule');
+      if (scheduleEl && typeof formatDivMonthScheduleHtml === 'function') {
+        scheduleEl.innerHTML = formatDivMonthScheduleHtml(schedule, qty);
       }
-      if (incomeCanvas && a.divYieldByYear) {
-        var incomeBars = a.divYieldByYear.map(function (y) {
-          return { v: y.totalDiv > 0 && qty > 0 ? y.totalDiv * qty : 0, label: String(y.year).slice(-2) };
+      if (divNote && schedule) {
+        var tot = schedule.totalPerShare;
+        var totPos = qty > 0 && tot != null ? (tot * qty).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '';
+        divNote.textContent = 'Итого за 12 мес.: ' + formatDivRubPerShare(tot) +
+          (totPos ? ' · на позицию ' + totPos : '') +
+          (schedule.source ? ' · ' + schedule.source : '');
+      }
+      if (incomeCanvas && passive5y.length) {
+        var incomeBars = passive5y.map(function (y) {
+          return {
+            v: y.totalRub > 0 ? y.totalRub : 0,
+            label: String(y.year).slice(-2),
+            forecast: false
+          };
         });
-        if (fc && fc.amount != null) incomeBars.push({ v: fc.amount * qty, label: '12м', forecast: true });
-        drawFullBarChart(incomeCanvas, incomeBars, { color: '#4A7356', forecastColor: '#3D5C47', ySuffix: '₽' });
-      }
-      if (incomeNote) {
-        incomeNote.textContent = 'Пассивный доход по позиции (дивиденды × ' + qty + ' шт.)';
+        var sum5y = passive5y.reduce(function (s, y) { return s + (y.totalRub || 0); }, 0);
+        drawFullBarChart(incomeCanvas, incomeBars, { color: '#4A7356', ySuffix: '₽' });
+        if (incomeNote) {
+          incomeNote.textContent = qty > 0
+            ? ('Заработано на дивидендах за 5 лет: ' + sum5y.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽ · ' + qty + ' шт.' +
+              (buyDate ? ' · с ' + buyDate : ''))
+            : 'Сумма дивидендов на 1 акцию за 5 лет (укажите количество в портфеле)';
+        }
+      } else if (incomeNote) {
+        incomeNote.textContent = 'Нет выплат за последние 5 лет по данным МосБиржи';
       }
     });
     sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

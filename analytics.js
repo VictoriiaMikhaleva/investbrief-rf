@@ -108,6 +108,174 @@
     return { amount: null, paid12m: null, upcoming12m: null, source: '' };
   }
 
+
+
+  function monthKeyFromDate(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+
+
+  function formatMonthLabel(year, monthIndex) {
+    var names = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    return names[monthIndex] + '.' + String(year).slice(-2);
+  }
+
+
+
+  function avgCloseInMonth(history, year, monthOneBased) {
+    var prefix = year + '-' + String(monthOneBased).padStart(2, '0');
+    var prices = (history || []).filter(function (h) {
+      return h.date && h.date.indexOf(prefix) === 0 && h.close != null && h.close > 0;
+    }).map(function (h) { return h.close; });
+    if (!prices.length) return null;
+    return prices.reduce(function (a, b) { return a + b; }, 0) / prices.length;
+  }
+
+
+
+  /** Помесячный план выплат на 12 мес. вперёд: ₽/акц. и доходность %. */
+  function buildMonthlyDividendForecast12m(dividends, history, quotePrice) {
+    var now = new Date();
+    now.setHours(12, 0, 0, 0);
+    var months = [];
+    var monthByKey = {};
+    var i;
+    for (i = 0; i < 12; i++) {
+      var d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      var m = {
+        key: monthKeyFromDate(d),
+        label: formatMonthLabel(d.getFullYear(), d.getMonth()),
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        perShare: 0,
+        items: [],
+        estimated: false
+      };
+      months.push(m);
+      monthByKey[m.key] = m;
+    }
+    var horizonEnd = new Date(now.getFullYear(), now.getMonth() + 12, 28);
+
+    (dividends || []).forEach(function (div) {
+      var dt = new Date(div.date + 'T12:00:00');
+      if (isNaN(dt.getTime()) || !isFinite(div.value) || div.value <= 0) return;
+      if (dt <= now || dt > horizonEnd) return;
+      var bucket = monthByKey[monthKeyFromDate(dt)];
+      if (!bucket) return;
+      bucket.perShare += div.value;
+      bucket.items.push({ date: div.date, value: div.value, announced: true });
+    });
+
+    var hasAnnounced = months.some(function (m) { return m.items.length > 0; });
+    var source = hasAnnounced ? 'по датам отсечки (МосБиржа)' : '';
+
+    if (!hasAnnounced) {
+      var lastYear = now.getFullYear() - 1;
+      (dividends || []).forEach(function (div) {
+        if (div.date.indexOf(String(lastYear)) !== 0) return;
+        var dt = new Date(div.date + 'T12:00:00');
+        if (isNaN(dt.getTime())) return;
+        var bucket = monthByKey[monthKeyFromDate(new Date(now.getFullYear(), dt.getMonth(), 1))];
+        if (!bucket) return;
+        bucket.perShare += div.value;
+        bucket.items.push({ date: div.date, value: div.value, estimated: true });
+        bucket.estimated = true;
+      });
+      if (months.some(function (m) { return m.perShare > 0; })) {
+        source = 'оценка: календарь выплат ' + lastYear + ' г.';
+      }
+    }
+
+    months.forEach(function (m) {
+      var px = avgCloseInMonth(history, m.year, m.month + 1);
+      if (px == null || !isFinite(px)) px = quotePrice;
+      m.avgPrice = px;
+      m.yieldPct = px != null && isFinite(px) && px > 0 && m.perShare > 0
+        ? (m.perShare / px) * 100
+        : null;
+    });
+
+    var totalPerShare = months.reduce(function (s, m) { return s + m.perShare; }, 0);
+    return { months: months, source: source, totalPerShare: totalPerShare, hasAnnounced: hasAnnounced };
+  }
+
+
+
+  /** Фактический дивидендный доход по позиции за 5 лет (с учётом даты покупки). */
+  function buildPassiveIncome5y(dividends, qty, buyDate) {
+    qty = isFinite(Number(qty)) && Number(qty) > 0 ? Number(qty) : 0;
+    var cut = null;
+    if (buyDate) {
+      cut = new Date(buyDate + 'T12:00:00');
+      if (isNaN(cut.getTime())) cut = null;
+    }
+    var now = new Date();
+    var thisYear = now.getFullYear();
+    var years = [];
+    var y;
+    for (y = thisYear - (YIELD_YEARS - 1); y <= thisYear; y++) years.push(y);
+
+    return years.map(function (year) {
+      var perShare = 0;
+      var paymentCount = 0;
+      (dividends || []).forEach(function (d) {
+        if (d.date.indexOf(String(year)) !== 0) return;
+        var dt = new Date(d.date + 'T12:00:00');
+        if (isNaN(dt.getTime()) || dt > now) return;
+        if (cut && dt < cut) return;
+        if (!isFinite(d.value) || d.value <= 0) return;
+        perShare += d.value;
+        paymentCount++;
+      });
+      return {
+        year: year,
+        label: String(year),
+        perShare: perShare,
+        totalRub: qty > 0 ? perShare * qty : perShare,
+        paymentCount: paymentCount
+      };
+    });
+  }
+
+
+
+  function formatDivMonthScheduleHtml(schedule, qty) {
+    if (!schedule || !schedule.months || !schedule.months.length) {
+      return '<p class="muted">Нет данных для прогноза</p>';
+    }
+    qty = isFinite(Number(qty)) && Number(qty) > 0 ? Number(qty) : null;
+    var withPay = schedule.months.filter(function (m) { return m.perShare > 0; });
+    if (!withPay.length) {
+      return '<p class="muted">В ближайшие 12 месяцев выплаты не запланированы (по данным МосБиржи)</p>';
+    }
+    var head =
+      '<div class="div-schedule-head">' +
+        '<span>Месяц</span><span>Отсечка</span><span>₽/акц.</span>' +
+        (qty != null ? '<span>На позицию</span>' : '') +
+        '<span>Доходн.</span>' +
+      '</div>';
+    var rows = withPay.map(function (m) {
+      var dt = m.items.length && m.items[0].date
+        ? String(m.items[0].date).slice(8, 10) + '.' + String(m.items[0].date).slice(5, 7) + '.' + String(m.items[0].date).slice(2, 4)
+        : (m.estimated ? 'оценка' : '—');
+      var posVal = qty != null ? (m.perShare * qty).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '';
+      return (
+        '<div class="div-schedule-row' + (m.estimated ? ' div-schedule-row--est' : '') + '">' +
+          '<span>' + escapeHtml(m.label) + '</span>' +
+          '<span>' + escapeHtml(dt) + '</span>' +
+          '<span>' + escapeHtml(m.perShare.toFixed(2)) + '</span>' +
+          (qty != null ? '<span>' + escapeHtml(posVal) + '</span>' : '') +
+          '<span>' + escapeHtml(m.yieldPct != null ? formatDivYieldPct(m.yieldPct) : '—') + '</span>' +
+        '</div>'
+      );
+    }).join('');
+    var foot = schedule.source
+      ? '<p class="div-schedule-src muted">' + escapeHtml(schedule.source) + '</p>'
+      : '';
+    return head + rows + foot;
+  }
+
   function formatPortfolioDivCell(forecast, qty) {
     if (!forecast || forecast.amount == null) return '<span class="muted">—</span>';
     var q = isFinite(Number(qty)) && Number(qty) > 0 ? Number(qty) : null;
@@ -290,6 +458,7 @@
         divAvg5y: averageYield5y(yearly),
         divForecast: forecast,
         divYieldByYear: yearly,
+        monthlyForecast: buildMonthlyDividendForecast12m(dividends, history, quote.price),
         volumeByDay: sliceVolumeSeries(history, VOLUME_YEAR_DAYS)
       };
       analyticsCacheSet(cacheKey, out, ANALYTICS_TTL);
@@ -554,4 +723,7 @@
   window.queueEnrichQuoteCard = queueEnrichQuoteCard;
   window.fetchPortfolioDivForecastHtml = fetchPortfolioDivForecastHtml;
   window.computeDividendForecast12m = computeDividendForecast12m;
+  window.buildMonthlyDividendForecast12m = buildMonthlyDividendForecast12m;
+  window.buildPassiveIncome5y = buildPassiveIncome5y;
+  window.formatDivMonthScheduleHtml = formatDivMonthScheduleHtml;
 })();
