@@ -42,8 +42,20 @@
 
 
 
+  function getPaperDisplayPct(pos) {
+    var day = pos.dayChangePct;
+    if (day != null && isFinite(Number(day))) return Number(day);
+    return getPositionReturnPct(pos);
+  }
+
+
+
   function getPaperPnlTitle(pos) {
     var parts = [];
+    var cur = Number(pos.currentPrice);
+    if (isFinite(cur)) {
+      parts.push('Цена: ' + formatPositionPrice(pos));
+    }
     var day = pos.dayChangePct;
     if (day != null && isFinite(Number(day))) {
       parts.push('За сутки: ' + formatSignedPct(Number(day)));
@@ -58,31 +70,75 @@
   function buildPaperPnlHtml(pos) {
     var day = pos.dayChangePct;
     var port = getPositionReturnPct(pos);
-    var dayCls = 'muted';
-    var portCls = 'muted';
-    var dayText = '—';
-    var portText = '—';
-    if (day != null && isFinite(Number(day))) {
+    var hasDay = day != null && isFinite(Number(day));
+    var hasPort = port != null && isFinite(port);
+    var hasCur = isFinite(Number(pos.currentPrice));
+    var rows = [];
+
+    if (hasDay) {
       day = Number(day);
-      dayText = formatSignedPct(day, 2);
-      dayCls = day >= 0 ? 'pnl-pos' : 'pnl-neg';
+      rows.push({
+        lbl: 'сутки',
+        text: formatSignedPct(day, 2),
+        cls: day >= 0 ? 'pnl-pos' : 'pnl-neg'
+      });
+    } else if (hasCur) {
+      rows.push({ lbl: 'цена', text: formatPositionPrice(pos), cls: '' });
     }
-    if (port != null && isFinite(port)) {
-      portText = formatSignedPct(port, 2);
-      portCls = port >= 0 ? 'pnl-pos' : 'pnl-neg';
+
+    if (hasPort) {
+      rows.push({
+        lbl: 'портфель',
+        text: formatSignedPct(port, 2),
+        cls: port >= 0 ? 'pnl-pos' : 'pnl-neg'
+      });
+    } else if (hasDay && hasCur) {
+      rows.push({ lbl: 'цена', text: formatPositionPrice(pos), cls: '' });
     }
+
+    if (!rows.length) {
+      rows.push({ lbl: 'сутки', text: '—', cls: 'muted' });
+      rows.push({ lbl: 'портфель', text: '—', cls: 'muted' });
+    }
+
     return (
       '<span class="paper-pnl-rows">' +
-        '<span class="paper-pnl-row">' +
-          '<span class="paper-pnl-lbl">сутки</span>' +
-          '<span class="paper-pnl-val ' + dayCls + '">' + escapeHtml(dayText) + '</span>' +
-        '</span>' +
-        '<span class="paper-pnl-row">' +
-          '<span class="paper-pnl-lbl">портфель</span>' +
-          '<span class="paper-pnl-val ' + portCls + '">' + escapeHtml(portText) + '</span>' +
-        '</span>' +
+      rows.map(function (row) {
+        return (
+          '<span class="paper-pnl-row">' +
+            '<span class="paper-pnl-lbl">' + escapeHtml(row.lbl) + '</span>' +
+            '<span class="paper-pnl-val ' + (row.cls || 'muted') + '">' + escapeHtml(row.text) + '</span>' +
+          '</span>'
+        );
+      }).join('') +
       '</span>'
     );
+  }
+
+
+
+  function syncPositionQuoteFromMarket(ticker, histResult) {
+    ticker = normalizeTicker(ticker);
+    return fetchMoexQuote(ticker).then(function (q) {
+      var portfolio = getPortfolio();
+      var p = findPortfolioPosition(ticker);
+      if (!p) return;
+      if (q && q.price != null && isFinite(q.price)) p.currentPrice = q.price;
+      if (q && q.changePct != null && isFinite(q.changePct)) {
+        p.dayChangePct = q.changePct;
+      } else if (
+        histResult && histResult.series && histResult.series.length >= 2 &&
+        state.chartHorizon === 'day'
+      ) {
+        var s = histResult.series;
+        var first = s[0].price;
+        var last = s[s.length - 1].price;
+        if (first && isFinite(first) && first !== 0) {
+          p.dayChangePct = ((last - first) / first) * 100;
+        }
+      }
+      setPortfolio(portfolio);
+    }).catch(function () { /* keep chart price */ });
   }
 
 
@@ -394,9 +450,16 @@
         : ('МосБиржа · ' + pos.ticker);
       setChartSourceLabel(srcLabel, false);
       if (result.series.length) {
-        pos.currentPrice = result.series[result.series.length - 1].price;
-        setPortfolio(getPortfolio());
+        var portfolio = getPortfolio();
+        var live = findPortfolioPosition(pos.ticker);
+        if (live) live.currentPrice = result.series[result.series.length - 1].price;
+        setPortfolio(portfolio);
       }
+      return syncPositionQuoteFromMarket(pos.ticker, result);
+    }).then(function () {
+      if (reqId !== state.chartRequestId) return;
+      renderPortfolioFolder();
+      renderPortfolioTableBody();
     }).catch(function () {
       if (reqId !== state.chartRequestId) return;
       if (typeof Markets !== 'undefined' && Markets.isUsPosition(pos)) {
@@ -819,7 +882,7 @@
     refreshPortfolioQuotes().then(function () {
       renderPortfolioTableBody();
       renderPortfolioFolder();
-      renderPortfolioChart();
+      if (state.chartTicker) renderPortfolioChart();
     });
   }
 

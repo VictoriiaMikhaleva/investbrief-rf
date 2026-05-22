@@ -1347,11 +1347,14 @@
     }
     .pf-papers-strip .paper .paper-pnl-val {
       font-weight: 600;
-      font-size: 0.54rem;
+      font-size: 0.58rem;
       flex-shrink: 0;
       text-align: right;
       white-space: nowrap;
+      color: var(--text);
     }
+    .pf-papers-strip .paper .paper-pnl-val.pnl-pos { color: var(--success); }
+    .pf-papers-strip .paper .paper-pnl-val.pnl-neg { color: var(--danger); }
     .pf-papers-strip .paper:hover { z-index: 5; }
     .pf-papers-strip .paper.paper-active {
       z-index: 6;
