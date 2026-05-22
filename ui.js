@@ -887,9 +887,10 @@
         });
       }
       if (divNote) {
-        var fc = a.divForecast;
-        divNote.textContent = (fc && fc.source ? fc.source + ' · ' : '') +
-          'Наведите на столбец — подсветка и сумма';
+        divNote.innerHTML = typeof formatDividendChartInfoHtml === 'function'
+          ? formatDividendChartInfoHtml(a, null)
+          : '';
+        divNote.className = 'analytics-chart-note div-chart-info';
       }
       if (volCanvas) {
         var volBars = (a.volumeByDay || []).map(function (p) {
@@ -908,7 +909,11 @@
           showValues: false
         });
       }
-      if (volNote) volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) + ' торговых дней';
+      if (volNote) {
+        volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) +
+          ' торговых дней · наведите на столбец для суммы в млрд ₽';
+        volNote.className = 'analytics-chart-note chart-info-readable';
+      }
       return fetchMoexHistory(ticker, horizon);
     }).then(function (r) {
       if (priceCanvas && r && r.series) {
@@ -984,9 +989,10 @@
         });
       }
       if (divNote) {
-        var fc = a.divForecast;
-        divNote.textContent = (fc && fc.source ? fc.source + ' · ' : '') +
-          'Наведите на столбец — подсветка и сумма';
+        divNote.innerHTML = typeof formatDividendChartInfoHtml === 'function'
+          ? formatDividendChartInfoHtml(a, qty)
+          : '';
+        divNote.className = 'analytics-chart-note div-chart-info';
       }
       if (volCanvas) {
         var volBars = (a.volumeByDay || []).map(function (p) {
@@ -1007,7 +1013,8 @@
       }
       if (volNote) {
         volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) +
-          ' торговых дней · наведите на столбец';
+          ' торговых дней · наведите на столбец для суммы в млрд ₽';
+        volNote.className = 'analytics-chart-note chart-info-readable';
       }
     });
     sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

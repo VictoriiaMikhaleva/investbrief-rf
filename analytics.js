@@ -241,6 +241,89 @@
 
 
 
+  function monthNameFromDate(dateStr) {
+    var d = new Date(String(dateStr).slice(0, 10) + 'T12:00:00');
+    if (isNaN(d.getTime())) return '—';
+    var names = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    return names[d.getMonth()];
+  }
+
+
+
+  function formatDividendRubShort(val) {
+    if (val == null || !isFinite(val) || val <= 0) return '—';
+    return val.toFixed(2).replace('.', ',');
+  }
+
+
+
+  function formatDividendPaymentMonthsLine(dividends, year) {
+    var items = (dividends || []).filter(function (d) {
+      return d.date && d.date.indexOf(String(year)) === 0;
+    }).sort(function (a, b) { return a.date.localeCompare(b.date); });
+    if (!items.length) return '';
+    return items.map(function (d) {
+      return monthNameFromDate(d.date) + ' ' + formatDividendRubShort(d.value) + ' ₽';
+    }).join(' · ');
+  }
+
+
+
+  /** Подпись к графику дивидендов: годы, % и месяцы выплат. */
+  function formatDividendChartInfoHtml(a, qty) {
+    if (!a || !a.eligible) {
+      return '<p class="chart-info-empty muted">Нет дивидендных данных</p>';
+    }
+    var yearly = a.divYieldByYear || [];
+    var fc = a.divForecast;
+    var html = [];
+
+    html.push('<div class="div-info-block div-info-years">');
+    html.push('<div class="div-info-title">Выплаты по годам</div>');
+    yearly.forEach(function (y) {
+      var sum = y.totalDiv > 0 ? formatDividendRubShort(y.totalDiv) + ' ₽/акц.' : '—';
+      var yld = y.yieldPct != null && isFinite(y.yieldPct) ? formatDivYieldPct(y.yieldPct) : '';
+      var months = formatDividendPaymentMonthsLine(a.dividends, y.year);
+      html.push(
+        '<div class="div-info-year">' +
+          '<div class="div-info-year-head">' +
+            '<span class="div-info-year-lbl">' + escapeHtml(String(y.year)) + '</span>' +
+            '<span class="div-info-year-val">' + escapeHtml(sum) +
+              (yld ? ' <span class="div-info-yield">(' + escapeHtml(yld) + ')</span>' : '') +
+            '</span>' +
+          '</div>' +
+          (months
+            ? '<div class="div-info-months"><span class="div-info-months-lbl">Месяцы выплат:</span> ' + escapeHtml(months) + '</div>'
+            : '<div class="div-info-months muted">В этом году выплат не было</div>') +
+        '</div>'
+      );
+    });
+    if (fc && fc.amount != null && isFinite(fc.amount)) {
+      html.push(
+        '<div class="div-info-year div-info-year--forecast">' +
+          '<div class="div-info-year-head">' +
+            '<span class="div-info-year-lbl">Прогноз 12 мес.</span>' +
+            '<span class="div-info-year-val">' + escapeHtml(formatDivRubPerShare(fc.amount)) + '</span>' +
+          '</div>' +
+          (fc.source ? '<div class="div-info-months muted">' + escapeHtml(fc.source) + '</div>' : '') +
+        '</div>'
+      );
+    }
+    html.push('</div>');
+
+    if (a.monthlyForecast) {
+      html.push('<div class="div-info-block div-info-plan">');
+      html.push('<div class="div-info-title">Календарь на 12 месяцев вперёд</div>');
+      html.push(formatDivMonthScheduleHtml(a.monthlyForecast, qty));
+      html.push('</div>');
+    }
+
+    html.push('<p class="div-info-hint">Наведите на столбец графика — подсветка и сумма</p>');
+    return html.join('');
+  }
+
+
+
   function formatDivMonthScheduleHtml(schedule, qty) {
     if (!schedule || !schedule.months || !schedule.months.length) {
       return '<p class="muted">Нет данных для прогноза</p>';
@@ -252,11 +335,16 @@
     }
     var head =
       '<div class="div-schedule-head">' +
-        '<span>Месяц</span><span>Отсечка</span><span>₽/акц.</span>' +
+        '<span>Месяц</span><span>Выплаты</span><span>₽/акц.</span>' +
         (qty != null ? '<span>На позицию</span>' : '') +
         '<span>Доходн.</span>' +
       '</div>';
     var rows = withPay.map(function (m) {
+      var payMonths = m.items.length
+        ? m.items.map(function (it) {
+            return monthNameFromDate(it.date) + ' ' + formatDividendRubShort(it.value) + ' ₽';
+          }).join(' · ')
+        : (m.estimated ? 'оценка' : '—');
       var dt = m.items.length && m.items[0].date
         ? String(m.items[0].date).slice(8, 10) + '.' + String(m.items[0].date).slice(5, 7) + '.' + String(m.items[0].date).slice(2, 4)
         : (m.estimated ? 'оценка' : '—');
@@ -264,8 +352,8 @@
       return (
         '<div class="div-schedule-row' + (m.estimated ? ' div-schedule-row--est' : '') + '">' +
           '<span>' + escapeHtml(m.label) + '</span>' +
-          '<span>' + escapeHtml(dt) + '</span>' +
-          '<span>' + escapeHtml(m.perShare.toFixed(2)) + '</span>' +
+          '<span title="Отсечка ' + escapeHtml(dt) + '">' + escapeHtml(payMonths) + '</span>' +
+          '<span>' + escapeHtml(formatDividendRubShort(m.perShare)) + '</span>' +
           (qty != null ? '<span>' + escapeHtml(posVal) + '</span>' : '') +
           '<span>' + escapeHtml(m.yieldPct != null ? formatDivYieldPct(m.yieldPct) : '—') + '</span>' +
         '</div>'
@@ -734,4 +822,5 @@
   window.buildMonthlyDividendForecast12m = buildMonthlyDividendForecast12m;
   window.buildPassiveIncome5y = buildPassiveIncome5y;
   window.formatDivMonthScheduleHtml = formatDivMonthScheduleHtml;
+  window.formatDividendChartInfoHtml = formatDividendChartInfoHtml;
 })();
