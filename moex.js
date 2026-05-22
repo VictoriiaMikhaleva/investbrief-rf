@@ -831,9 +831,8 @@
             '<div class="market-tile-metrics">' +
               '<span class="market-tile-price" data-price>…</span>' +
               '<span class="market-tile-change muted" data-change>загрузка</span>' +
-              '<span class="market-tile-div muted" data-div-yield>Див. 5л: …</span>' +
             '</div>' +
-            (typeof window.quoteCardChartsHtml === 'function' ? window.quoteCardChartsHtml(tile.ticker) : '') +
+            (typeof window.quoteCardDivMetricsHtml === 'function' ? window.quoteCardDivMetricsHtml() : '') +
           '</button>' +
         '</div>'
       );
@@ -1322,9 +1321,8 @@
                 '<span class="quote-card-price">' + escapeHtml(formatChartPrice(r.price, r.ticker)) + '</span>' +
                 '<span class="quote-card-change ' + ch.cls + '">' + escapeHtml(ch.text) + '</span>' +
                 '<span class="quote-card-meta muted">Оборот ' + escapeHtml(formatBlnRub(r.valToday)) + ' млрд</span>' +
-                '<span class="quote-card-div muted" data-div-yield>Див. 5л: …</span>' +
               '</div>' +
-              (typeof window.quoteCardChartsHtml === 'function' ? window.quoteCardChartsHtml(r.ticker) : '') +
+              (typeof window.quoteCardDivMetricsHtml === 'function' ? window.quoteCardDivMetricsHtml() : '') +
             '</button>' +
           '</div>'
         );

@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250622" />
+  <link rel="stylesheet" href="./styles.css?v=20250623" />
 </head>
 <body>
   <div class="app">
@@ -44,7 +44,7 @@
             </span>
           </span>
           <span class="book-nav__text">
-            <span class="book-nav__name book-nav__name--stacked">Сводка<br>новостей</span>
+            <span class="book-nav__name">Главная</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="watchlist" style="--book-color:#9A7B4F;--book-text:#F7F4EE">
@@ -94,7 +94,7 @@
 
       <main class="content">
         <section id="tab-briefing" class="panel active" data-panel="briefing">
-          <h2 class="home-head">Сводка новостей</h2>
+          <h2 class="home-head">Главная</h2>
 
           <section class="home-block">
             <h3 class="home-block-title">Котировки</h3>
@@ -117,7 +117,7 @@
               <p class="muted imoex-panel-hint hint-frame">Оборот бумаг индекса IMOEX за 7 торговых дней (млрд ₽/день, МосБиржа)</p>
               <div id="imoexVolumeBars" class="imoex-volume-bars" aria-live="polite">Загрузка…</div>
               <h4 class="imoex-subtitle">Топ‑20 по обороту за сутки</h4>
-              <p class="muted imoex-panel-hint hint-frame" style="margin-top:0;">Карточки с дивидендной доходностью за 5 лет и мини‑графиками<br>нажмите для подробной аналитики</p>
+              <p class="muted imoex-panel-hint hint-frame" style="margin-top:0;">Средняя див. доходность за 5 лет и прогноз дивидендов на 12 мес.<br>нажмите для подробной аналитики</p>
               <div class="imoex-top-cards quote-cards-grid" id="imoexTopVolumeCards">Загрузка…</div>
               <p class="muted chart-source hint-frame" id="imoexMarketSource"></p>
             </div>
@@ -152,30 +152,17 @@
 
         <section id="tab-watchlist" class="panel" data-panel="watchlist">
           <h2>Аналитика бумаг</h2>
-          <p class="muted hint-frame">Список наблюдения: дивидендная доходность за 5 лет, оборот и графики. Позиции и сделки — во вкладке «Мой портфель».</p>
-          <div class="glass">
-            <div class="ticker-ac-wrap grow" style="margin-bottom:0.65rem;">
-              <input id="tickerInput" placeholder="Тикер или название: Сбер, Газпром…" autocomplete="off" spellcheck="false" />
+          <p class="muted hint-frame">Котировки, дивиденды и оборот · позиции и сделки — во вкладке «Мой портфель».</p>
+
+          <div class="briefing-market-toolbar">
+            <div class="market-filter-tabs" id="analyticsMarketTabs" role="tablist" aria-label="Рынок в аналитике">
+              <button type="button" data-briefing-market="RU" class="active">Рынок РФ</button>
+              <button type="button" data-briefing-market="US">Рынок США</button>
+              <button type="button" data-briefing-market="BOTH">Рынок РФ и США</button>
             </div>
-            <div class="row watchlist-actions">
-              <button type="button" id="addWatchlistBtn" class="primary">+ Добавить в аналитику</button>
-            </div>
-            <div class="preset-btns">
-              <span class="muted" style="width:100%;margin:0;">Пресеты:</span>
-              <button type="button" data-preset="bluechips">Голубые фишки</button>
-              <button type="button" data-preset="bonds">Облигации</button>
-              <button type="button" data-preset="dividends">Дивиденды</button>
-            </div>
-            <div id="watchlistChips" class="chips"></div>
           </div>
-          <div id="analyticsGrid" class="analytics-grid quote-cards-grid" aria-label="Аналитика по бумагам"></div>
-        </section>
 
-        <section id="tab-portfolio" class="panel" data-panel="portfolio">
-          <h2>Мой портфель</h2>
-          <p class="muted hint-frame">Позиции хранятся локально. Котировки и графики — с МосБиржи.<br>Не является индивидуальной инвестиционной рекомендацией.</p>
-
-          <article class="glass index-box portfolio-imoex" id="moexIndexBox" aria-label="Индекс МосБиржи">
+          <article class="glass index-box portfolio-imoex analytics-imoex" id="moexIndexBox" aria-label="Индекс МосБиржи">
             <div class="index-box-head">
               <div>
                 <div class="index-sub">Индекс МосБиржи</div>
@@ -201,39 +188,64 @@
             </div>
           </article>
 
-          <div class="glass portfolio-folder-section">
-            <p class="muted hint-frame">Нажмите на папку, чтобы открыть портфель.<br>Выберите бумагу для отображения графика.<br>На карточке: сутки — изменение за торговый день;<br>портфель — изменение к вашей средней цене покупки в портфеле.</p>
-            <div class="portfolio-folder-host" id="portfolioFolderHost">
-              <div class="portfolio-folder-stage">
-                <div class="pf-folder-scene" id="portfolioFolderScene"></div>
-              </div>
+          <div class="glass analytics-watch-block">
+            <div class="ticker-ac-wrap grow" style="margin-bottom:0.65rem;">
+              <input id="tickerInput" placeholder="Тикер или название: Сбер, Газпром…" autocomplete="off" spellcheck="false" />
             </div>
+            <div class="row watchlist-actions">
+              <button type="button" id="addWatchlistBtn" class="primary">+ Добавить в аналитику</button>
+            </div>
+            <div class="preset-btns">
+              <span class="muted" style="width:100%;margin:0;">Пресеты:</span>
+              <button type="button" data-preset="bluechips">Голубые фишки</button>
+              <button type="button" data-preset="bonds">Облигации</button>
+              <button type="button" data-preset="dividends">Дивиденды</button>
+            </div>
+            <div id="watchlistChips" class="chips"></div>
           </div>
+          <div id="analyticsGrid" class="analytics-grid quote-cards-grid" aria-label="Карточки бумаг"></div>
 
-          <div class="glass portfolio-charts" id="portfolioStockChartSection">
-            <h3 class="portfolio-chart-title">Динамика: <span class="chart-ticker-label" id="portfolioChartTickerLabel">—</span></h3>
-            <p class="muted chart-source hint-frame" id="chartSourceLabel" style="margin:0;">Выберите бумагу из портфеля</p>
-            <div class="chart-toolbar" id="chartToolbar" hidden>
-              <div class="grow">
-                <label for="chartTickerSelect">Бумага</label>
-                <select id="chartTickerSelect"></select>
+          <section class="glass analytics-detail" id="analyticsDetailSection" hidden>
+            <h3 class="analytics-detail-title">Подробная аналитика: <span id="analyticsDetailTicker">—</span></h3>
+            <p class="muted analytics-detail-meta" id="analyticsDetailMeta">—</p>
+            <div class="analytics-charts-grid">
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Цена · 5 лет</h4>
+                <div class="horizon-tabs analytics-price-horizon" id="analyticsPriceHorizonTabs">
+                  <button type="button" data-analytics-horizon="month">Месяц</button>
+                  <button type="button" data-analytics-horizon="year" class="active">5 лет</button>
+                </div>
+                <div class="chart-canvas-wrap analytics-chart-wrap">
+                  <canvas id="analyticsPriceChart" aria-label="График цены"></canvas>
+                </div>
+              </div>
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Дивиденды · 5 лет и прогноз 12 мес.</h4>
+                <p class="muted analytics-chart-note" id="analyticsDivNote">—</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap analytics-chart-wrap--mid">
+                  <canvas id="analyticsDivChart" aria-label="Дивиденды"></canvas>
+                </div>
+              </div>
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Оборот торгов · год</h4>
+                <p class="muted analytics-chart-note" id="analyticsVolNote">—</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap analytics-chart-wrap--mid">
+                  <canvas id="analyticsVolChart" aria-label="Оборот"></canvas>
+                </div>
               </div>
             </div>
-            <div class="horizon-tabs" id="chartHorizonTabs" role="tablist" aria-label="Горизонт графика">
-              <button type="button" data-chart-horizon="day">День</button>
-              <button type="button" data-chart-horizon="week" class="active">Неделя</button>
-              <button type="button" data-chart-horizon="month">Месяц</button>
-              <button type="button" data-chart-horizon="year">Год</button>
-            </div>
-            <div id="portfolioChartEmpty" class="chart-empty"><span class="hint-frame">Выберите бумагу в папке</span></div>
-            <div class="chart-canvas-wrap" id="portfolioChartWrap" hidden>
-              <canvas id="portfolioPriceChart" aria-label="График цены"></canvas>
-            </div>
-            <div class="chart-stats" id="portfolioChartStats">
-              <div class="chart-stat"><div class="lbl">Изменение</div><div class="val" id="chartStatChange">—</div></div>
-              <div class="chart-stat"><div class="lbl">Мин</div><div class="val" id="chartStatMin">—</div></div>
-              <div class="chart-stat"><div class="lbl">Макс</div><div class="val" id="chartStatMax">—</div></div>
-              <div class="chart-stat"><div class="lbl">Сейчас</div><div class="val" id="chartStatLast">—</div></div>
+          </section>
+        </section>
+
+        <section id="tab-portfolio" class="panel" data-panel="portfolio">
+          <h2>Мой портфель</h2>
+          <p class="muted hint-frame">Позиции хранятся локально. Котировки — с МосБиржи и Yahoo Finance.<br>Не является индивидуальной инвестиционной рекомендацией.</p>
+
+          <div class="briefing-market-toolbar">
+            <div class="market-filter-tabs" id="portfolioMarketTabs" role="tablist" aria-label="Рынок в портфеле">
+              <button type="button" data-briefing-market="RU" class="active">Рынок РФ</button>
+              <button type="button" data-briefing-market="US">Рынок США</button>
+              <button type="button" data-briefing-market="BOTH">Рынок РФ и США</button>
             </div>
           </div>
 
@@ -268,6 +280,7 @@
                   <th>Комментарий</th>
                   <th>Текущая</th>
                   <th>Доходн.</th>
+                  <th>Дивиденды (12 мес.)</th>
                   <th></th>
                 </tr>
               </thead>
@@ -275,6 +288,44 @@
             </table>
           </div>
           <div class="portfolio-cards" id="portfolioCards"></div>
+
+          <div class="glass portfolio-folder-section">
+            <p class="muted hint-frame">Нажмите на папку, чтобы открыть портфель.<br>Выберите бумагу — ниже появится аналитика по позиции.<br>На карточке: сутки — за торговый день; портфель — к вашей средней цене.</p>
+            <div class="portfolio-folder-host" id="portfolioFolderHost">
+              <div class="portfolio-folder-stage">
+                <div class="pf-folder-scene" id="portfolioFolderScene"></div>
+              </div>
+            </div>
+          </div>
+
+          <section class="glass portfolio-insights" id="portfolioInsightsSection" hidden>
+            <h3 class="portfolio-insights-title">Аналитика позиции: <span id="portfolioInsightsTicker">—</span></h3>
+            <p class="muted portfolio-insights-meta" id="portfolioInsightsMeta">—</p>
+            <div class="portfolio-insights-kpis" id="portfolioInsightsKpis"></div>
+            <div class="analytics-charts-grid portfolio-insights-grid">
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Доходность позиции</h4>
+                <div class="chart-canvas-wrap analytics-chart-wrap">
+                  <canvas id="portfolioInsightPriceChart" aria-label="График цены"></canvas>
+                </div>
+              </div>
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Дивиденды · прогноз 12 мес.</h4>
+                <p class="muted analytics-chart-note" id="portfolioInsightDivNote">—</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap analytics-chart-wrap--mid">
+                  <canvas id="portfolioInsightDivChart" aria-label="Дивиденды"></canvas>
+                </div>
+              </div>
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Пассивный доход (дивиденды)</h4>
+                <p class="muted analytics-chart-note" id="portfolioInsightIncomeNote">—</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap analytics-chart-wrap--mid">
+                  <canvas id="portfolioInsightIncomeChart" aria-label="Доход от дивидендов"></canvas>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <button type="button" id="resetPortfolioBtn" class="danger" style="margin-top:0.5rem;">Очистить портфель</button>
         </section>
 
@@ -426,10 +477,10 @@
             <span class="book-nav__spine"></span>
             <span class="book-nav__pages"></span>
             <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
-              <span class="book-nav__title" data-typing-mobile="Сводка|новостей">Сводка&#10;новостей</span>
+              <span class="book-nav__title" data-typing-mobile="Главная">Главная</span>
             </span>
           </span>
-          <span class="book-nav__name">Сводка новостей</span>
+          <span class="book-nav__name">Главная</span>
         </button>
         <button type="button" class="book-nav book-nav--bottom" data-tab="watchlist" style="--book-color:#9A7B4F;--book-text:#F7F4EE">
           <span class="book-nav__3d" aria-hidden="true">
@@ -521,14 +572,14 @@
   <script type="module" src="./firebase-init.mjs"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script src="./nav-books.js?v=20250608"></script>
-  <script src="./markets.js?v=20250620"></script>
-  <script src="./storage.js?v=20250620"></script>
-  <script src="./ui.js?v=20250619"></script>
-  <script src="./news.js?v=20250617"></script>
-  <script src="./moex.js?v=20250621"></script>
-  <script src="./analytics.js?v=20250618"></script>
-  <script src="./portfolio.js?v=20250616"></script>
+  <script src="./markets.js?v=20250623"></script>
+  <script src="./storage.js?v=20250623"></script>
+  <script src="./ui.js?v=20250623"></script>
+  <script src="./news.js?v=20250623"></script>
+  <script src="./moex.js?v=20250623"></script>
+  <script src="./analytics.js?v=20250623"></script>
+  <script src="./portfolio.js?v=20250623"></script>
   <script src="./firebase-sync.js?v=20250612"></script>
-  <script src="./app.js?v=20250620"></script>
+  <script src="./app.js?v=20250623"></script>
 </body>
 </html>

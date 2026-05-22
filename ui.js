@@ -559,6 +559,10 @@
 
   function openAnalyticsModal(ticker) {
     ticker = normalizeTicker(ticker);
+    if (typeof selectAnalyticsTicker === 'function') {
+      selectAnalyticsTicker(ticker);
+      return;
+    }
     var modal = document.getElementById('securityAnalyticsModal');
     if (!modal) {
       if (typeof openPortfolioChart === 'function') openPortfolioChart(ticker);
@@ -625,10 +629,224 @@
 
 
 
+  function drawFullBarChart(canvas, series, options) {
+    options = options || {};
+    if (!canvas) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(canvas.clientWidth || 280, 200);
+    var h = Math.max(canvas.clientHeight || 140, 100);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (!series || !series.length) {
+      ctx.fillStyle = '#6B6B6B';
+      ctx.font = '13px Golos Text, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Нет данных', w / 2, h / 2);
+      return;
+    }
+    var vals = series.map(function (p) { return p.v != null ? p.v : (p.y != null ? p.y : 0); });
+    var max = Math.max.apply(null, vals.concat([0.001]));
+    var pad = { l: 36, r: 12, t: 14, b: 28 };
+    var plotW = w - pad.l - pad.r;
+    var plotH = h - pad.t - pad.b;
+    var barGap = 4;
+    var barW = Math.max(6, (plotW - barGap * (vals.length - 1)) / vals.length);
+    var color = options.color || '#9A7B4F';
+    var forecastColor = options.forecastColor || '#6B7A5A';
+    vals.forEach(function (v, i) {
+      var bh = Math.max(3, (v / max) * plotH);
+      var x = pad.l + i * (barW + barGap);
+      var y = pad.t + plotH - bh;
+      ctx.fillStyle = series[i].forecast ? forecastColor : color;
+      ctx.fillRect(x, y, barW, bh);
+      if (options.showLabels !== false) {
+        var lbl = series[i].label || String(i + 1);
+        ctx.fillStyle = '#6B6B6B';
+        ctx.font = '9px Golos Text, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(lbl, x + barW / 2, h - 6);
+      }
+    });
+    if (options.ySuffix) {
+      ctx.fillStyle = '#6B6B6B';
+      ctx.font = '10px Golos Text, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(options.ySuffix, pad.l - 6, pad.t + 10);
+    }
+  }
+
+  function buildDividendRubSeries(yearly, forecast) {
+    var bars = (yearly || []).map(function (y) {
+      return {
+        v: y.totalDiv > 0 ? y.totalDiv : 0,
+        label: String(y.year).slice(-2),
+        forecast: false
+      };
+    });
+    if (forecast && forecast.amount != null && isFinite(forecast.amount)) {
+      bars.push({
+        v: forecast.amount,
+        label: '12м',
+        forecast: true
+      });
+    }
+    return bars;
+  }
+
+  function renderAnalyticsDetail(ticker) {
+    ticker = normalizeTicker(ticker);
+    var sec = document.getElementById('analyticsDetailSection');
+    var titleEl = document.getElementById('analyticsDetailTicker');
+    var metaEl = document.getElementById('analyticsDetailMeta');
+    var priceCanvas = document.getElementById('analyticsPriceChart');
+    var divCanvas = document.getElementById('analyticsDivChart');
+    var volCanvas = document.getElementById('analyticsVolChart');
+    var divNote = document.getElementById('analyticsDivNote');
+    var volNote = document.getElementById('analyticsVolNote');
+    if (!sec) return;
+    if (titleEl) titleEl.textContent = ticker;
+    if (metaEl) metaEl.textContent = 'Загрузка…';
+    sec.hidden = false;
+
+    var horizon = state.analyticsPriceHorizon || 'year';
+
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      if (metaEl) metaEl.textContent = 'Рынок США · дивиденды и оборот МосБиржи недоступны';
+      if (divNote) divNote.textContent = 'Используйте отчётность эмитента.';
+      fetchMoexHistory(ticker, horizon).then(function (r) {
+        if (priceCanvas) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
+      });
+      return;
+    }
+
+    if (typeof buildSecurityAnalytics !== 'function') return;
+    buildSecurityAnalytics(ticker).then(function (a) {
+      if (metaEl) {
+        var parts = [a.name || getTickerSubtitle(ticker)];
+        if (a.divAvg5y != null) parts.push('Ср. див. 5л: ' + formatDivYieldPct(a.divAvg5y));
+        if (a.divForecast && a.divForecast.amount != null) {
+          parts.push('Прогноз: ' + formatDivRubPerShare(a.divForecast.amount));
+        }
+        metaEl.textContent = parts.join(' · ');
+      }
+      if (divCanvas) {
+        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
+          color: '#9A7B4F',
+          forecastColor: '#4A7356',
+          ySuffix: '₽/акц.'
+        });
+      }
+      if (divNote) {
+        var fc = a.divForecast;
+        divNote.textContent = (a.divYieldByYear || []).map(function (y) {
+          return y.year + ': ' + (y.totalDiv > 0 ? y.totalDiv.toFixed(2) + ' ₽/акц.' : '—') +
+            (y.yieldPct != null ? ' (' + formatDivYieldPct(y.yieldPct) + ')' : '');
+        }).join(' · ') +
+          (fc && fc.amount != null ? ' · Прогноз 12 мес.: ' + formatDivRubPerShare(fc.amount) +
+            (fc.source ? ' (' + fc.source + ')' : '') : '');
+      }
+      if (volCanvas) drawFullBarChart(volCanvas, a.volumeByDay || [], { color: '#6B7A5A', ySuffix: 'млрд ₽', showLabels: false });
+      if (volNote) volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) + ' торговых дней';
+      return fetchMoexHistory(ticker, horizon);
+    }).then(function (r) {
+      if (priceCanvas && r && r.series) {
+        drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
+      }
+    }).catch(function () {
+      if (metaEl) metaEl.textContent = 'Не удалось загрузить аналитику';
+    });
+  }
+
+  function renderPortfolioInsights(ticker) {
+    var sec = document.getElementById('portfolioInsightsSection');
+    if (!sec) return;
+    ticker = normalizeTicker(ticker || '');
+    if (!ticker) {
+      sec.hidden = true;
+      return;
+    }
+    var pos = typeof findPortfolioPosition === 'function' ? findPortfolioPosition(ticker) : null;
+    if (!pos) {
+      sec.hidden = true;
+      return;
+    }
+    sec.hidden = false;
+    var titleEl = document.getElementById('portfolioInsightsTicker');
+    var metaEl = document.getElementById('portfolioInsightsMeta');
+    var kpisEl = document.getElementById('portfolioInsightsKpis');
+    var priceCanvas = document.getElementById('portfolioInsightPriceChart');
+    var divCanvas = document.getElementById('portfolioInsightDivChart');
+    var incomeCanvas = document.getElementById('portfolioInsightIncomeChart');
+    var divNote = document.getElementById('portfolioInsightDivNote');
+    var incomeNote = document.getElementById('portfolioInsightIncomeNote');
+    if (titleEl) titleEl.textContent = ticker;
+    if (metaEl) metaEl.textContent = 'Загрузка…';
+
+    var ret = typeof getPositionReturnPct === 'function' ? getPositionReturnPct(pos) : null;
+    var qty = isFinite(Number(pos.qty)) ? Number(pos.qty) : 0;
+
+    fetchMoexHistory(ticker, 'year').then(function (r) {
+      if (priceCanvas && r.series) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: 'year' });
+    });
+
+    if (!isRuStockForAnalytics(ticker)) {
+      if (metaEl) metaEl.textContent = 'US позиция · дивидендная аналитика МосБиржи недоступна';
+      if (kpisEl) kpisEl.innerHTML = '';
+      return;
+    }
+
+    buildSecurityAnalytics(ticker).then(function (a) {
+      var fc = a.divForecast;
+      var forecastTotal = fc && fc.amount != null && qty > 0 ? fc.amount * qty : null;
+      var paidTotal = fc && fc.paid12m != null && qty > 0 ? fc.paid12m * qty : null;
+      if (metaEl) {
+        metaEl.textContent = [
+          getTickerSubtitle(ticker),
+          'Кол-во: ' + qty,
+          ret != null ? 'Доходность: ' + formatSignedPct(ret, 2) : ''
+        ].filter(Boolean).join(' · ');
+      }
+      if (kpisEl) {
+        kpisEl.innerHTML =
+          '<div class="insight-kpi"><span class="insight-kpi-lbl">Див. 5л ср.</span><span class="insight-kpi-val">' + escapeHtml(formatDivYieldPct(a.divAvg5y)) + '</span></div>' +
+          '<div class="insight-kpi"><span class="insight-kpi-lbl">Прогноз 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(formatDivRubPerShare(fc && fc.amount)) + '</span></div>' +
+          '<div class="insight-kpi"><span class="insight-kpi-lbl">На позицию</span><span class="insight-kpi-val">' + escapeHtml(forecastTotal != null ? forecastTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>' +
+          '<div class="insight-kpi"><span class="insight-kpi-lbl">Выплачено 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(paidTotal != null ? paidTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>';
+      }
+      if (divCanvas) {
+        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
+          color: '#9A7B4F',
+          forecastColor: '#4A7356',
+          ySuffix: '₽/акц.'
+        });
+      }
+      if (divNote && fc) {
+        divNote.textContent = 'Прогноз ' + formatDivRubPerShare(fc.amount) + (fc.source ? ' · ' + fc.source : '');
+      }
+      if (incomeCanvas && a.divYieldByYear) {
+        var incomeBars = a.divYieldByYear.map(function (y) {
+          return { v: y.totalDiv > 0 && qty > 0 ? y.totalDiv * qty : 0, label: String(y.year).slice(-2) };
+        });
+        if (fc && fc.amount != null) incomeBars.push({ v: fc.amount * qty, label: '12м', forecast: true });
+        drawFullBarChart(incomeCanvas, incomeBars, { color: '#4A7356', forecastColor: '#3D5C47', ySuffix: '₽' });
+      }
+      if (incomeNote) {
+        incomeNote.textContent = 'Пассивный доход по позиции (дивиденды × ' + qty + ' шт.)';
+      }
+    });
+    sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
   window.paintQuoteMiniCharts = paintQuoteMiniCharts;
   window.openAnalyticsModal = openAnalyticsModal;
   window.closeAnalyticsModal = closeAnalyticsModal;
   window.drawMiniBarChart = drawMiniBarChart;
+  window.drawFullBarChart = drawFullBarChart;
+  window.renderAnalyticsDetail = renderAnalyticsDetail;
+  window.renderPortfolioInsights = renderPortfolioInsights;
 
 
 
@@ -1015,7 +1233,8 @@
     }
     if (tab === 'watchlist') {
       renderWatchlist();
-      if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
+      if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
+      else if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
     }
     if (tab === 'settings') renderAlerts();
   }

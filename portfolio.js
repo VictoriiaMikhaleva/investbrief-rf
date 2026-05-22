@@ -214,8 +214,8 @@
     if (sel) sel.value = ticker;
     renderPortfolioFolder();
     renderPortfolioChart();
-    var section = document.getElementById('portfolioStockChartSection');
-    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var section = document.getElementById('portfolioInsightsSection');
+    if (section && !section.hidden) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
 
@@ -247,10 +247,12 @@
           return n.ticker !== ticker;
         }));
         showToast('Удалено: ' + ticker);
-        if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
+        if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
+        else if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
       });
     });
-    if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
+    if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
+    else if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
   }
 
 
@@ -271,7 +273,7 @@
       list.push(typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(item) : item.ticker);
       setWatchlist(list);
       showToast('Добавлено: ' + item.ticker);
-      if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
+      renderWatchlist();
       document.getElementById('tickerInput').value = '';
       if (acControllers.tickerInput) acControllers.tickerInput.close();
     });
@@ -289,7 +291,7 @@
     });
     setWatchlist(list);
     showToast('Пресет: ' + name);
-    if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
+    renderWatchlist();
   }
 
 
@@ -360,14 +362,19 @@
 
   function openPortfolioChart(ticker) {
     ticker = normalizeTicker(ticker);
+    if (ticker === 'IMOEX' || ticker === 'MOEX') {
+      if (typeof switchTab === 'function') switchTab('watchlist');
+      if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
+      var box = document.getElementById('moexIndexBox');
+      if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (typeof selectAnalyticsTicker === 'function') {
+      selectAnalyticsTicker(ticker);
+      return;
+    }
     ensurePositionForChart(ticker).then(function (t) {
       state.folderOpen = true;
-      if (t === 'IMOEX' || t === 'MOEX') {
-        switchTab('portfolio');
-        renderMoexIndexBox();
-        document.getElementById('moexIndexBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        return;
-      }
       selectPortfolioTicker(t);
       switchTab('portfolio');
     });
@@ -375,7 +382,24 @@
 
 
 
+  function getFilteredPortfolioPositions() {
+    var positions = getPortfolio().positions || [];
+    if (typeof Markets === 'undefined') return positions;
+    var markets = Markets.getMarketsEnabled();
+    return positions.filter(function (p) {
+      var mk = p.market === 'US' || Markets.isUsPosition(p) ? 'US' : 'RU';
+      if (mk === 'US') return markets.us;
+      return markets.ru;
+    });
+  }
+
+
+
   function renderPortfolioChart() {
+    if (typeof renderPortfolioInsights === 'function') {
+      renderPortfolioInsights(state.chartTicker);
+      return;
+    }
     var positions = getPortfolioPaperPositions();
     var select = document.getElementById('chartTickerSelect');
     var emptyEl = document.getElementById('portfolioChartEmpty');
@@ -869,8 +893,8 @@
 
 
   function buildPortfolioTableRows(positions) {
-    if (!positions.length) {
-      return '<tr><td colspan="8"><span class="muted hint-frame">Портфель пуст — добавьте позицию выше</span></td></tr>';
+    if (!positions || !positions.length) {
+      return '<tr><td colspan="9" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
     }
     return positions.map(function (p) {
       var pnl = getPositionReturnPct(p);
@@ -881,7 +905,7 @@
         ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
         : '';
       var editActive = state.pfEditTicker === p.ticker ? ' pf-row-editing' : '';
-      return '<tr class="pf-table-row' + editActive + '" data-chart-ticker="' + escapeHtml(p.ticker) + '">' +
+      return '<tr class="pf-table-row' + editActive + '" data-chart-ticker="' + escapeHtml(p.ticker) + '" data-pf-ticker="' + escapeHtml(p.ticker) + '">' +
         '<td class="ticker">' + escapeHtml(p.ticker) + mBadge + '</td>' +
         '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
         '<td>' + escapeHtml(avg) + '</td>' +
@@ -889,6 +913,7 @@
         '<td>' + escapeHtml(p.comment || '—') + '</td>' +
         '<td>' + escapeHtml(cur) + '</td>' +
         '<td class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</td>' +
+        '<td class="pf-div-cell" data-pf-div-cell="' + escapeHtml(p.ticker) + '"><span class="muted">…</span></td>' +
         '<td class="pf-row-actions">' +
           '<button type="button" class="ghost small" data-pf-edit="' + escapeHtml(p.ticker) + '">Изменить</button> ' +
           '<button type="button" class="danger small" data-pf-remove="' + escapeHtml(p.ticker) + '">Удалить</button>' +
@@ -899,12 +924,21 @@
 
 
   function renderPortfolioTableBody() {
-    var positions = getPortfolio().positions;
+    var positions = getFilteredPortfolioPositions();
     var html = buildPortfolioTableRows(positions);
     ['portfolioTableBody', 'portfolioWatchTableBody'].forEach(function (id) {
       var tbody = document.getElementById(id);
       if (tbody) tbody.innerHTML = html;
     });
+    positions.forEach(function (p) {
+      if (typeof fetchPortfolioDivForecastHtml !== 'function') return;
+      fetchPortfolioDivForecastHtml(p.ticker, p.qty).then(function (html) {
+        document.querySelectorAll('[data-pf-div-cell="' + p.ticker + '"]').forEach(function (cell) {
+          cell.innerHTML = html;
+        });
+      });
+    });
+
     var cards = document.getElementById('portfolioCards');
     if (!cards) return;
     cards.innerHTML = positions.map(function (p) {
@@ -925,9 +959,11 @@
 
 
   function renderPortfolio() {
+    if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
+      Markets.renderBriefingMarketTabs('portfolioMarketTabs');
+    }
     renderPortfolioTableBody();
     renderPortfolioFolder();
-    renderMoexIndexBox();
     renderPortfolioChart();
     refreshPortfolioQuotes().then(function () {
       renderPortfolioTableBody();

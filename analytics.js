@@ -1,10 +1,10 @@
-/* analytics.js — дивиденды, оборот, карточки котировок */
+/* analytics.js — дивиденды, оборот, карточки и вкладка аналитики */
 (function () {
   'use strict';
 
   var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.';
   var ANALYTICS_TTL = 30 * 60 * 1000;
-  var VOLUME_DAYS = 30;
+  var VOLUME_YEAR_DAYS = 252;
   var YIELD_YEARS = 5;
 
   function analyticsCacheGet(key) {
@@ -43,6 +43,87 @@
   function formatDivYieldPct(pct) {
     if (pct == null || !isFinite(pct)) return '—';
     return pct.toFixed(1).replace('.', ',') + '%';
+  }
+
+  function formatDivRubPerShare(val) {
+    if (val == null || !isFinite(val)) return '—';
+    return val.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽/акц.';
+  }
+
+  function computeDividendForecast12m(dividends) {
+    if (!dividends || !dividends.length) return { amount: null, paid12m: null, upcoming12m: null, source: '' };
+    var now = new Date();
+    var in12 = new Date(now);
+    in12.setMonth(in12.getMonth() + 12);
+    var back12 = new Date(now);
+    back12.setFullYear(back12.getFullYear() - 1);
+
+    var forward = 0;
+    var paid12m = 0;
+    var upcoming12m = 0;
+
+    dividends.forEach(function (d) {
+      var dt = new Date(d.date + 'T12:00:00');
+      if (isNaN(dt.getTime()) || !isFinite(d.value)) return;
+      if (dt > back12 && dt <= now) paid12m += d.value;
+      if (dt > now && dt <= in12) {
+        forward += d.value;
+        upcoming12m += d.value;
+      }
+    });
+
+    if (upcoming12m > 0) {
+      return {
+        amount: upcoming12m,
+        paid12m: paid12m,
+        upcoming12m: upcoming12m,
+        source: 'объявленные выплаты'
+      };
+    }
+
+    var lastYear = String(now.getFullYear() - 1);
+    var yearSum = 0;
+    dividends.forEach(function (d) {
+      if (d.date.indexOf(lastYear) === 0) yearSum += d.value;
+    });
+    if (yearSum > 0) {
+      return {
+        amount: yearSum,
+        paid12m: paid12m,
+        upcoming12m: yearSum,
+        source: 'оценка по дивидендам ' + lastYear
+      };
+    }
+    if (paid12m > 0) {
+      return {
+        amount: paid12m,
+        paid12m: paid12m,
+        upcoming12m: paid12m,
+        source: 'оценка по выплатам за 12 мес.'
+      };
+    }
+    return { amount: null, paid12m: null, upcoming12m: null, source: '' };
+  }
+
+  function formatPortfolioDivCell(forecast, qty) {
+    if (!forecast || forecast.amount == null) return '<span class="muted">—</span>';
+    var q = isFinite(Number(qty)) && Number(qty) > 0 ? Number(qty) : null;
+    var perShare = formatDivRubPerShare(forecast.amount);
+    var total = q != null ? (forecast.amount * q) : null;
+    var paid = forecast.paid12m != null && isFinite(forecast.paid12m)
+      ? 'выплачено ' + (q != null ? (forecast.paid12m * q).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : forecast.paid12m.toFixed(2)) + ' ₽'
+      : '';
+    var upcoming = forecast.upcoming12m != null && isFinite(forecast.upcoming12m)
+      ? 'прогноз ' + (q != null ? (forecast.upcoming12m * q).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : forecast.upcoming12m.toFixed(2)) + ' ₽'
+      : '';
+    var lines = ['<span class="pf-div-forecast">' + escapeHtml(perShare) + '</span>'];
+    if (paid || upcoming) {
+      lines.push('<span class="pf-div-sub muted">' + escapeHtml([paid, upcoming].filter(Boolean).join(' · ')) + '</span>');
+    }
+    if (total != null) {
+      lines.push('<span class="pf-div-sub muted">на позицию ~' + escapeHtml(total.toLocaleString('ru-RU', { maximumFractionDigits: 0 })) + ' ₽</span>');
+    }
+    return lines.join('');
   }
 
   function fetchMoexDividends(ticker) {
@@ -117,9 +198,7 @@
           return loop();
         }
         var byDate = {};
-        all.forEach(function (r) {
-          byDate[r.date] = r;
-        });
+        all.forEach(function (r) { byDate[r.date] = r; });
         var out = Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
         analyticsCacheSet(cacheKey, out, 12 * 60 * 60 * 1000);
         return out;
@@ -169,7 +248,7 @@
   function sliceVolumeSeries(dailyHistory, days) {
     var rows = dailyHistory.filter(function (h) { return h.value != null && h.value > 0; });
     return rows.slice(-days).map(function (h) {
-      return { t: h.t, v: h.value / 1e9 };
+      return { t: h.t, v: h.value / 1e9, label: h.date.slice(5).replace('-', '.') };
     });
   }
 
@@ -180,6 +259,7 @@
         ticker: ticker,
         eligible: false,
         divAvg5y: null,
+        divForecast: null,
         divYieldByYear: [],
         volumeByDay: []
       });
@@ -197,33 +277,59 @@
       var history = results[1];
       var quote = results[2] || {};
       var yearly = computeYearlyDividendYields(dividends, history);
+      var forecast = computeDividendForecast12m(dividends);
       var out = {
         ticker: ticker,
         eligible: true,
         name: getTickerSubtitle(ticker),
         quote: quote,
+        dividends: dividends,
         divAvg5y: averageYield5y(yearly),
+        divForecast: forecast,
         divYieldByYear: yearly,
-        volumeByDay: sliceVolumeSeries(history, VOLUME_DAYS)
+        volumeByDay: sliceVolumeSeries(history, VOLUME_YEAR_DAYS)
       };
-      analyticsCacheSet(cacheKey, out);
+      analyticsCacheSet(cacheKey, out, ANALYTICS_TTL);
       return out;
     });
   }
 
-  function quoteCardChartsHtml(ticker) {
+  function quoteCardDivMetricsHtml() {
     return (
-      '<div class="quote-card-charts" data-ticker="' + escapeHtml(ticker) + '">' +
-        '<div class="quote-mini-chart-wrap" title="Дивидендная доходность по годам">' +
-          '<span class="quote-mini-lbl">див.</span>' +
-          '<canvas class="quote-mini-chart" data-mini-chart="div" aria-hidden="true"></canvas>' +
-        '</div>' +
-        '<div class="quote-mini-chart-wrap" title="Оборот за 30 дней, млрд ₽">' +
-          '<span class="quote-mini-lbl">оборот</span>' +
-          '<canvas class="quote-mini-chart" data-mini-chart="vol" aria-hidden="true"></canvas>' +
-        '</div>' +
+      '<div class="quote-card-div-block" data-div-block>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl">Див. 5л ср.</span> <span class="quote-div-val" data-div-avg>…</span></div>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl">Прогноз 12 мес.</span> <span class="quote-div-val" data-div-forecast>…</span></div>' +
       '</div>'
     );
+  }
+
+  function quoteCardChartsHtml() {
+    return '';
+  }
+
+  function applyDivMetricsToWrap(wrapEl, a) {
+    if (!wrapEl) return;
+    var avgEl = wrapEl.querySelector('[data-div-avg]');
+    var fcEl = wrapEl.querySelector('[data-div-forecast]');
+    var legacy = wrapEl.querySelector('[data-div-yield]');
+    if (legacy) legacy.style.display = 'none';
+
+    if (!a || !a.eligible) {
+      if (avgEl) avgEl.textContent = 'н/д';
+      if (fcEl) fcEl.textContent = 'н/д';
+      return;
+    }
+    if (avgEl) {
+      avgEl.textContent = formatDivYieldPct(a.divAvg5y);
+      avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
+    }
+    if (fcEl) {
+      var f = a.divForecast;
+      fcEl.textContent = f && f.amount != null
+        ? formatDivRubPerShare(f.amount)
+        : '—';
+      if (f && f.source) fcEl.title = f.source;
+    }
   }
 
   function enrichQuoteCard(wrapEl, ticker) {
@@ -232,79 +338,58 @@
     var btn = wrapEl.querySelector('.market-tile, .quote-card');
     if (!btn) return;
 
-    var divEl = wrapEl.querySelector('[data-div-yield]');
-    if (!divEl) {
+    var block = wrapEl.querySelector('[data-div-block]');
+    if (!block) {
       var metrics = wrapEl.querySelector('.quote-card-metrics, .market-tile-metrics');
-      if (!metrics) {
-        var priceEl = wrapEl.querySelector('[data-price]');
-        if (priceEl && priceEl.parentNode) {
-          metrics = document.createElement('div');
-          metrics.className = wrapEl.classList.contains('market-tile-wrap') ? 'market-tile-metrics' : 'quote-card-metrics';
-          priceEl.parentNode.insertBefore(metrics, priceEl);
-          metrics.appendChild(priceEl);
-          var ch = wrapEl.querySelector('[data-change]');
-          if (ch) metrics.appendChild(ch);
-        }
-      }
       if (metrics) {
-        divEl = document.createElement('span');
-        divEl.className = 'quote-card-div muted';
-        divEl.setAttribute('data-div-yield', '');
-        divEl.textContent = 'Див. 5л: …';
-        metrics.appendChild(divEl);
+        var tmp = document.createElement('div');
+        tmp.innerHTML = quoteCardDivMetricsHtml();
+        metrics.appendChild(tmp.firstChild);
       }
     }
 
-    var chartsHost = wrapEl.querySelector('.quote-card-charts');
-    if (!chartsHost) {
-      var host = document.createElement('div');
-      host.innerHTML = quoteCardChartsHtml(ticker);
-      var inner = btn.querySelector('.star-border-inner') || btn;
-      inner.appendChild(host.firstChild);
-      chartsHost = wrapEl.querySelector('.quote-card-charts');
-    }
-
-    if (divEl) divEl.textContent = 'Див. 5л: …';
+    wrapEl.querySelectorAll('.quote-card-charts').forEach(function (el) { el.remove(); });
 
     if (!isRuStockForAnalytics(ticker)) {
-      if (divEl) divEl.textContent = 'Див. 5л: н/д';
+      applyDivMetricsToWrap(wrapEl, { eligible: false });
       return;
     }
 
     buildSecurityAnalytics(ticker).then(function (a) {
-      if (divEl) {
-        divEl.textContent = 'Див. 5л: ' + formatDivYieldPct(a.divAvg5y);
-        divEl.classList.remove('muted', 'pnl-pos', 'pnl-neg');
-        if (a.divAvg5y != null && a.divAvg5y > 0) divEl.classList.add('pnl-pos');
-      }
-      if (typeof paintQuoteMiniCharts === 'function') {
-        paintQuoteMiniCharts(wrapEl, a);
-      }
+      applyDivMetricsToWrap(wrapEl, a);
     }).catch(function () {
-      if (divEl) divEl.textContent = 'Див. 5л: —';
+      applyDivMetricsToWrap(wrapEl, { eligible: false });
     });
+  }
+
+  function getWatchlistTickersForAnalytics() {
+    var list = typeof Markets !== 'undefined' ? Markets.getNormalizedWatchlist() : getWatchlist().map(function (t) {
+      return { ticker: normalizeTicker(t), market: 'RU' };
+    });
+    var markets = typeof Markets !== 'undefined' ? Markets.getMarketsEnabled() : { ru: true, us: false };
+    var tickers = [];
+    list.forEach(function (item) {
+      var t = typeof item === 'string' ? normalizeTicker(item) : normalizeTicker(item.ticker);
+      if (!t || tickers.indexOf(t) >= 0) return;
+      var mk = item.market === 'US' ? 'US' : 'RU';
+      if (mk === 'US' && !markets.us) return;
+      if (mk === 'RU' && !markets.ru) return;
+      tickers.push(t);
+    });
+    return tickers;
   }
 
   function renderAnalyticsGrid() {
     var grid = document.getElementById('analyticsGrid');
     if (!grid) return;
-    var list = typeof Markets !== 'undefined' ? Markets.getNormalizedWatchlist() : getWatchlist().map(function (t) {
-      return { ticker: normalizeTicker(t), market: 'RU' };
-    });
-    var tickers = [];
-    list.forEach(function (item) {
-      var t = typeof item === 'string' ? normalizeTicker(item) : normalizeTicker(item.ticker);
-      if (!t || tickers.indexOf(t) >= 0) return;
-      if (typeof Markets !== 'undefined' && item.market === 'US') return;
-      tickers.push(t);
-    });
+    var tickers = getWatchlistTickersForAnalytics();
 
     if (!tickers.length) {
-      grid.innerHTML = '<p class="muted hint-frame">Добавьте бумаги в список наблюдения — здесь появятся дивидендная доходность и графики оборота.</p>';
+      grid.innerHTML = '<p class="muted hint-frame">Добавьте бумаги в список наблюдения — появятся дивидендная доходность и прогноз выплат.</p>';
       return;
     }
 
-    grid.innerHTML = tickers.map(function (ticker, i) {
+    grid.innerHTML = tickers.map(function (ticker) {
       var wrapCls = 'quote-card-wrap magic-bento-card magic-bento-card--border-glow star-border-container star-border-loading';
       return (
         '<div class="' + wrapCls + '" data-ticker="' + escapeHtml(ticker) + '">' +
@@ -318,9 +403,8 @@
             '<div class="quote-card-metrics">' +
               '<span class="quote-card-price" data-price>…</span>' +
               '<span class="quote-card-change muted" data-change>загрузка</span>' +
-              '<span class="quote-card-div muted" data-div-yield>Див. 5л: …</span>' +
             '</div>' +
-            quoteCardChartsHtml(ticker) +
+            quoteCardDivMetricsHtml() +
           '</button>' +
           '<button type="button" class="quote-card-remove" data-remove-analytics="' + escapeHtml(ticker) + '" aria-label="Удалить">×</button>' +
         '</div>'
@@ -350,24 +434,78 @@
         showToast('Удалено из наблюдения: ' + t);
         renderWatchlist();
         renderAnalyticsGrid();
+        if (state.analyticsTicker === t) {
+          state.analyticsTicker = '';
+          var sec = document.getElementById('analyticsDetailSection');
+          if (sec) sec.hidden = true;
+        }
+      });
+    });
+
+    grid.querySelectorAll('.quote-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        var t = card.getAttribute('data-ticker');
+        if (t) selectAnalyticsTicker(t);
       });
     });
   }
 
-  function openSecurityAnalyticsModal(ticker) {
+  function selectAnalyticsTicker(ticker) {
     ticker = normalizeTicker(ticker);
-    if (typeof openAnalyticsModal === 'function') {
-      openAnalyticsModal(ticker);
-      return;
+    state.analyticsTicker = ticker;
+    if (state.tab !== 'watchlist' && typeof switchTab === 'function') {
+      switchTab('watchlist');
     }
-    if (typeof openPortfolioChart === 'function') openPortfolioChart(ticker);
+    document.querySelectorAll('#analyticsGrid .quote-card-wrap').forEach(function (w) {
+      w.classList.toggle('analytics-selected', w.getAttribute('data-ticker') === ticker);
+    });
+    if (typeof renderAnalyticsDetail === 'function') renderAnalyticsDetail(ticker);
+    var sec = document.getElementById('analyticsDetailSection');
+    if (sec) {
+      sec.hidden = false;
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  function renderAnalyticsPage() {
+    if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
+      Markets.renderBriefingMarketTabs('analyticsMarketTabs');
+    }
+    var imoexBox = document.getElementById('moexIndexBox');
+    if (imoexBox && typeof shouldShowRuBriefingMarketBlocks === 'function') {
+      imoexBox.hidden = !shouldShowRuBriefingMarketBlocks();
+    }
+    if (typeof renderMoexIndexBox === 'function') renderMoexIndexBox();
+    renderAnalyticsGrid();
+    if (state.analyticsTicker) selectAnalyticsTicker(state.analyticsTicker);
+  }
+
+  function openSecurityAnalyticsModal(ticker) {
+    selectAnalyticsTicker(ticker);
+  }
+
+  function fetchPortfolioDivForecastHtml(ticker, qty) {
+    ticker = normalizeTicker(ticker);
+    if (!isRuStockForAnalytics(ticker)) {
+      return Promise.resolve('<span class="muted">н/д</span>');
+    }
+    return buildSecurityAnalytics(ticker).then(function (a) {
+      return formatPortfolioDivCell(a.divForecast, qty);
+    }).catch(function () {
+      return '<span class="muted">—</span>';
+    });
   }
 
   window.isRuStockForAnalytics = isRuStockForAnalytics;
   window.formatDivYieldPct = formatDivYieldPct;
+  window.formatDivRubPerShare = formatDivRubPerShare;
   window.buildSecurityAnalytics = buildSecurityAnalytics;
   window.enrichQuoteCard = enrichQuoteCard;
   window.renderAnalyticsGrid = renderAnalyticsGrid;
+  window.renderAnalyticsPage = renderAnalyticsPage;
+  window.selectAnalyticsTicker = selectAnalyticsTicker;
   window.openSecurityAnalyticsModal = openSecurityAnalyticsModal;
   window.quoteCardChartsHtml = quoteCardChartsHtml;
+  window.fetchPortfolioDivForecastHtml = fetchPortfolioDivForecastHtml;
+  window.computeDividendForecast12m = computeDividendForecast12m;
 })();

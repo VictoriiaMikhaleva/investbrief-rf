@@ -1669,6 +1669,77 @@
       margin: 0 0 0.35rem;
     }
     .home-hint { margin: 0 0 0.5rem; font-size: 0.82rem; }
+    .quote-card-div-block,
+    .market-tile .quote-card-div-block {
+      width: 100%;
+      margin-top: 0.25rem;
+      padding-top: 0.2rem;
+      border-top: 1px solid rgba(61, 92, 71, 0.12);
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+    .quote-div-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.2rem 0.35rem;
+      font-size: 0.68rem;
+      line-height: 1.25;
+    }
+    .quote-div-lbl { color: var(--text-muted); font-weight: 500; }
+    .quote-div-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .pf-div-cell { font-size: 0.78rem; line-height: 1.35; min-width: 8.5rem; }
+    .pf-div-forecast { display: block; font-weight: 600; }
+    .pf-div-sub { display: block; font-size: 0.7rem; }
+    .analytics-imoex { margin-bottom: 0.85rem; }
+    .analytics-detail { margin-top: 1rem; padding: 1rem; }
+    .analytics-detail-title { margin: 0 0 0.35rem; font-size: 1rem; }
+    .analytics-detail-meta { margin: 0 0 0.75rem; font-size: 0.82rem; }
+    .analytics-charts-grid {
+      display: grid;
+      gap: 1rem;
+    }
+    @media (min-width: 720px) {
+      .analytics-charts-grid { grid-template-columns: 1fr; }
+    }
+    .analytics-chart-panel {
+      padding: 0.65rem 0;
+      border-top: 1px solid rgba(61, 92, 71, 0.1);
+    }
+    .analytics-chart-panel:first-child { border-top: none; padding-top: 0; }
+    .analytics-chart-lbl { margin: 0 0 0.35rem; font-size: 0.88rem; font-weight: 600; }
+    .analytics-chart-note { margin: 0 0 0.4rem; font-size: 0.75rem; line-height: 1.35; }
+    .analytics-chart-wrap {
+      min-height: 11rem;
+      height: 11rem;
+    }
+    .analytics-chart-wrap--mid { min-height: 9rem; height: 9rem; }
+    .analytics-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+    .quote-card-wrap.analytics-selected .quote-card {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-soft);
+    }
+    .portfolio-insights { margin-top: 1rem; padding: 1rem; }
+    .portfolio-insights-title { margin: 0 0 0.35rem; font-size: 1rem; }
+    .portfolio-insights-meta { margin: 0 0 0.65rem; font-size: 0.82rem; }
+    .portfolio-insights-kpis {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    @media (min-width: 560px) {
+      .portfolio-insights-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    .insight-kpi {
+      background: rgba(61, 92, 71, 0.06);
+      border-radius: 8px;
+      padding: 0.45rem 0.55rem;
+    }
+    .insight-kpi-lbl { display: block; font-size: 0.68rem; color: var(--text-muted); }
+    .insight-kpi-val { display: block; font-size: 0.82rem; font-weight: 700; font-variant-numeric: tabular-nums; }
     .briefing-market-toolbar { margin: 0 0 0.65rem; }
     .market-tiles--index-only {
       grid-template-columns: 1fr;

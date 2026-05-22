@@ -131,6 +131,7 @@
     renderWatchlist();
     renderMarketTiles();
     renderPortfolio();
+    if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
   }
 
 
@@ -202,17 +203,25 @@
       renderHomePage();
     });
 
-    var briefingMarketTabs = document.getElementById('briefingMarketTabs');
-    if (briefingMarketTabs) {
-      briefingMarketTabs.addEventListener('click', function (e) {
-        var btn = e.target.closest('[data-briefing-market]');
-        if (!btn) return;
-        var mode = btn.getAttribute('data-briefing-market');
-        if (typeof Markets !== 'undefined' && Markets.applyBriefingMarkets) {
-          Markets.applyBriefingMarkets(mode);
+    function syncAllMarketTabButtons() {
+      ['briefingMarketTabs', 'analyticsMarketTabs', 'portfolioMarketTabs'].forEach(function (id) {
+        if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
+          Markets.renderBriefingMarketTabs(id);
         }
       });
     }
+    ['briefingMarketTabs', 'analyticsMarketTabs', 'portfolioMarketTabs'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-briefing-market]');
+        if (!btn) return;
+        if (typeof Markets !== 'undefined' && Markets.applyBriefingMarkets) {
+          Markets.applyBriefingMarkets(btn.getAttribute('data-briefing-market'));
+          syncAllMarketTabButtons();
+        }
+      });
+    });
 
     var newsMarketTabs = document.getElementById('newsMarketFilterTabs');
     if (newsMarketTabs) {
@@ -256,13 +265,19 @@
       });
     }
 
-    var analyticsGrid = document.getElementById('analyticsGrid');
-    if (analyticsGrid) {
-      analyticsGrid.addEventListener('click', function (e) {
-        var card = e.target.closest('.quote-card[data-ticker]');
-        if (!card || e.target.closest('[data-remove-analytics]')) return;
-        var t = card.getAttribute('data-ticker');
-        if (t && typeof openSecurityAnalyticsModal === 'function') openSecurityAnalyticsModal(t);
+
+    var analyticsHorizonTabs = document.getElementById('analyticsPriceHorizonTabs');
+    if (analyticsHorizonTabs) {
+      analyticsHorizonTabs.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-analytics-horizon]');
+        if (!btn) return;
+        state.analyticsPriceHorizon = btn.getAttribute('data-analytics-horizon');
+        analyticsHorizonTabs.querySelectorAll('[data-analytics-horizon]').forEach(function (b) {
+          b.classList.toggle('active', b === btn);
+        });
+        if (state.analyticsTicker && typeof renderAnalyticsDetail === 'function') {
+          renderAnalyticsDetail(state.analyticsTicker);
+        }
       });
     }
 
@@ -339,9 +354,12 @@
       });
     });
 
-    document.getElementById('chartTickerSelect').addEventListener('change', function () {
-      selectPortfolioTicker(this.value);
-    });
+    var chartSelect = document.getElementById('chartTickerSelect');
+    if (chartSelect) {
+      chartSelect.addEventListener('change', function () {
+        selectPortfolioTicker(this.value);
+      });
+    }
 
     document.querySelectorAll('#chartHorizonTabs [data-chart-horizon]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -367,9 +385,14 @@
 
     var chartResizeTimer;
     window.addEventListener('resize', function () {
-      if (state.tab !== 'portfolio') return;
       clearTimeout(chartResizeTimer);
-      chartResizeTimer = setTimeout(renderPortfolioChart, 120);
+      chartResizeTimer = setTimeout(function () {
+        if (state.tab === 'portfolio' && state.chartTicker) renderPortfolioChart();
+        if (state.tab === 'watchlist' && state.analyticsTicker && typeof renderAnalyticsDetail === 'function') {
+          renderAnalyticsDetail(state.analyticsTicker);
+        }
+        if (document.getElementById('imoexMiniChart')) renderMoexIndexBox();
+      }, 120);
     });
 
     document.getElementById('alertThreshold').addEventListener('input', function () {
@@ -475,22 +498,24 @@
     loadProfileToUI();
     loadFiltersToUI();
     renderWatchlist();
-    if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
     loadLiveBriefs();
     renderMarketTiles();
     renderMarketMacro();
     if (typeof scheduleMarketMacroRefresh === 'function') scheduleMarketMacroRefresh();
     if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
-      Markets.renderBriefingMarketTabs();
+      ['briefingMarketTabs', 'analyticsMarketTabs', 'portfolioMarketTabs'].forEach(function (id) {
+        Markets.renderBriefingMarketTabs(id);
+      });
     }
     renderHomePage();
     renderPortfolio();
     updatePortfolioFormChrome();
-    renderMoexIndexBox();
+    if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
     renderAlerts();
     bindEvents();
-    bindChartHover(document.getElementById('portfolioPriceChart'));
     bindChartHover(document.getElementById('imoexMiniChart'));
+    bindChartHover(document.getElementById('analyticsPriceChart'));
+    bindChartHover(document.getElementById('portfolioInsightPriceChart'));
     initHash();
   }
 

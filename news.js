@@ -839,6 +839,8 @@
     chartHorizon: 'week',
     imoexHorizon: 'month',
     chartTicker: '',
+    analyticsTicker: '',
+    analyticsPriceHorizon: 'year',
     folderOpen: false,
     chartRequestId: 0,
     briefArticleReqId: 0,

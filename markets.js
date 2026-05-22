@@ -400,16 +400,33 @@
     if (typeof renderHomePage === 'function') renderHomePage();
     if (typeof renderMarketTiles === 'function') renderMarketTiles();
     if (typeof renderWatchlist === 'function') renderWatchlist();
+    if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
+    if (typeof renderPortfolio === 'function') renderPortfolio();
   }
 
 
 
-  function renderBriefingMarketTabs() {
-    var el = document.getElementById('briefingMarketTabs');
+  function renderBriefingMarketTabs(rootId) {
+    var el = document.getElementById(rootId || 'briefingMarketTabs');
     if (!el) return;
     var mode = briefingMarketsModeFromSettings();
     el.querySelectorAll('[data-briefing-market]').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-briefing-market') === mode);
+    });
+  }
+
+  function bindMarketTabs(rootId, onApplied) {
+    var el = document.getElementById(rootId);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-briefing-market]');
+      if (!btn) return;
+      applyBriefingMarkets(btn.getAttribute('data-briefing-market'));
+      renderBriefingMarketTabs(rootId);
+      ['briefingMarketTabs', 'analyticsMarketTabs', 'portfolioMarketTabs'].forEach(function (id) {
+        renderBriefingMarketTabs(id);
+      });
+      if (typeof onApplied === 'function') onApplied();
     });
   }
 
@@ -607,6 +624,7 @@
     briefingMarketsModeFromSettings: briefingMarketsModeFromSettings,
     applyBriefingMarkets: applyBriefingMarkets,
     renderBriefingMarketTabs: renderBriefingMarketTabs,
+    bindMarketTabs: bindMarketTabs,
     defaultCurrencyForMarket: defaultCurrencyForMarket,
     fetchUsQuote: fetchUsQuote,
     fetchUsHistory: fetchUsHistory
