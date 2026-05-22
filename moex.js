@@ -1272,19 +1272,27 @@
     var el = document.getElementById('imoexVolumeBars');
     if (!el) return;
     if (!days || !days.length) {
+      el.className = 'imoex-volume-bars';
+      el.removeAttribute('role');
+      el.removeAttribute('aria-label');
       el.innerHTML = '<p class="muted">Нет данных по обороту</p>';
       return;
     }
     var max = Math.max.apply(null, days.map(function (d) { return d.value; }));
+    el.className = 'imoex-volume-bars imoex-volume-bars--vertical';
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', 'Оборот IMOEX за 7 торговых дней, млрд ₽');
     el.innerHTML = days.map(function (d) {
       var dt = formatVolTradeDate(d.date);
       var bln = formatBlnRub(d.value);
-      var pct = max > 0 ? Math.max(8, (d.value / max) * 100) : 0;
+      var pct = max > 0 ? Math.max(6, (d.value / max) * 100) : 0;
       return (
-        '<div class="imoex-vol-row">' +
-          '<span class="imoex-vol-date">' + escapeHtml(dt) + '</span>' +
-          '<div class="imoex-vol-track"><div class="imoex-vol-bar" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+        '<div class="imoex-vol-col">' +
           '<span class="imoex-vol-val">' + escapeHtml(bln) + '</span>' +
+          '<div class="imoex-vol-track" aria-hidden="true">' +
+            '<div class="imoex-vol-bar" style="height:' + pct.toFixed(1) + '%"></div>' +
+          '</div>' +
+          '<span class="imoex-vol-date">' + escapeHtml(dt) + '</span>' +
         '</div>'
       );
     }).join('');
