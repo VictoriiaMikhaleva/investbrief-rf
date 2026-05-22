@@ -196,7 +196,7 @@
           b.classList.toggle('active', b === btn);
         });
         renderHomePage();
-        if (typeof renderMarketMacro === 'function') renderMarketMacro();
+        if (typeof renderMarketMacro === 'function') renderMarketMacro(true);
       });
     }
 
@@ -466,6 +466,7 @@
     loadLiveBriefs();
     renderMarketTiles();
     renderMarketMacro();
+    if (typeof scheduleMarketMacroRefresh === 'function') scheduleMarketMacroRefresh();
     renderHomePage();
     renderPortfolio();
     updatePortfolioFormChrome();

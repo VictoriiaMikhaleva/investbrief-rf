@@ -1007,7 +1007,7 @@
     if (tab === 'briefing') {
       renderHomePage();
       renderMarketTiles();
-      renderMarketMacro();
+      if (typeof renderMarketMacro === 'function') renderMarketMacro(true);
     }
     if (tab === 'portfolio') {
       renderPortfolio();
