@@ -346,6 +346,10 @@
     }).join('');
 
     if (!state.chartTicker || !findPortfolioPosition(state.chartTicker)) {
+      if (positions.length === 1) state.chartTicker = positions[0].ticker;
+    }
+
+    if (!state.chartTicker || !findPortfolioPosition(state.chartTicker)) {
       if (emptyEl) {
         emptyEl.hidden = false;
         emptyEl.innerHTML = '<span class="hint-frame">' + escapeHtml('Выберите бумагу в папке') + '</span>';
@@ -368,18 +372,6 @@
     var pos = findPortfolioPosition(state.chartTicker);
     if (!pos) return;
 
-    if (typeof Markets !== 'undefined' && Markets.isUsPosition(pos)) {
-      if (emptyEl) {
-        emptyEl.hidden = false;
-        emptyEl.innerHTML = '<span class="hint-frame">' + escapeHtml('Графики по рынку США будут доступны после подключения источника данных.') + '</span>';
-      }
-      if (wrap) wrap.hidden = true;
-      if (statsEl) statsEl.hidden = true;
-      if (toolbar) toolbar.hidden = true;
-      setChartSourceLabel('Данные США скоро');
-      return;
-    }
-
     var reqId = ++state.chartRequestId;
     setChartSourceLabel('Загрузка…', false);
 
@@ -397,19 +389,33 @@
       canvas._chartHoverIndex = null;
       drawPriceChart(canvas, result.series, { ticker: pos.ticker, horizon: state.chartHorizon });
       updateChartStatsFromSeries(result.series, pos.ticker);
-      setChartSourceLabel('МосБиржа · ' + pos.ticker, false);
+      var srcLabel = typeof Markets !== 'undefined' && Markets.isUsPosition(pos)
+        ? ('Рынок США · ' + pos.ticker)
+        : ('МосБиржа · ' + pos.ticker);
+      setChartSourceLabel(srcLabel, false);
       if (result.series.length) {
         pos.currentPrice = result.series[result.series.length - 1].price;
         setPortfolio(getPortfolio());
       }
     }).catch(function () {
       if (reqId !== state.chartRequestId) return;
+      if (typeof Markets !== 'undefined' && Markets.isUsPosition(pos)) {
+        if (emptyEl) {
+          emptyEl.hidden = false;
+          emptyEl.innerHTML = '<span class="hint-frame">' + escapeHtml('Не удалось загрузить котировки по рынку США. Проверьте подключение к интернету и попробуйте позже.') + '</span>';
+        }
+        if (wrap) wrap.hidden = true;
+        if (statsEl) statsEl.hidden = true;
+        if (toolbar) toolbar.hidden = true;
+        setChartSourceLabel('Котировки недоступны');
+        return;
+      }
       var fallback = generatePriceHistory(pos.ticker, pos.currentPrice, state.chartHorizon);
       canvas._chartStatsSeries = fallback;
       canvas._chartHoverIndex = null;
       drawPriceChart(canvas, fallback, { ticker: pos.ticker, horizon: state.chartHorizon });
       updateChartStatsFromSeries(fallback, pos.ticker);
-      setChartSourceLabel('Приблизительная кривая — котировки МосБиржи временно недоступны', true);
+      setChartSourceLabel('Приблизительная кривая — котировки временно недоступны', true);
     });
 
     document.querySelectorAll('#portfolioTableBody tr').forEach(function (row) {
@@ -633,18 +639,19 @@
       }
 
       var isUs = typeof Markets !== 'undefined' && sec.market === 'US';
-      if (isUs) {
+      function finishUsAdd(cur, dayPct) {
         if (existing) {
           mergePositionPurchase(existing, qty, avg, buyDate, comment);
-          existing.currentPrice = null;
           existing.market = 'US';
           existing.currency = 'USD';
+          if (cur != null && isFinite(cur)) existing.currentPrice = cur;
+          if (dayPct != null && isFinite(dayPct)) existing.dayChangePct = dayPct;
         } else {
           portfolio.positions.push(normalizePosition({
             ticker: t,
             qty: isFinite(qty) ? qty : null,
-            avgPrice: isFinite(avg) ? avg : null,
-            currentPrice: null,
+            avgPrice: isFinite(avg) ? avg : (cur != null && isFinite(cur) ? cur : null),
+            currentPrice: cur != null && isFinite(cur) ? cur : null,
             buyDate: buyDate,
             comment: comment,
             market: 'US',
@@ -654,7 +661,18 @@
         setPortfolio(portfolio);
         clearPortfolioForm(prefix);
         showToast(existing ? 'Докупка учтена, обновлена ср. цена: ' + t : 'Добавлено в портфель: ' + t);
+        state.chartTicker = t;
+        state.folderOpen = true;
         renderPortfolio();
+      }
+
+      if (isUs) {
+        Markets.fetchUsQuote(t).then(function (q) {
+          var cur = q && q.price != null ? q.price : null;
+          finishUsAdd(cur, q && q.changePct != null ? q.changePct : null);
+        }).catch(function () {
+          finishUsAdd(null, null);
+        });
         return;
       }
 
@@ -683,6 +701,8 @@
           clearPortfolioForm(prefix);
           showToast('Добавлено в портфель: ' + t);
         }
+        state.chartTicker = t;
+        state.folderOpen = true;
         renderPortfolio();
       });
     });

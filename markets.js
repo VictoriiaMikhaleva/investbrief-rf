@@ -357,6 +357,173 @@
     });
   }
 
+  var US_CACHE_PREFIX = 'ibrf.us.';
+  var US_FETCH_MS = 14000;
+
+  function usCacheGet(key) {
+    try {
+      var raw = localStorage.getItem(US_CACHE_PREFIX + key);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || Date.now() > parsed.expires) {
+        localStorage.removeItem(US_CACHE_PREFIX + key);
+        return null;
+      }
+      return parsed.data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function usCacheSet(key, data, ttl) {
+    try {
+      localStorage.setItem(US_CACHE_PREFIX + key, JSON.stringify({
+        expires: Date.now() + (ttl || 5 * 60 * 1000),
+        data: data
+      }));
+    } catch (e) { /* quota */ }
+  }
+
+  function usFetchWithTimeout(promise, ms) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, reject) {
+        setTimeout(function () { reject(new Error('timeout')); }, ms || US_FETCH_MS);
+      })
+    ]);
+  }
+
+  function usFetchJson(url) {
+    function loadFrom(fetchUrl) {
+      return usFetchWithTimeout(
+        fetch(fetchUrl, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+          if (!res.ok) throw new Error('http ' + res.status);
+          return res.json();
+        }),
+        US_FETCH_MS
+      );
+    }
+    return loadFrom(url).catch(function () {
+      return loadFrom('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
+    }).catch(function () {
+      return loadFrom('https://corsproxy.io/?' + encodeURIComponent(url));
+    });
+  }
+
+  function parseYahooChartBlock(json) {
+    return json && json.chart && json.chart.result && json.chart.result[0] ? json.chart.result[0] : null;
+  }
+
+  function parseYahooQuoteFromMeta(block) {
+    if (!block || !block.meta) return null;
+    var m = block.meta;
+    var price = Number(m.regularMarketPrice);
+    if (!isFinite(price)) return null;
+    var changePct = m.regularMarketChangePercent != null ? Number(m.regularMarketChangePercent) : null;
+    if (!isFinite(changePct) && m.chartPreviousClose) {
+      var prev = Number(m.chartPreviousClose);
+      if (isFinite(prev) && prev !== 0) changePct = ((price - prev) / prev) * 100;
+    }
+    if (!isFinite(changePct)) changePct = null;
+    return { price: price, changePct: changePct };
+  }
+
+  function yahooParamsForHorizon(horizon) {
+    if (horizon === 'day') return { range: '1d', interval: '5m' };
+    if (horizon === 'week') return { range: '5d', interval: '1d' };
+    if (horizon === 'month') return { range: '1mo', interval: '1d' };
+    return { range: '1y', interval: '1d' };
+  }
+
+  function parseYahooChartSeries(json) {
+    var block = parseYahooChartBlock(json);
+    if (!block) return [];
+    var ts = block.timestamp || [];
+    var closes = block.indicators && block.indicators.quote && block.indicators.quote[0]
+      ? block.indicators.quote[0].close
+      : [];
+    var out = [];
+    for (var i = 0; i < ts.length; i++) {
+      var c = closes[i];
+      if (c == null || !isFinite(Number(c))) continue;
+      out.push({ t: Number(ts[i]) * 1000, price: Number(c) });
+    }
+    return out;
+  }
+
+  function sliceUsSeries(series, horizon) {
+    if (!series.length) return series;
+    var now = Date.now();
+    var cut = now;
+    if (horizon === 'day') cut = now - 24 * 60 * 60 * 1000;
+    else if (horizon === 'week') cut = now - 7 * 24 * 60 * 60 * 1000;
+    else if (horizon === 'month') cut = now - 30 * 24 * 60 * 60 * 1000;
+    else cut = now - 365 * 24 * 60 * 60 * 1000;
+    var sliced = series.filter(function (p) { return p.t >= cut; });
+    return sliced.length >= 2 ? sliced : series.slice(-Math.min(series.length, horizon === 'day' ? 48 : 30));
+  }
+
+  function fetchUsHistory(ticker, horizon) {
+    ticker = normalizeTicker(ticker);
+    if (!isUsTicker(ticker)) return Promise.reject(new Error('not us'));
+    horizon = horizon || 'week';
+    var cacheKey = 'hist.' + ticker + '.' + horizon;
+    var cached = usCacheGet(cacheKey);
+    if (cached) return Promise.resolve({ series: cached, source: 'us' });
+
+    var p = yahooParamsForHorizon(horizon);
+    var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(ticker) +
+      '?range=' + p.range + '&interval=' + p.interval + '&includePrePost=false';
+
+    return usFetchJson(url).then(function (json) {
+      var series = sliceUsSeries(parseYahooChartSeries(json), horizon);
+      if (series.length < 2) throw new Error('not enough points');
+      usCacheSet(cacheKey, series, 10 * 60 * 1000);
+      return { series: series, source: 'us' };
+    });
+  }
+
+  function fetchUsQuote(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!isUsTicker(ticker)) return Promise.resolve({ price: null, changePct: null });
+    var cacheKey = 'quote.' + ticker;
+    var cached = usCacheGet(cacheKey);
+    if (cached && cached.price != null && isFinite(cached.price)) return Promise.resolve(cached);
+
+    var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(ticker) +
+      '?range=1d&interval=5m&includePrePost=false';
+
+    return usFetchJson(url).then(function (json) {
+      var block = parseYahooChartBlock(json);
+      var fromMeta = parseYahooQuoteFromMeta(block);
+      if (fromMeta) {
+        usCacheSet(cacheKey, fromMeta, 3 * 60 * 1000);
+        return fromMeta;
+      }
+      var s = parseYahooChartSeries(json);
+      if (!s.length) throw new Error('no quote');
+      var last = s[s.length - 1];
+      var prev = s.length > 1 ? s[s.length - 2] : null;
+      var changePct = prev && prev.price ? ((last.price - prev.price) / prev.price) * 100 : null;
+      var out = { price: last.price, changePct: changePct };
+      usCacheSet(cacheKey, out, 3 * 60 * 1000);
+      return out;
+    }).catch(function () {
+      return fetchUsHistory(ticker, 'week').then(function (hist) {
+        var series = hist.series;
+        if (!series.length) throw new Error('no series');
+        var last = series[series.length - 1];
+        var prev = series.length > 1 ? series[series.length - 2] : null;
+        var changePct = prev && prev.price ? ((last.price - prev.price) / prev.price) * 100 : null;
+        var out = { price: last.price, changePct: changePct };
+        usCacheSet(cacheKey, out, 3 * 60 * 1000);
+        return out;
+      });
+    }).catch(function () {
+      return { price: null, changePct: null };
+    });
+  }
+
   global.Markets = {
     US_CATALOG: US_CATALOG,
     normalizeMarketsSettings: normalizeMarketsSettings,
@@ -381,6 +548,8 @@
     formatMoneyValue: formatMoneyValue,
     filterBriefsByMarket: filterBriefsByMarket,
     getVisibleMarketTickers: getVisibleMarketTickers,
-    defaultCurrencyForMarket: defaultCurrencyForMarket
+    defaultCurrencyForMarket: defaultCurrencyForMarket,
+    fetchUsQuote: fetchUsQuote,
+    fetchUsHistory: fetchUsHistory
   };
 })(typeof window !== 'undefined' ? window : globalThis);

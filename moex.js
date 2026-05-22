@@ -437,7 +437,9 @@
 
   function fetchMoexQuote(ticker) {
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
-      return Promise.resolve({ price: null, changePct: null, usPending: true });
+      return Markets.fetchUsQuote(ticker).then(function (q) {
+        return q || { price: null, changePct: null };
+      });
     }
     return resolveMoexInstrument(ticker).then(function (inst) {
       return moexFetchJson(moexMarketdataUrl(inst)).then(function (json) {
@@ -479,6 +481,9 @@
 
 
   function fetchMoexHistory(ticker, horizon) {
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      return Markets.fetchUsHistory(ticker, horizon);
+    }
     var cacheKey = 'candles.' + ticker + '.' + horizon;
     var cached = moexCacheGet(cacheKey);
     if (cached) return Promise.resolve({ series: cached, source: 'moex', cached: true });
@@ -498,6 +503,11 @@
 
 
   function fetchMoexLastPrice(ticker) {
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      return Markets.fetchUsQuote(ticker).then(function (q) {
+        return q && q.price != null ? q.price : null;
+      });
+    }
     var cacheKey = 'last.' + ticker;
     var cached = moexCacheGet(cacheKey);
     if (cached != null) return Promise.resolve(cached);
@@ -595,11 +605,6 @@
     var portfolio = getPortfolio();
     if (!portfolio.positions.length) return Promise.resolve();
     var jobs = portfolio.positions.map(function (p) {
-      if (typeof Markets !== 'undefined' && Markets.isUsPosition(p)) {
-        p.currentPrice = null;
-        delete p.dayChangePct;
-        return Promise.resolve();
-      }
       return fetchMoexQuote(p.ticker).then(function (q) {
         if (q && q.price != null && isFinite(q.price)) p.currentPrice = q.price;
         if (q && q.changePct != null && isFinite(q.changePct)) p.dayChangePct = q.changePct;
@@ -759,11 +764,10 @@
     var wrap = btn.closest('.market-tile-wrap');
     var priceEl = btn.querySelector('[data-price]');
     var changeEl = btn.querySelector('[data-change]');
-    var isUs = typeof Markets !== 'undefined' && Markets.isUsTicker(ticker);
     if (!quote || quote.price == null) {
       if (priceEl) priceEl.textContent = '—';
       if (changeEl) {
-        changeEl.textContent = isUs ? 'Данные США скоро' : 'нет данных';
+        changeEl.textContent = 'нет данных';
         changeEl.className = 'market-tile-change muted';
       }
       applyStarBorderHighlight(wrap, quote);
