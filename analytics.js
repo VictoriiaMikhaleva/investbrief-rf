@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v2.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v3.';
   var ANALYTICS_TTL = 30 * 60 * 1000;
   var HISTORY_PAGE_LIMIT = 500;
   var VOLUME_YEAR_DAYS = 252;
@@ -54,15 +54,29 @@
     return val.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽/акц.';
   }
 
+  function sumDividendsInYear(dividends, year) {
+    var y = String(year);
+    var sum = 0;
+    (dividends || []).forEach(function (d) {
+      if (!d.date || d.date.indexOf(y) !== 0 || !isFinite(d.value) || d.value <= 0) return;
+      sum += d.value;
+    });
+    return sum;
+  }
+
+
+
   function computeDividendForecast12m(dividends) {
-    if (!dividends || !dividends.length) return { amount: null, paid12m: null, upcoming12m: null, source: '' };
+    if (!dividends || !dividends.length) {
+      return { amount: null, paid12m: null, upcoming12m: null, source: '' };
+    }
     var now = new Date();
+    now.setHours(12, 0, 0, 0);
     var in12 = new Date(now);
     in12.setMonth(in12.getMonth() + 12);
     var back12 = new Date(now);
     back12.setFullYear(back12.getFullYear() - 1);
 
-    var forward = 0;
     var paid12m = 0;
     var upcoming12m = 0;
 
@@ -70,10 +84,7 @@
       var dt = new Date(d.date + 'T12:00:00');
       if (isNaN(dt.getTime()) || !isFinite(d.value)) return;
       if (dt > back12 && dt <= now) paid12m += d.value;
-      if (dt > now && dt <= in12) {
-        forward += d.value;
-        upcoming12m += d.value;
-      }
+      if (dt > now && dt <= in12) upcoming12m += d.value;
     });
 
     if (upcoming12m > 0) {
@@ -81,31 +92,33 @@
         amount: upcoming12m,
         paid12m: paid12m,
         upcoming12m: upcoming12m,
-        source: 'объявленные выплаты'
+        source: 'объявленные выплаты (МосБиржа)'
       };
     }
 
-    var lastYear = String(now.getFullYear() - 1);
-    var yearSum = 0;
-    dividends.forEach(function (d) {
-      if (d.date.indexOf(lastYear) === 0) yearSum += d.value;
-    });
-    if (yearSum > 0) {
-      return {
-        amount: yearSum,
-        paid12m: paid12m,
-        upcoming12m: yearSum,
-        source: 'оценка по дивидендам ' + lastYear
-      };
-    }
     if (paid12m > 0) {
       return {
         amount: paid12m,
         paid12m: paid12m,
         upcoming12m: paid12m,
-        source: 'оценка по выплатам за 12 мес.'
+        source: 'оценка: выплачено за 12 мес.'
       };
     }
+
+    var thisYear = now.getFullYear();
+    var y;
+    for (y = thisYear - 1; y >= thisYear - 6; y--) {
+      var yearSum = sumDividendsInYear(dividends, y);
+      if (yearSum > 0) {
+        return {
+          amount: yearSum,
+          paid12m: paid12m,
+          upcoming12m: yearSum,
+          source: 'оценка по дивидендам ' + y + ' г. (МосБиржа)'
+        };
+      }
+    }
+
     return { amount: null, paid12m: null, upcoming12m: null, source: '' };
   }
 
@@ -172,9 +185,17 @@
     var source = hasAnnounced ? 'по датам отсечки (МосБиржа)' : '';
 
     if (!hasAnnounced) {
-      var lastYear = now.getFullYear() - 1;
+      var refYear = null;
+      var yRef;
+      for (yRef = now.getFullYear() - 1; yRef >= now.getFullYear() - 6; yRef--) {
+        if (sumDividendsInYear(dividends, yRef) > 0) {
+          refYear = yRef;
+          break;
+        }
+      }
+      if (refYear == null) refYear = now.getFullYear() - 1;
       (dividends || []).forEach(function (div) {
-        if (div.date.indexOf(String(lastYear)) !== 0) return;
+        if (div.date.indexOf(String(refYear)) !== 0) return;
         var dt = new Date(div.date + 'T12:00:00');
         if (isNaN(dt.getTime())) return;
         var bucket = monthByKey[monthKeyFromDate(new Date(now.getFullYear(), dt.getMonth(), 1))];
@@ -184,7 +205,7 @@
         bucket.estimated = true;
       });
       if (months.some(function (m) { return m.perShare > 0; })) {
-        source = 'оценка: календарь выплат ' + lastYear + ' г.';
+        source = 'оценка: календарь выплат ' + refYear + ' г.';
       }
     }
 
