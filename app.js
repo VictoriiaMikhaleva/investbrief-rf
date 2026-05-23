@@ -112,7 +112,10 @@
       baseCurrency: us && !ru ? 'USD' : 'RUB'
     });
     if (typeof state !== 'undefined') {
-      state.newsMarketFilter = ru && us ? 'all' : (us ? 'US' : 'RU');
+      var nextFilter = ru && us ? 'all' : (us ? 'US' : 'RU');
+      state.newsMarketFilter = typeof Markets !== 'undefined' && Markets.normalizeNewsMarketFilter
+        ? Markets.normalizeNewsMarketFilter(nextFilter, { ru: ru, us: us })
+        : nextFilter;
     }
     updateMarketSettingsControls();
     if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {

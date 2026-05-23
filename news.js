@@ -400,6 +400,7 @@
       body: essay,
       sourceUrl: item.sourceUrl || '#',
       sourceName: item.sourceName || 'источник',
+      market: 'RU',
       isLive: true
     };
   }
@@ -646,6 +647,7 @@
       body: body,
       sourceUrl: rssItem.link,
       sourceName: feed.name,
+      market: 'RU',
       isLive: true
     };
   }
@@ -849,6 +851,8 @@
     pfEditTicker: '',
     pfEditPrefix: ''
   };
+  if (typeof globalThis !== 'undefined') globalThis.state = state;
+  else if (typeof window !== 'undefined') window.state = state;
 
   var CHART_HORIZONS = {
     day: { label: 'День', points: 24, stepMs: 60 * 60 * 1000 },
@@ -1296,6 +1300,11 @@
     }
     if (wrap) wrap.hidden = false;
     if (markets.ru && markets.us) {
+      if (typeof Markets !== 'undefined' && Markets.normalizeNewsMarketFilter) {
+        state.newsMarketFilter = Markets.normalizeNewsMarketFilter(state.newsMarketFilter, markets);
+      } else if (state.newsMarketFilter !== 'RU' && state.newsMarketFilter !== 'US' && state.newsMarketFilter !== 'all') {
+        state.newsMarketFilter = 'all';
+      }
       el.querySelectorAll('[data-news-market]').forEach(function (btn) {
         btn.hidden = false;
         btn.classList.toggle('active', btn.getAttribute('data-news-market') === (state.newsMarketFilter || 'all'));

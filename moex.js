@@ -1279,7 +1279,9 @@
     if (typeof Markets === 'undefined') return true;
     var markets = Markets.getMarketsEnabled();
     if (!markets.ru) return false;
-    var filter = state && state.newsMarketFilter ? state.newsMarketFilter : 'all';
+    var filter = typeof Markets !== 'undefined' && Markets.normalizeNewsMarketFilter
+      ? Markets.normalizeNewsMarketFilter(state && state.newsMarketFilter, markets)
+      : (state && state.newsMarketFilter ? state.newsMarketFilter : 'all');
     return filter !== 'US';
   }
 
