@@ -35,9 +35,14 @@
     } catch (e) { /* quota */ }
   }
 
+  function isIndexQuoteTicker(ticker) {
+    ticker = normalizeTicker(ticker);
+    return ticker === 'IMOEX' || ticker === 'INDEX';
+  }
+
   function isRuStockForAnalytics(ticker) {
     ticker = normalizeTicker(ticker);
-    if (!ticker || ticker === 'IMOEX' || ticker === 'INDEX') return false;
+    if (!ticker || isIndexQuoteTicker(ticker)) return false;
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) return false;
     if (ticker.indexOf('OFZ') >= 0) return false;
     if (ticker.indexOf('SU') === 0 && ticker.length > 8) return false;
@@ -678,7 +683,9 @@
 
   function queueEnrichQuoteCard(wrapEl, ticker) {
     if (!wrapEl || !ticker) return;
-    enrichQueue.push({ wrap: wrapEl, ticker: normalizeTicker(ticker) });
+    ticker = normalizeTicker(ticker);
+    if (isIndexQuoteTicker(ticker)) return;
+    enrichQueue.push({ wrap: wrapEl, ticker: ticker });
     drainEnrichQueue();
   }
 
@@ -708,6 +715,13 @@
     ticker = normalizeTicker(ticker);
     var btn = wrapEl.querySelector('.market-tile, .quote-card');
     if (!btn) return;
+
+    if (isIndexQuoteTicker(ticker)) {
+      var idxBlock = wrapEl.querySelector('[data-div-block]');
+      if (idxBlock) idxBlock.remove();
+      wrapEl.querySelectorAll('.quote-card-charts').forEach(function (el) { el.remove(); });
+      return;
+    }
 
     var block = wrapEl.querySelector('[data-div-block]');
     if (!block) {
@@ -865,6 +879,7 @@
     });
   }
 
+  window.isIndexQuoteTicker = isIndexQuoteTicker;
   window.isRuStockForAnalytics = isRuStockForAnalytics;
   window.formatDivYieldPct = formatDivYieldPct;
   window.formatDivRubPerShare = formatDivRubPerShare;

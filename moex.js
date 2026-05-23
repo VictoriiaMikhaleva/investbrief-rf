@@ -823,6 +823,12 @@
     el.innerHTML = tickers.map(function (ticker) {
       var tile = buildMarketTileConfig(ticker);
       var wrapCls = 'market-tile-wrap magic-bento-card magic-bento-card--border-glow star-border-container star-border-loading' + (tile.featured ? ' featured' : '');
+      var showDiv = typeof window.isIndexQuoteTicker === 'function'
+        ? !window.isIndexQuoteTicker(ticker)
+        : (ticker !== 'IMOEX' && ticker !== 'INDEX');
+      var divHtml = showDiv && typeof window.quoteCardDivMetricsHtml === 'function'
+        ? window.quoteCardDivMetricsHtml()
+        : '';
       return (
         '<div class="' + wrapCls + '" data-ticker="' + escapeHtml(tile.ticker) + '">' +
           '<div class="border-gradient-bottom" aria-hidden="true"></div>' +
@@ -837,7 +843,7 @@
               '<span class="market-tile-price" data-price>…</span>' +
               '<span class="market-tile-change muted" data-change>загрузка</span>' +
             '</div>' +
-            (typeof window.quoteCardDivMetricsHtml === 'function' ? window.quoteCardDivMetricsHtml() : '') +
+            divHtml +
           '</button>' +
         '</div>'
       );
@@ -854,8 +860,13 @@
         var btn = el.querySelector('.market-tile[data-ticker="' + ticker + '"]');
         updateMarketTileButton(btn, null, ticker);
       });
-      if (typeof queueEnrichQuoteCard === 'function' && wrap) queueEnrichQuoteCard(wrap, ticker);
-      else if (typeof enrichQuoteCard === 'function' && wrap) enrichQuoteCard(wrap, ticker);
+      var skipDiv = typeof window.isIndexQuoteTicker === 'function'
+        ? window.isIndexQuoteTicker(ticker)
+        : (ticker === 'IMOEX' || ticker === 'INDEX');
+      if (!skipDiv) {
+        if (typeof queueEnrichQuoteCard === 'function' && wrap) queueEnrichQuoteCard(wrap, ticker);
+        else if (typeof enrichQuoteCard === 'function' && wrap) enrichQuoteCard(wrap, ticker);
+      }
     });
 
     initMarketTilesBento();
