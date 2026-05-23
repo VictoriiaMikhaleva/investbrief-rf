@@ -362,7 +362,7 @@
 
   function openPortfolioChart(ticker) {
     ticker = normalizeTicker(ticker);
-    if (ticker === 'IMOEX' || ticker === 'MOEX') {
+    if (ticker === 'IMOEX' || ticker === 'INDEX') {
       if (typeof switchTab === 'function') switchTab('watchlist');
       if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
       var box = document.getElementById('moexIndexBox');

@@ -221,7 +221,7 @@
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       return Markets.formatMoneyValue(value, 'USD');
     }
-    if (ticker === IMOEX_SECID || ticker === 'MOEX') {
+    if (ticker === IMOEX_SECID || ticker === 'INDEX') {
       return Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' п.';
     }
     if (ticker.indexOf('OFZ') >= 0 || (ticker.indexOf('SU') === 0 && ticker.length > 8)) return value.toFixed(2) + '%';
@@ -897,11 +897,18 @@
     return bars;
   }
 
+  function analyticsPriceHorizonLabel(horizon) {
+    if (horizon === 'day') return '1 день';
+    if (horizon === 'month') return 'Месяц';
+    return '5 лет';
+  }
+
   function renderAnalyticsDetail(ticker) {
     ticker = normalizeTicker(ticker);
     var sec = document.getElementById('analyticsDetailSection');
     var titleEl = document.getElementById('analyticsDetailTicker');
     var metaEl = document.getElementById('analyticsDetailMeta');
+    var priceLbl = document.getElementById('analyticsPriceChartLbl');
     var priceCanvas = document.getElementById('analyticsPriceChart');
     var divCanvas = document.getElementById('analyticsDivChart');
     var volCanvas = document.getElementById('analyticsVolChart');
@@ -913,6 +920,7 @@
     sec.hidden = false;
 
     var horizon = state.analyticsPriceHorizon || 'year';
+    if (priceLbl) priceLbl.textContent = 'Цена · ' + analyticsPriceHorizonLabel(horizon);
 
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       if (metaEl) metaEl.textContent = 'Рынок США · дивиденды и оборот МосБиржи недоступны';
@@ -925,6 +933,20 @@
 
     if (typeof buildSecurityAnalytics !== 'function') return;
     buildSecurityAnalytics(ticker).then(function (a) {
+      if (!a.eligible) {
+        if (metaEl) metaEl.textContent = (a.name || getTickerSubtitle(ticker)) + ' · дивиденды и оборот TQBR недоступны для индексов';
+        if (divNote) divNote.textContent = 'Для индексов доступен только график цены.';
+        if (volNote) volNote.textContent = '';
+        if (divCanvas) {
+          var dctx = divCanvas.getContext('2d');
+          if (dctx) dctx.clearRect(0, 0, divCanvas.width, divCanvas.height);
+        }
+        if (volCanvas) {
+          var vctx = volCanvas.getContext('2d');
+          if (vctx) vctx.clearRect(0, 0, volCanvas.width, volCanvas.height);
+        }
+        return fetchMoexHistory(ticker, horizon);
+      }
       if (metaEl) {
         var parts = [a.name || getTickerSubtitle(ticker)];
         if (a.divAvg5y != null) parts.push('Ср. див. 5л: ' + formatDivYieldPct(a.divAvg5y));

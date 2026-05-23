@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v3.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v4.';
   var ANALYTICS_TTL = 30 * 60 * 1000;
   var HISTORY_PAGE_LIMIT = 500;
   var VOLUME_YEAR_DAYS = 252;
@@ -37,7 +37,7 @@
 
   function isRuStockForAnalytics(ticker) {
     ticker = normalizeTicker(ticker);
-    if (!ticker || ticker === 'IMOEX' || ticker === 'MOEX' || ticker === 'INDEX') return false;
+    if (!ticker || ticker === 'IMOEX' || ticker === 'INDEX') return false;
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) return false;
     if (ticker.indexOf('OFZ') >= 0) return false;
     if (ticker.indexOf('SU') === 0 && ticker.length > 8) return false;

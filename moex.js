@@ -252,7 +252,7 @@
 
   function resolveMoexInstrument(ticker) {
     var t = normalizeTicker(ticker);
-    if (t === 'IMOEX' || t === 'MOEX' || t === 'INDEX') {
+    if (t === 'IMOEX' || t === 'INDEX') {
       return Promise.resolve({ type: 'index', engine: 'stock', market: 'index', board: null, secid: IMOEX_SECID });
     }
     if (BOND_SECID_MAP[t]) {
@@ -313,6 +313,10 @@
     }
     if (horizon === 'month') {
       from.setDate(from.getDate() - 45);
+      return { interval: 24, from: moexFormatDate(from), till: moexFormatDate(till) };
+    }
+    if (horizon === 'year') {
+      from.setFullYear(from.getFullYear() - 5);
       return { interval: 24, from: moexFormatDate(from), till: moexFormatDate(till) };
     }
     from.setDate(from.getDate() - 400);
@@ -473,6 +477,7 @@
     if (horizon === 'day') cut = now - 24 * 60 * 60 * 1000;
     else if (horizon === 'week') cut = now - 7 * 24 * 60 * 60 * 1000;
     else if (horizon === 'month') cut = now - 30 * 24 * 60 * 60 * 1000;
+    else if (horizon === 'year') cut = now - 5 * 365 * 24 * 60 * 60 * 1000;
     else cut = now - 365 * 24 * 60 * 60 * 1000;
     var sliced = series.filter(function (p) { return p.t >= cut; });
     return sliced.length >= 2 ? sliced : series.slice(-Math.min(series.length, horizon === 'day' ? 24 : 30));
