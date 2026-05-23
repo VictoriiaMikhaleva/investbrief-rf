@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v4.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v5.';
   var ANALYTICS_TTL = 30 * 60 * 1000;
   var HISTORY_PAGE_LIMIT = 500;
   var VOLUME_YEAR_DAYS = 252;
@@ -307,7 +307,9 @@
     html.push('<div class="div-info-block div-info-years">');
     html.push('<div class="div-info-title">Выплаты по годам</div>');
     yearly.forEach(function (y) {
-      var sum = y.totalDiv > 0 ? formatDividendRubShort(y.totalDiv) + ' ₽/акц.' : '—';
+      var sum = y.totalDiv > 0
+        ? formatDividendRubShort(y.totalDiv) + ' ₽/акц.'
+        : (a.noMoexDividends ? '0 ₽/акц.' : '—');
       var yld = y.yieldPct != null && isFinite(y.yieldPct) ? formatDivYieldPct(y.yieldPct) : '';
       var months = formatDividendPaymentMonthsLine(a.dividends, y.year);
       html.push(
@@ -535,7 +537,28 @@
     if (totalDiv > 0 && quotePrice != null && isFinite(quotePrice) && quotePrice > 0) {
       return (totalDiv / quotePrice) * 100;
     }
+    if (!totalDiv) return 0;
     return null;
+  }
+
+  function finalizeDividendMetrics(dividends, yearly, forecast, quotePrice) {
+    if (dividends && dividends.length) {
+      return {
+        divAvg5y: averageYield5y(yearly, quotePrice),
+        divForecast: forecast,
+        noMoexDividends: false
+      };
+    }
+    return {
+      divAvg5y: 0,
+      divForecast: {
+        amount: 0,
+        paid12m: 0,
+        upcoming12m: 0,
+        source: 'по данным МосБиржи выплат нет'
+      },
+      noMoexDividends: true
+    };
   }
 
   /** Нужен год в подписи, если период > 1 года или затрагивает несколько календарных лет. */
@@ -609,14 +632,16 @@
       var quote = results[2] || {};
       var yearly = computeYearlyDividendYields(dividends, history);
       var forecast = computeDividendForecast12m(dividends);
+      var divMetrics = finalizeDividendMetrics(dividends, yearly, forecast, quote.price);
       var out = {
         ticker: ticker,
         eligible: true,
         name: getTickerSubtitle(ticker),
         quote: quote,
         dividends: dividends,
-        divAvg5y: averageYield5y(yearly, quote.price),
-        divForecast: forecast,
+        divAvg5y: divMetrics.divAvg5y,
+        divForecast: divMetrics.divForecast,
+        noMoexDividends: divMetrics.noMoexDividends,
         divYieldByYear: yearly,
         monthlyForecast: buildMonthlyDividendForecast12m(dividends, history, quote.price),
         volumeByDay: sliceVolumeSeries(history, VOLUME_YEAR_DAYS)
@@ -652,15 +677,32 @@
       return;
     }
     if (avgEl) {
-      avgEl.textContent = formatDivYieldPct(a.divAvg5y);
-      avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
+      if (a.noMoexDividends) {
+        avgEl.textContent = '0,0%';
+        avgEl.className = 'quote-div-val muted';
+        avgEl.title = 'В ленте МосБиржи выплат не было';
+      } else {
+        avgEl.textContent = formatDivYieldPct(a.divAvg5y);
+        avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
+        avgEl.removeAttribute('title');
+      }
     }
     if (fcEl) {
       var f = a.divForecast;
-      fcEl.textContent = f && f.amount != null
-        ? formatDivRubPerShare(f.amount)
-        : '—';
-      if (f && f.source) fcEl.title = f.source;
+      if (a.noMoexDividends) {
+        fcEl.textContent = '0 ₽';
+        fcEl.className = 'quote-div-val muted';
+        fcEl.title = (f && f.source) ? f.source : 'Выплат нет';
+      } else if (f && f.amount != null && isFinite(f.amount)) {
+        fcEl.textContent = formatDivRubPerShare(f.amount);
+        fcEl.className = 'quote-div-val';
+        if (f.source) fcEl.title = f.source;
+        else fcEl.removeAttribute('title');
+      } else {
+        fcEl.textContent = '—';
+        fcEl.className = 'quote-div-val';
+        fcEl.removeAttribute('title');
+      }
     }
   }
 
