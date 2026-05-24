@@ -588,6 +588,28 @@
       box-sizing: border-box;
       text-align: left;
     }
+    .panel-intro,
+    .panel > .hint-frame,
+    .home-block > .hint-frame,
+    .glass > .hint-frame {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+    }
+    .panel-intro {
+      margin: 0 0 1rem;
+    }
+    .panel-intro > p {
+      margin: 0;
+      max-width: none;
+      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .panel-intro > p + p {
+      margin-top: 0.4rem;
+    }
     .hint-frame::before {
       content: "";
       position: absolute;

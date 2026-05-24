@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250630" />
+  <link rel="stylesheet" href="./styles.css?v=20250706" />
 </head>
 <body>
   <div class="app">
@@ -95,7 +95,9 @@
       <main class="content">
         <section id="tab-briefing" class="panel active" data-panel="briefing">
           <h2 class="home-head">Главная</h2>
-          <p class="panel-disclaimer hint-frame">Не является индивидуальной инвестиционной рекомендацией.</p>
+          <div class="panel-intro hint-frame">
+            <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
+          </div>
 
           <section class="home-block">
             <h3 class="home-block-title">Котировки</h3>
@@ -153,8 +155,10 @@
 
         <section id="tab-watchlist" class="panel" data-panel="watchlist">
           <h2>Аналитика</h2>
-          <p class="panel-disclaimer hint-frame">Не является индивидуальной инвестиционной рекомендацией.</p>
-          <p class="muted hint-frame">Котировки, дивиденды и оборот · позиции и сделки — во вкладке «Мой портфель».</p>
+          <div class="panel-intro hint-frame">
+            <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
+            <p class="panel-intro-text">Котировки, дивиденды и оборот · позиции и сделки — во вкладке «Мой портфель».</p>
+          </div>
 
           <div class="briefing-market-toolbar">
             <div class="market-filter-tabs" id="analyticsMarketTabs" role="tablist" aria-label="Рынок в аналитике">
@@ -242,8 +246,10 @@
 
         <section id="tab-portfolio" class="panel" data-panel="portfolio">
           <h2>Мой портфель</h2>
-          <p class="panel-disclaimer hint-frame">Не является индивидуальной инвестиционной рекомендацией.</p>
-          <p class="muted hint-frame">Позиции хранятся локально. Котировки — с МосБиржи и Yahoo Finance.</p>
+          <div class="panel-intro hint-frame">
+            <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
+            <p class="panel-intro-text">Позиции хранятся локально. Котировки — с МосБиржи и Yahoo Finance.</p>
+          </div>
 
           <div class="briefing-market-toolbar">
             <div class="market-filter-tabs" id="portfolioMarketTabs" role="tablist" aria-label="Рынок в портфеле">
@@ -335,7 +341,9 @@
 
         <section id="tab-settings" class="panel" data-panel="settings">
           <h2>Настройки</h2>
-          <p class="panel-disclaimer hint-frame">Не является индивидуальной инвестиционной рекомендацией.</p>
+          <div class="panel-intro hint-frame">
+            <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
+          </div>
 
           <div class="glass settings-block auth-account" id="authAccountBlock">
             <h3>Вход в аккаунт</h3>
