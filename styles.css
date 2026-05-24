@@ -2449,3 +2449,22 @@
     .auth-sync-status { margin: 0 0 0.5rem; font-size: 0.88rem; color: var(--accent); }
     .auth-user-line { margin: 0 0 0.65rem; }
     .auth-actions button { flex: 1 1 auto; min-width: 120px; }
+
+    /* Единый шрифт для всех подсказок */
+    .hint-frame,
+    .panel-disclaimer,
+    .home-hint,
+    .analytics-chart-note,
+    .analytics-chart-note.chart-info-readable,
+    .chart-info-readable,
+    .security-chart-note,
+    .market-settings-hint,
+    .imoex-panel-hint,
+    .pf-form-hint,
+    .chart-source {
+      font-family: var(--font-body);
+      font-size: 0.82rem;
+      line-height: 1.45;
+      font-weight: 400;
+      letter-spacing: 0;
+    }
