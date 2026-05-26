@@ -5,6 +5,28 @@
 
 
 
+  function moexFormatDateMsk(d) {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(d);
+    } catch (e) {
+      return moexFormatDate(d);
+    }
+  }
+
+
+
+  var IMOEX_TURNOVER_CACHE_MS = 5 * 60 * 1000;
+
+
+
+  function invalidateImoexVolumeCaches() {
+    ['imoex.turnover.week', 'moex.topvol.20'].forEach(function (key) {
+      try { localStorage.removeItem(MOEX_CACHE_PREFIX + key); } catch (e) { /* */ }
+    });
+  }
+
+
+
   function moexCacheGet(key) {
     try {
       var raw = localStorage.getItem(MOEX_CACHE_PREFIX + key);
@@ -1328,22 +1350,47 @@
 
 
 
-  function fetchImoexTurnoverWeek() {
+  function fetchImoexTurnoverWeek(skipCache) {
     var cacheKey = 'imoex.turnover.week';
-    var cached = moexCacheGet(cacheKey);
-    if (cached) return Promise.resolve(cached);
+    if (!skipCache) {
+      var cached = moexCacheGet(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
     var till = new Date();
     var from = new Date(till);
-    from.setDate(from.getDate() - 14);
-    var url = 'https://iss.moex.com/iss/history/engines/stock/markets/index/securities/IMOEX.json' +
-      '?from=' + moexFormatDate(from) + '&till=' + moexFormatDate(till) +
+    from.setDate(from.getDate() - 21);
+    var baseUrl = 'https://iss.moex.com/iss/history/engines/stock/markets/index/securities/IMOEX.json' +
+      '?from=' + moexFormatDateMsk(from) + '&till=' + moexFormatDateMsk(till) +
       '&iss.meta=off&history.columns=TRADEDATE,VALUE';
-    return moexFetchJson(url).then(function (json) {
-      var hist = json.history;
-      if (!hist || !hist.data || !hist.data.length) throw new Error('no imoex history');
-      var idxDate = hist.columns.indexOf('TRADEDATE');
-      var idxVal = hist.columns.indexOf('VALUE');
-      var days = hist.data.map(function (row) {
+    var allRows = [];
+    var start = 0;
+    var idxDate = -1;
+    var idxVal = -1;
+
+    function fetchPage() {
+      var url = baseUrl + '&start=' + start;
+      return moexFetchJson(url).then(function (json) {
+        var hist = json.history;
+        if (!hist || !hist.data || !hist.data.length) return allRows;
+        if (idxDate < 0) {
+          idxDate = hist.columns.indexOf('TRADEDATE');
+          idxVal = hist.columns.indexOf('VALUE');
+        }
+        allRows = allRows.concat(hist.data);
+        var cur = json['history.cursor'] && json['history.cursor'].data && json['history.cursor'].data[0];
+        var total = cur ? Number(cur[1]) : allRows.length;
+        var pageSize = cur ? Number(cur[2]) : hist.data.length;
+        if (pageSize > 0 && start + hist.data.length < total) {
+          start += pageSize;
+          return fetchPage();
+        }
+        return allRows;
+      });
+    }
+
+    return fetchPage().then(function (rows) {
+      if (!rows.length) throw new Error('no imoex history');
+      var days = rows.map(function (row) {
         return {
           date: row[idxDate],
           value: row[idxVal] != null ? Number(row[idxVal]) : null
@@ -1351,18 +1398,20 @@
       }).filter(function (d) { return d.value != null && isFinite(d.value); });
       days = days.slice(-7);
       if (!days.length) throw new Error('no turnover days');
-      moexCacheSet(cacheKey, days, 20 * 60 * 1000);
+      moexCacheSet(cacheKey, days, IMOEX_TURNOVER_CACHE_MS);
       return days;
     });
   }
 
 
 
-  function fetchTopMoexSharesByVolume(limit) {
+  function fetchTopMoexSharesByVolume(limit, skipCache) {
     limit = limit || 20;
     var cacheKey = 'moex.topvol.' + limit;
-    var cached = moexCacheGet(cacheKey);
-    if (cached) return Promise.resolve(cached);
+    if (!skipCache) {
+      var cached = moexCacheGet(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
     var all = [];
     var start = 0;
     var page = 100;
@@ -1406,7 +1455,7 @@
       list.sort(function (a, b) { return b.valToday - a.valToday; });
       var top = list.slice(0, limit);
       if (!top.length) throw new Error('no top volume');
-      moexCacheSet(cacheKey, top, 5 * 60 * 1000);
+      moexCacheSet(cacheKey, top, IMOEX_TURNOVER_CACHE_MS);
       return top;
     });
   }
@@ -1517,12 +1566,7 @@
       panel.hidden = true;
       return;
     }
-    if (forceRefresh) {
-      try {
-        localStorage.removeItem(MOEX_CACHE_PREFIX + 'imoex.turnover.week');
-        localStorage.removeItem(MOEX_CACHE_PREFIX + 'moex.topvol.20');
-      } catch (e) { /* */ }
-    }
+    if (forceRefresh) invalidateImoexVolumeCaches();
     panel.hidden = false;
     var bars = document.getElementById('imoexVolumeBars');
     var src = document.getElementById('imoexMarketSource');
@@ -1530,8 +1574,8 @@
     if (src) src.textContent = 'Загрузка данных МосБиржи…';
 
     Promise.all([
-      fetchImoexTurnoverWeek(),
-      fetchTopMoexSharesByVolume(20)
+      fetchImoexTurnoverWeek(!!forceRefresh),
+      fetchTopMoexSharesByVolume(20, !!forceRefresh)
     ]).then(function (results) {
       renderImoexVolumeBars(results[0]);
       renderImoexTopVolumeTable(results[1]);
@@ -1652,11 +1696,13 @@
       if (document.visibilityState !== 'visible') return;
       if (!state || state.tab !== 'briefing') return;
       if (typeof renderMarketMacro !== 'function') return;
+      invalidateImoexVolumeCaches();
       renderMarketMacro(false);
     }, MACRO_REFRESH_MS);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
       if (!state || state.tab !== 'briefing') return;
+      invalidateImoexVolumeCaches();
       if (typeof renderMarketMacro === 'function') renderMarketMacro(false);
     });
   }
