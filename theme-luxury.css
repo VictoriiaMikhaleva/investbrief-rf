@@ -247,6 +247,24 @@ input:focus, select:focus, textarea:focus {
 .chart-canvas-wrap { background: #f7f8fb; border-color: var(--border); }
 .modal-overlay { background: rgba(17, 25, 38, 0.38); }
 
+.app-footer {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 1080px;
+  padding: 0.5rem 2.5rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+@media (max-width: 899px) {
+  .app-footer {
+    padding: 0.35rem 1rem calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.7rem);
+    font-size: 0.78rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brief-card:hover,
   .quote-card:hover,
