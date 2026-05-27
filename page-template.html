@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <script>
+    (function () {
+      var path = location.pathname || '/';
+      if (!path.endsWith('/')) {
+        var i = path.lastIndexOf('/');
+        path = i >= 0 ? path.slice(0, i + 1) : '/';
+      }
+      if (path.indexOf('investbrief-rf') !== -1) {
+        var base = document.createElement('base');
+        base.href = path;
+        document.head.appendChild(base);
+      }
+    })();
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Новая страница — ИнвестБриф РФ</title>
+  <meta name="description" content="Шаблон для новых страниц проекта ИнвестБриф РФ." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css?v=20250801" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=20250806" />
+  <style>
+    .page-wrap {
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 1.2rem;
+    }
+    .page-back {
+      display: inline-block;
+      margin-bottom: 1rem;
+    }
+    .page-header {
+      margin-bottom: 1.2rem;
+    }
+    .page-title {
+      margin: 0 0 0.35rem;
+      font-size: 1.65rem;
+      font-family: var(--font-heading);
+    }
+    .page-meta {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    .page-card {
+      padding: 1.1rem 1.2rem;
+    }
+    .page-card p:last-child {
+      margin-bottom: 0;
+    }
+    .page-footer-wrap {
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 0 1.25rem 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="page-wrap">
+    <a class="page-back muted" href="./index.html">← На главную</a>
+
+    <header class="page-header">
+      <h1 class="page-title">Заголовок новой страницы</h1>
+      <p class="page-meta">ИнвестБриф РФ · обновите дату и описание</p>
+    </header>
+
+    <section class="glass page-card">
+      <p>Вставьте здесь основной контент страницы.</p>
+      <p>Этот шаблон уже подключает общие стили и фирменный футер.</p>
+    </section>
+  </main>
+
+  <div class="page-footer-wrap">
+    <footer class="app-footer" aria-label="Подпись проекта">
+      <span>Создано Викторией Михалевой · контент, ИИ и цифровые проекты</span>
+      <a href="https://www.content-system.ru/" target="_blank" rel="noopener noreferrer">content-system.ru</a>
+    </footer>
+  </div>
+</body>
+</html>
