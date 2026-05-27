@@ -252,10 +252,26 @@ input:focus, select:focus, textarea:focus {
   width: 100%;
   max-width: 1080px;
   padding: 0.5rem 2.5rem 1rem;
+  border-top: 1px solid rgba(23, 34, 51, 0.14);
   color: var(--text-muted);
   font-size: 0.82rem;
   line-height: 1.45;
   text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.6rem;
+}
+
+.app-footer a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.app-footer a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
 }
 
 @media (max-width: 899px) {
