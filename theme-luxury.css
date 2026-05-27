@@ -112,7 +112,11 @@ input:focus, select:focus, textarea:focus {
 }
 
 .sidebar-nav .book-nav {
+  position: relative;
+  display: flex;
+  align-items: center;
   gap: 0;
+  padding: 0.62rem 0.8rem;
   border: 1px solid transparent;
   border-radius: 10px;
 }
@@ -126,14 +130,37 @@ input:focus, select:focus, textarea:focus {
 }
 
 .sidebar-nav .book-nav.active::before {
+  content: none;
+}
+
+.sidebar-nav .book-nav__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 600;
+}
+
+.sidebar-nav .book-nav__name::before {
   content: "";
-  position: absolute;
-  left: 0;
-  top: 20%;
-  bottom: 20%;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #c8d0dd;
+  box-shadow: inset 0 0 0 1px rgba(23, 34, 51, 0.08);
+  flex: 0 0 auto;
+}
+
+.sidebar-nav .book-nav.active .book-nav__name::before {
   background: linear-gradient(180deg, var(--bronze), var(--accent));
+  box-shadow: none;
+}
+
+.sidebar-nav .book-nav.active::after {
+  content: "•";
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
 .bottom-nav {
