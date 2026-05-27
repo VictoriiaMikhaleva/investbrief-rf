@@ -589,3 +589,122 @@ input:focus, select:focus, textarea:focus {
     transform: none;
   }
 }
+
+/* High-impact pass: visibly modern tech-lux look */
+html body {
+  background: #0B0F18 !important;
+  color: #E8EEF8;
+}
+
+body::before {
+  background:
+    radial-gradient(60% 45% at 5% 0%, rgba(20, 184, 166, 0.18), transparent 55%),
+    radial-gradient(55% 38% at 100% 0%, rgba(196, 165, 116, 0.16), transparent 52%),
+    linear-gradient(180deg, #0B0F18 0%, #0E1320 46%, #111826 100%) !important;
+}
+
+.sidebar,
+.header,
+.bottom-nav {
+  background: rgba(9, 13, 23, 0.78) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.sidebar-brand .logo {
+  background: linear-gradient(120deg, #EAF1FD 0%, #6FE2D8 70%, #E0C18D 100%) !important;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.glass,
+.brief-card,
+.quote-card,
+.market-tile.star-border-inner,
+.macro-tile,
+.portfolio-card,
+.modal,
+.chart-stat {
+  background: linear-gradient(160deg, rgba(22, 28, 42, 0.92) 0%, rgba(14, 19, 31, 0.94) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+.muted,
+.hint-frame,
+.panel-disclaimer,
+.home-hint,
+.imoex-panel-hint,
+.chart-source,
+.chart-info-readable {
+  color: #AAB5C8 !important;
+}
+
+.hint-frame,
+.panel-disclaimer,
+.home-hint {
+  background: rgba(18, 24, 37, 0.82) !important;
+  border: 1px solid rgba(111, 226, 216, 0.2) !important;
+  border-left: 3px solid #6FE2D8 !important;
+}
+
+.brief-title,
+.brief-article-modal-title,
+.market-tile-ticker,
+.market-tile-price,
+.macro-tile-val,
+.quote-card-price,
+.index-value {
+  color: #F4F8FF !important;
+}
+
+.book-nav,
+.book-nav .book-nav__name {
+  color: #AAB5C8 !important;
+}
+
+.sidebar-nav .book-nav.active,
+.book-nav--bottom.active {
+  background: rgba(111, 226, 216, 0.1) !important;
+  border-color: rgba(111, 226, 216, 0.42) !important;
+  color: #EFFFFD !important;
+}
+
+.book-nav--bottom.active .book-nav__name {
+  color: #EFFFFD !important;
+}
+
+button {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #EAF1FD !important;
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+}
+
+button.primary {
+  background: linear-gradient(135deg, #14B8A6 0%, #0D9488 55%, #0F766E 100%) !important;
+  color: #041311 !important;
+  border: none !important;
+  box-shadow: 0 8px 28px rgba(20, 184, 166, 0.38) !important;
+}
+
+.market-filter-tabs button.active,
+.horizon-tabs button.active {
+  background: linear-gradient(120deg, #14B8A6 0%, #0D9488 100%) !important;
+  color: #041311 !important;
+  border: none !important;
+}
+
+input, select, textarea {
+  background: rgba(7, 12, 21, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: #EAF1FD !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #6FE2D8 !important;
+  box-shadow: 0 0 0 3px rgba(111, 226, 216, 0.2) !important;
+}
