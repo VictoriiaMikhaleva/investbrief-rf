@@ -1456,7 +1456,6 @@
     }
     var base = filterBriefsForBriefing();
     renderTodayCategoryCards(base);
-    renderArticlesBlock();
     var positions = getPositionTickers();
     var topList = sortBriefsByImportance(base).slice(0, 5);
     var myList = sortBriefsByImportance(filterBriefsForPositions(base, positions)).slice(0, 12);
@@ -1681,14 +1680,6 @@
         ? rest.map(renderArticleCard).join('')
         : '<p class="muted">Материалы будут добавлены позже.</p>';
       bindArticleOpenHandlers(navList);
-    }
-
-    var briefingList = document.getElementById('articlesList');
-    if (briefingList) {
-      briefingList.innerHTML = list.length
-        ? list.map(renderArticleCard).join('')
-        : '<p class="muted">Материалы будут добавлены позже.</p>';
-      bindArticleOpenHandlers(briefingList);
     }
   }
 
