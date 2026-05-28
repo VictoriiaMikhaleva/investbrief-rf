@@ -210,6 +210,39 @@ input:focus, select:focus, textarea:focus {
   color: #4f5c72;
 }
 
+/* Один фрейм: текст внутри panel-intro не дублирует рамку */
+.panel-intro.hint-frame > p,
+.panel-intro.hint-frame > .panel-disclaimer,
+.panel-intro.hint-frame > .panel-intro-text {
+  border: none;
+  background: transparent;
+  border-left: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  max-width: none;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .panel-intro.hint-frame > p,
+  .panel-intro.hint-frame > .panel-disclaimer,
+  .panel-intro.hint-frame > .panel-intro-text {
+    white-space: normal;
+  }
+}
+
+/* Одиночные hint-frame без переносов — одна строка на широком экране */
+.hint-frame:not(:has(br)) {
+  white-space: nowrap;
+  max-width: 100%;
+}
+@media (max-width: 720px) {
+  .hint-frame:not(:has(br)) { white-space: normal; }
+}
+.panel-intro.hint-frame:not(:has(br)) {
+  white-space: normal;
+}
+
 .briefing-data-notice.hint-frame {
   border-left-color: var(--accent);
   background: #f3f8f6;
@@ -516,13 +549,4 @@ input:focus, select:focus, textarea:focus {
   max-width: none;
 }
 
-.panel-intro--one-line > p {
-  margin: 0;
-  max-width: none;
-  white-space: nowrap;
-}
-@media (max-width: 720px) {
-  .panel-intro--one-line > p {
-    white-space: normal;
-  }
-}
+/* panel-intro--one-line: см. правила .panel-intro.hint-frame > p выше */
