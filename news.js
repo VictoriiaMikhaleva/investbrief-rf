@@ -1491,22 +1491,29 @@
   }
 
   function renderArticlesBlock() {
-    var el = document.getElementById('articlesList');
-    if (!el) return;
+    var targets = ['articlesList', 'articlesNavList'].map(function (id) {
+      return document.getElementById(id);
+    }).filter(Boolean);
+    if (!targets.length) return;
     var list = (typeof window !== 'undefined' && window.EDUCATIONAL_ARTICLES) ? window.EDUCATIONAL_ARTICLES : [];
     if (!list.length) {
-      el.innerHTML = '<p class="muted">Материалы будут добавлены позже.</p>';
+      targets.forEach(function (el) {
+        el.innerHTML = '<p class="muted">Материалы будут добавлены позже.</p>';
+      });
       return;
     }
-    el.innerHTML = list.map(function (a) {
+    var html = list.map(function (a) {
       return '<article class="article-card" data-article-id="' + escapeHtml(a.id) + '">' +
         '<h4>' + escapeHtml(a.title) + '</h4><p>' + escapeHtml(a.summary || '') + '</p>' +
         '<button type="button" class="primary" data-open-article="' + escapeHtml(a.id) + '">Открыть статью</button>' +
       '</article>';
     }).join('');
-    el.querySelectorAll('[data-open-article]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        openArticleModal(btn.getAttribute('data-open-article'));
+    targets.forEach(function (el) {
+      el.innerHTML = html;
+      el.querySelectorAll('[data-open-article]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          openArticleModal(btn.getAttribute('data-open-article'));
+        });
       });
     });
   }

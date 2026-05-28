@@ -45,7 +45,7 @@
             </span>
           </span>
           <span class="book-nav__text">
-            <span class="book-nav__name">Сегодня</span>
+            <span class="book-nav__name">Обзор бумаг</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="watchlist" style="--book-color:#9A7B4F;--book-text:#F7F4EE">
@@ -57,7 +57,7 @@
             </span>
           </span>
           <span class="book-nav__text">
-            <span class="book-nav__name">Обзор бумаг</span>
+            <span class="book-nav__name">Аналитика</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
@@ -70,6 +70,18 @@
           </span>
           <span class="book-nav__text">
             <span class="book-nav__name">Мой портфель</span>
+          </span>
+        </button>
+        <button type="button" class="book-nav" data-tab="articles" style="--book-color:#5A6C7E;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured">
+              <span class="book-nav__title book-nav__title--empty" aria-hidden="true"></span>
+            </span>
+          </span>
+          <span class="book-nav__text">
+            <span class="book-nav__name">Статьи</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="settings" style="--book-color:#2E4838;--book-text:#F7F4EE">
@@ -95,7 +107,7 @@
 
       <main class="content">
         <section id="tab-briefing" class="panel active" data-panel="briefing">
-          <h2 class="home-head">Сегодня</h2>
+          <h2 class="home-head">Обзор бумаг</h2>
           <div class="panel-intro hint-frame">
             <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
           </div>
@@ -165,7 +177,7 @@
         </section>
 
         <section id="tab-watchlist" class="panel" data-panel="watchlist">
-          <h2>Обзор бумаг</h2>
+          <h2>Аналитика</h2>
           <div class="panel-intro hint-frame">
             <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
             <p class="panel-intro-text">Графики, дивиденды, обороты торгов и последние события по интересующим позициям.</p>
@@ -360,6 +372,18 @@
           <button type="button" id="resetPortfolioBtn" class="danger" style="margin-top:0.5rem;">Очистить портфель</button>
         </section>
 
+        <section id="tab-articles" class="panel" data-panel="articles">
+          <h2>Статьи</h2>
+          <div class="panel-intro hint-frame">
+            <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
+            <p class="panel-intro-text">Образовательные материалы по стратегиям и управлению риском.</p>
+          </div>
+          <section class="home-block">
+            <h3 class="home-block-title">Образовательные материалы</h3>
+            <div id="articlesNavList" class="news-category-grid" aria-label="Статьи"></div>
+          </section>
+        </section>
+
         <section id="tab-settings" class="panel" data-panel="settings">
           <h2>Настройки</h2>
           <div class="panel-intro hint-frame">
@@ -516,20 +540,20 @@
             <span class="book-nav__spine"></span>
             <span class="book-nav__pages"></span>
             <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
-              <span class="book-nav__title" data-typing-mobile="Сегодня">Сегодня</span>
+              <span class="book-nav__title" data-typing-mobile="Обзор|бумаг">Обзор&#10;бумаг</span>
             </span>
           </span>
-          <span class="book-nav__name">Сегодня</span>
+          <span class="book-nav__name">Обзор бумаг</span>
         </button>
         <button type="button" class="book-nav book-nav--bottom" data-tab="watchlist" style="--book-color:#9A7B4F;--book-text:#F7F4EE">
           <span class="book-nav__3d" aria-hidden="true">
             <span class="book-nav__spine"></span>
             <span class="book-nav__pages"></span>
             <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
-              <span class="book-nav__title" data-typing-mobile="Обзор|бумаг">Обзор&#10;бумаг</span>
+              <span class="book-nav__title" data-typing-mobile="Аналитика|бумаг">Аналитика&#10;бумаг</span>
             </span>
           </span>
-          <span class="book-nav__name">Обзор бумаг</span>
+          <span class="book-nav__name">Аналитика</span>
         </button>
         <button type="button" class="book-nav book-nav--bottom" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
           <span class="book-nav__3d" aria-hidden="true">
@@ -540,6 +564,16 @@
             </span>
           </span>
           <span class="book-nav__name">Портфель</span>
+        </button>
+        <button type="button" class="book-nav book-nav--bottom" data-tab="articles" style="--book-color:#5A6C7E;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
+              <span class="book-nav__title" data-typing-mobile="Статьи">Статьи</span>
+            </span>
+          </span>
+          <span class="book-nav__name">Статьи</span>
         </button>
         <button type="button" class="book-nav book-nav--bottom" data-tab="settings" style="--book-color:#2E4838;--book-text:#F7F4EE">
           <span class="book-nav__3d" aria-hidden="true">

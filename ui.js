@@ -1556,6 +1556,7 @@
       else if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
     }
     if (tab === 'settings') renderAlerts();
+    if (tab === 'articles' && typeof renderArticlesBlock === 'function') renderArticlesBlock();
   }
 
 
@@ -1584,7 +1585,7 @@
 
   function initHash() {
     var hash = (location.hash || '#briefing').replace('#', '');
-    var valid = ['briefing', 'watchlist', 'portfolio', 'settings'];
+    var valid = ['briefing', 'watchlist', 'portfolio', 'articles', 'settings'];
     if (valid.indexOf(hash) !== -1) switchTab(hash);
     else switchTab('briefing');
   }

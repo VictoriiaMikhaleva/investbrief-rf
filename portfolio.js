@@ -162,7 +162,10 @@
     var open = state.folderOpen;
 
     if (!positions.length) {
-      scene.innerHTML = '<p class="muted hint-frame" style="padding:1rem;">Добавьте бумаги в портфель (кроме индекса IMOEX)</p>';
+      scene.innerHTML =
+        '<div class="portfolio-folder-empty" style="display:flex;justify-content:center;align-items:center;width:100%;">' +
+          '<p class="muted hint-frame" style="padding:1rem;margin:0 auto;text-align:center;">Добавьте бумаги в портфель (кроме индекса IMOEX)</p>' +
+        '</div>';
       return;
     }
 
