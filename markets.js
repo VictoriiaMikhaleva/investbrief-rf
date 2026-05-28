@@ -470,8 +470,14 @@
     });
   }
 
-  var US_CACHE_PREFIX = 'ibrf.us.';
-  var US_FETCH_MS = 14000;
+  var US_CACHE_PREFIX = 'ibrf.us.v2.';
+  var US_FETCH_MS = 12000;
+  var US_YAHOO_CHART = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+
+  var US_TOP_VOL_TICKERS = [
+    'NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'AMD', 'GOOGL', 'AVGO', 'BRK-B',
+    'JPM', 'V', 'XOM', 'UNH', 'MA', 'HD', 'LLY', 'COST', 'BAC', 'NFLX', 'CRM', 'ORCL'
+  ];
 
   function usCacheGet(key) {
     try {
@@ -506,20 +512,99 @@
     ]);
   }
 
-  function usFetchJson(url) {
-    function loadFrom(fetchUrl) {
-      return usFetchWithTimeout(
-        fetch(fetchUrl, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
-          if (!res.ok) throw new Error('http ' + res.status);
-          return res.json();
-        }),
-        US_FETCH_MS
-      );
+  function usIsLocalDevHost() {
+    try {
+      var h = window.location.hostname;
+      return h === 'localhost' || h === '127.0.0.1';
+    } catch (e) {
+      return false;
     }
-    return loadFrom(url).catch(function () {
-      return loadFrom('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
-    }).catch(function () {
-      return loadFrom('https://corsproxy.io/?' + encodeURIComponent(url));
+  }
+
+  function usParseYahooResponse(res) {
+    if (!res.ok) throw new Error('http ' + res.status);
+    return res.text().then(function (txt) {
+      var data;
+      try {
+        data = JSON.parse(txt);
+      } catch (e) {
+        throw new Error('invalid json');
+      }
+      if (data && data.chart) return data;
+      if (data && typeof data.contents === 'string') {
+        try {
+          return JSON.parse(data.contents);
+        } catch (e2) {
+          throw new Error('invalid wrapped json');
+        }
+      }
+      return data;
+    });
+  }
+
+  function usFetchJson(url) {
+    var altUrl = url.replace('query1.finance.yahoo.com', 'query2.finance.yahoo.com');
+    var attempts = [];
+    if (usIsLocalDevHost()) attempts.push(url);
+    attempts.push('https://api.cors.lol/?url=' + encodeURIComponent(url));
+    if (altUrl !== url) {
+      attempts.push('https://api.cors.lol/?url=' + encodeURIComponent(altUrl));
+    }
+    if (!usIsLocalDevHost()) attempts.push(url);
+    attempts.push('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
+
+    var i = 0;
+    function tryNext() {
+      if (i >= attempts.length) return Promise.reject(new Error('us fetch failed'));
+      var fetchUrl = attempts[i++];
+      return usFetchWithTimeout(
+        fetch(fetchUrl, {
+          credentials: 'omit',
+          cache: 'no-store',
+          headers: { Accept: 'application/json,text/plain,*/*' }
+        }).then(usParseYahooResponse),
+        US_FETCH_MS
+      ).catch(tryNext);
+    }
+    return tryNext();
+  }
+
+  function toYahooChartSymbol(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (ticker === 'VIX') return '^VIX';
+    return ticker;
+  }
+
+  function yahooChartUrl(ticker, range, interval) {
+    return US_YAHOO_CHART + encodeURIComponent(toYahooChartSymbol(ticker)) +
+      '?range=' + range + '&interval=' + interval + '&includePrePost=false';
+  }
+
+  function mapPool(items, limit, fn) {
+    var out = new Array(items.length);
+    var idx = 0;
+    var active = 0;
+    return new Promise(function (resolve) {
+      function pump() {
+        while (active < limit && idx < items.length) {
+          (function (pos) {
+            active++;
+            Promise.resolve(fn(items[pos], pos)).then(function (val) {
+              out[pos] = val;
+              active--;
+              if (idx >= items.length && active === 0) resolve(out);
+              else pump();
+            }, function () {
+              out[pos] = null;
+              active--;
+              if (idx >= items.length && active === 0) resolve(out);
+              else pump();
+            });
+          })(idx++);
+        }
+        if (!items.length) resolve(out);
+      }
+      pump();
     });
   }
 
@@ -604,12 +689,6 @@
     });
   }
 
-  var US_LIQUID_TICKERS = [
-    'NVDA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'TSLA', 'AVGO', 'BRK-B', 'JPM',
-    'V', 'XOM', 'UNH', 'MA', 'HD', 'LLY', 'COST', 'BAC', 'AMD', 'NFLX',
-    'CRM', 'ORCL', 'WMT', 'PEP', 'KO', 'DIS', 'INTC', 'SPY', 'QQQ', 'MU'
-  ];
-
   function fetchUsQuoteExtended(ticker) {
     return fetchUsQuote(ticker).then(function (q) {
       if (!q) return q;
@@ -669,13 +748,14 @@
 
   function fetchUsQuote(ticker) {
     ticker = normalizeTicker(ticker);
-    if (!isUsTicker(ticker)) return Promise.resolve({ price: null, changePct: null });
-    var cacheKey = 'quote.' + ticker;
+    var yahooSym = toYahooChartSymbol(ticker);
+    var isMacro = yahooSym === '^VIX' || isUsTicker(ticker);
+    if (!isMacro) return Promise.resolve({ price: null, changePct: null });
+    var cacheKey = 'quote.' + yahooSym;
     var cached = usCacheGet(cacheKey);
     if (cached && cached.price != null && isFinite(cached.price)) return Promise.resolve(cached);
 
-    var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(ticker) +
-      '?range=1d&interval=5m&includePrePost=false';
+    var url = yahooChartUrl(yahooSym, '1d', '5m');
 
     return usFetchJson(url).then(function (json) {
       var block = parseYahooChartBlock(json);

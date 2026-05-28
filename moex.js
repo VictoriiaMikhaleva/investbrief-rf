@@ -1733,8 +1733,10 @@
           new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       }
     }).catch(function () {
-      if (grid) grid.innerHTML = '<p class="muted hint-frame">Данные США временно недоступны</p>';
-      if (src) src.textContent = 'Yahoo Finance недоступен — проверьте сеть или VPN';
+      if (grid) {
+        grid.innerHTML = '<p class="muted analytics-grid-empty">Данные США временно недоступны. Обновите страницу или попробуйте позже — котировки идут через Yahoo Finance.</p>';
+      }
+      if (src) src.textContent = 'Yahoo Finance недоступен — обновите страницу (Ctrl+F5)';
     });
   }
 

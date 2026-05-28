@@ -221,6 +221,9 @@
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       return Markets.formatMoneyValue(value, 'USD');
     }
+    if (ticker === '^VIX' || ticker === 'VIX') {
+      return Number(value).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' п.';
+    }
     if (ticker === IMOEX_SECID || ticker === 'INDEX') {
       return Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' п.';
     }

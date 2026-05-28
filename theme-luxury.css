@@ -247,10 +247,10 @@ input:focus, select:focus, textarea:focus {
   display: block;
   width: 100%;
   max-width: none;
-  white-space: nowrap;
-}
-@media (max-width: 720px) {
-  .imoex-panel-hint--one-line { white-space: normal; }
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.45;
 }
 
 .briefing-data-notice.hint-frame {
@@ -603,10 +603,9 @@ input:focus, select:focus, textarea:focus {
   color: var(--text-muted);
 }
 .value-line-one {
-  white-space: nowrap;
-}
-@media (max-width: 900px) {
-  .value-line-one { white-space: normal; }
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .value-grid {
   display: grid;
@@ -635,6 +634,8 @@ input:focus, select:focus, textarea:focus {
   font-weight: 650;
   color: var(--text);
   line-height: 1.4;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .value-card-num {
   display: inline;
@@ -648,6 +649,9 @@ input:focus, select:focus, textarea:focus {
   font-size: 0.86rem;
   line-height: 1.5;
   color: var(--text-muted);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .value-disclaimer {
   margin: 0;
