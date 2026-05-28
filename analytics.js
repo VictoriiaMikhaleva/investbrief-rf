@@ -685,11 +685,16 @@
     });
   }
 
-  function quoteCardDivMetricsHtml() {
+  function quoteCardDivMetricsHtml(opts) {
+    opts = opts || {};
+    var compact = !!opts.compact;
+    var blockCls = 'quote-card-div-block' + (compact ? ' quote-card-div-block--compact' : '');
+    var avgLbl = compact ? 'Див. TTM' : 'Див. доходность 5 лет';
+    var turnLbl = compact ? 'Оборот' : 'Оборот за день';
     return (
-      '<div class="quote-card-div-block" data-div-block>' +
-        '<div class="quote-div-line"><span class="quote-div-lbl">Див. доходность 5 лет</span> <span class="quote-div-val" data-div-avg>…</span></div>' +
-        '<div class="quote-div-line"><span class="quote-div-lbl">Оборот за день</span> <span class="quote-div-val" data-turnover>…</span></div>' +
+      '<div class="' + blockCls + '" data-div-block>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl">' + avgLbl + '</span><span class="quote-div-val" data-div-avg>…</span></div>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl">' + turnLbl + '</span><span class="quote-div-val" data-turnover>…</span></div>' +
       '</div>'
     );
   }
@@ -728,7 +733,11 @@
         var last = a.volumeByDay[a.volumeByDay.length - 1];
         if (last && isFinite(Number(last.v))) v = Number(last.v) * 1e9;
       }
-      turnoverEl.textContent = formatTurnoverBln(v);
+      var mk = wrapEl.getAttribute && wrapEl.getAttribute('data-market');
+      var isUsWrap = mk === 'US' || (typeof Markets !== 'undefined' && Markets.isUsTicker(
+        wrapEl.getAttribute && wrapEl.getAttribute('data-ticker')
+      ));
+      turnoverEl.textContent = isUsWrap ? formatUsdTurnoverShort(v) : formatTurnoverBln(v);
       if (turnoverEl.textContent === '—') turnoverEl.className = 'quote-div-val muted';
       else turnoverEl.className = 'quote-div-val';
     }

@@ -1538,9 +1538,9 @@
     if (grid) {
       grid.innerHTML = rows.map(function (r, i) {
         var ch = formatMacroChange(r.changePct);
-        var turnoverLabel = isUs
-          ? ('Оборот ' + formatUsdVolume(r.valToday))
-          : ('Оборот ' + formatBlnRub(r.valToday) + ' млрд');
+        var divHtml = typeof window.quoteCardDivMetricsHtml === 'function'
+          ? window.quoteCardDivMetricsHtml({ compact: isUs })
+          : '';
         return (
           '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '" data-market="' + market + '">' +
             '<button type="button" class="quote-card" data-ticker="' + escapeHtml(r.ticker) + '">' +
@@ -1551,9 +1551,11 @@
               '<div class="quote-card-metrics">' +
                 '<span class="quote-card-price">' + escapeHtml(formatChartPrice(r.price, r.ticker)) + '</span>' +
                 '<span class="quote-card-change ' + ch.cls + '">' + escapeHtml(ch.text) + '</span>' +
-                '<span class="quote-card-meta muted">' + escapeHtml(turnoverLabel) + '</span>' +
+                (!isUs
+                  ? ('<span class="quote-card-meta muted">Оборот ' + escapeHtml(formatBlnRub(r.valToday)) + ' млрд</span>')
+                  : '') +
               '</div>' +
-              (typeof window.quoteCardDivMetricsHtml === 'function' ? window.quoteCardDivMetricsHtml() : '') +
+              divHtml +
             '</button>' +
           '</div>'
         );

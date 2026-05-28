@@ -2081,6 +2081,41 @@
     }
     .imoex-top-cards {
       margin-top: 0.5rem;
+      grid-auto-rows: 1fr;
+      align-items: stretch;
+    }
+    .imoex-top-cards .quote-card-wrap {
+      display: flex;
+      min-height: 0;
+      height: 100%;
+    }
+    .imoex-top-cards .quote-card {
+      flex: 1;
+      min-height: 6.75rem;
+    }
+    .imoex-top-cards .quote-card-sub {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .imoex-top-cards .quote-card-div-block--compact .quote-div-line {
+      flex-wrap: nowrap;
+      gap: 0.15rem 0.25rem;
+    }
+    .imoex-top-cards .quote-card-div-block--compact .quote-div-lbl {
+      flex: 1 1 0;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .imoex-top-cards .quote-card-div-block--compact .quote-div-val {
+      flex: 0 0 auto;
+      max-width: 52%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .modal--analytics {
       max-width: 42rem;
@@ -2420,6 +2455,23 @@
     .briefing-list--stack .brief-title { font-size: 1rem; margin: 0.25rem 0; }
     .briefing-list--stack .brief-summary { font-size: 0.88rem; margin: 0; }
     .briefing-list--stack .brief-footer { margin-top: 0.5rem; }
+    .briefing-list--stack .brief-title {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .briefing-list--stack .brief-summary {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .briefing-list--stack .brief-why,
+    .briefing-list--stack .brief-checklist,
+    .briefing-list--stack .impact-tags {
+      display: none;
+    }
 
     .watchlist-actions { flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
 
