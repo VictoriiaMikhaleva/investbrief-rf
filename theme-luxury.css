@@ -243,6 +243,16 @@ input:focus, select:focus, textarea:focus {
   white-space: normal;
 }
 
+.imoex-panel-hint--one-line {
+  display: block;
+  width: 100%;
+  max-width: none;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .imoex-panel-hint--one-line { white-space: normal; }
+}
+
 .briefing-data-notice.hint-frame {
   border-left-color: var(--accent);
   background: #f3f8f6;
