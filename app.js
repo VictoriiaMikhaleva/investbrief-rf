@@ -524,6 +524,7 @@
     loadFiltersToUI();
     renderWatchlist();
     loadLiveBriefs();
+    if (typeof scheduleBriefsRefresh === 'function') scheduleBriefsRefresh();
     renderMarketTiles();
     renderMarketMacro();
     if (typeof scheduleMarketMacroRefresh === 'function') scheduleMarketMacroRefresh();

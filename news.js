@@ -2,8 +2,18 @@
   function daysAgo(n) {
     var d = new Date();
     d.setDate(d.getDate() - n);
-    d.setHours(10, 0, 0, 0);
     return d.toISOString();
+  }
+
+
+
+  function parseBriefPublishedAt(pubDateStr) {
+    if (!pubDateStr) return new Date();
+    var pub = new Date(pubDateStr);
+    if (isNaN(pub.getTime())) return new Date();
+    var now = Date.now();
+    if (pub.getTime() > now + 5 * 60 * 1000) return new Date();
+    return pub;
   }
 
 
@@ -197,7 +207,17 @@
 
 
   /** Мосбиржа, ЦБ, Smart-Lab — узкие ленты; РБК/Интерфакс — только с проверкой темы. */
-  var CURATED_INVESTMENT_FEEDS = { moex: true, cbr: true, cbr_press: true, smartlab: true };
+  var CURATED_INVESTMENT_FEEDS = {
+    moex: true,
+    cbr: true,
+    cbr_press: true,
+    cbr_currency: true,
+    smartlab: true,
+    smartlab_stocks: true,
+    rbc: true,
+    rbc_finances: true,
+    rbc_world: true
+  };
 
   var INVESTMENT_TOPIC_KEYWORDS = [
     'акци', 'облигац', 'офз', 'бирж', 'мосбирж', 'moex', 'imoex', 'индекс',
@@ -365,7 +385,7 @@
       if (!raw) return null;
       var parsed = JSON.parse(raw);
       if (!parsed || !parsed.items || Date.now() > parsed.expires) return null;
-      return parsed.items;
+      return { items: parsed.items, savedAt: parsed.savedAt || 0 };
     } catch (e) {
       return null;
     }
@@ -377,9 +397,17 @@
     try {
       localStorage.setItem(BRIEFS_CACHE_KEY, JSON.stringify({
         expires: Date.now() + BRIEFS_CACHE_TTL,
+        savedAt: Date.now(),
         items: items
       }));
     } catch (e) { /* quota */ }
+  }
+
+
+
+  function isBriefsCacheStale(savedAt) {
+    if (!savedAt) return true;
+    return Date.now() - savedAt > BRIEFS_STALE_AFTER_MS;
   }
 
 
@@ -436,7 +464,7 @@
       out.push({
         title: title,
         link: link,
-        pubDate: rssTagText(item, 'pubDate'),
+        pubDate: rssTagText(item, 'pubDate') || rssTagText(item, 'dc:date') || rssTagText(item, 'updated'),
         description: rssTagText(item, 'description'),
         content: rssItemContent(item)
       });
@@ -451,7 +479,9 @@
   var RSS_FEED_BATCH_SIZE = 3;
   var RSS_FEED_BATCH_PAUSE_MS = 250;
   var RSS_FEED_RETRY_COUNT = 2;
-  var RSS2JSON_ITEM_COUNT = 15;
+  var RSS2JSON_ITEM_COUNT = 25;
+  var BRIEFS_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+  var BRIEFS_STALE_AFTER_MS = 8 * 60 * 1000;
 
 
 
@@ -632,13 +662,14 @@
     var asset = matchNewsTicker(plain, feed);
     var eventType = detectNewsEventType(plain);
     var tone = detectNewsTone(plain);
-    var pub = rssItem.pubDate ? new Date(rssItem.pubDate) : new Date();
-    if (isNaN(pub.getTime())) pub = new Date();
+    var pub = parseBriefPublishedAt(rssItem.pubDate);
     return {
       id: briefIdFromLink(rssItem.link),
       ticker: asset.ticker,
       type: asset.type,
       publishedAt: pub.toISOString(),
+      category: feed.category || null,
+      feedId: feed.id || null,
       eventType: eventType,
       tone: tone,
       importance: importanceNumToLevel(calcNewsImportance(eventType, feed.kind)),
@@ -680,7 +711,7 @@
     if (!collected.length) return;
     LIVE_BRIEFS = dedupeBriefs(collected).sort(function (a, b) {
       return new Date(b.publishedAt) - new Date(a.publishedAt);
-    }).slice(0, 120);
+    }).slice(0, 180);
     BRIEFS_SOURCE = 'live';
     writeBriefsCache(LIVE_BRIEFS);
     if (typeof renderHomePage === 'function') renderHomePage();
@@ -720,7 +751,7 @@
     }
 
     return runBatch(0).then(function () {
-      return sortBriefsNewest(dedupeBriefs(collected)).slice(0, 120);
+      return sortBriefsNewest(dedupeBriefs(collected)).slice(0, 180);
     });
   }
 
@@ -728,7 +759,7 @@
 
   function fetchLiveBriefsFromApi() {
     if (!hasLocalNewsApi()) return Promise.reject(new Error('no api'));
-    return fetch('/api/briefs?limit=120&sort=newest', { credentials: 'omit' })
+    return fetch('/api/briefs?limit=180&sort=newest', { credentials: 'omit' })
       .then(function (res) {
         if (!res.ok) throw new Error('api ' + res.status);
         return res.json();
@@ -771,17 +802,50 @@
 
 
 
+  function fetchLiveBriefsQuiet() {
+    var livePromise = hasLocalNewsApi()
+      ? fetchLiveBriefsFromApi().catch(function () { return fetchLiveBriefsFromRss(); })
+      : fetchLiveBriefsFromRss();
+    return fetchWithTimeout(livePromise, BRIEFS_LOAD_TIMEOUT_MS)
+      .then(function (items) {
+        if (items && items.length) applyLiveBriefs(items, 'live');
+        return items;
+      })
+      .catch(function () { return null; });
+  }
+
+
+
+  function scheduleBriefsRefresh() {
+    if (typeof window === 'undefined') return;
+    if (window._ibrfBriefsRefreshTimer) return;
+    window._ibrfBriefsRefreshTimer = setInterval(function () {
+      if (document.hidden) return;
+      fetchLiveBriefsQuiet();
+    }, BRIEFS_REFRESH_INTERVAL_MS);
+    if (window._ibrfBriefsVisibilityBound) return;
+    window._ibrfBriefsVisibilityBound = true;
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) fetchLiveBriefsQuiet();
+    });
+  }
+
+
+
   function loadLiveBriefs() {
     state.briefsLoading = true;
     BRIEFS_SOURCE = 'loading';
     var cached = readBriefsCache();
-    if (cached && cached.length) {
-      LIVE_BRIEFS = cached;
+    if (cached && cached.items && cached.items.length) {
+      LIVE_BRIEFS = cached.items;
       BRIEFS_SOURCE = 'cache';
-      renderBriefing();
+      if (typeof renderHomePage === 'function') renderHomePage();
+      else renderBriefing();
       renderFeed();
+      if (isBriefsCacheStale(cached.savedAt)) fetchLiveBriefsQuiet();
     } else {
-      renderBriefing();
+      if (typeof renderHomePage === 'function') renderHomePage();
+      else renderBriefing();
       renderFeed();
     }
 
@@ -802,21 +866,26 @@
       })
       .finally(function () {
         if (state.briefsLoading) finishBriefsLoading(!LIVE_BRIEFS.length);
+        scheduleBriefsRefresh();
       });
   }
 
   var LIVE_BRIEFS = [];
   var BRIEFS_SOURCE = 'loading';
-  var BRIEFS_CACHE_KEY = 'ibrf.liveBriefs.v3';
-  var BRIEFS_CACHE_TTL = 12 * 60 * 1000;
+  var BRIEFS_CACHE_KEY = 'ibrf.liveBriefs.v4';
+  var BRIEFS_CACHE_TTL = 5 * 60 * 1000;
 
   var NEWS_FEEDS = [
-    { id: 'moex', name: 'Мосбиржа', url: 'https://www.moex.com/export/news.aspx?limit=40&lang=ru', kind: 'market', macroTicker: 'MOEX' },
-    { id: 'cbr', name: 'Банк России', url: 'https://www.cbr.ru/rss/RssNews', kind: 'macro', macroTicker: 'MOEX' },
-    { id: 'interfax', name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', kind: 'news', macroTicker: 'MOEX' },
-    { id: 'cbr_press', name: 'Банк России — пресс-релизы', url: 'https://www.cbr.ru/rss/RssPress', kind: 'macro', macroTicker: 'MOEX' },
-    { id: 'rbc', name: 'РБК — экономика', url: 'https://rssexport.rbc.ru/rbcnews/category/economics/30/full.rss', kind: 'news', macroTicker: 'MOEX' },
-    { id: 'smartlab', name: 'Smart-Lab', url: 'https://smart-lab.ru/bonds/rss/all/', kind: 'analytics', macroTicker: 'MOEX' }
+    { id: 'moex', name: 'Мосбиржа', url: 'https://www.moex.com/export/news.aspx?limit=40&lang=ru', kind: 'market', macroTicker: 'MOEX', category: 'Российский рынок' },
+    { id: 'cbr', name: 'Банк России', url: 'https://www.cbr.ru/rss/RssNews', kind: 'macro', macroTicker: 'MOEX', category: 'Макроэкономика' },
+    { id: 'cbr_press', name: 'Банк России — пресс-релизы', url: 'https://www.cbr.ru/rss/RssPress', kind: 'macro', macroTicker: 'MOEX', category: 'Макроэкономика' },
+    { id: 'cbr_currency', name: 'Банк России — валюта', url: 'https://www.cbr.ru/rss/RssCurrency', kind: 'macro', macroTicker: 'MOEX', category: 'Валюта' },
+    { id: 'rbc', name: 'РБК — экономика', url: 'https://rssexport.rbc.ru/rbcnews/category/economics/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Макроэкономика' },
+    { id: 'rbc_finances', name: 'РБК — финансы', url: 'https://rssexport.rbc.ru/rbcnews/category/finances/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Российский рынок' },
+    { id: 'rbc_world', name: 'РБК — мир', url: 'https://rssexport.rbc.ru/rbcnews/category/world/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Международные рынки' },
+    { id: 'interfax', name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', kind: 'news', macroTicker: 'MOEX', category: 'Российский рынок' },
+    { id: 'smartlab', name: 'Smart-Lab — облигации', url: 'https://smart-lab.ru/bonds/rss/all/', kind: 'analytics', macroTicker: 'MOEX', category: 'Макроэкономика' },
+    { id: 'smartlab_stocks', name: 'Smart-Lab — акции', url: 'https://smart-lab.ru/stocks/rss/', kind: 'analytics', macroTicker: 'MOEX', category: 'Российский рынок' }
   ];
 
   var NEWS_ASSET_MATCHERS = [
@@ -883,9 +952,9 @@
     var start = new Date(now);
     start.setHours(0, 0, 0, 0);
     if (horizon === 'today') {
-      var end = new Date(start);
-      end.setDate(end.getDate() + 1);
-      return pub >= start && pub < end;
+      var rollingStart = new Date(now);
+      rollingStart.setTime(now.getTime() - 24 * 60 * 60 * 1000);
+      return pub >= rollingStart && pub <= now;
     }
     if (horizon === 'week') {
       var weekStart = new Date(start);
@@ -1286,7 +1355,7 @@
     var positions = getPositionTickers();
     var scope = getSettings().briefingScope;
     var sourceLine = isLiveBriefsActive()
-      ? 'Только новости рынка и инвестиций: Мосбиржа, Банк России, РБК (экономика), Интерфакс, Smart-Lab.'
+      ? 'Только новости рынка и инвестиций: Мосбиржа, Банк России, РБК, Интерфакс, Smart-Lab. Обновление каждые 5 мин.'
       : (BRIEFS_SOURCE === 'demo'
         ? 'Сейчас не удалось загрузить ленту — показаны примеры материалов. Обновите страницу через минуту.'
         : (state.briefsLoading
@@ -1409,13 +1478,36 @@
   ];
 
   function inferBriefCategory(b) {
-    if (b.category) return b.category;
+    if (b.category && TODAY_CATEGORIES.indexOf(b.category) >= 0) return b.category;
     var t = ((b.title || '') + ' ' + (b.summary || '')).toLowerCase();
-    if (/(ставк|цб|инфляц|минфин|офз)/.test(t)) return 'Макроэкономика';
-    if (/(нефт|газ|золот|металл|паллад|brent|urals)/.test(t)) return 'Сырьё';
-    if (/(рубл|доллар|евро|юан|валют)/.test(t)) return 'Валюта';
+    var source = String(b.sourceName || '').toLowerCase();
+    if (b.feedId === 'cbr_currency' || source.indexOf('валют') >= 0) return 'Валюта';
+    if (b.feedId === 'rbc_world') return 'Международные рынки';
     if (b.market === 'US') return 'Международные рынки';
+    if (/(s&p|nasdaq|dow jones|wall street|евросоюз|евроцентробанк|ecb\b|фрс\b|fed\b|opec|опек|китай.*рын|япон.*рын)/.test(t)) {
+      return 'Международные рынки';
+    }
+    if (/(нефт|brent|urals|газпром|газ\b|золот|серебр|металл|паллад|никел|алюмин|угл|сырь)/.test(t)) return 'Сырьё';
+    if (/(рубл|доллар|евро|юан|валют|курс валют|forex)/.test(t)) return 'Валюта';
+    if (source.indexOf('банк росс') >= 0 || b.feedId === 'cbr' || b.feedId === 'cbr_press') return 'Макроэкономика';
+    if (/(ставк|цб |банк росс|инфляц|минфин|офз|ключев|макроэкон|ввп|денежно-кредит)/.test(t)) return 'Макроэкономика';
     return 'Российский рынок';
+  }
+
+
+
+  function categoryMatchScore(b, cat) {
+    if (!b || !cat) return 0;
+    if ((b.category || inferBriefCategory(b)) === cat) return 10;
+    var t = ((b.title || '') + ' ' + (b.summary || '')).toLowerCase();
+    var rules = {
+      'Макроэкономика': /(ставк|цб|инфляц|минфин|офз|ключев|макро|ввп|аукцион)/,
+      'Российский рынок': /(акци|мосбирж|moex|imoex|эмитент|ipo|дивиденд|отчёт|отчет|бирж)/,
+      'Международные рынки': /(s&p|nasdaq|фрс|fed|евросоюз|китай|япон|wall street|международ)/,
+      'Сырьё': /(нефт|brent|urals|газ|золот|металл|сырь)/,
+      'Валюта': /(рубл|доллар|евро|юан|валют|курс)/
+    };
+    return rules[cat] && rules[cat].test(t) ? 5 : 0;
   }
 
   function inferImpactTags(b) {
@@ -1468,14 +1560,42 @@
     var el = document.getElementById('todayMarketCategories');
     if (!el) return;
     var positions = getPositionTickers();
+    var enriched = briefs.map(enrichBriefAnalytics);
     var grouped = {};
+    var usedInCategory = {};
     TODAY_CATEGORIES.forEach(function (c) { grouped[c] = []; });
-    briefs.map(enrichBriefAnalytics).forEach(function (b) {
-      var cat = b.category || inferBriefCategory(b);
-      if (!grouped[cat]) grouped[cat] = [];
-      if (grouped[cat].length < 3) grouped[cat].push(b);
-      if (positions.indexOf(normalizeTicker(b.ticker)) >= 0 && grouped['По вашим позициям'].length < 3) {
-        grouped['По вашим позициям'].push(b);
+
+    function pushToCategory(b, cat) {
+      if (!grouped[cat] || grouped[cat].length >= 3) return;
+      var key = b.id || b.sourceUrl;
+      var slotKey = cat + ':' + key;
+      if (usedInCategory[slotKey]) return;
+      grouped[cat].push(b);
+      usedInCategory[slotKey] = true;
+    }
+
+    enriched.forEach(function (b) {
+      pushToCategory(b, b.category || inferBriefCategory(b));
+    });
+
+    var contentCats = TODAY_CATEGORIES.filter(function (c) { return c !== 'По вашим позициям'; });
+    contentCats.forEach(function (cat) {
+      var pool = enriched.slice().sort(function (a, b) {
+        return categoryMatchScore(b, cat) - categoryMatchScore(a, cat);
+      });
+      pool.forEach(function (b) {
+        if (grouped[cat].length >= 3) return;
+        if (categoryMatchScore(b, cat) > 0) pushToCategory(b, cat);
+      });
+      pool.forEach(function (b) {
+        if (grouped[cat].length >= 3) return;
+        pushToCategory(b, cat);
+      });
+    });
+
+    enriched.forEach(function (b) {
+      if (positions.indexOf(normalizeTicker(b.ticker)) >= 0) {
+        pushToCategory(b, 'По вашим позициям');
       }
     });
     el.innerHTML = TODAY_CATEGORIES.map(function (cat) {
