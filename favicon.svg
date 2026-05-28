@@ -1,14 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="InvestBrief">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="InvestBrief chart">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#355242"/>
+      <stop offset="0%" stop-color="#3A5A45"/>
       <stop offset="100%" stop-color="#2F4A37"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#E07A1A"/>
+      <stop offset="55%" stop-color="#F0A035"/>
+      <stop offset="100%" stop-color="#FFC96A"/>
+    </linearGradient>
+    <linearGradient id="barHi" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#F08A22"/>
+      <stop offset="100%" stop-color="#FFD27A"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <rect x="24" y="24" width="464" height="464" rx="96" fill="none" stroke="#B89B5E" stroke-width="10"/>
-  <g fill="#F7F3E8">
-    <path d="M108 148h44v88l64-88h44v216h-44v-88l-64 88h-44V148z"/>
-    <path d="M292 148h56c54 0 82 30 82 72 0 32-18 56-50 64 36 10 58 36 58 74 0 52-40 82-98 82h-48V148zm44 40v72h18c24 0 38-14 38-36s-14-36-38-36h-18zm0 112v76h22c30 0 48-16 48-38s-18-38-48-38h-22z"/>
-  </g>
+  <rect x="26" y="26" width="460" height="460" rx="94" fill="none" stroke="#B89B5E" stroke-width="8" opacity="0.9"/>
+  <rect x="108" y="368" width="296" height="6" rx="3" fill="#F7F3E8" opacity="0.22"/>
+  <rect x="128" y="292" width="52" height="76" rx="14" fill="url(#bar)"/>
+  <rect x="196" y="252" width="52" height="116" rx="14" fill="url(#bar)"/>
+  <rect x="264" y="208" width="52" height="160" rx="14" fill="url(#bar)"/>
+  <rect x="332" y="168" width="52" height="200" rx="14" fill="url(#barHi)"/>
+  <path d="M128 360 L196 316 L264 276 L358 196" fill="none" stroke="#FFE8B8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+  <circle cx="358" cy="196" r="14" fill="#FFD27A"/>
 </svg>
