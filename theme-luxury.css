@@ -440,3 +440,14 @@ input:focus, select:focus, textarea:focus {
 .bottom-nav .book-nav--bottom {
   max-width: none;
 }
+
+.panel-intro--one-line > p {
+  margin: 0;
+  max-width: none;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .panel-intro--one-line > p {
+    white-space: normal;
+  }
+}
