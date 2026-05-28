@@ -1490,41 +1490,86 @@
     }).join('');
   }
 
-  function renderArticlesBlock() {
-    var targets = ['articlesList', 'articlesNavList'].map(function (id) {
-      return document.getElementById(id);
-    }).filter(Boolean);
-    if (!targets.length) return;
-    var list = (typeof window !== 'undefined' && window.EDUCATIONAL_ARTICLES) ? window.EDUCATIONAL_ARTICLES : [];
-    if (!list.length) {
-      targets.forEach(function (el) {
-        el.innerHTML = '<p class="muted">Материалы будут добавлены позже.</p>';
-      });
-      return;
+  var ARTICLE_READ_LABEL = 'Читать →';
+
+  function getArticleBadges(article) {
+    if (article.badges && article.badges.length) return article.badges.slice();
+    var chips = [];
+    if (article.riskLevel) {
+      var r = String(article.riskLevel);
+      if (/риск/i.test(r) || r === 'Смешанный профиль') chips.push(r);
+      else chips.push(r + ' риск');
     }
-    var html = list.map(function (a) {
-      var meta = '';
-      if (a.riskLevel || a.horizon) {
-        meta =
-          '<div class="article-meta">' +
-            (a.riskLevel ? '<span class="article-meta-chip">Риск: ' + escapeHtml(a.riskLevel) + '</span>' : '') +
-            (a.horizon ? '<span class="article-meta-chip">Горизонт: ' + escapeHtml(a.horizon) + '</span>' : '') +
-          '</div>';
-      }
-      return '<article class="article-card" data-article-id="' + escapeHtml(a.id) + '">' +
-        '<h4>' + escapeHtml(a.title) + '</h4><p>' + escapeHtml(a.summary || '') + '</p>' +
-        meta +
-        '<button type="button" class="primary" data-open-article="' + escapeHtml(a.id) + '">Открыть статью</button>' +
-      '</article>';
-    }).join('');
-    targets.forEach(function (el) {
-      el.innerHTML = html;
-      el.querySelectorAll('[data-open-article]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          openArticleModal(btn.getAttribute('data-open-article'));
-        });
+    if (article.horizon) chips.push(article.horizon);
+    return chips;
+  }
+
+  function renderArticleMetaChips(badges) {
+    if (!badges || !badges.length) return '';
+    return '<div class="article-meta">' + badges.map(function (b) {
+      return '<span class="article-meta-chip">' + escapeHtml(b) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  function renderArticleCard(article) {
+    var desc = article.summary || article.subtitle || '';
+    return '<article class="article-card" data-article-id="' + escapeHtml(article.id) + '">' +
+      '<h4>' + escapeHtml(article.title) + '</h4>' +
+      '<p>' + escapeHtml(desc) + '</p>' +
+      renderArticleMetaChips(getArticleBadges(article)) +
+      '<button type="button" class="primary article-card-btn" data-open-article="' + escapeHtml(article.id) + '">' +
+        ARTICLE_READ_LABEL +
+      '</button>' +
+    '</article>';
+  }
+
+  function renderArticleFeatured(article) {
+    var desc = article.summary || article.subtitle || '';
+    return '<article class="article-featured" data-article-id="' + escapeHtml(article.id) + '">' +
+      '<h3 class="article-featured-title">' + escapeHtml(article.title) + '</h3>' +
+      '<p class="article-featured-desc">' + escapeHtml(desc) + '</p>' +
+      renderArticleMetaChips(getArticleBadges(article)) +
+      '<button type="button" class="primary article-card-btn" data-open-article="' + escapeHtml(article.id) + '">' +
+        ARTICLE_READ_LABEL +
+      '</button>' +
+    '</article>';
+  }
+
+  function bindArticleOpenHandlers(root) {
+    if (!root) return;
+    root.querySelectorAll('[data-open-article]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openArticleModal(btn.getAttribute('data-open-article'));
       });
     });
+  }
+
+  function renderArticlesBlock() {
+    var list = (typeof window !== 'undefined' && window.EDUCATIONAL_ARTICLES) ? window.EDUCATIONAL_ARTICLES : [];
+    var featured = list.find(function (a) { return a.featured; });
+    var rest = list.filter(function (a) { return !a.featured; });
+
+    var featuredEl = document.getElementById('articlesFeatured');
+    if (featuredEl) {
+      featuredEl.innerHTML = featured ? renderArticleFeatured(featured) : '';
+      bindArticleOpenHandlers(featuredEl);
+    }
+
+    var navList = document.getElementById('articlesNavList');
+    if (navList) {
+      navList.innerHTML = rest.length
+        ? rest.map(renderArticleCard).join('')
+        : '<p class="muted">Материалы будут добавлены позже.</p>';
+      bindArticleOpenHandlers(navList);
+    }
+
+    var briefingList = document.getElementById('articlesList');
+    if (briefingList) {
+      briefingList.innerHTML = list.length
+        ? list.map(renderArticleCard).join('')
+        : '<p class="muted">Материалы будут добавлены позже.</p>';
+      bindArticleOpenHandlers(briefingList);
+    }
   }
 
   function openArticleModal(id) {

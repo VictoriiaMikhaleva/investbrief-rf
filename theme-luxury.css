@@ -383,14 +383,85 @@ input:focus, select:focus, textarea:focus {
 .security-metric-card .lbl { display: block; font-size: 0.74rem; color: var(--text-muted); }
 .security-metric-card .val { display: block; margin-top: 0.15rem; font-size: 0.88rem; font-weight: 600; }
 
+.articles-lead {
+  margin: 0 0 0.85rem;
+  max-width: 42rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.articles-disclaimer { margin-bottom: 1rem; }
+.articles-featured-wrap { margin-bottom: 1.25rem; }
+.articles-catalog { margin-top: 0.25rem; }
+
+.articles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+@media (max-width: 760px) {
+  .articles-grid { grid-template-columns: 1fr; }
+}
+
+.article-featured {
+  background: linear-gradient(135deg, rgba(31, 107, 92, 0.09) 0%, rgba(31, 107, 92, 0.03) 100%);
+  border: 1px solid rgba(31, 107, 92, 0.2);
+  border-radius: 16px;
+  padding: 1.2rem 1.35rem;
+  min-width: 0;
+}
+.article-featured-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.12rem;
+  line-height: 1.35;
+  color: var(--text);
+  font-weight: 600;
+}
+.article-featured-desc {
+  margin: 0 0 0.75rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 52rem;
+}
+@media (max-width: 760px) {
+  .article-featured {
+    padding: 0.95rem 1rem;
+    border-radius: 14px;
+  }
+  .article-featured-title { font-size: 1rem; }
+}
+
 .article-card {
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 0.9rem 1rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
-.article-card h4 { margin: 0 0 0.45rem; color: var(--text); }
-.article-card p { margin: 0 0 0.65rem; font-size: 0.9rem; }
+.article-card h4 {
+  margin: 0 0 0.45rem;
+  color: var(--text);
+  font-size: 0.98rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.article-card p {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.article-card-btn {
+  align-self: flex-start;
+  margin-top: auto;
+  font-size: 0.86rem;
+  padding: 0.45rem 0.85rem;
+}
 .article-meta {
   display: flex;
   flex-wrap: wrap;
