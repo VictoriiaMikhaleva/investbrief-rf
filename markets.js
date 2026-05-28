@@ -363,7 +363,11 @@
         if (mk === 'US' && !markets.us) return false;
         if (mk === 'RU' && !markets.ru) return false;
         if (f === 'RU' && mk !== 'RU') return false;
-        if (f === 'US' && mk !== 'US') return false;
+        if (f === 'US') {
+          if (mk === 'US') return true;
+          if (b.category === 'Международные рынки') return true;
+          return false;
+        }
         return true;
       });
     }
@@ -534,7 +538,15 @@
       if (isFinite(prev) && prev !== 0) changePct = ((price - prev) / prev) * 100;
     }
     if (!isFinite(changePct)) changePct = null;
-    return { price: price, changePct: changePct };
+    var volume = m.regularMarketVolume != null ? Number(m.regularMarketVolume) : null;
+    if (volume != null && !isFinite(volume)) volume = null;
+    var divYieldPct = null;
+    if (m.trailingAnnualDividendYield != null && isFinite(Number(m.trailingAnnualDividendYield))) {
+      divYieldPct = Number(m.trailingAnnualDividendYield) * 100;
+    } else if (m.dividendYield != null && isFinite(Number(m.dividendYield))) {
+      divYieldPct = Number(m.dividendYield) * 100;
+    }
+    return { price: price, changePct: changePct, volume: volume, divYieldPct: divYieldPct };
   }
 
   function yahooParamsForHorizon(horizon) {
@@ -590,6 +602,69 @@
       usCacheSet(cacheKey, series, 10 * 60 * 1000);
       return { series: series, source: 'us' };
     });
+  }
+
+  var US_LIQUID_TICKERS = [
+    'NVDA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'TSLA', 'AVGO', 'BRK-B', 'JPM',
+    'V', 'XOM', 'UNH', 'MA', 'HD', 'LLY', 'COST', 'BAC', 'AMD', 'NFLX',
+    'CRM', 'ORCL', 'WMT', 'PEP', 'KO', 'DIS', 'INTC', 'SPY', 'QQQ', 'MU'
+  ];
+
+  function fetchUsQuoteExtended(ticker) {
+    return fetchUsQuote(ticker).then(function (q) {
+      if (!q) return q;
+      return {
+        price: q.price,
+        changePct: q.changePct,
+        volume: q.volume != null ? q.volume : null,
+        divYieldPct: q.divYieldPct != null ? q.divYieldPct : null
+      };
+    });
+  }
+
+  function fetchUsTopStocksByVolume(limit, skipCache) {
+    limit = limit || 20;
+    var cacheKey = 'topvol.' + limit;
+    if (!skipCache) {
+      var cached = usCacheGet(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
+    var tickers = US_LIQUID_TICKERS.slice();
+    var idx = 0;
+    var batchSize = 5;
+    var rows = [];
+
+    function nextBatch() {
+      var chunk = tickers.slice(idx, idx + batchSize);
+      idx += batchSize;
+      if (!chunk.length) {
+        rows.sort(function (a, b) { return b.valToday - a.valToday; });
+        var top = rows.slice(0, limit);
+        if (!top.length) return Promise.reject(new Error('no us volume'));
+        usCacheSet(cacheKey, top, 5 * 60 * 1000);
+        return top;
+      }
+      return Promise.all(chunk.map(function (sym) {
+        return fetchUsQuoteExtended(sym).then(function (q) {
+          if (!q || q.price == null || q.volume == null || !isFinite(q.volume) || q.volume <= 0) return null;
+          var info = getUsTickerInfo(sym);
+          return {
+            ticker: sym,
+            name: info ? info.name : sym,
+            price: q.price,
+            changePct: q.changePct,
+            valToday: q.volume,
+            divYieldPct: q.divYieldPct,
+            market: 'US'
+          };
+        }).catch(function () { return null; });
+      })).then(function (part) {
+        part.forEach(function (r) { if (r) rows.push(r); });
+        return nextBatch();
+      });
+    }
+
+    return nextBatch();
   }
 
   function fetchUsQuote(ticker) {
@@ -665,6 +740,8 @@
     bindMarketTabs: bindMarketTabs,
     defaultCurrencyForMarket: defaultCurrencyForMarket,
     fetchUsQuote: fetchUsQuote,
+    fetchUsQuoteExtended: fetchUsQuoteExtended,
+    fetchUsTopStocksByVolume: fetchUsTopStocksByVolume,
     fetchUsHistory: fetchUsHistory
   };
 })(typeof window !== 'undefined' ? window : globalThis);

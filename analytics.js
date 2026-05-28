@@ -739,7 +739,7 @@
       var job = enrichQueue.shift();
       if (!job || !job.wrap) continue;
       enrichActive++;
-      enrichQuoteCardImmediate(job.wrap, job.ticker).then(function () {
+      enrichQuoteCardImmediate(job.wrap, job.ticker, job.market).then(function () {
         enrichActive--;
         drainEnrichQueue();
       }, function () {
@@ -751,19 +751,69 @@
 
 
 
-  function queueEnrichQuoteCard(wrapEl, ticker) {
+  function formatUsdTurnoverShort(value) {
+    if (value == null || !isFinite(Number(value))) return '—';
+    var v = Number(value);
+    if (v >= 1e9) return (v / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд $';
+    if (v >= 1e6) return (v / 1e6).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млн $';
+    return v.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' $';
+  }
+
+
+
+  function enrichUsQuoteCard(wrapEl, ticker) {
+    if (typeof Markets === 'undefined' || !Markets.fetchUsQuoteExtended) {
+      applyDivMetricsToWrap(wrapEl, { eligible: false });
+      return Promise.resolve();
+    }
+    return Markets.fetchUsQuoteExtended(ticker).then(function (q) {
+      if (!q || q.price == null) {
+        applyDivMetricsToWrap(wrapEl, { eligible: false });
+        return;
+      }
+      applyDivMetricsToWrap(wrapEl, {
+        eligible: true,
+        divAvg5y: q.divYieldPct,
+        noMoexDividends: q.divYieldPct == null,
+        divDataSource: 'yahoo',
+        quote: { valueToday: q.volume }
+      });
+      var avgEl = wrapEl.querySelector('[data-div-avg]');
+      if (avgEl && q.divYieldPct == null) {
+        avgEl.textContent = 'нет данных';
+        avgEl.className = 'quote-div-val muted';
+      }
+      var turnoverEl = wrapEl.querySelector('[data-turnover]');
+      if (turnoverEl && q.volume != null) {
+        turnoverEl.textContent = formatUsdTurnoverShort(q.volume);
+        turnoverEl.className = 'quote-div-val';
+      }
+    }).catch(function () {
+      applyDivMetricsToWrap(wrapEl, { eligible: false });
+    });
+  }
+
+
+
+  function queueEnrichQuoteCard(wrapEl, ticker, market) {
     if (!wrapEl || !ticker) return;
     ticker = normalizeTicker(ticker);
     if (isIndexQuoteTicker(ticker)) return;
-    enrichQueue.push({ wrap: wrapEl, ticker: ticker });
+    var mk = market || (wrapEl.getAttribute && wrapEl.getAttribute('data-market')) || 'RU';
+    enrichQueue.push({ wrap: wrapEl, ticker: ticker, market: mk });
     drainEnrichQueue();
   }
 
 
 
-  function enrichQuoteCardImmediate(wrapEl, ticker) {
+  function enrichQuoteCardImmediate(wrapEl, ticker, market) {
     return new Promise(function (resolve) {
       enrichQuoteCard(wrapEl, ticker);
+      var mk = market || (wrapEl.getAttribute && wrapEl.getAttribute('data-market')) || 'RU';
+      if (mk === 'US' || (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker))) {
+        enrichUsQuoteCard(wrapEl, ticker).then(resolve, resolve);
+        return;
+      }
       if (!isRuStockForAnalytics(ticker)) {
         resolve();
         return;

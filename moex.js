@@ -1318,14 +1318,29 @@
 
 
 
+  function getBriefingNewsMarketFilter() {
+    var markets = typeof Markets !== 'undefined' ? Markets.getMarketsEnabled() : { ru: true, us: false };
+    return typeof Markets !== 'undefined' && Markets.normalizeNewsMarketFilter
+      ? Markets.normalizeNewsMarketFilter(state && state.newsMarketFilter, markets)
+      : (state && state.newsMarketFilter ? state.newsMarketFilter : 'all');
+  }
+
+
+
   function shouldShowRuBriefingMarketBlocks() {
     if (typeof Markets === 'undefined') return true;
     var markets = Markets.getMarketsEnabled();
     if (!markets.ru) return false;
-    var filter = typeof Markets !== 'undefined' && Markets.normalizeNewsMarketFilter
-      ? Markets.normalizeNewsMarketFilter(state && state.newsMarketFilter, markets)
-      : (state && state.newsMarketFilter ? state.newsMarketFilter : 'all');
-    return filter !== 'US';
+    return getBriefingNewsMarketFilter() !== 'US';
+  }
+
+
+
+  function shouldShowUsBriefingMarketBlocks() {
+    if (typeof Markets === 'undefined') return false;
+    var markets = Markets.getMarketsEnabled();
+    if (!markets.us) return false;
+    return getBriefingNewsMarketFilter() === 'US';
   }
 
 
@@ -1351,6 +1366,16 @@
   function formatBlnRub(value) {
     if (value == null || !isFinite(value)) return '—';
     return (Number(value) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+
+
+  function formatUsdVolume(value) {
+    if (value == null || !isFinite(value)) return '—';
+    var v = Number(value);
+    if (v >= 1e9) return (v / 1e9).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд $';
+    if (v >= 1e6) return (v / 1e6).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млн $';
+    return v.toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' $';
   }
 
 
@@ -1500,7 +1525,9 @@
 
 
 
-  function renderImoexTopVolumeTable(rows) {
+  function renderImoexTopVolumeTable(rows, market) {
+    market = market || 'RU';
+    var isUs = market === 'US';
     var grid = document.getElementById('imoexTopVolumeCards');
     var tbody = document.getElementById('imoexTopVolumeBody');
     if (!rows || !rows.length) {
@@ -1511,8 +1538,11 @@
     if (grid) {
       grid.innerHTML = rows.map(function (r, i) {
         var ch = formatMacroChange(r.changePct);
+        var turnoverLabel = isUs
+          ? ('Оборот ' + formatUsdVolume(r.valToday))
+          : ('Оборот ' + formatBlnRub(r.valToday) + ' млрд');
         return (
-          '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '">' +
+          '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '" data-market="' + market + '">' +
             '<button type="button" class="quote-card" data-ticker="' + escapeHtml(r.ticker) + '">' +
               '<div class="quote-card-top">' +
                 '<span class="quote-card-ticker">#' + (i + 1) + ' ' + escapeHtml(r.ticker) + '</span>' +
@@ -1521,7 +1551,7 @@
               '<div class="quote-card-metrics">' +
                 '<span class="quote-card-price">' + escapeHtml(formatChartPrice(r.price, r.ticker)) + '</span>' +
                 '<span class="quote-card-change ' + ch.cls + '">' + escapeHtml(ch.text) + '</span>' +
-                '<span class="quote-card-meta muted">Оборот ' + escapeHtml(formatBlnRub(r.valToday)) + ' млрд</span>' +
+                '<span class="quote-card-meta muted">' + escapeHtml(turnoverLabel) + '</span>' +
               '</div>' +
               (typeof window.quoteCardDivMetricsHtml === 'function' ? window.quoteCardDivMetricsHtml() : '') +
             '</button>' +
@@ -1530,8 +1560,17 @@
       }).join('');
       rows.forEach(function (r) {
         var wrap = grid.querySelector('.quote-card-wrap[data-ticker="' + r.ticker + '"]');
-        if (wrap && typeof queueEnrichQuoteCard === 'function') queueEnrichQuoteCard(wrap, r.ticker);
+        if (wrap && typeof queueEnrichQuoteCard === 'function') queueEnrichQuoteCard(wrap, r.ticker, market);
         else if (wrap && typeof enrichQuoteCard === 'function') enrichQuoteCard(wrap, r.ticker);
+        if (wrap && isUs && r.divYieldPct != null) {
+          var avgEl = wrap.querySelector('[data-div-avg]');
+          var turnoverEl = wrap.querySelector('[data-turnover]');
+          if (avgEl) {
+            avgEl.textContent = (r.divYieldPct).toFixed(1).replace('.', ',') + '%';
+            avgEl.className = 'quote-div-val' + (r.divYieldPct > 0 ? ' pnl-pos' : '');
+          }
+          if (turnoverEl) turnoverEl.textContent = formatUsdVolume(r.valToday);
+        }
       });
       grid.querySelectorAll('.quote-card').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -1564,18 +1603,84 @@
 
 
 
+  function setBriefingLeadersPanelMode(mode) {
+    var panel = document.getElementById('imoexMarketPanel');
+    if (!panel) return;
+    var title = panel.querySelector('.imoex-panel-title');
+    var hintVol = panel.querySelector('.imoex-panel-hint');
+    var subTitle = panel.querySelector('.imoex-subtitle');
+    var hintDiv = panel.querySelector('.imoex-panel-hint--one-line');
+    if (mode === 'US') {
+      if (title) title.textContent = 'Рынок США · лидеры по обороту';
+      if (hintVol) {
+        hintVol.textContent = 'Оборот за текущую сессию по ликвидным бумагам (USD, Yahoo Finance).';
+        hintVol.style.display = 'none';
+      }
+      if (subTitle) subTitle.textContent = 'Топ‑20 по обороту за сессию';
+      if (hintDiv) {
+        hintDiv.textContent = 'Див. доходность — trailing 12M по Yahoo. Нажмите для подробной аналитики.';
+      }
+    } else {
+      if (title) title.textContent = 'Объём торгов · оборот и лидеры';
+      if (hintVol) {
+        hintVol.textContent = 'Оборот бумаг индекса IMOEX за 7 торговых дней (млрд ₽/день, МосБиржа)';
+        hintVol.style.display = '';
+      }
+      if (subTitle) subTitle.textContent = 'Топ‑20 по обороту за сутки';
+      if (hintDiv) {
+        hintDiv.textContent = 'Средняя див. доходность за 5 лет и прогноз дивидендов на 12 мес. Нажмите для подробной аналитики.';
+      }
+    }
+  }
+
+
+
+  function renderUsMarketPanel(forceRefresh) {
+    var panel = document.getElementById('imoexMarketPanel');
+    if (!panel || typeof Markets === 'undefined' || !Markets.fetchUsTopStocksByVolume) return;
+    setBriefingLeadersPanelMode('US');
+    panel.hidden = false;
+    var bars = document.getElementById('imoexVolumeBars');
+    var src = document.getElementById('imoexMarketSource');
+    var grid = document.getElementById('imoexTopVolumeCards');
+    if (bars) bars.innerHTML = '';
+    if (grid) grid.innerHTML = '<p class="muted">Загрузка…</p>';
+    if (src) src.textContent = 'Загрузка данных Yahoo Finance…';
+
+    Markets.fetchUsTopStocksByVolume(20, !!forceRefresh).then(function (rows) {
+      renderImoexTopVolumeTable(rows, 'US');
+      if (src) {
+        src.textContent = 'Yahoo Finance · топ по обороту сессии · обновлено ' +
+          new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      }
+    }).catch(function () {
+      if (grid) grid.innerHTML = '<p class="muted hint-frame">Данные США временно недоступны</p>';
+      if (src) src.textContent = 'Yahoo Finance недоступен — проверьте сеть или VPN';
+    });
+  }
+
+
+
   function renderImoexMarketPanel(forceRefresh) {
     var panel = document.getElementById('imoexMarketPanel');
     if (!panel) return;
+    if (shouldShowUsBriefingMarketBlocks()) {
+      renderUsMarketPanel(forceRefresh);
+      return;
+    }
     if (!shouldShowRuBriefingMarketBlocks()) {
       panel.hidden = true;
       return;
     }
+    setBriefingLeadersPanelMode('RU');
     if (forceRefresh) invalidateImoexVolumeCaches();
     panel.hidden = false;
     var bars = document.getElementById('imoexVolumeBars');
     var src = document.getElementById('imoexMarketSource');
-    if (bars) bars.innerHTML = '<p class="muted">Загрузка…</p>';
+    if (bars) {
+      bars.style.display = '';
+      bars.innerHTML = '<p class="muted">Загрузка…</p>';
+    }
     if (src) src.textContent = 'Загрузка данных МосБиржи…';
 
     Promise.all([
@@ -1583,16 +1688,41 @@
       fetchTopMoexSharesByVolume(20, !!forceRefresh)
     ]).then(function (results) {
       renderImoexVolumeBars(results[0]);
-      renderImoexTopVolumeTable(results[1]);
+      renderImoexTopVolumeTable(results[1], 'RU');
       if (src) {
         src.textContent = 'МосБиржа · оборот IMOEX и топ TQBR · обновлено ' +
           new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       }
     }).catch(function () {
       if (bars) bars.innerHTML = '<p class="muted hint-frame">Объём торгов временно недоступен</p>';
-      renderImoexTopVolumeTable([]);
+      renderImoexTopVolumeTable([], 'RU');
       if (src) src.textContent = 'Данные МосБиржи недоступны';
     });
+  }
+
+
+
+  function renderUsMarketMacro(forceRefresh) {
+    var row = document.getElementById('marketMacroRow');
+    if (!row || typeof Markets === 'undefined') return;
+    row.hidden = false;
+    row.innerHTML =
+      renderMacroTile('spy', 'S&P 500', '…', { text: 'ETF SPY · США', cls: 'muted' }) +
+      renderMacroTile('qqq', 'Nasdaq 100', '…', { text: 'ETF QQQ · США', cls: 'muted' }) +
+      renderMacroTile('vix', 'VIX', '…', { text: 'волатильность · США', cls: 'muted' });
+
+    applyMacroBootstrap(row);
+
+    [['spy', 'SPY'], ['qqq', 'QQQ'], ['vix', '^VIX']].forEach(function (pair) {
+      Markets.fetchUsQuote(pair[1]).then(function (q) {
+        var val = q && q.price != null ? formatChartPrice(q.price, pair[1]) : '—';
+        patchMacroTile(row, pair[0], val, macroChangeWithSource(q && q.changePct, 'Yahoo'));
+      }).catch(function () {
+        patchMacroTile(row, pair[0], '—', { text: 'нет данных', cls: 'muted' });
+      });
+    });
+
+    renderImoexMarketPanel(forceRefresh);
   }
 
 
@@ -1600,6 +1730,10 @@
   function renderMarketMacro(forceRefresh) {
     var row = document.getElementById('marketMacroRow');
     if (!row) return;
+    if (shouldShowUsBriefingMarketBlocks()) {
+      renderUsMarketMacro(forceRefresh);
+      return;
+    }
     if (!shouldShowRuBriefingMarketBlocks()) {
       row.hidden = true;
       renderImoexMarketPanel(forceRefresh);

@@ -193,6 +193,9 @@
   function isRussianBriefText(title, summary, feed) {
     var titleText = String(title || '').trim();
     if (!titleText) return false;
+    if (feed && (feed.market === 'US' || feed.lang === 'en')) {
+      return isInvestmentRelevantBrief(title, summary, summary, feed);
+    }
     if (feed && feed.id === 'moex' && cyrillicLetterRatio(titleText) < 0.12 && /[a-zA-Z]{5,}/.test(titleText)) {
       return false;
     }
@@ -333,6 +336,17 @@
 
   function matchNewsTicker(text, feed) {
     var t = (' ' + String(text || '').toLowerCase() + ' ');
+    if (typeof Markets !== 'undefined' && Markets.US_CATALOG) {
+      var usHit = null;
+      Markets.US_CATALOG.forEach(function (item) {
+        if (usHit) return;
+        var tk = item.ticker.toLowerCase();
+        if (t.indexOf(' ' + tk + ' ') >= 0 || t.indexOf(' ' + tk + '.') >= 0) {
+          usHit = { ticker: item.ticker, type: 'stock' };
+        }
+      });
+      if (usHit) return usHit;
+    }
     var i, j, best = null, bestHits = 0;
     for (i = 0; i < NEWS_ASSET_MATCHERS.length; i++) {
       var m = NEWS_ASSET_MATCHERS[i];
@@ -363,18 +377,14 @@
 
 
   function getAllBriefs() {
-    var list = LIVE_BRIEFS.length ? LIVE_BRIEFS : DEMO_BRIEFS;
-    if (!LIVE_BRIEFS.length) return list;
-    return list.filter(function (b) {
-      if (!isRussianBriefText(b.title, b.summary, null)) return false;
-      return isInvestmentRelevantBrief(b.title, b.summary, b.body || b.summary, null);
-    });
+    if (!LIVE_BRIEFS.length) return DEMO_BRIEFS;
+    return LIVE_BRIEFS.slice();
   }
 
 
 
   function isLiveBriefsActive() {
-    return LIVE_BRIEFS.length > 0 && BRIEFS_SOURCE !== 'demo';
+    return LIVE_BRIEFS.length > 0 && BRIEFS_SOURCE !== 'demo' && BRIEFS_SOURCE !== 'loading';
   }
 
 
@@ -474,7 +484,7 @@
 
 
 
-  var RSS_FETCH_TIMEOUT_MS = 12000;
+  var RSS_FETCH_TIMEOUT_MS = 18000;
   var BRIEFS_LOAD_TIMEOUT_MS = 75000;
   var RSS_FEED_BATCH_SIZE = 3;
   var RSS_FEED_BATCH_PAUSE_MS = 250;
@@ -635,8 +645,8 @@
         RSS_FETCH_TIMEOUT_MS
       );
     }
-    return fetchRssViaRss2Json(feedUrl)
-      .catch(function () { return fetchRssViaAllOrigins(feedUrl); })
+    return fetchRssViaAllOrigins(feedUrl)
+      .catch(function () { return fetchRssViaRss2Json(feedUrl); })
       .catch(function () { return []; });
   }
 
@@ -678,7 +688,7 @@
       body: body,
       sourceUrl: rssItem.link,
       sourceName: feed.name,
-      market: 'RU',
+      market: feed.market || (feed.id === 'rbc_world' ? 'US' : 'RU'),
       isLive: true
     };
   }
@@ -736,7 +746,7 @@
     }
 
     function runBatch(start) {
-      var batch = NEWS_FEEDS.slice(start, start + RSS_FEED_BATCH_SIZE);
+      var batch = NEWS_FEEDS_SORTED.slice(start, start + RSS_FEED_BATCH_SIZE);
       if (!batch.length) return Promise.resolve();
       return Promise.all(batch.map(fetchOneFeed))
         .then(function (parts) {
@@ -872,21 +882,25 @@
 
   var LIVE_BRIEFS = [];
   var BRIEFS_SOURCE = 'loading';
-  var BRIEFS_CACHE_KEY = 'ibrf.liveBriefs.v4';
+  var BRIEFS_CACHE_KEY = 'ibrf.liveBriefs.v5';
   var BRIEFS_CACHE_TTL = 5 * 60 * 1000;
 
   var NEWS_FEEDS = [
-    { id: 'moex', name: 'Мосбиржа', url: 'https://www.moex.com/export/news.aspx?limit=40&lang=ru', kind: 'market', macroTicker: 'MOEX', category: 'Российский рынок' },
-    { id: 'cbr', name: 'Банк России', url: 'https://www.cbr.ru/rss/RssNews', kind: 'macro', macroTicker: 'MOEX', category: 'Макроэкономика' },
-    { id: 'cbr_press', name: 'Банк России — пресс-релизы', url: 'https://www.cbr.ru/rss/RssPress', kind: 'macro', macroTicker: 'MOEX', category: 'Макроэкономика' },
-    { id: 'cbr_currency', name: 'Банк России — валюта', url: 'https://www.cbr.ru/rss/RssCurrency', kind: 'macro', macroTicker: 'MOEX', category: 'Валюта' },
-    { id: 'rbc', name: 'РБК — экономика', url: 'https://rssexport.rbc.ru/rbcnews/category/economics/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Макроэкономика' },
-    { id: 'rbc_finances', name: 'РБК — финансы', url: 'https://rssexport.rbc.ru/rbcnews/category/finances/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Российский рынок' },
-    { id: 'rbc_world', name: 'РБК — мир', url: 'https://rssexport.rbc.ru/rbcnews/category/world/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Международные рынки' },
-    { id: 'interfax', name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', kind: 'news', macroTicker: 'MOEX', category: 'Российский рынок' },
-    { id: 'smartlab', name: 'Smart-Lab — облигации', url: 'https://smart-lab.ru/bonds/rss/all/', kind: 'analytics', macroTicker: 'MOEX', category: 'Макроэкономика' },
-    { id: 'smartlab_stocks', name: 'Smart-Lab — акции', url: 'https://smart-lab.ru/stocks/rss/', kind: 'analytics', macroTicker: 'MOEX', category: 'Российский рынок' }
+    { id: 'moex', name: 'Мосбиржа', url: 'https://www.moex.com/export/news.aspx?limit=40&lang=ru', kind: 'market', macroTicker: 'MOEX', category: 'Российский рынок', priority: 1 },
+    { id: 'cbr', name: 'Банк России', url: 'https://www.cbr.ru/rss/RssNews', kind: 'macro', macroTicker: 'MOEX', category: 'Макроэкономика', priority: 1 },
+    { id: 'rbc', name: 'РБК — экономика', url: 'https://rssexport.rbc.ru/rbcnews/category/economics/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Макроэкономика', priority: 1 },
+    { id: 'interfax', name: 'Интерфакс', url: 'https://www.interfax.ru/rss.asp', kind: 'news', macroTicker: 'MOEX', category: 'Российский рынок', priority: 1 },
+    { id: 'cbr_press', name: 'Банк России — пресс-релизы', url: 'https://www.cbr.ru/rss/RssPress', kind: 'macro', macroTicker: 'MOEX', category: 'Макроэкономика', priority: 2 },
+    { id: 'cbr_currency', name: 'Банк России — валюта', url: 'https://www.cbr.ru/rss/RssCurrency', kind: 'macro', macroTicker: 'MOEX', category: 'Валюта', priority: 2 },
+    { id: 'rbc_finances', name: 'РБК — финансы', url: 'https://rssexport.rbc.ru/rbcnews/category/finances/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Российский рынок', priority: 2 },
+    { id: 'rbc_world', name: 'РБК — мир', url: 'https://rssexport.rbc.ru/rbcnews/category/world/30/full.rss', kind: 'news', macroTicker: 'MOEX', category: 'Международные рынки', market: 'US', priority: 2 },
+    { id: 'smartlab', name: 'Smart-Lab — облигации', url: 'https://smart-lab.ru/bonds/rss/all/', kind: 'analytics', macroTicker: 'MOEX', category: 'Макроэкономика', priority: 3 },
+    { id: 'smartlab_stocks', name: 'Smart-Lab — акции', url: 'https://smart-lab.ru/stocks/rss/', kind: 'analytics', macroTicker: 'MOEX', category: 'Российский рынок', priority: 3 }
   ];
+
+  var NEWS_FEEDS_SORTED = NEWS_FEEDS.slice().sort(function (a, b) {
+    return (a.priority || 9) - (b.priority || 9);
+  });
 
   var NEWS_ASSET_MATCHERS = [
     { id: 'SBER', type: 'stock', aliases: ['сбербанк', 'сбер ', ' sber', 'sberbank'] },
