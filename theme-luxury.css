@@ -258,6 +258,28 @@ input:focus, select:focus, textarea:focus {
   background: #f3f8f6;
 }
 
+.analytics-grid-empty,
+.analytics-grid-empty.hint-frame,
+#analyticsGrid > p.muted,
+#analyticsGrid > .analytics-grid-empty {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-left: none !important;
+  box-shadow: none !important;
+  white-space: normal;
+}
+.analytics-grid-empty::before,
+#analyticsGrid > p.muted::before {
+  display: none !important;
+}
+.analytics-watch-block {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
 /* Табы и фильтры */
 .market-filter-tabs button,
 .horizon-tabs button {

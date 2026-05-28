@@ -272,36 +272,100 @@
 
 
 
+  function isMoexBondTicker(ticker) {
+    ticker = normalizeTicker(ticker);
+    return ticker.indexOf('OFZ') >= 0 || (ticker.indexOf('SU') === 0 && ticker.length > 8);
+  }
+
+
+
+  function extractOfzIssueNumber(ticker) {
+    var t = normalizeTicker(ticker);
+    var m = t.match(/(\d{5})/);
+    return m ? m[1] : null;
+  }
+
+
+
+  function pickBondFromMoexSearch(json, ticker) {
+    var sec = json.securities;
+    if (!sec || !sec.columns || !sec.data || !sec.data.length) return null;
+    var cols = sec.columns;
+    var secidIdx = cols.indexOf('secid');
+    var shortIdx = cols.indexOf('shortname');
+    var groupIdx = cols.indexOf('group');
+    var boardIdx = cols.indexOf('primary_boardid');
+    var issueNum = extractOfzIssueNumber(ticker);
+    var t = normalizeTicker(ticker);
+    var candidates = [];
+
+    sec.data.forEach(function (row) {
+      var group = groupIdx >= 0 ? String(row[groupIdx] || '') : '';
+      if (group && group !== 'stock_bonds') return;
+      var secid = secidIdx >= 0 ? row[secidIdx] : null;
+      if (!secid) return;
+      var shortname = shortIdx >= 0 ? String(row[shortIdx] || '') : '';
+      if (issueNum && shortname.indexOf(issueNum) < 0 && String(secid).indexOf(issueNum) < 0) return;
+      candidates.push({
+        secid: secid,
+        board: boardIdx >= 0 && row[boardIdx] ? row[boardIdx] : 'TQOB',
+        shortname: shortname
+      });
+    });
+
+    if (!candidates.length) {
+      var secid = sec.data[0][secidIdx >= 0 ? secidIdx : 0];
+      var board = boardIdx >= 0 && sec.data[0][boardIdx] ? sec.data[0][boardIdx] : 'TQOB';
+      if (!secid) return null;
+      return { secid: secid, board: board };
+    }
+
+    if (t.indexOf('SU') === 0) {
+      for (var i = 0; i < candidates.length; i++) {
+        if (candidates[i].secid === t) return candidates[i];
+      }
+    }
+    if (typeof BOND_SECID_MAP !== 'undefined' && BOND_SECID_MAP[t]) {
+      var mapped = BOND_SECID_MAP[t];
+      for (var j = 0; j < candidates.length; j++) {
+        if (candidates[j].secid === mapped) return candidates[j];
+      }
+    }
+    return candidates[0];
+  }
+
+
+
+  function resolveRuBondInstrument(ticker) {
+    var t = normalizeTicker(ticker);
+    var cached = moexCacheGet('inst.bond.v3.' + t);
+    if (cached) return Promise.resolve(cached);
+
+    var issueNum = extractOfzIssueNumber(t);
+    var query = issueNum || (t.indexOf('SU') === 0 ? t : t.replace(/^OFZ_?/i, '').replace(/_/g, ' '));
+
+    return moexFetchJson(MOEX_ISS + '/securities.json?q=' + encodeURIComponent(query) +
+      '&iss.meta=off&securities.columns=secid,shortname,primary_boardid,group&limit=24')
+      .then(function (json) {
+        var pick = pickBondFromMoexSearch(json, t);
+        if (!pick) throw new Error('bond not found');
+        var inst = { type: 'bond', engine: 'stock', market: 'bonds', board: pick.board || 'TQOB', secid: pick.secid };
+        moexCacheSet('inst.bond.v3.' + t, inst, 24 * 60 * 60 * 1000);
+        if (typeof BOND_SECID_MAP !== 'undefined') BOND_SECID_MAP[t] = pick.secid;
+        if (pick.shortname && typeof saveTickerName === 'function') saveTickerName(t, pick.shortname);
+        return inst;
+      });
+  }
+
+
+
   function resolveMoexInstrument(ticker) {
     var t = normalizeTicker(ticker);
     if (t === 'IMOEX' || t === 'INDEX') {
       return Promise.resolve({ type: 'index', engine: 'stock', market: 'index', board: null, secid: IMOEX_SECID });
     }
-    if (BOND_SECID_MAP[t]) {
-      return Promise.resolve({ type: 'bond', engine: 'stock', market: 'bonds', board: 'TQOB', secid: BOND_SECID_MAP[t] });
-    }
-    if (t.indexOf('SU') === 0 && t.length > 8) {
-      return Promise.resolve({ type: 'bond', engine: 'stock', market: 'bonds', board: 'TQOB', secid: t });
-    }
-    if (t.indexOf('OFZ') === 0) {
-      var cachedOfz = moexCacheGet('inst.v2.' + t);
-      if (cachedOfz) return Promise.resolve(cachedOfz);
-      var q = t.replace(/^OFZ_?/i, '').replace(/_/g, ' ');
-      return moexFetchJson(MOEX_ISS + '/securities.json?q=' + encodeURIComponent(q) +
-        '&iss.meta=off&securities.columns=secid,shortname,primary_boardid,group&limit=12')
-        .then(function (json) {
-          var sec = json.securities;
-          if (!sec || !sec.data || !sec.data.length) throw new Error('bond not found');
-          var cols = sec.columns;
-          var secidIdx = cols.indexOf('secid');
-          var boardIdx = cols.indexOf('primary_boardid');
-          var secid = sec.data[0][secidIdx];
-          var board = boardIdx >= 0 && sec.data[0][boardIdx] ? sec.data[0][boardIdx] : 'TQOB';
-          var inst = { type: 'bond', engine: 'stock', market: 'bonds', board: board, secid: secid };
-          moexCacheSet('inst.v2.' + t, inst, 24 * 60 * 60 * 1000);
-          if (typeof BOND_SECID_MAP !== 'undefined') BOND_SECID_MAP[t] = secid;
-          return inst;
-        });
+    if (isMoexBondTicker(t)) {
+      return resolveRuBondInstrument(t);
     }
     return Promise.resolve({ type: 'stock', engine: 'stock', market: 'shares', board: 'TQBR', secid: t });
   }
@@ -811,7 +875,8 @@
     if (!quote || quote.price == null) {
       if (priceEl) priceEl.textContent = '—';
       if (changeEl) {
-        changeEl.textContent = 'нет данных';
+        var noDataLbl = (ticker && isMoexBondTicker(ticker)) ? '—' : 'нет данных';
+        changeEl.textContent = noDataLbl;
         changeEl.className = 'market-tile-change muted';
       }
       applyStarBorderHighlight(wrap, quote);

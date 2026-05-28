@@ -963,7 +963,7 @@
     enrichActive = 0;
 
     if (!tickers.length) {
-      grid.innerHTML = '<p class="muted hint-frame">Добавьте бумаги в список наблюдения — появятся дивидендная доходность и прогноз выплат.</p>';
+      grid.innerHTML = '<p class="muted analytics-grid-empty">Добавьте бумаги в список наблюдения — появятся дивидендная доходность и прогноз выплат.</p>';
       return;
     }
 

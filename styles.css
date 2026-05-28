@@ -2123,8 +2123,74 @@
       cursor: pointer;
       z-index: 3;
     }
+    .analytics-watch-block {
+      margin-bottom: 0.85rem;
+      padding: 0;
+      border: none;
+      background: none;
+      box-shadow: none;
+    }
     .analytics-grid {
       margin-top: var(--space-block);
+    }
+    .analytics-grid.quote-cards-grid {
+      grid-auto-rows: 1fr;
+      align-items: stretch;
+    }
+    .analytics-grid .quote-card-wrap {
+      display: flex;
+      min-height: 0;
+      height: 100%;
+    }
+    .analytics-grid .quote-card {
+      flex: 1;
+      width: 100%;
+      min-height: 7rem;
+    }
+    .analytics-grid .quote-card-sub {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .analytics-grid .quote-card-metrics {
+      min-height: 2.15rem;
+      align-content: flex-start;
+    }
+    .analytics-grid .quote-card-change {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analytics-grid .quote-div-line {
+      flex-wrap: nowrap;
+    }
+    .analytics-grid .quote-div-lbl {
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analytics-grid .quote-div-val {
+      flex: 0 0 auto;
+      max-width: 48%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analytics-grid-empty {
+      margin: 0.15rem 0 0;
+      padding: 0;
+      border: none !important;
+      background: none !important;
+      box-shadow: none !important;
+      max-width: 42rem;
+      line-height: 1.45;
+    }
+    .analytics-grid-empty::before {
+      display: none !important;
     }
     .imoex-top-cards {
       margin-top: 0.5rem;

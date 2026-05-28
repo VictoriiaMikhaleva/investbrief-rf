@@ -227,7 +227,7 @@
     var list = getWatchlist();
     var el = document.getElementById('watchlistChips');
     if (list.length === 0) {
-      el.innerHTML = '<span class="muted hint-frame">Список пуст</span>';
+      el.innerHTML = '<span class="muted analytics-grid-empty">Список пуст</span>';
       return;
     }
     el.innerHTML = list.map(function (item) {
