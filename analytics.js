@@ -561,6 +561,19 @@
     };
   }
 
+  function getManualDividendData(ticker) {
+    var map = (typeof window !== 'undefined' && window.DIVIDEND_DATA) ? window.DIVIDEND_DATA : null;
+    if (!map) return null;
+    var item = map[normalizeTicker(ticker)];
+    if (!item || !item.history || !item.history.length) return null;
+    return item;
+  }
+
+  function formatTurnoverBln(v) {
+    if (v == null || !isFinite(Number(v))) return '—';
+    return (Number(v) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд ₽';
+  }
+
   /** Нужен год в подписи, если период > 1 года или затрагивает несколько календарных лет. */
   function tradeDateSeriesNeedsYear(rows) {
     if (!rows || rows.length < 2) return false;
@@ -644,8 +657,29 @@
         noMoexDividends: divMetrics.noMoexDividends,
         divYieldByYear: yearly,
         monthlyForecast: buildMonthlyDividendForecast12m(dividends, history, quote.price),
-        volumeByDay: sliceVolumeSeries(history, VOLUME_YEAR_DAYS)
+        volumeByDay: sliceVolumeSeries(history, VOLUME_YEAR_DAYS),
+        divDataSource: dividends.length ? 'moex' : ''
       };
+      var manual = getManualDividendData(ticker);
+      if (manual && !dividends.length) {
+        out.divYieldByYear = manual.history.map(function (y) {
+          return {
+            year: Number(y.year),
+            yieldPct: y.yield != null && isFinite(Number(y.yield)) ? Number(y.yield) : null,
+            totalDiv: y.dividend != null && isFinite(Number(y.dividend)) ? Number(y.dividend) : 0
+          };
+        });
+        out.divAvg5y = manual.avgYield5y != null && isFinite(Number(manual.avgYield5y)) ? Number(manual.avgYield5y) : out.divAvg5y;
+        out.noMoexDividends = false;
+        out.divForecast = {
+          amount: out.divYieldByYear.length ? out.divYieldByYear[out.divYieldByYear.length - 1].totalDiv : null,
+          paid12m: null,
+          upcoming12m: null,
+          source: manual.source === 'demo' ? 'данные требуют проверки' : 'оценка'
+        };
+        out.monthlyForecast = null;
+        out.divDataSource = manual.source || 'manual';
+      }
       analyticsCacheSet(cacheKey, out, ANALYTICS_TTL);
       return out;
     });
@@ -654,8 +688,8 @@
   function quoteCardDivMetricsHtml() {
     return (
       '<div class="quote-card-div-block" data-div-block>' +
-        '<div class="quote-div-line"><span class="quote-div-lbl">Див. 5л ср.</span> <span class="quote-div-val" data-div-avg>…</span></div>' +
-        '<div class="quote-div-line"><span class="quote-div-lbl">Прогноз 12 мес.</span> <span class="quote-div-val" data-div-forecast>…</span></div>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl">Див. доходность 5 лет</span> <span class="quote-div-val" data-div-avg>…</span></div>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl">Оборот за день</span> <span class="quote-div-val" data-turnover>…</span></div>' +
       '</div>'
     );
   }
@@ -667,42 +701,36 @@
   function applyDivMetricsToWrap(wrapEl, a) {
     if (!wrapEl) return;
     var avgEl = wrapEl.querySelector('[data-div-avg]');
-    var fcEl = wrapEl.querySelector('[data-div-forecast]');
+    var turnoverEl = wrapEl.querySelector('[data-turnover]');
     var legacy = wrapEl.querySelector('[data-div-yield]');
     if (legacy) legacy.style.display = 'none';
 
     if (!a || !a.eligible) {
-      if (avgEl) avgEl.textContent = 'н/д';
-      if (fcEl) fcEl.textContent = 'н/д';
+      if (avgEl) avgEl.textContent = 'нет данных';
+      if (turnoverEl) turnoverEl.textContent = '—';
       return;
     }
     if (avgEl) {
-      if (a.noMoexDividends) {
-        avgEl.textContent = '0,0%';
+      if (a.divDataSource === 'demo') {
+        avgEl.textContent = 'данные требуют проверки';
         avgEl.className = 'quote-div-val muted';
-        avgEl.title = 'В ленте МосБиржи выплат не было';
+      } else if (a.noMoexDividends) {
+        avgEl.textContent = 'нет данных';
+        avgEl.className = 'quote-div-val muted';
       } else {
         avgEl.textContent = formatDivYieldPct(a.divAvg5y);
         avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
-        avgEl.removeAttribute('title');
       }
     }
-    if (fcEl) {
-      var f = a.divForecast;
-      if (a.noMoexDividends) {
-        fcEl.textContent = '0 ₽';
-        fcEl.className = 'quote-div-val muted';
-        fcEl.title = (f && f.source) ? f.source : 'Выплат нет';
-      } else if (f && f.amount != null && isFinite(f.amount)) {
-        fcEl.textContent = formatDivRubPerShare(f.amount);
-        fcEl.className = 'quote-div-val';
-        if (f.source) fcEl.title = f.source;
-        else fcEl.removeAttribute('title');
-      } else {
-        fcEl.textContent = '—';
-        fcEl.className = 'quote-div-val';
-        fcEl.removeAttribute('title');
+    if (turnoverEl) {
+      var v = a.quote && a.quote.valueToday != null ? a.quote.valueToday : null;
+      if ((v == null || !isFinite(Number(v))) && a.volumeByDay && a.volumeByDay.length) {
+        var last = a.volumeByDay[a.volumeByDay.length - 1];
+        if (last && isFinite(Number(last.v))) v = Number(last.v) * 1e9;
       }
+      turnoverEl.textContent = formatTurnoverBln(v);
+      if (turnoverEl.textContent === '—') turnoverEl.className = 'quote-div-val muted';
+      else turnoverEl.className = 'quote-div-val';
     }
   }
 

@@ -903,6 +903,56 @@
     return '5 лет';
   }
 
+  function setSecurityChartTab(tab) {
+    var tabs = document.getElementById('securityChartTabs');
+    if (!tabs) return;
+    tabs.querySelectorAll('[data-security-chart-tab]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-security-chart-tab') === tab);
+    });
+    document.querySelectorAll('[data-security-chart-panel]').forEach(function (panel) {
+      panel.classList.toggle('active', panel.getAttribute('data-security-chart-panel') === tab);
+    });
+  }
+
+  function getLatestBriefForTicker(ticker) {
+    if (typeof getAllBriefs !== 'function') return null;
+    var rows = getAllBriefs().filter(function (b) {
+      return normalizeTicker(b.ticker) === normalizeTicker(ticker);
+    }).sort(function (a, b) {
+      return new Date(b.publishedAt) - new Date(a.publishedAt);
+    });
+    return rows.length ? rows[0] : null;
+  }
+
+  function renderSecurityProfile(ticker, analytics) {
+    var card = document.getElementById('securityProfileCard');
+    var badgeRow = document.getElementById('securityProfileBadgeRow');
+    var metrics = document.getElementById('securityProfileMetrics');
+    if (!card || !badgeRow || !metrics) return;
+    var inPortfolio = typeof findPortfolioPosition === 'function' && !!findPortfolioPosition(ticker);
+    var lastBrief = getLatestBriefForTicker(ticker);
+    var isUs = typeof Markets !== 'undefined' && Markets.isUsTicker(ticker);
+    var type = (ticker.indexOf('OFZ') >= 0 || ticker.indexOf('SU') === 0)
+      ? 'облигация'
+      : (ticker === 'IMOEX' ? 'индекс' : 'акция');
+    var turnover = analytics && analytics.quote && analytics.quote.valueToday != null
+      ? (Number(analytics.quote.valueToday) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд ₽'
+      : '—';
+    var latestYield = analytics && analytics.divYieldByYear && analytics.divYieldByYear.length
+      ? formatDivYieldPct(analytics.divYieldByYear[analytics.divYieldByYear.length - 1].yieldPct)
+      : '—';
+    badgeRow.innerHTML = '<span class="tag tag-importance">' + (inPortfolio ? 'Есть в портфеле' : 'В наблюдении') + '</span>';
+    metrics.innerHTML =
+      '<article class="security-metric-card"><span class="lbl">Тип</span><span class="val">' + escapeHtml(type) + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">Рынок</span><span class="val">' + escapeHtml(isUs ? 'США' : 'Россия') + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">Валюта</span><span class="val">' + escapeHtml(isUs ? '$' : '₽') + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">Средняя дивдоходность 5 лет</span><span class="val">' + escapeHtml(analytics ? formatDivYieldPct(analytics.divAvg5y) : '—') + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">Последняя дивидендная доходность</span><span class="val">' + escapeHtml(latestYield) + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">Оборот торгов</span><span class="val">' + escapeHtml(turnover) + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">Последнее важное событие</span><span class="val">' + escapeHtml(lastBrief ? lastBrief.title : 'События пока не найдены') + '</span></article>';
+    card.hidden = false;
+  }
+
   function renderAnalyticsDetail(ticker) {
     ticker = normalizeTicker(ticker);
     var sec = document.getElementById('analyticsDetailSection');
@@ -918,6 +968,7 @@
     if (titleEl) titleEl.textContent = ticker;
     if (metaEl) metaEl.textContent = 'Загрузка…';
     sec.hidden = false;
+    setSecurityChartTab('price');
 
     var horizon = state.analyticsPriceHorizon || 'year';
     if (priceLbl) priceLbl.textContent = 'Цена · ' + analyticsPriceHorizonLabel(horizon);
@@ -925,6 +976,8 @@
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       if (metaEl) metaEl.textContent = 'Рынок США · дивиденды и оборот МосБиржи недоступны';
       if (divNote) divNote.textContent = 'Используйте отчётность эмитента.';
+      if (volNote) volNote.textContent = 'Данные по объёму торгов пока недоступны.';
+      renderSecurityProfile(ticker, null);
       fetchMoexHistory(ticker, horizon).then(function (r) {
         if (priceCanvas) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
       });
@@ -935,8 +988,8 @@
     buildSecurityAnalytics(ticker).then(function (a) {
       if (!a.eligible) {
         if (metaEl) metaEl.textContent = (a.name || getTickerSubtitle(ticker)) + ' · дивиденды и оборот TQBR недоступны для индексов';
-        if (divNote) divNote.textContent = 'Для индексов доступен только график цены.';
-        if (volNote) volNote.textContent = '';
+        if (divNote) divNote.textContent = 'История дивидендов пока не добавлена.';
+        if (volNote) volNote.textContent = 'Данные по объёму торгов пока недоступны.';
         if (divCanvas) {
           var dctx = divCanvas.getContext('2d');
           if (dctx) dctx.clearRect(0, 0, divCanvas.width, divCanvas.height);
@@ -945,6 +998,7 @@
           var vctx = volCanvas.getContext('2d');
           if (vctx) vctx.clearRect(0, 0, volCanvas.width, volCanvas.height);
         }
+        renderSecurityProfile(ticker, a);
         return fetchMoexHistory(ticker, horizon);
       }
       if (metaEl) {
@@ -964,9 +1018,9 @@
         });
       }
       if (divNote) {
-        divNote.innerHTML = typeof formatDividendChartInfoHtml === 'function'
-          ? formatDividendChartInfoHtml(a, null)
-          : '';
+        divNote.innerHTML = (a.divYieldByYear && a.divYieldByYear.length)
+          ? (typeof formatDividendChartInfoHtml === 'function' ? formatDividendChartInfoHtml(a, null) : '')
+          : 'История дивидендов пока не добавлена.';
         divNote.className = 'analytics-chart-note div-chart-info';
       }
       if (volCanvas) {
@@ -988,10 +1042,12 @@
         });
       }
       if (volNote) {
-        volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) +
-          ' торговых дней · наведите на столбец: дата и оборот в млрд ₽';
+        volNote.textContent = a.volumeByDay && a.volumeByDay.length
+          ? ('Оборот TQBR за год · ' + a.volumeByDay.length + ' торговых дней · наведите на столбец: дата и оборот в млрд ₽')
+          : 'Данные по объёму торгов пока недоступны.';
         volNote.className = 'analytics-chart-note chart-info-readable';
       }
+      renderSecurityProfile(ticker, a);
       return fetchMoexHistory(ticker, horizon);
     }).then(function (r) {
       if (priceCanvas && r && r.series) {
@@ -999,6 +1055,8 @@
       }
     }).catch(function () {
       if (metaEl) metaEl.textContent = 'Не удалось загрузить аналитику';
+      if (divNote) divNote.textContent = 'История дивидендов пока не добавлена.';
+      if (volNote) volNote.textContent = 'Данные по объёму торгов пока недоступны.';
     });
   }
 
@@ -1106,6 +1164,7 @@
   window.drawFullBarChart = drawFullBarChart;
   window.renderAnalyticsDetail = renderAnalyticsDetail;
   window.renderPortfolioInsights = renderPortfolioInsights;
+  window.setSecurityChartTab = setSecurityChartTab;
 
 
 

@@ -45,7 +45,7 @@
             </span>
           </span>
           <span class="book-nav__text">
-            <span class="book-nav__name">Главная</span>
+            <span class="book-nav__name">Сегодня</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="watchlist" style="--book-color:#9A7B4F;--book-text:#F7F4EE">
@@ -57,7 +57,7 @@
             </span>
           </span>
           <span class="book-nav__text">
-            <span class="book-nav__name">Аналитика</span>
+            <span class="book-nav__name">Обзор бумаг</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
@@ -95,7 +95,7 @@
 
       <main class="content">
         <section id="tab-briefing" class="panel active" data-panel="briefing">
-          <h2 class="home-head">Главная</h2>
+          <h2 class="home-head">Сегодня</h2>
           <div class="panel-intro hint-frame">
             <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
           </div>
@@ -144,6 +144,11 @@
           <div id="briefingFilterHint" class="briefing-filter-hint"></div>
 
           <section class="home-block">
+            <h3 class="home-block-title">Сегодня на рынке</h3>
+            <div id="todayMarketCategories" class="news-category-grid" aria-label="Категории новостей"></div>
+          </section>
+
+          <section class="home-block">
             <h3 class="home-block-title">Главное сегодня</h3>
             <div id="topBriefsList" class="briefing-list briefing-list--stack"></div>
           </section>
@@ -152,13 +157,18 @@
             <h3 class="home-block-title">По моим позициям</h3>
             <div id="myBriefsList" class="briefing-list briefing-list--stack"></div>
           </section>
+
+          <section class="home-block">
+            <h3 class="home-block-title">Образовательные материалы</h3>
+            <div id="articlesList" class="news-category-grid" aria-label="Образовательные материалы"></div>
+          </section>
         </section>
 
         <section id="tab-watchlist" class="panel" data-panel="watchlist">
-          <h2>Аналитика</h2>
+          <h2>Обзор бумаг</h2>
           <div class="panel-intro hint-frame">
             <p class="panel-disclaimer">Не является индивидуальной инвестиционной рекомендацией.</p>
-            <p class="panel-intro-text">Котировки, дивиденды и оборот · позиции и сделки — во вкладке «Мой портфель».</p>
+            <p class="panel-intro-text">Графики, дивиденды, обороты торгов и последние события по интересующим позициям.</p>
           </div>
 
           <div class="briefing-market-toolbar">
@@ -215,8 +225,13 @@
           <section class="glass analytics-detail" id="analyticsDetailSection" hidden>
             <h3 class="analytics-detail-title">Подробная аналитика: <span id="analyticsDetailTicker">—</span></h3>
             <p class="muted analytics-detail-meta" id="analyticsDetailMeta">—</p>
-            <div class="analytics-charts-grid">
-              <div class="analytics-chart-panel">
+            <div class="security-chart-tabs" id="securityChartTabs">
+              <button type="button" class="active" data-security-chart-tab="price">Цена</button>
+              <button type="button" data-security-chart-tab="dividends">Дивиденды</button>
+              <button type="button" data-security-chart-tab="volume">Оборот</button>
+            </div>
+            <div class="analytics-charts-grid security-overview-grid">
+              <div class="analytics-chart-panel active" data-security-chart-panel="price">
                 <h4 class="analytics-chart-lbl" id="analyticsPriceChartLbl">Цена · 5 лет</h4>
                 <div class="horizon-tabs analytics-price-horizon" id="analyticsPriceHorizonTabs">
                   <button type="button" data-analytics-horizon="day">1 день</button>
@@ -227,14 +242,14 @@
                   <canvas id="analyticsPriceChart" aria-label="График цены"></canvas>
                 </div>
               </div>
-              <div class="analytics-chart-panel">
+              <div class="analytics-chart-panel" data-security-chart-panel="dividends">
                 <h4 class="analytics-chart-lbl">Дивиденды · 5 лет и прогноз 12 мес.</h4>
                 <div class="analytics-chart-note div-chart-info" id="analyticsDivNote">—</div>
                 <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--mid">
                   <canvas id="analyticsDivChart" aria-label="Дивиденды"></canvas>
                 </div>
               </div>
-              <div class="analytics-chart-panel">
+              <div class="analytics-chart-panel" data-security-chart-panel="volume">
                 <h4 class="analytics-chart-lbl">Оборот торгов · год</h4>
                 <p class="analytics-chart-note chart-info-readable" id="analyticsVolNote">—</p>
                 <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--mid">
@@ -242,6 +257,11 @@
                 </div>
               </div>
             </div>
+            <section class="security-profile-card" id="securityProfileCard" hidden>
+              <h4 class="analytics-chart-lbl">Инвестиционный профиль</h4>
+              <div class="security-metric-card" id="securityProfileBadgeRow"></div>
+              <div class="security-overview-grid" id="securityProfileMetrics"></div>
+            </section>
           </section>
         </section>
 
@@ -496,20 +516,20 @@
             <span class="book-nav__spine"></span>
             <span class="book-nav__pages"></span>
             <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
-              <span class="book-nav__title" data-typing-mobile="Главная">Главная</span>
+              <span class="book-nav__title" data-typing-mobile="Сегодня">Сегодня</span>
             </span>
           </span>
-          <span class="book-nav__name">Главная</span>
+          <span class="book-nav__name">Сегодня</span>
         </button>
         <button type="button" class="book-nav book-nav--bottom" data-tab="watchlist" style="--book-color:#9A7B4F;--book-text:#F7F4EE">
           <span class="book-nav__3d" aria-hidden="true">
             <span class="book-nav__spine"></span>
             <span class="book-nav__pages"></span>
             <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
-              <span class="book-nav__title" data-typing-mobile="Аналитика|бумаг">Аналитика&#10;бумаг</span>
+              <span class="book-nav__title" data-typing-mobile="Обзор|бумаг">Обзор&#10;бумаг</span>
             </span>
           </span>
-          <span class="book-nav__name">Аналитика</span>
+          <span class="book-nav__name">Обзор бумаг</span>
         </button>
         <button type="button" class="book-nav book-nav--bottom" data-tab="portfolio" style="--book-color:#4A7356;--book-text:#F7F4EE">
           <span class="book-nav__3d" aria-hidden="true">
@@ -588,6 +608,18 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="articleModal" role="dialog" aria-labelledby="articleModalTitle" aria-modal="true" hidden>
+    <div class="modal modal--article">
+      <div class="brief-article-modal-head">
+        <h2 class="brief-article-modal-title" id="articleModalTitle"></h2>
+      </div>
+      <div class="brief-article-body" id="articleModalBody"></div>
+      <div class="modal-actions">
+        <button type="button" id="articleModalCloseBtn" class="primary">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="./firebase-init.mjs"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script src="./nav-books.js?v=20250608"></script>
@@ -596,6 +628,7 @@
   <script src="./ui.js?v=20250703"></script>
   <script src="./news.js?v=20250702"></script>
   <script src="./moex.js?v=20250707"></script>
+  <script src="./manual-data.js?v=20250828"></script>
   <script src="./analytics.js?v=20250705"></script>
   <script src="./portfolio.js?v=20250703"></script>
   <script src="./firebase-sync.js?v=20250612"></script>

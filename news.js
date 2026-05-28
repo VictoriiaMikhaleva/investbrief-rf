@@ -1244,9 +1244,23 @@
 
 
   function renderBriefCard(b) {
+    b = enrichBriefAnalytics(b);
     var impClass = 'importance-' + (b.importance || 'medium');
     var content = getBriefContent(b);
     var url = safeUrl(b.sourceUrl);
+    var whyHtml = b.whyImportant
+      ? '<p class="brief-why"><strong>Почему это важно:</strong> ' + escapeHtml(b.whyImportant) + '</p>'
+      : '';
+    var checklistHtml = b.checklist && b.checklist.length
+      ? ('<div class="brief-checklist"><strong>Что проверить:</strong><ul>' +
+          b.checklist.slice(0, 4).map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') +
+        '</ul></div>')
+      : '';
+    var tagsHtml = b.impactTags && b.impactTags.length
+      ? ('<div class="impact-tags">' + b.impactTags.map(function (tag) {
+          return '<span class="tag tag-importance">' + escapeHtml(tag) + '</span>';
+        }).join('') + '</div>')
+      : '';
     return (
       '<article class="glass brief-card magic-bento-card magic-bento-card--border-glow ' + escapeHtml(impClass) + '" ' +
         'data-brief-id="' + escapeHtml(b.id) + '" tabindex="0" role="button" ' +
@@ -1254,6 +1268,9 @@
         '<div class="brief-meta">' + renderBriefMetaHtml(b) + '</div>' +
         '<h3 class="brief-title">' + escapeHtml(b.title) + '</h3>' +
         '<p class="brief-summary">' + escapeHtml(getBriefDisplayTeaser(b)) + '</p>' +
+        whyHtml +
+        checklistHtml +
+        tagsHtml +
         '<div class="brief-footer">' +
           '<button type="button" class="primary brief-read-btn" data-brief-id="' + escapeHtml(b.id) + '">Читать полностью</button>' +
           '<a class="brief-source-link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' +
@@ -1369,6 +1386,8 @@
       return;
     }
     var base = filterBriefsForBriefing();
+    renderTodayCategoryCards(base);
+    renderArticlesBlock();
     var positions = getPositionTickers();
     var topList = sortBriefsByImportance(base).slice(0, 5);
     var myList = sortBriefsByImportance(filterBriefsForPositions(base, positions)).slice(0, 12);
@@ -1378,6 +1397,141 @@
       : 'Добавьте интересующие позиции — здесь появятся связанные новости.');
     initBriefingBento();
     updateStats();
+  }
+
+  var TODAY_CATEGORIES = [
+    'Макроэкономика',
+    'Российский рынок',
+    'Международные рынки',
+    'Сырьё',
+    'Валюта',
+    'По вашим позициям'
+  ];
+
+  function inferBriefCategory(b) {
+    if (b.category) return b.category;
+    var t = ((b.title || '') + ' ' + (b.summary || '')).toLowerCase();
+    if (/(ставк|цб|инфляц|минфин|офз)/.test(t)) return 'Макроэкономика';
+    if (/(нефт|газ|золот|металл|паллад|brent|urals)/.test(t)) return 'Сырьё';
+    if (/(рубл|доллар|евро|юан|валют)/.test(t)) return 'Валюта';
+    if (b.market === 'US') return 'Международные рынки';
+    return 'Российский рынок';
+  }
+
+  function inferImpactTags(b) {
+    if (b.impactTags && b.impactTags.length) return b.impactTags;
+    var t = ((b.title || '') + ' ' + (b.summary || '')).toLowerCase();
+    var tags = [];
+    if (/(дивиденд|выплат|отсечк)/.test(t)) tags.push('Дивиденды');
+    if (/(отч[её]т|мсфо|рсбу|прибыл|выручк)/.test(t)) tags.push('Отчётность');
+    if (/(санкц|риск|волатиль|давлен)/.test(t)) tags.push('Риск');
+    if (/(таргет|оценк|рейтинг|мультипликатор)/.test(t)) tags.push('Оценка');
+    if (/(ставк|цб|инфляц|фрс)/.test(t)) tags.push('Макро');
+    if (/(рубл|доллар|евро|юан|валют)/.test(t)) tags.push('Валюта');
+    if (/(нефт|газ|золот|металл|сырь)/.test(t)) tags.push('Сырьё');
+    return tags.length ? tags.slice(0, 3) : ['Макро'];
+  }
+
+  function inferChecklist(b) {
+    if (b.checklist && b.checklist.length) return b.checklist;
+    var tags = inferImpactTags(b);
+    var out = [];
+    if (tags.indexOf('Дивиденды') >= 0) out.push('проверить дату отсечки');
+    if (tags.indexOf('Отчётность') >= 0) out.push('сверить показатели с консенсусом');
+    if (tags.indexOf('Оценка') >= 0) out.push('сравнить мультипликаторы с сектором');
+    if (tags.indexOf('Макро') >= 0) out.push('оценить влияние ставки и инфляции');
+    if (tags.indexOf('Валюта') >= 0) out.push('проверить чувствительность к курсу');
+    if (tags.indexOf('Сырьё') >= 0) out.push('сверить динамику сырья и маржи');
+    if (!out.length) out.push('проверить первоисточник');
+    return out.slice(0, 4);
+  }
+
+  function inferWhyImportant(b) {
+    if (b.whyImportant) return b.whyImportant;
+    var tags = inferImpactTags(b);
+    if (tags.indexOf('Дивиденды') >= 0) return 'Событие влияет на ожидаемую дивидендную доходность и интерес к бумаге перед отсечкой.';
+    if (tags.indexOf('Отчётность') >= 0) return 'Публикация результатов меняет ожидания по прибыли и справедливой оценке компании.';
+    if (tags.indexOf('Макро') >= 0) return 'Новость задаёт общий фон риск-аппетита и стоимость капитала для рынка.';
+    return 'Новость может изменить оценку рисков и сценарий по бумаге в ближайшие сессии.';
+  }
+
+  function enrichBriefAnalytics(b) {
+    var next = Object.assign({}, b);
+    next.category = inferBriefCategory(next);
+    next.impactTags = inferImpactTags(next);
+    next.checklist = inferChecklist(next);
+    next.whyImportant = inferWhyImportant(next);
+    return next;
+  }
+
+  function renderTodayCategoryCards(briefs) {
+    var el = document.getElementById('todayMarketCategories');
+    if (!el) return;
+    var positions = getPositionTickers();
+    var grouped = {};
+    TODAY_CATEGORIES.forEach(function (c) { grouped[c] = []; });
+    briefs.map(enrichBriefAnalytics).forEach(function (b) {
+      var cat = b.category || inferBriefCategory(b);
+      if (!grouped[cat]) grouped[cat] = [];
+      if (grouped[cat].length < 3) grouped[cat].push(b);
+      if (positions.indexOf(normalizeTicker(b.ticker)) >= 0 && grouped['По вашим позициям'].length < 3) {
+        grouped['По вашим позициям'].push(b);
+      }
+    });
+    el.innerHTML = TODAY_CATEGORIES.map(function (cat) {
+      var items = grouped[cat] || [];
+      return '<article class="news-category-card"><h4>' + escapeHtml(cat) + '</h4>' +
+        (items.length
+          ? '<ul>' + items.slice(0, 3).map(function (b) {
+              return '<li>' + escapeHtml(b.title) + '</li>';
+            }).join('') + '</ul>'
+          : '<p class="muted">Событий пока нет</p>') +
+      '</article>';
+    }).join('');
+  }
+
+  function renderArticlesBlock() {
+    var el = document.getElementById('articlesList');
+    if (!el) return;
+    var list = (typeof window !== 'undefined' && window.EDUCATIONAL_ARTICLES) ? window.EDUCATIONAL_ARTICLES : [];
+    if (!list.length) {
+      el.innerHTML = '<p class="muted">Материалы будут добавлены позже.</p>';
+      return;
+    }
+    el.innerHTML = list.map(function (a) {
+      return '<article class="article-card" data-article-id="' + escapeHtml(a.id) + '">' +
+        '<h4>' + escapeHtml(a.title) + '</h4><p>' + escapeHtml(a.summary || '') + '</p>' +
+        '<button type="button" class="primary" data-open-article="' + escapeHtml(a.id) + '">Открыть статью</button>' +
+      '</article>';
+    }).join('');
+    el.querySelectorAll('[data-open-article]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openArticleModal(btn.getAttribute('data-open-article'));
+      });
+    });
+  }
+
+  function openArticleModal(id) {
+    var list = (typeof window !== 'undefined' && window.EDUCATIONAL_ARTICLES) ? window.EDUCATIONAL_ARTICLES : [];
+    var article = list.find(function (a) { return a.id === id; });
+    if (!article) return;
+    var modal = document.getElementById('articleModal');
+    var title = document.getElementById('articleModalTitle');
+    var body = document.getElementById('articleModalBody');
+    if (!modal || !title || !body) return;
+    title.textContent = article.title;
+    body.innerHTML = article.bodyHtml || '<p>Материал готовится.</p>';
+    modal.hidden = false;
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeArticleModal() {
+    var modal = document.getElementById('articleModal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.hidden = true;
+    document.body.style.overflow = '';
   }
 
 

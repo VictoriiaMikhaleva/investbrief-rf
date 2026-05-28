@@ -397,7 +397,12 @@
 
     return {
       price: price,
-      changePct: chg != null && isFinite(Number(chg)) ? Number(chg) : null
+      changePct: chg != null && isFinite(Number(chg)) ? Number(chg) : null,
+      valueToday: (function () {
+        var v = col('VALTODAY');
+        if (v == null) v = col('VALUE');
+        return v != null && isFinite(Number(v)) ? Number(v) : null;
+      })()
     };
   }
 

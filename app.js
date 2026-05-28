@@ -226,6 +226,17 @@
       });
     });
 
+    var securityChartTabs = document.getElementById('securityChartTabs');
+    if (securityChartTabs) {
+      securityChartTabs.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-security-chart-tab]');
+        if (!btn) return;
+        if (typeof setSecurityChartTab === 'function') {
+          setSecurityChartTab(btn.getAttribute('data-security-chart-tab'));
+        }
+      });
+    }
+
     var newsMarketTabs = document.getElementById('newsMarketFilterTabs');
     if (newsMarketTabs) {
       newsMarketTabs.addEventListener('click', function (e) {
@@ -451,6 +462,16 @@
     document.getElementById('briefArticleModal').addEventListener('click', function (e) {
       if (e.target.id === 'briefArticleModal') closeBriefArticleModal();
     });
+    var articleCloseBtn = document.getElementById('articleModalCloseBtn');
+    if (articleCloseBtn && typeof closeArticleModal === 'function') {
+      articleCloseBtn.addEventListener('click', closeArticleModal);
+    }
+    var articleModal = document.getElementById('articleModal');
+    if (articleModal && typeof closeArticleModal === 'function') {
+      articleModal.addEventListener('click', function (e) {
+        if (e.target.id === 'articleModal') closeArticleModal();
+      });
+    }
     ['topBriefsList', 'myBriefsList', 'briefingList'].forEach(function (id) {
       var listEl = document.getElementById(id);
       if (!listEl) return;
@@ -465,6 +486,7 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         closeBriefArticleModal();
+        if (typeof closeArticleModal === 'function') closeArticleModal();
         if (typeof closeAnalyticsModal === 'function') closeAnalyticsModal();
       }
     });

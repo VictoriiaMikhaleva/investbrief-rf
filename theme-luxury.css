@@ -325,3 +325,98 @@ input:focus, select:focus, textarea:focus {
   .quote-card:hover,
   .macro-tile:hover { transform: none; }
 }
+
+.news-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+@media (max-width: 760px) { .news-category-grid { grid-template-columns: 1fr; } }
+
+.news-category-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.9rem;
+}
+.news-category-card h4 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  color: var(--accent);
+}
+.news-category-card ul { margin: 0; padding-left: 1rem; }
+.news-category-card li { margin: 0.2rem 0; font-size: 0.88rem; line-height: 1.45; }
+
+.impact-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.5rem 0; }
+.brief-why { margin: 0.45rem 0; font-size: 0.86rem; color: var(--text); }
+.brief-checklist { margin: 0.35rem 0 0.5rem; }
+.brief-checklist ul { margin: 0.35rem 0 0; padding-left: 1rem; }
+.brief-checklist li { margin: 0.12rem 0; font-size: 0.84rem; color: var(--text-muted); }
+
+.security-chart-tabs { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.55rem 0 0.75rem; }
+.security-chart-tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.security-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+@media (max-width: 760px) { .security-overview-grid { grid-template-columns: 1fr; } }
+.security-overview-grid > .analytics-chart-panel { display: none; }
+.security-overview-grid > .analytics-chart-panel.active { display: block; }
+
+.security-profile-card {
+  margin-top: 0.85rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.security-metric-card {
+  background: rgba(31, 107, 92, 0.05);
+  border: 1px solid rgba(31, 107, 92, 0.12);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+}
+.security-metric-card .lbl { display: block; font-size: 0.74rem; color: var(--text-muted); }
+.security-metric-card .val { display: block; margin-top: 0.15rem; font-size: 0.88rem; font-weight: 600; }
+
+.article-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+}
+.article-card h4 { margin: 0 0 0.45rem; color: var(--text); }
+.article-card p { margin: 0 0 0.65rem; font-size: 0.9rem; }
+
+.strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 0.55rem 0 1rem;
+}
+@media (max-width: 760px) { .strategy-grid { grid-template-columns: 1fr; } }
+.strategy-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.7rem;
+}
+.strategy-card h4 { margin: 0 0 0.35rem; color: var(--accent); }
+.strategy-card p { margin: 0; font-size: 0.86rem; line-height: 1.5; }
+
+.strategy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  margin: 0.65rem 0;
+}
+.strategy-table th,
+.strategy-table td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+}
