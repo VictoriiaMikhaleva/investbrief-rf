@@ -284,6 +284,12 @@
 
 
 
+  var PRESET_LABELS = {
+    bluechips: 'Голубые фишки',
+    bonds: 'Облигации',
+    dividends: 'Дивиденды'
+  };
+
   function applyPreset(name) {
     var preset = PRESETS[name];
     if (!preset) return;
@@ -293,7 +299,7 @@
       if (list.indexOf(n) === -1) list.push(n);
     });
     setWatchlist(list);
-    showToast('Пресет: ' + name);
+    showToast('Добавлена подборка: ' + (PRESET_LABELS[name] || name));
     renderWatchlist();
   }
 

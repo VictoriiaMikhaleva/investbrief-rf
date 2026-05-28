@@ -284,17 +284,22 @@
       return Promise.resolve({ type: 'bond', engine: 'stock', market: 'bonds', board: 'TQOB', secid: t });
     }
     if (t.indexOf('OFZ') === 0) {
-      var cached = moexCacheGet('inst.' + t);
-      if (cached) return Promise.resolve(cached);
-      return moexFetchJson(MOEX_ISS + '/securities.json?q=' + encodeURIComponent(t.replace(/_/g, ' ')) + '&iss.meta=off')
+      var cachedOfz = moexCacheGet('inst.v2.' + t);
+      if (cachedOfz) return Promise.resolve(cachedOfz);
+      var q = t.replace(/^OFZ_?/i, '').replace(/_/g, ' ');
+      return moexFetchJson(MOEX_ISS + '/securities.json?q=' + encodeURIComponent(q) +
+        '&iss.meta=off&securities.columns=secid,shortname,primary_boardid,group&limit=12')
         .then(function (json) {
           var sec = json.securities;
           if (!sec || !sec.data || !sec.data.length) throw new Error('bond not found');
           var cols = sec.columns;
           var secidIdx = cols.indexOf('secid');
+          var boardIdx = cols.indexOf('primary_boardid');
           var secid = sec.data[0][secidIdx];
-          var inst = { type: 'bond', engine: 'stock', market: 'bonds', board: 'TQOB', secid: secid };
-          moexCacheSet('inst.' + t, inst, 24 * 60 * 60 * 1000);
+          var board = boardIdx >= 0 && sec.data[0][boardIdx] ? sec.data[0][boardIdx] : 'TQOB';
+          var inst = { type: 'bond', engine: 'stock', market: 'bonds', board: board, secid: secid };
+          moexCacheSet('inst.v2.' + t, inst, 24 * 60 * 60 * 1000);
+          if (typeof BOND_SECID_MAP !== 'undefined') BOND_SECID_MAP[t] = secid;
           return inst;
         });
     }
@@ -367,7 +372,7 @@
 
 
 
-  function parseMoexQuoteFromMd(json) {
+  function parseMoexQuoteFromMd(json, isBond) {
     var md = json.marketdata;
     if (!md || !md.data || !md.data.length) return null;
     var cols = md.columns;
@@ -382,7 +387,9 @@
       var idx = sec.columns.indexOf(name);
       return idx >= 0 ? sec.data[0][idx] : null;
     }
-    var priceKeys = ['LAST', 'LCURRENTPRICE', 'LEGALCLOSEPRICE', 'CURRENTVALUE', 'MARKETPRICE'];
+    var priceKeys = isBond
+      ? ['LAST', 'WAPRICE', 'LCURRENTPRICE', 'MARKETPRICE', 'LEGALCLOSEPRICE', 'CURRENTVALUE']
+      : ['LAST', 'LCURRENTPRICE', 'LEGALCLOSEPRICE', 'CURRENTVALUE', 'MARKETPRICE'];
     var price = null;
     for (var i = 0; i < priceKeys.length; i++) {
       var v = col(priceKeys[i]);
@@ -394,12 +401,17 @@
     if (price == null) return null;
 
     var chg = resolveMoexDayChangePct(price, col, secCol);
+    var yld = col('YIELDATWAPRICE');
+    if (yld == null || !isFinite(Number(yld))) yld = col('YIELD');
+    if (yld == null || !isFinite(Number(yld))) yld = col('YIELDLASTCOUPON');
 
     return {
       price: price,
       changePct: chg != null && isFinite(Number(chg)) ? Number(chg) : null,
+      yieldPct: yld != null && isFinite(Number(yld)) ? Number(yld) : null,
       valueToday: (function () {
         var v = col('VALTODAY');
+        if (v == null) v = col('VALTODAY_RUR');
         if (v == null) v = col('VALUE');
         return v != null && isFinite(Number(v)) ? Number(v) : null;
       })()
@@ -474,7 +486,7 @@
     }
     return resolveMoexInstrument(ticker).then(function (inst) {
       return moexFetchJson(moexMarketdataUrl(inst)).then(function (json) {
-        var quote = parseMoexQuoteFromMd(json);
+        var quote = parseMoexQuoteFromMd(json, inst.type === 'bond');
         if (!quote) return null;
         if (quote.changePct != null) return quote;
         return fetchDayChangePctFromCandles(ticker, quote.price).then(function (pct) {

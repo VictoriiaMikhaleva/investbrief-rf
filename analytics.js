@@ -40,12 +40,21 @@
     return ticker === 'IMOEX' || ticker === 'INDEX';
   }
 
+  function isRuBondTicker(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!ticker || isIndexQuoteTicker(ticker)) return false;
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) return false;
+    if (typeof BOND_SECID_MAP !== 'undefined' && BOND_SECID_MAP[ticker]) return true;
+    if (ticker.indexOf('OFZ') >= 0) return true;
+    if (ticker.indexOf('SU') === 0 && ticker.length > 8) return true;
+    return false;
+  }
+
   function isRuStockForAnalytics(ticker) {
     ticker = normalizeTicker(ticker);
     if (!ticker || isIndexQuoteTicker(ticker)) return false;
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) return false;
-    if (ticker.indexOf('OFZ') >= 0) return false;
-    if (ticker.indexOf('SU') === 0 && ticker.length > 8) return false;
+    if (isRuBondTicker(ticker)) return false;
     return true;
   }
 
@@ -685,11 +694,54 @@
     });
   }
 
+  function applyBondMetricsToWrap(wrapEl, q) {
+    if (!wrapEl) return;
+    var avgEl = wrapEl.querySelector('[data-div-avg]');
+    var turnoverEl = wrapEl.querySelector('[data-turnover]');
+    if (!q || q.price == null) {
+      if (avgEl) {
+        avgEl.textContent = 'нет данных';
+        avgEl.className = 'quote-div-val muted';
+      }
+      if (turnoverEl) {
+        turnoverEl.textContent = '—';
+        turnoverEl.className = 'quote-div-val muted';
+      }
+      return;
+    }
+    if (avgEl) {
+      if (q.yieldPct != null && isFinite(q.yieldPct)) {
+        avgEl.textContent = formatDivYieldPct(q.yieldPct);
+        avgEl.className = 'quote-div-val' + (q.yieldPct > 0 ? ' pnl-pos' : '');
+      } else {
+        avgEl.textContent = '—';
+        avgEl.className = 'quote-div-val muted';
+      }
+    }
+    if (turnoverEl) {
+      turnoverEl.textContent = formatTurnoverBln(q.valueToday);
+      turnoverEl.className = turnoverEl.textContent === '—' ? 'quote-div-val muted' : 'quote-div-val';
+    }
+  }
+
+  function enrichRuBondQuoteCard(wrapEl, ticker) {
+    if (typeof fetchMoexQuote !== 'function') {
+      applyBondMetricsToWrap(wrapEl, null);
+      return Promise.resolve();
+    }
+    return fetchMoexQuote(ticker).then(function (q) {
+      applyBondMetricsToWrap(wrapEl, q);
+    }).catch(function () {
+      applyBondMetricsToWrap(wrapEl, null);
+    });
+  }
+
   function quoteCardDivMetricsHtml(opts) {
     opts = opts || {};
     var compact = !!opts.compact;
+    var bond = !!opts.bond;
     var blockCls = 'quote-card-div-block' + (compact ? ' quote-card-div-block--compact' : '');
-    var avgLbl = compact ? 'Див. TTM' : 'Див. доходность 5 лет';
+    var avgLbl = bond ? 'Доходность' : (compact ? 'Див. TTM' : 'Див. доходность 5 лет');
     var turnLbl = compact ? 'Оборот' : 'Оборот за день';
     return (
       '<div class="' + blockCls + '" data-div-block>' +
@@ -823,6 +875,10 @@
         enrichUsQuoteCard(wrapEl, ticker).then(resolve, resolve);
         return;
       }
+      if (isRuBondTicker(ticker)) {
+        enrichRuBondQuoteCard(wrapEl, ticker).then(resolve, resolve);
+        return;
+      }
       if (!isRuStockForAnalytics(ticker)) {
         resolve();
         return;
@@ -852,17 +908,27 @@
       return;
     }
 
+    var isBond = isRuBondTicker(ticker);
     var block = wrapEl.querySelector('[data-div-block]');
     if (!block) {
       var metrics = wrapEl.querySelector('.quote-card-metrics, .market-tile-metrics');
-      if (metrics) {
+      var host = metrics || btn;
+      if (host) {
         var tmp = document.createElement('div');
-        tmp.innerHTML = quoteCardDivMetricsHtml();
-        metrics.appendChild(tmp.firstChild);
+        tmp.innerHTML = quoteCardDivMetricsHtml({ bond: isBond });
+        host.appendChild(tmp.firstChild);
       }
+    } else if (isBond) {
+      var lbl = block.querySelector('.quote-div-lbl');
+      if (lbl) lbl.textContent = 'Доходность';
     }
 
     wrapEl.querySelectorAll('.quote-card-charts').forEach(function (el) { el.remove(); });
+
+    if (isBond) {
+      applyBondMetricsToWrap(wrapEl, null);
+      return;
+    }
 
     if (!isRuStockForAnalytics(ticker)) {
       applyDivMetricsToWrap(wrapEl, { eligible: false });
@@ -916,7 +982,7 @@
               '<span class="quote-card-price" data-price>…</span>' +
               '<span class="quote-card-change muted" data-change>загрузка</span>' +
             '</div>' +
-            quoteCardDivMetricsHtml() +
+            quoteCardDivMetricsHtml({ bond: isRuBondTicker(ticker) }) +
           '</button>' +
           '<button type="button" class="quote-card-remove" data-remove-analytics="' + escapeHtml(ticker) + '" aria-label="Удалить">×</button>' +
         '</div>'
@@ -1010,6 +1076,7 @@
 
   window.isIndexQuoteTicker = isIndexQuoteTicker;
   window.isRuStockForAnalytics = isRuStockForAnalytics;
+  window.isRuBondTicker = isRuBondTicker;
   window.formatDivYieldPct = formatDivYieldPct;
   window.formatDivRubPerShare = formatDivRubPerShare;
   window.buildSecurityAnalytics = buildSecurityAnalytics;

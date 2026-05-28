@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20250828d" />
+  <link rel="stylesheet" href="./styles.css?v=20250828e" />
   <link rel="stylesheet" href="./theme-luxury.css?v=20250828d" />
 </head>
 <body>
@@ -249,11 +249,13 @@
             <div class="row watchlist-actions">
               <button type="button" id="addWatchlistBtn" class="primary">+ Добавить в аналитику</button>
             </div>
-            <div class="preset-btns">
-              <span class="muted" style="width:100%;margin:0;">Пресеты:</span>
-              <button type="button" data-preset="bluechips">Голубые фишки</button>
-              <button type="button" data-preset="bonds">Облигации</button>
-              <button type="button" data-preset="dividends">Дивиденды</button>
+            <div class="preset-btns" role="group" aria-label="Быстрые подборки для аналитики">
+              <p class="preset-btns-lead">Готовые подборки — добавят бумаги в карточки ниже</p>
+              <div class="preset-btns-row">
+                <button type="button" class="preset-btn" data-preset="bluechips">Голубые фишки</button>
+                <button type="button" class="preset-btn" data-preset="bonds">Облигации</button>
+                <button type="button" class="preset-btn" data-preset="dividends">Дивиденды</button>
+              </div>
             </div>
             <div id="watchlistChips" class="chips"></div>
           </div>
@@ -688,8 +690,8 @@
   <script src="./news.js?v=20250828b"></script>
   <script src="./moex.js?v=20250828b"></script>
   <script src="./manual-data.js?v=20250828"></script>
-  <script src="./analytics.js?v=20250705"></script>
-  <script src="./portfolio.js?v=20250703"></script>
+  <script src="./analytics.js?v=20250828e"></script>
+  <script src="./portfolio.js?v=20250828e"></script>
   <script src="./firebase-sync.js?v=20250612"></script>
   <script src="./app.js?v=20250702"></script>
 </body>

@@ -36,7 +36,7 @@
 
   var PRESETS = {
     bluechips: ['SBER', 'GAZP', 'LKOH', 'GMKN', 'NVTK', 'ROSN'],
-    bonds: ['OFZ_26241', 'OFZ_26238', 'SU26238RMFS2'],
+    bonds: ['OFZ_26241', 'OFZ_26238', 'OFZ_26243'],
     dividends: ['SBER', 'TATN', 'MTSS', 'MGNT', 'PLZL']
   };
 
@@ -71,7 +71,8 @@
     CHMF: 'Северсталь',
     ALRS: 'АЛРОСА',
     OFZ_26241: 'ОФЗ 26241',
-    OFZ_26238: 'ОФЗ 26238'
+    OFZ_26238: 'ОФЗ 26238',
+    OFZ_26243: 'ОФЗ 26243'
   };
 
 
