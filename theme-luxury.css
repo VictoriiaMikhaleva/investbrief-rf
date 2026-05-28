@@ -561,55 +561,51 @@ input:focus, select:focus, textarea:focus {
 }
 .value-section-lead {
   margin: 0 0 1rem;
-  max-width: 44rem;
+  max-width: none;
   font-size: 0.92rem;
   line-height: 1.55;
   color: var(--text-muted);
 }
+.value-line-one {
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .value-line-one { white-space: normal; }
+}
 .value-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
   margin-bottom: 0.85rem;
 }
-@media (max-width: 1024px) {
-  .value-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1100px) {
+  .value-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .value-grid { grid-template-columns: 1fr; }
 }
 .value-card {
-  position: relative;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-left: 3px solid rgba(31, 107, 92, 0.35);
   border-radius: 12px;
-  padding: 0.85rem 0.9rem 0.85rem 2.35rem;
+  padding: 0.85rem 0.95rem;
   min-width: 0;
   box-shadow: var(--shadow-card);
-}
-.value-card-marker {
-  position: absolute;
-  left: 0.75rem;
-  top: 0.82rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1;
 }
 .value-card-title {
   margin: 0 0 0.4rem;
   font-size: 0.94rem;
   font-weight: 650;
   color: var(--text);
-  line-height: 1.35;
+  line-height: 1.4;
+}
+.value-card-num {
+  display: inline;
+  margin-right: 0.2rem;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.88rem;
 }
 .value-card p {
   margin: 0;
@@ -620,7 +616,6 @@ input:focus, select:focus, textarea:focus {
 .value-disclaimer {
   margin: 0;
   padding: 0.62rem 0.82rem;
-  max-width: none;
   font-size: 0.8rem;
   line-height: 1.5;
   color: var(--text-muted);
@@ -628,6 +623,15 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid var(--border);
   border-left: 3px solid var(--bronze);
   border-radius: 10px;
+}
+.value-disclaimer p {
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+.value-disclaimer p + p {
+  margin-top: 0.35rem;
 }
 
 .bottom-nav .book-nav--bottom {
