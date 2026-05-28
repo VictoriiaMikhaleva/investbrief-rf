@@ -1,4 +1,8 @@
 /* ui.js */
+  var CHART_COLOR_AUTUMN = '#D4873B';
+  var CHART_COLOR_AUTUMN_SOFT = 'rgba(212, 135, 59, 0.42)';
+  var CHART_COLOR_FORECAST = '#4A7356';
+
   function setupTickerAutocomplete(inputId, opts) {
     opts = opts || {};
     var input = document.getElementById(inputId);
@@ -551,7 +555,7 @@
     if (divCanvas && analytics.divYieldByYear && analytics.divYieldByYear.length) {
       drawMiniBarChart(divCanvas, analytics.divYieldByYear.map(function (y) {
         return { v: y.yieldPct != null && isFinite(y.yieldPct) ? y.yieldPct : 0 };
-      }), { color: '#9A7B4F' });
+      }), { color: CHART_COLOR_AUTUMN });
     }
     if (volCanvas && analytics.volumeByDay && analytics.volumeByDay.length) {
       drawMiniBarChart(volCanvas, analytics.volumeByDay, { color: '#6B7A5A' });
@@ -602,7 +606,7 @@
       if (divCanvas) {
         drawMiniBarChart(divCanvas, (a.divYieldByYear || []).map(function (y) {
           return { v: y.yieldPct != null && isFinite(y.yieldPct) ? y.yieldPct : 0 };
-        }), { color: '#9A7B4F' });
+        }), { color: CHART_COLOR_AUTUMN });
       }
       if (divNote) {
         divNote.textContent = (a.divYieldByYear || []).map(function (y) {
@@ -670,8 +674,8 @@
     lines = (lines || []).filter(Boolean);
     if (!lines.length) return;
     ctx.save();
-    ctx.font = '600 10px Golos Text, sans-serif';
-    var lineH = 13;
+    ctx.font = '600 11px Manrope, Golos Text, sans-serif';
+    var lineH = 14;
     var maxW = 0;
     lines.forEach(function (ln) {
       maxW = Math.max(maxW, ctx.measureText(ln).width);
@@ -708,7 +712,32 @@
 
   function drawBarValueLabel(ctx, text, cx, topY, plotWidth) {
     if (!text) return;
-    drawBarHoverTooltip(ctx, [text], cx, topY, plotWidth);
+    ctx.save();
+    ctx.font = '700 12px Manrope, Golos Text, sans-serif';
+    var tw = ctx.measureText(text).width;
+    var padX = 6;
+    var padY = 4;
+    var bw = tw + padX * 2;
+    var bh = 18;
+    var maxPlotW = plotWidth || 320;
+    var bx = Math.max(4, Math.min(cx - bw / 2, maxPlotW - bw - 4));
+    var by = Math.max(4, topY - bh - 8);
+    ctx.fillStyle = 'rgba(255, 252, 248, 0.98)';
+    ctx.strokeStyle = CHART_COLOR_AUTUMN_SOFT;
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(bx, by, bw, bh, 4);
+    } else {
+      ctx.rect(bx, by, bw, bh);
+    }
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#1F1E1C';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, bx + bw / 2, by + bh / 2);
+    ctx.restore();
   }
 
 
@@ -788,15 +817,15 @@
     var dense = vals.length > 14;
     var alwaysValues = options.showValues === true;
     var showValues = options.showValues !== false && (alwaysValues || !dense);
-    var padTop = showValues ? 22 : 14;
-    if (hoverIndex >= 0) padTop = Math.max(padTop, 38);
+    var padTop = showValues ? 34 : 14;
+    if (hoverIndex >= 0) padTop = Math.max(padTop, 42);
     var pad = { l: 36, r: 12, t: padTop, b: 28 };
     var plotW = w - pad.l - pad.r;
     var plotH = h - pad.t - pad.b;
     var barGap = vals.length > 20 ? 2 : 4;
     var barW = Math.max(4, (plotW - barGap * (vals.length - 1)) / vals.length);
-    var color = options.color || '#9A7B4F';
-    var forecastColor = options.forecastColor || '#6B7A5A';
+    var color = options.color || CHART_COLOR_AUTUMN;
+    var forecastColor = options.forecastColor || CHART_COLOR_FORECAST;
     var barsMeta = [];
 
     vals.forEach(function (v, i) {
@@ -1014,8 +1043,8 @@
       }
       if (divCanvas) {
         drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
-          color: '#9A7B4F',
-          forecastColor: '#4A7356',
+          color: CHART_COLOR_AUTUMN,
+          forecastColor: CHART_COLOR_FORECAST,
           ySuffix: '₽/акц.',
           showValues: true
         });
@@ -1121,8 +1150,8 @@
       }
       if (divCanvas) {
         drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
-          color: '#9A7B4F',
-          forecastColor: '#4A7356',
+          color: CHART_COLOR_AUTUMN,
+          forecastColor: CHART_COLOR_FORECAST,
           ySuffix: '₽/акц.',
           showValues: true
         });
