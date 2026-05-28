@@ -1503,8 +1503,17 @@
       return;
     }
     var html = list.map(function (a) {
+      var meta = '';
+      if (a.riskLevel || a.horizon) {
+        meta =
+          '<div class="article-meta">' +
+            (a.riskLevel ? '<span class="article-meta-chip">Риск: ' + escapeHtml(a.riskLevel) + '</span>' : '') +
+            (a.horizon ? '<span class="article-meta-chip">Горизонт: ' + escapeHtml(a.horizon) + '</span>' : '') +
+          '</div>';
+      }
       return '<article class="article-card" data-article-id="' + escapeHtml(a.id) + '">' +
         '<h4>' + escapeHtml(a.title) + '</h4><p>' + escapeHtml(a.summary || '') + '</p>' +
+        meta +
         '<button type="button" class="primary" data-open-article="' + escapeHtml(a.id) + '">Открыть статью</button>' +
       '</article>';
     }).join('');

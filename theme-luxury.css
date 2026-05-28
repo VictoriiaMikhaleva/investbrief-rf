@@ -391,6 +391,22 @@ input:focus, select:focus, textarea:focus {
 }
 .article-card h4 { margin: 0 0 0.45rem; color: var(--text); }
 .article-card p { margin: 0 0 0.65rem; font-size: 0.9rem; }
+.article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.65rem;
+}
+.article-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(31, 107, 92, 0.1);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
 
 .strategy-grid {
   display: grid;
