@@ -247,6 +247,45 @@ input:focus, select:focus, textarea:focus {
 .chart-canvas-wrap { background: #f7f8fb; border-color: var(--border); }
 .modal-overlay { background: rgba(17, 25, 38, 0.38); }
 
+.portfolio-folder-section {
+  min-height: 17rem;
+  padding-bottom: 0.6rem;
+}
+
+.portfolio-folder-section .hint-frame {
+  margin-bottom: 0.8rem;
+}
+
+.portfolio-folder-host {
+  min-height: 11rem;
+  padding-bottom: 0.4rem;
+}
+
+.portfolio-folder-stage {
+  min-height: 9.5rem;
+  padding-top: 1.2rem;
+}
+
+.pf-folder-scene {
+  transform: scale(1.12);
+}
+
+@media (max-width: 899px) {
+  .portfolio-folder-section {
+    min-height: 14rem;
+  }
+  .portfolio-folder-host {
+    min-height: 9rem;
+  }
+  .portfolio-folder-stage {
+    min-height: 8rem;
+    padding-top: 0.8rem;
+  }
+  .pf-folder-scene {
+    transform: scale(1.03);
+  }
+}
+
 .app-footer {
   margin: 0 auto;
   width: 100%;
