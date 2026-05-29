@@ -2,16 +2,19 @@
 <html lang="ru">
 <head>
   <script>
-    /* GitHub Pages: фиксируем базу для /investbrief-rf/ (скрипты и стили не уезжают в корень домена). */
+    /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS и JS на мобильных. */
     (function () {
+      var marker = 'investbrief-rf';
       var path = location.pathname || '/';
-      if (!path.endsWith('/')) {
-        var i = path.lastIndexOf('/');
-        path = i >= 0 ? path.slice(0, i + 1) : '/';
+      if (path === '/' + marker) {
+        location.replace('/' + marker + '/' + location.search + location.hash);
+        return;
       }
-      if (path.indexOf('investbrief-rf') !== -1) {
+      var pos = path.indexOf(marker);
+      if (pos !== -1) {
+        var baseHref = path.slice(0, pos + marker.length) + '/';
         var base = document.createElement('base');
-        base.href = path;
+        base.href = baseHref;
         document.head.appendChild(base);
       }
     })();
@@ -20,6 +23,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#2F4A37" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="ИнвестБриф" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />

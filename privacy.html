@@ -3,14 +3,17 @@
 <head>
   <script>
     (function () {
+      var marker = 'investbrief-rf';
       var path = location.pathname || '/';
-      if (!path.endsWith('/')) {
-        var i = path.lastIndexOf('/');
-        path = i >= 0 ? path.slice(0, i + 1) : '/';
+      if (path === '/' + marker) {
+        location.replace('/' + marker + '/' + location.search + location.hash);
+        return;
       }
-      if (path.indexOf('investbrief-rf') !== -1) {
+      var pos = path.indexOf(marker);
+      if (pos !== -1) {
+        var baseHref = path.slice(0, pos + marker.length) + '/';
         var base = document.createElement('base');
-        base.href = path;
+        base.href = baseHref;
         document.head.appendChild(base);
       }
     })();
