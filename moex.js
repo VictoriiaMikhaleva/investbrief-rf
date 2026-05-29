@@ -396,11 +396,11 @@
     var from = new Date(till);
     if (horizon === 'day') {
       from.setDate(from.getDate() - 3);
-      return { interval: 60, from: moexFormatDate(from), till: moexFormatDate(till) };
+      return { interval: 60, from: moexFormatDateMsk(from), till: moexFormatDateMsk(till) };
     }
     if (horizon === 'week') {
       from.setDate(from.getDate() - 12);
-      return { interval: 24, from: moexFormatDate(from), till: moexFormatDate(till) };
+      return { interval: 24, from: moexFormatDateMsk(from), till: moexFormatDateMsk(till) };
     }
     if (horizon === 'month') {
       from.setDate(from.getDate() - 45);
@@ -656,7 +656,7 @@
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       return Markets.fetchUsHistory(ticker, horizon);
     }
-    var cacheKey = 'candles.v3.' + ticker + '.' + horizon;
+    var cacheKey = 'candles.v4.' + ticker + '.' + horizon;
     var cached = moexCacheGet(cacheKey);
     if (cached) return Promise.resolve({ series: cached, source: 'moex', cached: true });
 

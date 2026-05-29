@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v5.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v6.';
   var ANALYTICS_TTL = 30 * 60 * 1000;
   var HISTORY_PAGE_LIMIT = 500;
   var VOLUME_YEAR_DAYS = 252;
@@ -473,68 +473,84 @@
     }).catch(function () { return []; });
   }
 
+  function moexHistoryLastTradeDate(rows) {
+    if (!rows || !rows.length) return '';
+    return String(rows[rows.length - 1].date || '').slice(0, 10);
+  }
+
+  function isMoexHistoryCacheStale(rows) {
+    var last = moexHistoryLastTradeDate(rows);
+    if (!last || last.length < 10) return true;
+    var lastMs = new Date(last + 'T20:00:00').getTime();
+    if (isNaN(lastMs)) return true;
+    var now = new Date();
+    var todayMsk = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(now) : now.toISOString().slice(0, 10);
+    var todayMs = new Date(todayMsk + 'T20:00:00').getTime();
+    return todayMs - lastMs > 4 * 24 * 60 * 60 * 1000;
+  }
+
   function fetchMoexShareHistoryDaily(ticker, yearsBack) {
     ticker = normalizeTicker(ticker);
-    var cacheKey = 'hist.' + ticker + '.' + (yearsBack || YIELD_YEARS);
+    yearsBack = yearsBack || YIELD_YEARS;
+    var cacheKey = 'hist.v2.' + ticker + '.' + yearsBack;
     var cached = analyticsCacheGet(cacheKey);
-    if (cached) return Promise.resolve(cached);
+    if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
 
     var till = new Date();
     var from = new Date(till);
-    from.setFullYear(from.getFullYear() - (yearsBack || YIELD_YEARS));
+    from.setFullYear(from.getFullYear() - yearsBack);
+    var fromStr = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(from) : moexFormatDate(from);
+    var tillStr = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(till) : moexFormatDate(till);
+    var baseUrl = MOEX_ISS + '/history/engines/stock/markets/shares/boards/TQBR/securities/' +
+      encodeURIComponent(ticker) + '.json?from=' + fromStr + '&till=' + tillStr +
+      '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE';
 
-    function loadPage(start) {
-      var url = MOEX_ISS + '/history/engines/stock/markets/shares/boards/TQBR/securities/' +
-        encodeURIComponent(ticker) + '.json?from=' + moexFormatDate(from) +
-        '&till=' + moexFormatDate(till) +
-        '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE&start=' + start +
-        '&limit=' + HISTORY_PAGE_LIMIT;
+    var all = [];
+    var start = 0;
+    var iDate = -1;
+    var iClose = -1;
+    var iVal = -1;
+
+    function fetchPage() {
+      var url = baseUrl + '&start=' + start;
       return moexFetchJson(url).then(function (json) {
         var hist = json.history;
-        if (!hist || !hist.data) return { rows: [], rawLen: 0, next: start, hasMore: false };
-        var cols = hist.columns;
-        var iDate = cols.indexOf('TRADEDATE');
-        var iClose = cols.indexOf('CLOSE');
-        var iVal = cols.indexOf('VALUE');
-        var rows = [];
+        if (!hist || !hist.data || !hist.data.length) return all;
+        if (iDate < 0) {
+          iDate = hist.columns.indexOf('TRADEDATE');
+          iClose = hist.columns.indexOf('CLOSE');
+          iVal = hist.columns.indexOf('VALUE');
+        }
         hist.data.forEach(function (row) {
           var d = String(row[iDate] || '').slice(0, 10);
           var close = Number(row[iClose]);
           var val = Number(row[iVal]);
           if (!d) return;
-          rows.push({
+          all.push({
             date: d,
             close: isFinite(close) ? close : null,
             value: isFinite(val) ? val : null,
             t: new Date(d + 'T12:00:00').getTime()
           });
         });
-        var rawLen = hist.data.length;
-        var next = start + rawLen;
-        var cur = hist.cursor && hist.cursor.data && hist.cursor.data[0];
-        var total = cur ? cur[1] : null;
-        var hasMore = rawLen > 0 && (cur ? next < total : rawLen >= 100);
-        return { rows: rows, rawLen: rawLen, next: next, hasMore: hasMore };
+        var cur = json['history.cursor'] && json['history.cursor'].data && json['history.cursor'].data[0];
+        var total = cur ? Number(cur[1]) : all.length;
+        var pageSize = cur ? Number(cur[2]) : hist.data.length;
+        if (pageSize > 0 && start + hist.data.length < total) {
+          start += pageSize;
+          return fetchPage();
+        }
+        return all;
       });
     }
 
-    var all = [];
-    var start = 0;
-    function loop() {
-      return loadPage(start).then(function (page) {
-        all = all.concat(page.rows);
-        if (page.hasMore) {
-          start = page.next;
-          return loop();
-        }
-        var byDate = {};
-        all.forEach(function (r) { byDate[r.date] = r; });
-        var out = Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
-        analyticsCacheSet(cacheKey, out, 12 * 60 * 60 * 1000);
-        return out;
-      });
-    }
-    return loop();
+    return fetchPage().then(function (rows) {
+      var byDate = {};
+      rows.forEach(function (r) { byDate[r.date] = r; });
+      var out = Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
+      analyticsCacheSet(cacheKey, out, 6 * 60 * 60 * 1000);
+      return out;
+    });
   }
 
   function computeYearlyDividendYields(dividends, dailyHistory) {
@@ -672,7 +688,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v2.' + ticker;
+    var cacheKey = 'full.v3.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached) return Promise.resolve(cached);
 
