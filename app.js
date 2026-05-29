@@ -196,7 +196,8 @@
 
     window.addEventListener('hashchange', initHash);
 
-    document.getElementById('horizonTabs').addEventListener('click', function (e) {
+    var horizonTabs = document.getElementById('horizonTabs');
+    if (horizonTabs) horizonTabs.addEventListener('click', function (e) {
       var btn = e.target.closest('[data-horizon]');
       if (!btn) return;
       state.horizon = btn.getAttribute('data-horizon');
@@ -314,7 +315,8 @@
         addTicker(document.getElementById('tickerInput').value);
       });
     }
-    document.getElementById('tickerInput').addEventListener('keydown', function (e) {
+    var tickerInput = document.getElementById('tickerInput');
+    if (tickerInput) tickerInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
         if (acControllers.tickerInput) acControllers.tickerInput.handleEnter(e);
         addTicker(e.target.value);
@@ -353,7 +355,8 @@
       }
     });
 
-    document.getElementById('refreshIndexBtn').addEventListener('click', function () {
+    var refreshIndexBtn = document.getElementById('refreshIndexBtn');
+    if (refreshIndexBtn) refreshIndexBtn.addEventListener('click', function () {
       renderMoexIndexBox();
       showToast('Индекс обновлён');
     });
@@ -389,7 +392,8 @@
       tbody.addEventListener('click', handlePortfolioTableClick);
     });
 
-    document.getElementById('portfolioCards').addEventListener('click', function (e) {
+    var portfolioCards = document.getElementById('portfolioCards');
+    if (portfolioCards) portfolioCards.addEventListener('click', function (e) {
       var card = e.target.closest('.portfolio-card');
       if (!card) return;
       var tickerEl = card.querySelector('.ticker');
@@ -409,14 +413,16 @@
       }, 120);
     });
 
-    document.getElementById('alertThreshold').addEventListener('input', function () {
+    var alertThreshold = document.getElementById('alertThreshold');
+    if (alertThreshold) alertThreshold.addEventListener('input', function () {
       saveAlertsFromUI();
       renderAlerts();
     });
     document.querySelectorAll('#alertChannels input').forEach(function (cb) {
       cb.addEventListener('change', saveAlertsFromUI);
     });
-    document.getElementById('addAlertRuleBtn').addEventListener('click', function () {
+    var addAlertRuleBtn = document.getElementById('addAlertRuleBtn');
+    if (addAlertRuleBtn) addAlertRuleBtn.addEventListener('click', function () {
       var raw = document.getElementById('alertRuleTicker').value;
       var type = document.getElementById('alertRuleType').value;
       resolveTickerFromInput(raw).then(function (ticker) {
@@ -443,11 +449,14 @@
       el.addEventListener('blur', saveProfileFromUI);
     });
 
-    document.getElementById('exportJsonBtn').addEventListener('click', exportAll);
-    document.getElementById('importFileBtn').addEventListener('click', function () {
-      document.getElementById('importFileInput').click();
+    var exportJsonBtn = document.getElementById('exportJsonBtn');
+    if (exportJsonBtn) exportJsonBtn.addEventListener('click', exportAll);
+    var importFileBtn = document.getElementById('importFileBtn');
+    var importFileInput = document.getElementById('importFileInput');
+    if (importFileBtn && importFileInput) importFileBtn.addEventListener('click', function () {
+      importFileInput.click();
     });
-    document.getElementById('importFileInput').addEventListener('change', function (e) {
+    if (importFileInput) importFileInput.addEventListener('change', function (e) {
       var file = e.target.files && e.target.files[0];
       if (!file) return;
       var reader = new FileReader();
@@ -458,8 +467,10 @@
       reader.readAsText(file);
     });
 
-    document.getElementById('briefArticleCloseBtn').addEventListener('click', closeBriefArticleModal);
-    document.getElementById('briefArticleModal').addEventListener('click', function (e) {
+    var briefArticleCloseBtn = document.getElementById('briefArticleCloseBtn');
+    if (briefArticleCloseBtn) briefArticleCloseBtn.addEventListener('click', closeBriefArticleModal);
+    var briefArticleModal = document.getElementById('briefArticleModal');
+    if (briefArticleModal) briefArticleModal.addEventListener('click', function (e) {
       if (e.target.id === 'briefArticleModal') closeBriefArticleModal();
     });
     var articleCloseBtn = document.getElementById('articleModalCloseBtn');
@@ -517,31 +528,35 @@
 
 
   function init() {
-    if (!localStorage.getItem(KEYS.portfolio)) {
-      setPortfolio({ positions: [] });
-    }
-    loadProfileToUI();
-    loadFiltersToUI();
-    renderWatchlist();
-    loadLiveBriefs();
-    if (typeof scheduleBriefsRefresh === 'function') scheduleBriefsRefresh();
-    renderMarketTiles();
-    renderMarketMacro();
-    if (typeof scheduleMarketMacroRefresh === 'function') scheduleMarketMacroRefresh();
-    if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
-      ['briefingMarketTabs', 'analyticsMarketTabs', 'portfolioMarketTabs'].forEach(function (id) {
-        Markets.renderBriefingMarketTabs(id);
-      });
-    }
-    renderHomePage();
-    renderPortfolio();
-    updatePortfolioFormChrome();
-    if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
-    renderAlerts();
     bindEvents();
-    bindChartHover(document.getElementById('imoexMiniChart'));
-    bindChartHover(document.getElementById('analyticsPriceChart'));
-    bindChartHover(document.getElementById('portfolioInsightPriceChart'));
+    try {
+      if (!localStorage.getItem(KEYS.portfolio)) {
+        setPortfolio({ positions: [] });
+      }
+      loadProfileToUI();
+      loadFiltersToUI();
+      renderWatchlist();
+      loadLiveBriefs();
+      if (typeof scheduleBriefsRefresh === 'function') scheduleBriefsRefresh();
+      renderMarketTiles();
+      renderMarketMacro();
+      if (typeof scheduleMarketMacroRefresh === 'function') scheduleMarketMacroRefresh();
+      if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
+        ['briefingMarketTabs', 'analyticsMarketTabs', 'portfolioMarketTabs'].forEach(function (id) {
+          Markets.renderBriefingMarketTabs(id);
+        });
+      }
+      renderHomePage();
+      renderPortfolio();
+      updatePortfolioFormChrome();
+      if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
+      renderAlerts();
+      bindChartHover(document.getElementById('imoexMiniChart'));
+      bindChartHover(document.getElementById('analyticsPriceChart'));
+      bindChartHover(document.getElementById('portfolioInsightPriceChart'));
+    } catch (err) {
+      console.error('InvestBrief init error', err);
+    }
     initHash();
   }
 

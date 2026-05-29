@@ -72,7 +72,7 @@
 
     title.classList.toggle('book-nav__title--multiline', multiline);
 
-    var wRem = Math.min(7.25rem, Math.max(4rem, longest * 0.32 + 1.6));
+    var wRem = Math.min(7.25, Math.max(4, longest * 0.32 + 1.6));
     var hRem = multiline ? Math.max(2.85, wRem * 0.64) : Math.max(2.55, wRem * 0.56);
 
     if (longest > 11) {
