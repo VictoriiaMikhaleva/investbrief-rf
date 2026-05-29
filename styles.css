@@ -1857,6 +1857,11 @@
       height: 11rem;
     }
     .analytics-chart-wrap--mid { min-height: 13rem; height: 13rem; }
+    .analytics-chart-wrap--vol {
+      min-height: 13rem;
+      height: 13rem;
+      overflow: visible;
+    }
     .analytics-chart-wrap--div {
       min-height: 13.5rem;
       height: 13.5rem;
@@ -1872,9 +1877,51 @@
     .bar-chart-wrap {
       position: relative;
       cursor: default;
+      overflow: visible;
+    }
+    .chart-canvas-wrap.bar-chart-wrap {
+      overflow: visible;
     }
     .bar-chart-wrap canvas {
       cursor: crosshair;
+    }
+    .bar-chart-hover-tip {
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      top: 0;
+      pointer-events: none;
+      padding: 0.4rem 0.65rem;
+      border-radius: 8px;
+      background: rgba(31, 30, 28, 0.94);
+      color: #faf8f4;
+      font-size: 0.75rem;
+      font-weight: 500;
+      line-height: 1.35;
+      box-shadow: 0 4px 16px rgba(31, 30, 28, 0.18);
+      opacity: 0;
+      transform: translate(-50%, calc(-100% - 10px));
+      transition: opacity 0.1s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      max-width: min(16rem, calc(100vw - 2rem));
+      white-space: nowrap;
+    }
+    .bar-chart-hover-tip.is-visible {
+      opacity: 1;
+    }
+    .bar-chart-hover-tip--below {
+      transform: translate(-50%, 10px);
+    }
+    .bar-chart-hover-tip__date {
+      font-size: 0.72rem;
+      color: rgba(250, 248, 244, 0.85);
+    }
+    .bar-chart-hover-tip__val {
+      font-size: 0.82rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
     }
     @media (prefers-reduced-motion: reduce) {
       .bar-chart-wrap canvas { cursor: default; }

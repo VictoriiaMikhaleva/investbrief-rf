@@ -725,42 +725,104 @@
 
 
 
-  function drawBarHoverTooltip(ctx, lines, cx, topY, plotWidth) {
-    lines = (lines || []).filter(Boolean);
-    if (!lines.length) return;
-    ctx.save();
-    ctx.font = '600 11px Manrope, Golos Text, sans-serif';
-    var lineH = 14;
-    var maxW = 0;
-    lines.forEach(function (ln) {
-      maxW = Math.max(maxW, ctx.measureText(ln).width);
-    });
-    var padX = 6;
-    var padY = 4;
-    var bw = maxW + padX * 2;
-    var bh = lines.length * lineH + padY * 2;
-    var maxPlotW = plotWidth || 280;
-    var bx = Math.max(2, cx - bw / 2);
-    var by = Math.max(2, topY - bh - 4);
-    if (bx + bw > maxPlotW - 2) bx = maxPlotW - bw - 2;
-    ctx.fillStyle = 'rgba(247, 244, 238, 0.96)';
-    ctx.strokeStyle = 'rgba(61, 92, 71, 0.25)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    if (ctx.roundRect) {
-      ctx.roundRect(bx, by, bw, bh, 5);
-    } else {
-      ctx.rect(bx, by, bw, bh);
+  function formatBarHoverDate(point) {
+    if (!point) return '';
+    if (point.date && typeof formatTradeDateRu === 'function') {
+      return formatTradeDateRu(point.date, true);
     }
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#1F1E1C';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    lines.forEach(function (ln, idx) {
-      ctx.fillText(ln, bx + bw / 2, by + padY + lineH * idx + lineH / 2);
-    });
-    ctx.restore();
+    return formatBarChartDate(point);
+  }
+
+
+
+  function getBarHoverLines(point, v, options) {
+    if (point && point.hoverLines && point.hoverLines.length) return point.hoverLines.slice();
+    options = options || {};
+    var dt = formatBarHoverDate(point);
+    var val = point && point.valueLabel != null
+      ? String(point.valueLabel)
+      : formatBarChartValueWithUnit(v, options);
+    if (dt && val) return [dt, val];
+    if (val) return [val];
+    return dt ? [dt] : [];
+  }
+
+
+
+  function ensureBarChartHoverTip(wrap) {
+    var tip = wrap.querySelector('.bar-chart-hover-tip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.className = 'bar-chart-hover-tip';
+      tip.setAttribute('aria-hidden', 'true');
+      wrap.appendChild(tip);
+    }
+    return tip;
+  }
+
+
+
+  function hideBarChartHoverTip(canvas) {
+    var wrap = canvas && canvas.parentElement;
+    if (!wrap) return;
+    var tip = wrap.querySelector('.bar-chart-hover-tip');
+    if (tip) {
+      tip.classList.remove('is-visible', 'bar-chart-hover-tip--below');
+      tip.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+
+
+  function positionBarChartHoverTip(tip, wrap, cx, cy) {
+    tip.classList.remove('bar-chart-hover-tip--below');
+    tip.style.left = cx + 'px';
+    tip.style.top = cy + 'px';
+    tip.style.transform = 'translate(-50%, calc(-100% - 10px))';
+    tip.classList.add('is-visible');
+    tip.setAttribute('aria-hidden', 'false');
+
+    var pad = 10;
+    var wrapW = wrap.clientWidth;
+    var wrapH = wrap.clientHeight;
+    var tipW = tip.offsetWidth;
+    var tipH = tip.offsetHeight;
+    var left = cx - tipW / 2;
+    if (left < pad) left = pad;
+    if (left + tipW > wrapW - pad) left = wrapW - pad - tipW;
+    tip.style.left = (left + tipW / 2) + 'px';
+
+    var topAbove = cy - tipH - 12;
+    if (topAbove < pad) {
+      tip.classList.add('bar-chart-hover-tip--below');
+      tip.style.top = (cy + 14) + 'px';
+      tip.style.transform = 'translate(-50%, 0)';
+      if (cy + 14 + tipH > wrapH - pad) {
+        tip.style.top = Math.max(pad, wrapH - pad - tipH) + 'px';
+        tip.style.transform = 'translate(-50%, 0)';
+      }
+    }
+  }
+
+
+
+  function showBarChartHoverTip(canvas, hitIndex) {
+    var st = canvas._barChartState;
+    if (!st || hitIndex < 0 || !st.bars[hitIndex]) {
+      hideBarChartHoverTip(canvas);
+      return;
+    }
+    var wrap = canvas.parentElement;
+    if (!wrap) return;
+    var tip = ensureBarChartHoverTip(wrap);
+    var bar = st.bars[hitIndex];
+    var point = st.series[hitIndex];
+    var lines = getBarHoverLines(point, bar.v, st.baseOptions);
+    tip.innerHTML = lines.map(function (ln, idx) {
+      var cls = idx === 0 ? 'bar-chart-hover-tip__date' : 'bar-chart-hover-tip__val';
+      return '<span class="' + cls + '">' + escapeHtml(ln) + '</span>';
+    }).join('');
+    positionBarChartHoverTip(tip, wrap, bar.x + bar.barW / 2, bar.y);
   }
 
 
@@ -829,6 +891,11 @@
       if (!st || !st.bars.length) return -1;
       var rect = canvas.getBoundingClientRect();
       var mx = clientX - rect.left;
+      var i;
+      for (i = 0; i < st.bars.length; i++) {
+        var b = st.bars[i];
+        if (mx >= b.x - 1 && mx <= b.x + b.barW + 1) return b.index;
+      }
       var best = -1;
       var bestDist = Infinity;
       st.bars.forEach(function (b) {
@@ -839,27 +906,41 @@
           best = b.index;
         }
       });
-      var magnet = st.bars[0] ? Math.max(22, st.bars[0].barW * 1.4) : 24;
+      var refBar = st.bars[0];
+      var magnet = refBar ? Math.max(10, Math.min(28, refBar.barW * 2.5)) : 16;
       return bestDist <= magnet ? best : -1;
     }
 
-    function redraw(hoverIdx) {
+    function setHover(hoverIdx) {
       var st = canvas._barChartState;
       if (!st) return;
-      var opts = Object.assign({}, st.baseOptions, { hoverIndex: hoverIdx, _redraw: true });
-      drawFullBarChart(canvas, st.series, opts);
+      if (hoverIdx !== st.hover) {
+        var opts = Object.assign({}, st.baseOptions, { hoverIndex: hoverIdx, _redraw: true });
+        drawFullBarChart(canvas, st.series, opts);
+      } else if (hoverIdx >= 0) {
+        showBarChartHoverTip(canvas, hoverIdx);
+      }
+      if (hoverIdx < 0) hideBarChartHoverTip(canvas);
     }
 
-    canvas.addEventListener('mousemove', function (e) {
-      var hit = pickBar(e.clientX);
-      var st = canvas._barChartState;
-      if (!st) return;
-      if (hit !== st.hover) redraw(hit);
+    var wrap = parent || canvas.parentElement;
+    (wrap || canvas).addEventListener('mousemove', function (e) {
+      setHover(pickBar(e.clientX));
     });
-    canvas.addEventListener('mouseleave', function () {
-      var st = canvas._barChartState;
-      if (st && st.hover !== -1) redraw(-1);
+    (wrap || canvas).addEventListener('mouseleave', function () {
+      setHover(-1);
     });
+    canvas.addEventListener('touchstart', function (e) {
+      if (e.touches.length) setHover(pickBar(e.touches[0].clientX));
+    }, { passive: true });
+    canvas.addEventListener('touchmove', function (e) {
+      if (e.touches.length) {
+        e.preventDefault();
+        setHover(pickBar(e.touches[0].clientX));
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchend', function () { setHover(-1); });
+    canvas.addEventListener('touchcancel', function () { setHover(-1); });
   }
 
 
@@ -930,27 +1011,11 @@
       barsMeta.push({ x: x, y: y, barW: barW, bh: bh, index: i, v: v });
 
       var showVal = v > 0 && (showValues || isHover);
-      if (showVal) {
-        if (isHover) {
-          var hoverLines = series[i].hoverLines;
-          if (!hoverLines || !hoverLines.length) {
-            var dt = formatBarChartDate(series[i]);
-            var valPart = series[i].valueLabel != null
-              ? String(series[i].valueLabel)
-              : formatBarChartValueWithUnit(v, options);
-            if (dt && valPart) hoverLines = [dt, valPart];
-            else if (valPart) hoverLines = [valPart];
-            else if (dt) hoverLines = [dt];
-          }
-          if (hoverLines && hoverLines.length) {
-            drawBarHoverTooltip(ctx, hoverLines, x + barW / 2, y, w);
-          }
-        } else {
-          var valText = series[i].valueLabel != null
-            ? String(series[i].valueLabel)
-            : formatBarChartValue(v, options);
-          if (valText) drawBarValueLabel(ctx, valText, x + barW / 2, y, w);
-        }
+      if (showVal && !isHover) {
+        var valText = series[i].valueLabel != null
+          ? String(series[i].valueLabel)
+          : formatBarChartValue(v, options);
+        if (valText) drawBarValueLabel(ctx, valText, x + barW / 2, y, w);
       }
       if (options.showLabels !== false || (isHover && options.showLabels === false)) {
         var lbl = series[i].label || String(i + 1);
@@ -986,6 +1051,8 @@
       bindBarChartMagnet(canvas);
       bindBarChartResize(canvas);
     }
+    if (hoverIndex >= 0) showBarChartHoverTip(canvas, hoverIndex);
+    else hideBarChartHoverTip(canvas);
   }
 
 
@@ -997,7 +1064,10 @@
         v: v,
         label: String(y.year),
         forecast: false,
-        valueLabel: v > 0 ? formatBarChartValue(v, {}) : ''
+        valueLabel: v > 0 ? formatBarChartValue(v, {}) : '',
+        hoverLines: v > 0
+          ? [String(y.year), formatBarChartValue(v, {}) + ' ₽/акц.']
+          : [String(y.year)]
       };
     });
     if (forecast && forecast.amount != null && isFinite(forecast.amount)) {
@@ -1006,7 +1076,8 @@
         v: fv,
         label: '12м',
         forecast: true,
-        valueLabel: formatBarChartValue(fv, {})
+        valueLabel: formatBarChartValue(fv, {}),
+        hoverLines: ['Прогноз 12 мес.', formatBarChartValue(fv, {}) + ' ₽/акц.']
       });
     }
     return bars;
@@ -1159,11 +1230,18 @@
       }
       if (volCanvas) {
         var volBars = (a.volumeByDay || []).map(function (p) {
+          var volStr = p.v > 0
+            ? p.v.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+            : '0';
           return {
             v: p.v,
             date: p.date,
             label: p.label || '',
             valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
+            hoverLines: [
+              formatBarHoverDate(p) || p.label || '',
+              'Оборот: ' + volStr + ' млрд ₽'
+            ],
             forecast: false
           };
         });
@@ -1267,11 +1345,18 @@
       }
       if (volCanvas) {
         var volBars = (a.volumeByDay || []).map(function (p) {
+          var volStr = p.v > 0
+            ? p.v.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+            : '0';
           return {
             v: p.v,
             date: p.date,
             label: p.label || '',
             valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
+            hoverLines: [
+              formatBarHoverDate(p) || p.label || '',
+              'Оборот: ' + volStr + ' млрд ₽'
+            ],
             forecast: false
           };
         });
