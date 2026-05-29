@@ -244,7 +244,7 @@
       return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     }
     if (horizon === 'year') {
-      return d.toLocaleDateString('ru-RU', { month: 'short' });
+      return d.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' });
     }
     return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
   }

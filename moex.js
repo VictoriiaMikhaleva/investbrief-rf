@@ -429,6 +429,64 @@
 
 
 
+  function fetchMoexCandlesAll(url) {
+    var allRows = [];
+    var start = 0;
+    var closeIdx = -1;
+    var beginIdx = -1;
+    var pageSize = 500;
+
+    function fetchPage() {
+      var pageUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'start=' + start;
+      return moexFetchJson(pageUrl).then(function (json) {
+        var block = json.candles;
+        if (!block || !block.data || !block.data.length) return allRows;
+        if (closeIdx < 0) {
+          closeIdx = block.columns.indexOf('close');
+          beginIdx = block.columns.indexOf('begin');
+        }
+        allRows = allRows.concat(block.data);
+        if (block.data.length >= pageSize) {
+          start += block.data.length;
+          return fetchPage();
+        }
+        return allRows;
+      });
+    }
+
+    return fetchPage().then(function (rows) {
+      if (closeIdx < 0 || beginIdx < 0 || !rows.length) return [];
+      return rows.map(function (row) {
+        return { t: new Date(row[beginIdx]).getTime(), price: Number(row[closeIdx]) };
+      }).filter(function (p) { return p.t && isFinite(p.price); });
+    });
+  }
+
+
+
+  function mergeLiveQuoteIntoSeries(series, quote) {
+    if (!series.length || !quote || quote.price == null || !isFinite(quote.price)) return series;
+    var out = series.slice();
+    var last = out[out.length - 1];
+    var liveTs = Date.now();
+    var lastDay = new Date(last.t);
+    var liveDay = new Date(liveTs);
+    var sameDay =
+      lastDay.getFullYear() === liveDay.getFullYear() &&
+      lastDay.getMonth() === liveDay.getMonth() &&
+      lastDay.getDate() === liveDay.getDate();
+    if (sameDay) {
+      out[out.length - 1] = { t: liveTs, price: quote.price };
+      return out;
+    }
+    if (liveTs - last.t > 12 * 60 * 60 * 1000) {
+      out.push({ t: liveTs, price: quote.price });
+    }
+    return out;
+  }
+
+
+
   function parseMoexLastPrice(json) {
     var q = parseMoexQuoteFromMd(json);
     return q ? q.price : null;
@@ -592,18 +650,24 @@
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       return Markets.fetchUsHistory(ticker, horizon);
     }
-    var cacheKey = 'candles.' + ticker + '.' + horizon;
+    var cacheKey = 'candles.v2.' + ticker + '.' + horizon;
     var cached = moexCacheGet(cacheKey);
     if (cached) return Promise.resolve({ series: cached, source: 'moex', cached: true });
 
     return resolveMoexInstrument(ticker).then(function (inst) {
       var q = moexHorizonQuery(horizon);
       var url = moexCandlesUrl(inst) + '?from=' + q.from + '&till=' + q.till + '&interval=' + q.interval + '&iss.meta=off';
-      return moexFetchJson(url).then(function (json) {
-        var series = sliceSeriesForHorizon(parseMoexCandles(json), horizon);
+      return fetchMoexCandlesAll(url).then(function (rawSeries) {
+        var series = sliceSeriesForHorizon(rawSeries, horizon);
         if (series.length < 2) throw new Error('not enough candles');
-        moexCacheSet(cacheKey, series);
-        return { series: series, source: 'moex', inst: inst };
+        return fetchMoexLastPrice(ticker).then(function (price) {
+          series = mergeLiveQuoteIntoSeries(series, price != null ? { price: price } : null);
+          moexCacheSet(cacheKey, series, horizon === 'year' ? 30 * 60 * 1000 : undefined);
+          return { series: series, source: 'moex', inst: inst };
+        }).catch(function () {
+          moexCacheSet(cacheKey, series, horizon === 'year' ? 30 * 60 * 1000 : undefined);
+          return { series: series, source: 'moex', inst: inst };
+        });
       });
     });
   }
