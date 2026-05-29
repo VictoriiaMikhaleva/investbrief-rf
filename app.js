@@ -528,6 +528,7 @@
 
 
   function init() {
+    if (state.analyticsPriceHorizon === 'year') state.analyticsPriceHorizon = '5y';
     bindEvents();
     try {
       if (!localStorage.getItem(KEYS.portfolio)) {

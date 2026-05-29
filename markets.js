@@ -638,6 +638,7 @@
     if (horizon === 'day') return { range: '1d', interval: '5m' };
     if (horizon === 'week') return { range: '5d', interval: '1d' };
     if (horizon === 'month') return { range: '1mo', interval: '1d' };
+    if (horizon === '5y') return { range: '5y', interval: '1wk' };
     return { range: '1y', interval: '1d' };
   }
 
@@ -664,7 +665,9 @@
     if (horizon === 'day') cut = now - 24 * 60 * 60 * 1000;
     else if (horizon === 'week') cut = now - 7 * 24 * 60 * 60 * 1000;
     else if (horizon === 'month') cut = now - 30 * 24 * 60 * 60 * 1000;
-    else cut = now - 365 * 24 * 60 * 60 * 1000;
+    else if (horizon === 'year') cut = now - 366 * 24 * 60 * 60 * 1000;
+    else if (horizon === '5y') cut = now - 5 * 365.25 * 24 * 60 * 60 * 1000;
+    else cut = now - 366 * 24 * 60 * 60 * 1000;
     var sliced = series.filter(function (p) { return p.t >= cut; });
     return sliced.length >= 2 ? sliced : series.slice(-Math.min(series.length, horizon === 'day' ? 48 : 30));
   }

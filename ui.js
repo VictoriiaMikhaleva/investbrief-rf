@@ -238,15 +238,68 @@
 
 
 
+  function formatChartMonthYear(d) {
+    var month = d.toLocaleDateString('ru-RU', { month: 'long' });
+    if (month.length) month = month.charAt(0).toLowerCase() + month.slice(1);
+    return month + ' ' + d.getFullYear();
+  }
+
+
+
   function formatChartAxisTime(ts, horizon) {
     var d = new Date(ts);
     if (horizon === 'day') {
       return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     }
-    if (horizon === 'year') {
-      return d.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' });
+    if (horizon === '5y' || horizon === 'year') {
+      return formatChartMonthYear(d);
     }
-    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    var day = d.getDate();
+    var monthShort = d.toLocaleDateString('ru-RU', { month: 'short' }).replace(/\./g, '').trim();
+    return day + ' ' + monthShort;
+  }
+
+
+
+  function pickChartAxisLabelIndices(series, horizon) {
+    if (!series || !series.length) return [];
+    if (series.length === 1) return [0];
+    var candidates = [0, Math.floor((series.length - 1) / 2), series.length - 1];
+    var seen = {};
+    var out = [];
+    candidates.forEach(function (idx) {
+      if (idx < 0 || idx >= series.length) return;
+      var lbl = formatChartAxisTime(series[idx].t, horizon);
+      if (seen[lbl]) {
+        for (var delta = 1; delta <= 24; delta++) {
+          var alt = idx + delta;
+          if (alt < series.length) {
+            var altLbl = formatChartAxisTime(series[alt].t, horizon);
+            if (!seen[altLbl]) {
+              idx = alt;
+              lbl = altLbl;
+              break;
+            }
+          }
+          alt = idx - delta;
+          if (alt >= 0) {
+            var altLbl2 = formatChartAxisTime(series[alt].t, horizon);
+            if (!seen[altLbl2]) {
+              idx = alt;
+              lbl = altLbl2;
+              break;
+            }
+          }
+        }
+      }
+      if (!seen[lbl]) {
+        seen[lbl] = true;
+        out.push(idx);
+      }
+    });
+    if (out.indexOf(0) < 0) out.unshift(0);
+    if (out.indexOf(series.length - 1) < 0) out.push(series.length - 1);
+    return out.sort(function (a, b) { return a - b; });
   }
 
 
@@ -402,7 +455,7 @@
     var pad = {
       top: 14,
       right: 12,
-      bottom: 28,
+      bottom: (options.horizon === '5y' || options.horizon === 'year') ? 36 : 28,
       left: getChartYAxisPad(ctx, minP, maxP, options.ticker)
     };
     var plotW = w - pad.left - pad.right;
@@ -500,9 +553,11 @@
     ctx.fill();
     if (hoverIndex != null) ctx.stroke();
 
-    var labelIdx = [0, Math.floor((series.length - 1) / 2), series.length - 1];
+    var labelIdx = pickChartAxisLabelIndices(series, options.horizon);
     ctx.fillStyle = '#6B6B6B';
-    ctx.font = '10px Inter, Manrope, sans-serif';
+    ctx.font = (options.horizon === '5y' || options.horizon === 'year')
+      ? '9px Inter, Manrope, sans-serif'
+      : '10px Inter, Manrope, sans-serif';
     ctx.textAlign = 'center';
     labelIdx.forEach(function (idx) {
       if (idx < 0 || idx >= series.length) return;
@@ -929,7 +984,14 @@
     return bars;
   }
 
+  function resolveAnalyticsPriceHorizon(horizon) {
+    horizon = horizon || '5y';
+    if (horizon === 'year') return '5y';
+    return horizon;
+  }
+
   function analyticsPriceHorizonLabel(horizon) {
+    horizon = resolveAnalyticsPriceHorizon(horizon);
     if (horizon === 'day') return '1 день';
     if (horizon === 'month') return 'Месяц';
     return '5 лет';
@@ -1002,7 +1064,7 @@
     sec.hidden = false;
     setSecurityChartTab('price');
 
-    var horizon = state.analyticsPriceHorizon || 'year';
+    var horizon = resolveAnalyticsPriceHorizon(state.analyticsPriceHorizon);
     if (priceLbl) priceLbl.textContent = 'Цена · ' + analyticsPriceHorizonLabel(horizon);
 
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
@@ -1120,8 +1182,8 @@
     var ret = typeof getPositionReturnPct === 'function' ? getPositionReturnPct(pos) : null;
     var qty = isFinite(Number(pos.qty)) ? Number(pos.qty) : 0;
 
-    fetchMoexHistory(ticker, 'year').then(function (r) {
-      if (priceCanvas && r.series) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: 'year' });
+    fetchMoexHistory(ticker, '5y').then(function (r) {
+      if (priceCanvas && r.series) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: '5y' });
     });
 
     if (!isRuStockForAnalytics(ticker)) {

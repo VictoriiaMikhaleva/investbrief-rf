@@ -925,7 +925,7 @@
     imoexHorizon: 'month',
     chartTicker: '',
     analyticsTicker: '',
-    analyticsPriceHorizon: 'year',
+    analyticsPriceHorizon: '5y',
     folderOpen: false,
     chartRequestId: 0,
     briefArticleReqId: 0,

@@ -404,14 +404,19 @@
     }
     if (horizon === 'month') {
       from.setDate(from.getDate() - 45);
-      return { interval: 24, from: moexFormatDate(from), till: moexFormatDate(till) };
+      return { interval: 24, from: moexFormatDateMsk(from), till: moexFormatDateMsk(till) };
     }
     if (horizon === 'year') {
+      from.setFullYear(from.getFullYear() - 1);
+      from.setDate(from.getDate() - 14);
+      return { interval: 24, from: moexFormatDateMsk(from), till: moexFormatDateMsk(till) };
+    }
+    if (horizon === '5y') {
       from.setFullYear(from.getFullYear() - 5);
-      return { interval: 24, from: moexFormatDate(from), till: moexFormatDate(till) };
+      return { interval: 24, from: moexFormatDateMsk(from), till: moexFormatDateMsk(till) };
     }
     from.setDate(from.getDate() - 400);
-    return { interval: 7, from: moexFormatDate(from), till: moexFormatDate(till) };
+    return { interval: 7, from: moexFormatDateMsk(from), till: moexFormatDateMsk(till) };
   }
 
 
@@ -638,7 +643,8 @@
     if (horizon === 'day') cut = now - 24 * 60 * 60 * 1000;
     else if (horizon === 'week') cut = now - 7 * 24 * 60 * 60 * 1000;
     else if (horizon === 'month') cut = now - 30 * 24 * 60 * 60 * 1000;
-    else if (horizon === 'year') cut = now - 5 * 365 * 24 * 60 * 60 * 1000;
+    else if (horizon === 'year') cut = now - 366 * 24 * 60 * 60 * 1000;
+    else if (horizon === '5y') cut = now - 5 * 365.25 * 24 * 60 * 60 * 1000;
     else cut = now - 365 * 24 * 60 * 60 * 1000;
     var sliced = series.filter(function (p) { return p.t >= cut; });
     return sliced.length >= 2 ? sliced : series.slice(-Math.min(series.length, horizon === 'day' ? 24 : 30));
@@ -650,7 +656,7 @@
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       return Markets.fetchUsHistory(ticker, horizon);
     }
-    var cacheKey = 'candles.v2.' + ticker + '.' + horizon;
+    var cacheKey = 'candles.v3.' + ticker + '.' + horizon;
     var cached = moexCacheGet(cacheKey);
     if (cached) return Promise.resolve({ series: cached, source: 'moex', cached: true });
 
@@ -662,10 +668,10 @@
         if (series.length < 2) throw new Error('not enough candles');
         return fetchMoexLastPrice(ticker).then(function (price) {
           series = mergeLiveQuoteIntoSeries(series, price != null ? { price: price } : null);
-          moexCacheSet(cacheKey, series, horizon === 'year' ? 30 * 60 * 1000 : undefined);
+          moexCacheSet(cacheKey, series, (horizon === '5y' || horizon === 'year') ? 30 * 60 * 1000 : undefined);
           return { series: series, source: 'moex', inst: inst };
         }).catch(function () {
-          moexCacheSet(cacheKey, series, horizon === 'year' ? 30 * 60 * 1000 : undefined);
+          moexCacheSet(cacheKey, series, (horizon === '5y' || horizon === 'year') ? 30 * 60 * 1000 : undefined);
           return { series: series, source: 'moex', inst: inst };
         });
       });
