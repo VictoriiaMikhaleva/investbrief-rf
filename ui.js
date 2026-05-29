@@ -768,18 +768,18 @@
   function drawBarValueLabel(ctx, text, cx, topY, plotWidth) {
     if (!text) return;
     ctx.save();
-    ctx.font = '700 12px Manrope, Golos Text, sans-serif';
+    ctx.font = '600 11px Manrope, Golos Text, sans-serif';
     var tw = ctx.measureText(text).width;
-    var padX = 6;
-    var padY = 4;
+    var padX = 7;
+    var padY = 3;
     var bw = tw + padX * 2;
-    var bh = 18;
+    var bh = 16;
     var maxPlotW = plotWidth || 320;
     var bx = Math.max(4, Math.min(cx - bw / 2, maxPlotW - bw - 4));
-    var by = Math.max(4, topY - bh - 8);
+    var by = Math.max(4, topY - bh - 6);
     ctx.fillStyle = 'rgba(255, 252, 248, 0.98)';
     ctx.strokeStyle = CHART_COLOR_AUTUMN_SOFT;
-    ctx.lineWidth = 1.25;
+    ctx.lineWidth = 1;
     ctx.beginPath();
     if (ctx.roundRect) {
       ctx.roundRect(bx, by, bw, bh, 4);
@@ -793,6 +793,25 @@
     ctx.textBaseline = 'middle';
     ctx.fillText(text, bx + bw / 2, by + bh / 2);
     ctx.restore();
+  }
+
+
+
+  function bindBarChartResize(canvas) {
+    if (!canvas || canvas._barResizeObs) return;
+    canvas._barResizeObs = true;
+    if (typeof ResizeObserver === 'undefined') return;
+    var target = canvas.parentElement || canvas;
+    var timer;
+    var ro = new ResizeObserver(function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        var st = canvas._barChartState;
+        if (st && st.series) drawFullBarChart(canvas, st.series, st.baseOptions);
+      }, 80);
+    });
+    ro.observe(target);
+    canvas._barResizeObserver = ro;
   }
 
 
@@ -869,16 +888,22 @@
     }
     var vals = series.map(function (p) { return p.v != null ? p.v : (p.y != null ? p.y : 0); });
     var max = Math.max.apply(null, vals.concat([0.001]));
-    var dense = vals.length > 14;
+    var n = vals.length;
+    var dense = n > 14;
+    var compact = options.compactBars !== false && n <= 10;
     var alwaysValues = options.showValues === true;
     var showValues = options.showValues !== false && (alwaysValues || !dense);
-    var padTop = showValues ? 34 : 14;
-    if (hoverIndex >= 0) padTop = Math.max(padTop, 42);
-    var pad = { l: 36, r: 12, t: padTop, b: 28 };
+    var padTop = showValues ? (compact ? 40 : 34) : 14;
+    if (hoverIndex >= 0) padTop = Math.max(padTop, 44);
+    var pad = { l: 40, r: 16, t: padTop, b: 30 };
     var plotW = w - pad.l - pad.r;
     var plotH = h - pad.t - pad.b;
-    var barGap = vals.length > 20 ? 2 : 4;
-    var barW = Math.max(4, (plotW - barGap * (vals.length - 1)) / vals.length);
+    var barGap = compact ? 14 : (n > 20 ? 2 : (n > 14 ? 4 : 8));
+    var maxBarW = compact ? 48 : (n > 14 ? 28 : 40);
+    var minBarW = compact ? 32 : 4;
+    var barW = Math.max(minBarW, Math.min(maxBarW, (plotW - barGap * Math.max(n - 1, 0)) / Math.max(n, 1)));
+    var groupW = n * barW + barGap * Math.max(n - 1, 0);
+    var startX = pad.l + Math.max(0, (plotW - groupW) / 2);
     var color = options.color || CHART_COLOR_AUTUMN;
     var forecastColor = options.forecastColor || CHART_COLOR_FORECAST;
     var barsMeta = [];
@@ -887,7 +912,7 @@
       var isHover = i === hoverIndex;
       var lift = isHover ? 5 : 0;
       var bh = Math.max(3, (v / max) * plotH) * (isHover ? 1.06 : 1);
-      var x = pad.l + i * (barW + barGap);
+      var x = startX + i * (barW + barGap);
       var y = pad.t + plotH - bh - lift;
       var barColor = series[i].forecast ? forecastColor : color;
       ctx.globalAlpha = hoverIndex >= 0 && !isHover ? 0.55 : 1;
@@ -931,7 +956,7 @@
         var lbl = series[i].label || String(i + 1);
         if (isHover || options.showLabels !== false) {
           ctx.fillStyle = isHover ? '#1F1E1C' : '#6B6B6B';
-          ctx.font = (isHover ? '600 ' : '') + '9px Golos Text, sans-serif';
+          ctx.font = (isHover ? '600 ' : '') + (compact ? '10px' : '9px') + ' Golos Text, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'alphabetic';
           ctx.fillText(lbl, x + barW / 2, h - 6);
@@ -957,17 +982,20 @@
       bars: barsMeta,
       hover: hoverIndex
     };
-    if (!options._redraw) bindBarChartMagnet(canvas);
+    if (!options._redraw) {
+      bindBarChartMagnet(canvas);
+      bindBarChartResize(canvas);
+    }
   }
 
 
 
   function buildDividendRubSeries(yearly, forecast) {
-    var bars = (yearly || []).map(function (y) {
+    var bars = (yearly || []).filter(function (y) { return y.totalDiv > 0; }).map(function (y) {
       var v = y.totalDiv > 0 ? y.totalDiv : 0;
       return {
         v: v,
-        label: String(y.year).slice(-2),
+        label: String(y.year),
         forecast: false,
         valueLabel: v > 0 ? formatBarChartValue(v, {}) : ''
       };
@@ -1032,9 +1060,15 @@
     var turnover = analytics && analytics.quote && analytics.quote.valueToday != null
       ? (Number(analytics.quote.valueToday) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд ₽'
       : '—';
-    var latestYield = analytics && analytics.divYieldByYear && analytics.divYieldByYear.length
-      ? formatDivYieldPct(analytics.divYieldByYear[analytics.divYieldByYear.length - 1].yieldPct)
-      : '—';
+    var latestPct = null;
+    if (analytics) {
+      if (typeof computeLatestDivYieldPct === 'function') {
+        latestPct = analytics.divLatestYield != null ? analytics.divLatestYield : computeLatestDivYieldPct(analytics);
+      } else if (analytics.divLatestYield != null) {
+        latestPct = analytics.divLatestYield;
+      }
+    }
+    var latestYield = formatDivYieldPct(latestPct);
     badgeRow.innerHTML = '<span class="tag tag-importance">' + (inPortfolio ? 'Есть в портфеле' : 'В наблюдении') + '</span>';
     metrics.innerHTML =
       '<article class="security-metric-card"><span class="lbl">Тип</span><span class="val">' + escapeHtml(type) + '</span></article>' +
@@ -1072,6 +1106,11 @@
       if (divNote) divNote.textContent = 'Используйте отчётность эмитента.';
       if (volNote) volNote.textContent = 'Данные по объёму торгов пока недоступны.';
       renderSecurityProfile(ticker, null);
+      if (typeof Markets.fetchUsQuoteExtended === 'function') {
+        Markets.fetchUsQuoteExtended(ticker).then(function (q) {
+          renderSecurityProfile(ticker, { quote: q || {}, divYieldByYear: [], eligible: true });
+        }).catch(function () { /* profile already shown */ });
+      }
       fetchMoexHistory(ticker, horizon).then(function (r) {
         if (priceCanvas) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
       });
@@ -1108,7 +1147,8 @@
           color: CHART_COLOR_AUTUMN,
           forecastColor: CHART_COLOR_FORECAST,
           ySuffix: '₽/акц.',
-          showValues: true
+          showValues: true,
+          compactBars: true
         });
       }
       if (divNote) {
@@ -1215,7 +1255,8 @@
           color: CHART_COLOR_AUTUMN,
           forecastColor: CHART_COLOR_FORECAST,
           ySuffix: '₽/акц.',
-          showValues: true
+          showValues: true,
+          compactBars: true
         });
       }
       if (divNote) {

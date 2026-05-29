@@ -63,6 +63,38 @@
     return pct.toFixed(1).replace('.', ',') + '%';
   }
 
+  /** Последняя (самая свежая) дивидендная доходность по бумаге. */
+  function computeLatestDivYieldPct(a) {
+    if (!a) return null;
+    var yearly = a.divYieldByYear || [];
+    var quotePrice = a.quote && a.quote.price;
+    var i;
+    for (i = yearly.length - 1; i >= 0; i--) {
+      var y = yearly[i];
+      if (y.yieldPct != null && isFinite(y.yieldPct) && y.yieldPct > 0) return y.yieldPct;
+      if (y.totalDiv > 0 && quotePrice != null && isFinite(quotePrice) && quotePrice > 0) {
+        return (y.totalDiv / quotePrice) * 100;
+      }
+    }
+    if (a.divForecast && a.divForecast.amount != null && isFinite(a.divForecast.amount) &&
+        quotePrice != null && isFinite(quotePrice) && quotePrice > 0) {
+      return (a.divForecast.amount / quotePrice) * 100;
+    }
+    if (a.monthlyForecast && a.monthlyForecast.months) {
+      var withYield = a.monthlyForecast.months.filter(function (m) {
+        return m.perShare > 0 && m.yieldPct != null && isFinite(m.yieldPct);
+      });
+      if (withYield.length) return withYield[withYield.length - 1].yieldPct;
+    }
+    if (a.quote && a.quote.divYieldPct != null && isFinite(a.quote.divYieldPct)) {
+      return a.quote.divYieldPct;
+    }
+    if (a.quote && a.quote.yieldPct != null && isFinite(a.quote.yieldPct)) {
+      return a.quote.yieldPct;
+    }
+    return null;
+  }
+
   function formatDivRubPerShare(val) {
     if (val == null || !isFinite(val)) return '—';
     return val.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽/акц.';
@@ -640,7 +672,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.' + ticker;
+    var cacheKey = 'full.v2.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached) return Promise.resolve(cached);
 
@@ -689,6 +721,7 @@
         out.monthlyForecast = null;
         out.divDataSource = manual.source || 'manual';
       }
+      out.divLatestYield = computeLatestDivYieldPct(out);
       analyticsCacheSet(cacheKey, out, ANALYTICS_TTL);
       return out;
     });
@@ -1078,6 +1111,7 @@
   window.isRuStockForAnalytics = isRuStockForAnalytics;
   window.isRuBondTicker = isRuBondTicker;
   window.formatDivYieldPct = formatDivYieldPct;
+  window.computeLatestDivYieldPct = computeLatestDivYieldPct;
   window.formatDivRubPerShare = formatDivRubPerShare;
   window.buildSecurityAnalytics = buildSecurityAnalytics;
   window.enrichQuoteCard = enrichQuoteCard;

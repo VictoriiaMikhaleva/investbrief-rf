@@ -1856,8 +1856,19 @@
       min-height: 11rem;
       height: 11rem;
     }
-    .analytics-chart-wrap--mid { min-height: 11.5rem; height: 11.5rem; }
-    .analytics-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+    .analytics-chart-wrap--mid { min-height: 13rem; height: 13rem; }
+    .analytics-chart-wrap--div {
+      min-height: 13.5rem;
+      height: 13.5rem;
+      max-width: 36rem;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .analytics-chart-wrap canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
     .bar-chart-wrap {
       position: relative;
       cursor: default;
