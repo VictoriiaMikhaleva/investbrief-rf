@@ -7,7 +7,7 @@
   },
   "scripts": {
     "serve": "firebase emulators:start --only functions",
-    "deploy": "firebase deploy --only functions:dataWatchdogHourly,firestore:rules"
+    "deploy": "firebase deploy --only functions:getAnalytics,functions:dataWatchdogHourly,firestore:rules"
   },
   "dependencies": {
     "firebase-admin": "^13.4.0",

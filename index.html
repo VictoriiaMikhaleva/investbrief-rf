@@ -906,11 +906,16 @@
   <script src="./news.js?v=20250831"></script>
   <script src="./moex.js?v=20250903"></script>
   <script src="./manual-data.js?v=20250828"></script>
-  <script src="./analytics.js?v=20260530j"></script>
+  <script>
+    /** Серверная аналитика: Firebase Function (prod) или /api/analytics при npm start */
+    window.INVESTBRIEF_ANALYTICS_API = 'https://europe-west1-investor-brief-rf.cloudfunctions.net/getAnalytics';
+  </script>
+  <script src="./analytics-core.js?v=20260530l"></script>
+  <script src="./analytics.js?v=20260530l"></script>
   <script src="./ofz.js?v=20260530e"></script>
   <script src="./portfolio.js?v=20250828e"></script>
   <script src="./agent.js?v=20260530f"></script>
-  <script src="./watchdog.js?v=20260530"></script>
+  <script src="./watchdog.js?v=20260530k"></script>
   <script src="./firebase-sync.js?v=20250612"></script>
   <script src="./app.js?v=20250831"></script>
 </body>

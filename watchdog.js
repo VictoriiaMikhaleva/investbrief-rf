@@ -35,7 +35,9 @@
       lastOkAt: null,
       lastError: null,
       lastCloudSyncAt: null,
-      lastCloudOk: null
+      lastCloudOk: null,
+      lastAnalyticsOkAt: null,
+      lastAnalyticsError: null
     };
   }
 
@@ -50,7 +52,9 @@
       lastOkAt: s.lastOkAt || null,
       lastError: s.lastError || null,
       lastCloudSyncAt: s.lastCloudSyncAt || null,
-      lastCloudOk: s.lastCloudOk == null ? null : !!s.lastCloudOk
+      lastCloudOk: s.lastCloudOk == null ? null : !!s.lastCloudOk,
+      lastAnalyticsOkAt: s.lastAnalyticsOkAt || null,
+      lastAnalyticsError: s.lastAnalyticsError || null
     };
   }
 
@@ -117,6 +121,18 @@
     return Promise.resolve(refreshAgentSignals(false)).catch(function () { return null; });
   }
 
+  function refreshAnalyticsQuiet() {
+    if (typeof runAnalyticsSpotCheck !== 'function') return Promise.resolve({ ok: true, skipped: true });
+    return runAnalyticsSpotCheck(true).then(function (report) {
+      if (report.ok) return report;
+      return Promise.reject(new Error(report.errors && report.errors.length
+        ? report.errors.join('; ')
+        : 'analytics_spot_check_failed'));
+    }).catch(function (err) {
+      return null;
+    });
+  }
+
   function refreshHomeIfVisible() {
     if (!state || state.tab !== 'briefing') return;
     if (typeof renderHomePage === 'function') renderHomePage();
@@ -137,13 +153,23 @@
     return Promise.all([
       refreshBriefsQuiet(),
       refreshMacroQuiet(true),
-      refreshAgentQuiet()
+      refreshAgentQuiet(),
+      refreshAnalyticsQuiet()
     ]).then(function (results) {
-      results.forEach(function (r) {
-        if (r === null && reason !== 'init') hadError = true;
+      var analyticsResult = results[3];
+      var nextExtra = {};
+      results.forEach(function (r, idx) {
+        if (r === null && reason !== 'init' && idx !== 3) hadError = true;
       });
+      if (analyticsResult && analyticsResult.ok === false) hadError = true;
+      if (analyticsResult && analyticsResult.ok && !analyticsResult.skipped) {
+        nextExtra.lastAnalyticsOkAt = started;
+        nextExtra.lastAnalyticsError = null;
+      } else if (analyticsResult === null) {
+        nextExtra.lastAnalyticsError = 'analytics_check_failed';
+      }
       refreshHomeIfVisible();
-      var next = normalizeWatchdogState(Object.assign({}, cfg, {
+      var next = normalizeWatchdogState(Object.assign({}, cfg, nextExtra, {
         lastRunAt: started,
         lastOkAt: hadError ? cfg.lastOkAt : started,
         lastError: hadError ? 'partial_failure' : null
@@ -238,6 +264,12 @@
     if (!statusEl) return;
     var localLine = 'Локально: ' + formatDevTs(cfg.lastRunAt) + ' · успешно ' + formatDevTs(cfg.lastOkAt) +
       ' · интервал ' + Math.round(cfg.intervalMs / 60000) + ' мин.';
+    if (cfg.lastAnalyticsOkAt) {
+      localLine += ' · аналитика ' + formatDevTs(cfg.lastAnalyticsOkAt);
+    }
+    if (cfg.lastAnalyticsError) {
+      localLine += ' · ⚠ ' + cfg.lastAnalyticsError;
+    }
     if (!cfg.enabled) {
       statusEl.textContent = 'Сторож данных отключён';
       return;

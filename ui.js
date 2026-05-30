@@ -688,7 +688,10 @@
         }).join(' · ');
       }
       if (volCanvas) drawMiniBarChart(volCanvas, a.volumeByDay || [], { color: '#6B7A5A' });
-      if (volNote) volNote.textContent = 'Оборот TQBR, млрд ₽ · ' + (a.volumeByDay.length || 0) + ' торговых дней';
+      if (volNote) volNote.textContent = typeof formatVolumeFreshnessNote === 'function'
+        ? formatVolumeFreshnessNote(a)
+        : ('Оборот TQBR, млрд ₽ · ' + (a.volumeByDay.length || 0) + ' торговых дней');
+      if (volNote && a.volumeStale) volNote.className = 'analytics-chart-note chart-info-readable data-stale-warning';
       return fetchMoexHistory(ticker, 'month');
     }).then(function (r) {
       if (priceCanvas && r && r.series) {
@@ -1232,6 +1235,9 @@
         if (a.divForecast && a.divForecast.amount != null) {
           parts.push('Прогноз: ' + formatDivRubPerShare(a.divForecast.amount));
         }
+        if (a.dataAsOf && typeof AnalyticsCore !== 'undefined' && AnalyticsCore.formatIsoDateRu) {
+          parts.push('данные MOEX на ' + AnalyticsCore.formatIsoDateRu(a.dataAsOf));
+        }
         metaEl.textContent = parts.join(' · ');
       }
       if (divCanvas) {
@@ -1275,10 +1281,11 @@
         });
       }
       if (volNote) {
-        volNote.textContent = a.volumeByDay && a.volumeByDay.length
-          ? ('Оборот TQBR за год · ' + a.volumeByDay.length + ' торговых дней · наведите на столбец: дата и оборот в млрд ₽')
-          : 'Данные по объёму торгов пока недоступны.';
-        volNote.className = 'analytics-chart-note chart-info-readable';
+        var volText = typeof formatVolumeFreshnessNote === 'function'
+          ? formatVolumeFreshnessNote(a)
+          : ('Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) + ' торговых дней');
+        volNote.textContent = volText + ' · наведите на столбец: дата и оборот в млрд ₽';
+        volNote.className = 'analytics-chart-note chart-info-readable' + (a.volumeStale ? ' data-stale-warning' : '');
       }
       renderSecurityProfile(ticker, a);
       return fetchMoexHistory(ticker, horizon);
@@ -1390,9 +1397,10 @@
         });
       }
       if (volNote) {
-        volNote.textContent = 'Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) +
-          ' торговых дней · наведите на столбец: дата и оборот в млрд ₽';
-        volNote.className = 'analytics-chart-note chart-info-readable';
+        volNote.textContent = typeof formatVolumeFreshnessNote === 'function'
+          ? formatVolumeFreshnessNote(a) + ' · наведите на столбец'
+          : ('Оборот TQBR за год · ' + (a.volumeByDay ? a.volumeByDay.length : 0) + ' торговых дней');
+        volNote.className = 'analytics-chart-note chart-info-readable' + (a.volumeStale ? ' data-stale-warning' : '');
       }
     });
     sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
