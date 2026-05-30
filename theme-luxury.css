@@ -612,21 +612,55 @@ input:focus, select:focus, textarea:focus {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
   margin-bottom: 0.85rem;
+  position: relative;
+}
+.value-grid::before {
+  content: '';
+  grid-column: 1 / -1;
+  height: 3px;
+  margin-bottom: 0.15rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--bronze) 0%, #9a7b4f 35%, #4a7356 68%, var(--accent) 100%);
+  opacity: 0.92;
 }
 @media (min-width: 1100px) {
   .value-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .value-grid { grid-template-columns: 1fr; }
+  .value-grid::before {
+    background: linear-gradient(180deg, var(--bronze) 0%, #9a7b4f 35%, #4a7356 68%, var(--accent) 100%);
+  }
 }
 .value-card {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-left: 3px solid rgba(31, 107, 92, 0.35);
+  --value-tone: var(--accent);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--value-tone) 16%, var(--bg-panel) 84%) 0%,
+      var(--bg-panel) 58%
+    );
+  border: 1px solid color-mix(in srgb, var(--value-tone) 22%, var(--border) 78%);
+  border-left: 3px solid var(--value-tone);
   border-radius: 12px;
   padding: 0.85rem 0.95rem;
   min-width: 0;
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    var(--shadow-card),
+    inset 0 1px 0 color-mix(in srgb, var(--value-tone) 10%, transparent);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.value-card:nth-child(2) { --value-tone: color-mix(in srgb, var(--bronze) 80%, var(--accent) 20%); }
+.value-card:nth-child(3) { --value-tone: color-mix(in srgb, var(--bronze) 60%, var(--accent) 40%); }
+.value-card:nth-child(4) { --value-tone: color-mix(in srgb, var(--bronze) 40%, var(--accent) 60%); }
+.value-card:nth-child(5) { --value-tone: color-mix(in srgb, var(--bronze) 20%, var(--accent) 80%); }
+.value-card:nth-child(6) { --value-tone: var(--accent); }
+.value-card:nth-child(1) { --value-tone: var(--bronze); }
+.value-card:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 22px color-mix(in srgb, var(--value-tone) 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--value-tone) 12%, transparent);
 }
 .value-card-title {
   margin: 0 0 0.4rem;
@@ -640,7 +674,7 @@ input:focus, select:focus, textarea:focus {
 .value-card-num {
   display: inline;
   margin-right: 0.2rem;
-  color: var(--accent);
+  color: var(--value-tone, var(--accent));
   font-weight: 700;
   font-size: 0.88rem;
 }
