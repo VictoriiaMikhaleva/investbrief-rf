@@ -323,12 +323,42 @@
   }
 
   function getAgentSignalHistory() {
+    return getAgentActionLog();
+  }
+
+  function normalizeAgentLogEntry(raw) {
+    if (!raw || !raw.ticker) return null;
+    var action = raw.action && ['buy', 'sell', 'skip', 'watch', 'hold'].indexOf(raw.action) >= 0 ? raw.action : null;
+    return {
+      id: String(raw.id || normalizeTicker(raw.ticker) + '-' + Date.now()),
+      type: raw.type === 'action' || action ? 'action' : 'signal',
+      action: action,
+      ticker: normalizeTicker(raw.ticker),
+      signalId: String(raw.signalId || ''),
+      title: String(raw.title || ''),
+      status: String(raw.status || ''),
+      price: raw.price != null && isFinite(Number(raw.price)) ? Number(raw.price) : null,
+      createdAt: raw.createdAt || new Date().toISOString(),
+      note: String(raw.note || '')
+    };
+  }
+
+  var AGENT_LOG_MAX = 200;
+
+  function getAgentActionLog() {
     var list = loadJSON(KEYS.agentSignalHistory, []);
-    return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    return list.map(normalizeAgentLogEntry).filter(Boolean);
+  }
+
+  function setAgentActionLog(list) {
+    var normalized = (Array.isArray(list) ? list : []).map(normalizeAgentLogEntry).filter(Boolean).slice(0, AGENT_LOG_MAX);
+    saveJSON(KEYS.agentSignalHistory, normalized);
+    if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
   }
 
   function setAgentSignalHistory(list) {
-    saveJSON(KEYS.agentSignalHistory, Array.isArray(list) ? list.slice(0, 50) : []);
+    setAgentActionLog(list);
   }
 
   function setConsents(c) {
@@ -407,7 +437,8 @@
       filters: getFilters(),
       marketTiles: getMarketTickers(),
       tickerNames: getTickerNamesMap(),
-      agentSettings: getAgentSettings()
+      agentSettings: getAgentSettings(),
+      agentActionLog: getAgentActionLog()
     };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
@@ -456,6 +487,7 @@
     if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);
     if (data.tickerNames) saveJSON(KEYS.tickerNames, data.tickerNames);
     if (data.agentSettings) saveJSON(KEYS.agentSettings, normalizeAgentSettings(data.agentSettings));
+    if (data.agentActionLog) setAgentActionLog(data.agentActionLog);
     loadProfileToUI();
     loadFiltersToUI();
     renderWatchlist();

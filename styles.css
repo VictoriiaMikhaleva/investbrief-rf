@@ -668,6 +668,7 @@
     @media (max-width: 699px) {
       .table-wrap { display: none; }
       .ofz-table-wrap { display: block; }
+      .agent-log-table-wrap { display: block; }
       .portfolio-cards { display: block; }
     }
     .portfolio-card {
@@ -3285,6 +3286,77 @@
     }
     .agent-history-title { font-size: 0.8rem; }
     .agent-history-time { font-size: 0.72rem; display: block; margin-top: 0.15rem; }
+    .agent-log-panel {
+      margin-top: 0.85rem;
+      padding-top: 0.65rem;
+      border-top: 1px solid rgba(61, 92, 71, 0.12);
+    }
+    .agent-log-panel > summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.92rem;
+      margin-bottom: 0.35rem;
+    }
+    .agent-log-lead { font-size: 0.78rem; margin: 0.25rem 0 0.65rem; }
+    .agent-log-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 0.65rem;
+    }
+    .agent-log-stat {
+      padding: 0.45rem 0.55rem;
+      border-radius: 0.45rem;
+      background: rgba(61, 92, 71, 0.06);
+      border: 1px solid rgba(61, 92, 71, 0.1);
+    }
+    .agent-log-stat-num {
+      display: block;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--accent);
+      line-height: 1.2;
+    }
+    .agent-log-stat-label { font-size: 0.72rem; }
+    .agent-log-filters { flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.55rem; align-items: flex-end; }
+    .agent-log-filter { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.72rem; min-width: 8rem; }
+    .agent-log-filter select,
+    .agent-log-filter input { font-size: 0.82rem; padding: 0.35rem 0.45rem; }
+    .agent-log-table-wrap { overflow-x: auto; max-height: 18rem; margin-bottom: 0.45rem; }
+    .agent-log-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .agent-log-table th,
+    .agent-log-table td { padding: 0.35rem 0.45rem; text-align: left; border-bottom: 1px solid rgba(61, 92, 71, 0.1); white-space: nowrap; }
+    .agent-log-table td:nth-child(4) { white-space: normal; min-width: 10rem; }
+    .agent-log-table th { font-size: 0.72rem; color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface, #f8faf8); }
+    .agent-log-type {
+      display: inline-block;
+      padding: 0.12rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 600;
+    }
+    .agent-log-type--signal { background: rgba(59, 130, 246, 0.12); color: #1d4ed8; }
+    .agent-log-type--buy { background: rgba(34, 197, 94, 0.12); color: #15803d; }
+    .agent-log-type--sell { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+    .agent-log-type--skip { background: rgba(107, 114, 128, 0.12); color: #4b5563; }
+    .agent-log-type--watch { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+    .agent-log-empty { font-size: 0.78rem; margin: 0.35rem 0; }
+    .agent-signal-actions {
+      margin-top: 0.65rem;
+      padding-top: 0.55rem;
+      border-top: 1px dashed rgba(61, 92, 71, 0.15);
+    }
+    .agent-signal-actions-label { font-size: 0.72rem; margin: 0 0 0.35rem; }
+    .agent-signal-actions-row { flex-wrap: wrap; gap: 0.35rem; }
+    .agent-signal-actions-row button { font-size: 0.75rem; padding: 0.3rem 0.55rem; }
+    .agent-history-type {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.1rem 0.35rem;
+      border-radius: 999px;
+      background: rgba(61, 92, 71, 0.08);
+    }
+    .agent-history-type--action { background: rgba(34, 197, 94, 0.12); color: #15803d; }
     .agent-disclaimer {
       margin: 0;
       font-size: 0.78rem;

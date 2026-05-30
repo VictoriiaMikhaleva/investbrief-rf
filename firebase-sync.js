@@ -28,7 +28,8 @@
       digest: getDigest(),
       consents: getConsents(),
       marketTiles: getMarketTickers(),
-      agentSettings: getAgentSettings()
+      agentSettings: getAgentSettings(),
+      agentActionLog: getAgentActionLog()
     };
   }
 
@@ -45,6 +46,7 @@
       if (data.consents) saveJSON(KEYS.consents, data.consents);
       if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);
       if (data.agentSettings) saveJSON(KEYS.agentSettings, normalizeAgentSettings(data.agentSettings));
+      if (data.agentActionLog) setAgentActionLog(data.agentActionLog);
     } finally {
       window._ibrfApplyingCloudData = false;
     }

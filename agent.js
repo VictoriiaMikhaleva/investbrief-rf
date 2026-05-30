@@ -11,7 +11,17 @@
   var _agentLoading = false;
   var _agentBriefingBound = false;
   var _agentSettingsBound = false;
+  var _agentLogBound = false;
+  var _agentLogFilter = { kind: 'all', search: '' };
   var AGENT_SETTINGS_PREFIX = 'agentSettings';
+
+  var AGENT_ACTION_LABELS = {
+    buy: 'Купил',
+    sell: 'Продал',
+    skip: 'Пропустил',
+    watch: 'В наблюдение',
+    hold: 'Держу'
+  };
 
   var SENSITIVITY_PRESETS = {
     calm: {
@@ -571,28 +581,163 @@
   }
 
   function appendSignalHistory(cards) {
-    var history = getAgentSignalHistory();
+    var history = getAgentActionLog();
     var now = new Date().toISOString();
     cards.forEach(function (card) {
       if (!card.signals || !card.signals.length) return;
       card.signals.forEach(function (sig) {
         var dup = history.some(function (h) {
-          return h.ticker === card.ticker && h.title === sig.title &&
+          return h.ticker === card.ticker && h.type === 'signal' &&
+            (h.signalId === sig.id || h.title === sig.title) &&
             (Date.now() - new Date(h.createdAt).getTime()) < 30 * 60 * 1000;
         });
         if (dup) return;
         history.unshift({
           id: card.ticker + '-' + sig.id + '-' + Date.now(),
+          type: 'signal',
+          action: null,
           ticker: card.ticker,
+          signalId: sig.id,
           title: sig.title,
           status: card.status,
+          price: card.currentPrice != null && isFinite(card.currentPrice) ? card.currentPrice : null,
           createdAt: now,
-          reasons: sig.reasons.slice(),
-          checklist: sig.checklist.slice()
+          note: ''
         });
       });
     });
-    setAgentSignalHistory(history.slice(0, 50));
+    setAgentActionLog(history);
+  }
+
+  function formatLogType(entry) {
+    if (entry.type === 'signal') return 'Сигнал';
+    return AGENT_ACTION_LABELS[entry.action] || 'Действие';
+  }
+
+  function computeAgentLogStats(log) {
+    var cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    var recent = log.filter(function (e) {
+      return new Date(e.createdAt).getTime() >= cutoff;
+    });
+    var signals = recent.filter(function (e) { return e.type === 'signal'; });
+    var actions = recent.filter(function (e) { return e.type === 'action'; });
+    var byAction = { buy: 0, sell: 0, skip: 0, watch: 0 };
+    actions.forEach(function (e) {
+      if (byAction[e.action] != null) byAction[e.action]++;
+    });
+    var reactionPct = signals.length ? Math.round(actions.length / signals.length * 100) : 0;
+    return { signals: signals.length, actions: actions.length, byAction: byAction, reactionPct: reactionPct };
+  }
+
+  function filterAgentLog(log) {
+    var kind = _agentLogFilter.kind;
+    var q = _agentLogFilter.search;
+    return log.filter(function (e) {
+      if (kind === 'signal' && e.type !== 'signal') return false;
+      if (kind === 'action' && e.type !== 'action') return false;
+      if (['buy', 'sell', 'skip', 'watch', 'hold'].indexOf(kind) >= 0 &&
+        (e.type !== 'action' || e.action !== kind)) return false;
+      if (q) {
+        var hay = (e.ticker + ' ' + e.title + ' ' + e.status + ' ' + e.signalId).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function logAgentUserAction(ticker, action, meta) {
+    meta = meta || {};
+    ticker = normalizeTicker(ticker);
+    if (!ticker || !action) return;
+    var card = _agentCards.find(function (c) { return c.ticker === ticker; });
+    var label = AGENT_ACTION_LABELS[action] || action;
+    var sigTitle = meta.signalTitle || '';
+    var entry = {
+      id: ticker + '-' + action + '-' + Date.now(),
+      type: 'action',
+      action: action,
+      ticker: ticker,
+      signalId: meta.signalId || '',
+      title: sigTitle ? (label + ': ' + sigTitle) : label,
+      status: card ? card.status : (meta.status || ''),
+      price: card && card.currentPrice != null && isFinite(card.currentPrice) ? card.currentPrice : null,
+      createdAt: new Date().toISOString(),
+      note: meta.note || ''
+    };
+    var log = getAgentActionLog();
+    log.unshift(entry);
+    setAgentActionLog(log);
+    if (action === 'watch' && typeof addTicker === 'function') addTicker(ticker);
+    showToast(label + ' — ' + ticker + ' записано в журнал');
+    renderAgentLogPanel();
+    renderAgentHistory();
+  }
+
+  function renderAgentLogPanel() {
+    bindAgentLogUI();
+    var log = getAgentActionLog();
+    var statsEl = document.getElementById('agentLogStats');
+    var bodyEl = document.getElementById('agentLogBody');
+    var emptyEl = document.getElementById('agentLogEmpty');
+    if (!statsEl && !bodyEl) return;
+
+    if (statsEl) {
+      var st = computeAgentLogStats(log);
+      statsEl.innerHTML =
+        '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.signals + '</span><span class="agent-log-stat-label muted">сигналов за 30 дн.</span></div>' +
+        '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.actions + '</span><span class="agent-log-stat-label muted">ваших действий</span></div>' +
+        '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.reactionPct + '%</span><span class="agent-log-stat-label muted">реакция на сигналы</span></div>' +
+        '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.byAction.buy + ' / ' + st.byAction.sell + '</span><span class="agent-log-stat-label muted">купил / продал</span></div>';
+    }
+
+    if (bodyEl) {
+      var filtered = filterAgentLog(log);
+      if (emptyEl) emptyEl.hidden = filtered.length > 0;
+      bodyEl.innerHTML = filtered.slice(0, 100).map(function (e) {
+        var dt = e.createdAt
+          ? new Date(e.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+          : '—';
+        var typeClass = e.type === 'signal' ? 'signal' : (e.action || 'action');
+        return (
+          '<tr>' +
+            '<td><time datetime="' + escapeHtml(e.createdAt || '') + '">' + escapeHtml(dt) + '</time></td>' +
+            '<td><span class="agent-log-type agent-log-type--' + escapeHtml(typeClass) + '">' + escapeHtml(formatLogType(e)) + '</span></td>' +
+            '<td>' + escapeHtml(e.ticker) + '</td>' +
+            '<td>' + escapeHtml(e.title) + '</td>' +
+            '<td>' + escapeHtml(formatAgentPrice(e.price)) + '</td>' +
+          '</tr>'
+        );
+      }).join('');
+    }
+  }
+
+  function bindAgentLogUI() {
+    if (_agentLogBound) return;
+    _agentLogBound = true;
+    var kindEl = document.getElementById('agentLogFilterKind');
+    var searchEl = document.getElementById('agentLogFilterSearch');
+    var clearBtn = document.getElementById('agentLogClearBtn');
+    if (kindEl) {
+      kindEl.addEventListener('change', function () {
+        _agentLogFilter.kind = kindEl.value;
+        renderAgentLogPanel();
+      });
+    }
+    if (searchEl) {
+      searchEl.addEventListener('input', function () {
+        _agentLogFilter.search = searchEl.value.trim().toLowerCase();
+        renderAgentLogPanel();
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        if (!confirm('Очистить весь журнал сигналов и действий?')) return;
+        setAgentActionLog([]);
+        renderAgentLogPanel();
+        renderAgentHistory();
+        showToast('Журнал очищен');
+      });
+    }
   }
 
   function formatAgentPrice(price) {
@@ -682,21 +827,24 @@
   function renderAgentHistory() {
     var el = document.getElementById('agentHistoryList');
     if (!el) return;
-    var history = getAgentSignalHistory().slice(0, 5);
+    var history = getAgentActionLog().slice(0, 10);
     if (!history.length) {
-      el.innerHTML = '<p class="muted">История появится после первых сигналов.</p>';
+      el.innerHTML = '<p class="muted">История появится после первых сигналов или ваших действий.</p>';
       return;
     }
     el.innerHTML = history.map(function (h) {
       var dt = h.createdAt ? new Date(h.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+      var typeLabel = formatLogType(h);
+      var typeClass = h.type === 'action' ? 'agent-history-type agent-history-type--action' : 'agent-history-type';
       return (
         '<article class="agent-history-item">' +
           '<div class="agent-history-head">' +
             '<span class="agent-history-ticker">' + escapeHtml(h.ticker) + '</span>' +
+            '<span class="' + typeClass + '">' + escapeHtml(typeLabel) + '</span>' +
             '<span class="agent-history-title">' + escapeHtml(h.title) + '</span>' +
-            '<span class="agent-status ' + statusClass(h.status) + '">' + escapeHtml(h.status) + '</span>' +
+            (h.status && h.type === 'signal' ? '<span class="agent-status ' + statusClass(h.status) + '">' + escapeHtml(h.status) + '</span>' : '') +
           '</div>' +
-          (dt ? '<time class="muted agent-history-time">' + escapeHtml(dt) + '</time>' : '') +
+          (dt ? '<time class="muted agent-history-time">' + escapeHtml(dt) + (h.price != null ? ' · ' + escapeHtml(formatAgentPrice(h.price)) : '') + '</time>' : '') +
         '</article>'
       );
     }).join('');
@@ -811,6 +959,7 @@
         appendSignalHistory(cards);
         renderAgentGrid();
         renderAgentHistory();
+        renderAgentLogPanel();
       });
     }).catch(function () {
       _agentLoading = false;
@@ -906,6 +1055,15 @@
               '<div class="agent-checklist"><p>Что проверить:</p><ul>' +
                 sig.checklist.map(function (c) { return '<li>' + escapeHtml(c) + '</li>'; }).join('') +
               '</ul></div>' + eventsHtml +
+              '<div class="agent-signal-actions">' +
+                '<p class="muted agent-signal-actions-label">Ваша реакция на сигнал:</p>' +
+                '<div class="row agent-signal-actions-row">' +
+                  '<button type="button" class="primary" data-agent-log-action="buy" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(sig.id) + '" data-agent-signal-title="' + escapeHtml(sig.title) + '">Купил</button>' +
+                  '<button type="button" class="ghost" data-agent-log-action="sell" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(sig.id) + '" data-agent-signal-title="' + escapeHtml(sig.title) + '">Продал</button>' +
+                  '<button type="button" class="ghost" data-agent-log-action="skip" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(sig.id) + '" data-agent-signal-title="' + escapeHtml(sig.title) + '">Пропустил</button>' +
+                  '<button type="button" class="ghost" data-agent-log-action="watch" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(sig.id) + '" data-agent-signal-title="' + escapeHtml(sig.title) + '">В наблюдение</button>' +
+                '</div>' +
+              '</div>' +
             '</div>'
           );
         }).join('')
@@ -958,6 +1116,18 @@
       var detailBtn = e.target.closest('[data-agent-detail]');
       if (detailBtn) {
         toggleAgentDetail(detailBtn.getAttribute('data-agent-detail'));
+        return;
+      }
+      var logBtn = e.target.closest('[data-agent-log-action]');
+      if (logBtn) {
+        logAgentUserAction(
+          logBtn.getAttribute('data-agent-ticker'),
+          logBtn.getAttribute('data-agent-log-action'),
+          {
+            signalId: logBtn.getAttribute('data-agent-signal-id') || '',
+            signalTitle: logBtn.getAttribute('data-agent-signal-title') || ''
+          }
+        );
       }
     });
   }
@@ -1026,6 +1196,7 @@
     } else {
       renderAgentGrid();
     }
+    renderAgentLogPanel();
   }
 
   window.analyzeAgentSignals = analyzeAgentSignals;

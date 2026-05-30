@@ -160,6 +160,45 @@
               <button type="button" id="agentConfigureBtn" class="ghost">Настроить</button>
             </div>
             <div id="agentGrid" class="agent-grid" aria-live="polite"></div>
+            <details class="agent-log-panel" id="agentLogPanel">
+              <summary>Журнал сигналов и действий</summary>
+              <p class="muted agent-log-lead">Цепочка «сигнал агента → ваша реакция» для анализа продуктивности. Отметьте действие в «Подробнее» на карточке бумаги.</p>
+              <div id="agentLogStats" class="agent-log-stats" aria-live="polite"></div>
+              <div class="row agent-log-filters">
+                <label class="muted agent-log-filter">
+                  <span>Тип</span>
+                  <select id="agentLogFilterKind">
+                    <option value="all">Все</option>
+                    <option value="signal">Сигналы</option>
+                    <option value="action">Действия</option>
+                    <option value="buy">Купил</option>
+                    <option value="sell">Продал</option>
+                    <option value="skip">Пропустил</option>
+                    <option value="watch">В наблюдение</option>
+                  </select>
+                </label>
+                <label class="muted agent-log-filter grow">
+                  <span>Поиск</span>
+                  <input type="search" id="agentLogFilterSearch" placeholder="Тикер или текст" autocomplete="off" />
+                </label>
+              </div>
+              <div class="table-wrap agent-log-table-wrap">
+                <table class="agent-log-table">
+                  <thead>
+                    <tr>
+                      <th>Дата</th>
+                      <th>Тип</th>
+                      <th>Бумага</th>
+                      <th>Событие</th>
+                      <th>Цена</th>
+                    </tr>
+                  </thead>
+                  <tbody id="agentLogBody"></tbody>
+                </table>
+              </div>
+              <p class="muted agent-log-empty" id="agentLogEmpty" hidden>Записей пока нет. Обновите агента или отметьте реакцию на сигнал.</p>
+              <button type="button" id="agentLogClearBtn" class="ghost small">Очистить журнал</button>
+            </details>
             <p class="muted agent-disclaimer hint-frame">Агент не даёт инвестиционных рекомендаций. Он только помогает заметить необычные движения и события.</p>
           </section>
 
@@ -685,6 +724,7 @@
             <p class="muted agent-settings-hint">Email и Telegram настраиваются в блоке «Уведомления» ниже.</p>
             <details class="agent-settings-history-details">
               <summary>История наблюдений</summary>
+              <p class="muted agent-settings-history-hint">Последние записи. Полный журнал с фильтрами — в блоке «Агент наблюдения» на главной.</p>
               <div id="agentHistoryList"></div>
             </details>
           </div>
@@ -865,7 +905,7 @@
   <script src="./analytics.js?v=20250903"></script>
   <script src="./ofz.js?v=20260530e"></script>
   <script src="./portfolio.js?v=20250828e"></script>
-  <script src="./agent.js?v=20260530"></script>
+  <script src="./agent.js?v=20260530f"></script>
   <script src="./watchdog.js?v=20260530"></script>
   <script src="./firebase-sync.js?v=20250612"></script>
   <script src="./app.js?v=20250831"></script>
