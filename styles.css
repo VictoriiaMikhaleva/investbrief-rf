@@ -2617,6 +2617,22 @@
       font-size: 0.72rem;
       margin-top: 0.1rem;
     }
+    .macro-tile-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.05rem;
+      margin-top: 0.12rem;
+    }
+    .macro-tile-line {
+      font-size: 0.72rem;
+      line-height: 1.28;
+    }
+    .macro-tile-val-note {
+      font-size: 0.66rem;
+      line-height: 1.25;
+      margin-top: 0.08rem;
+      color: var(--text-muted);
+    }
 
     .briefing-list--stack {
       display: flex;

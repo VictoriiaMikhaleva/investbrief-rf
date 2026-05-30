@@ -1052,9 +1052,46 @@
     if (pct == null || !isFinite(pct)) return { text: '—', cls: 'muted' };
     var sign = pct > 0 ? '+' : '';
     return {
-      text: sign + Number(pct).toFixed(2) + '%',
+      text: sign + Number(pct).toFixed(2).replace('.', ',') + '%',
       cls: pct > 0 ? 'pnl-pos' : (pct < 0 ? 'pnl-neg' : 'muted')
     };
+  }
+
+
+
+  function macroMeta(pct, source, tag, note) {
+    return {
+      changePct: pct,
+      source: source || '',
+      tag: tag || '',
+      note: note || ''
+    };
+  }
+
+
+
+  function buildMacroMetaHtml(meta) {
+    if (!meta) return '';
+    var html = '';
+    if (meta.changeText != null) {
+      html += '<div class="macro-tile-line macro-tile-chg ' + (meta.changeCls || 'muted') + '">' +
+        escapeHtml(meta.changeText) + '</div>';
+    } else if (meta.changePct != null || meta.changePct === 0) {
+      var ch = formatMacroChange(meta.changePct);
+      html += '<div class="macro-tile-line macro-tile-chg ' + ch.cls + '">' + escapeHtml(ch.text) + '</div>';
+    } else if (meta.showChangePlaceholder) {
+      html += '<div class="macro-tile-line macro-tile-chg muted">…</div>';
+    }
+    if (meta.source) {
+      html += '<div class="macro-tile-line macro-tile-src muted">' + escapeHtml(meta.source) + '</div>';
+    }
+    if (meta.tag) {
+      html += '<div class="macro-tile-line macro-tile-tag muted">' + escapeHtml(meta.tag) + '</div>';
+    }
+    if (meta.note) {
+      html += '<div class="macro-tile-line macro-tile-note muted">' + escapeHtml(meta.note) + '</div>';
+    }
+    return html;
   }
 
 
@@ -1374,7 +1411,7 @@
     var kr = moexCacheGet('cbr.keyrate');
     if (kr && isFinite(kr.rate)) {
       patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
-        macroChangeWithSource(kr.changePct, 'ЦБ РФ'));
+        macroMeta(kr.changePct, 'ЦБ РФ', 'ключевая ставка'));
     }
     var fx = moexCacheGet('macro.fx');
     if (!fx) {
@@ -1387,7 +1424,8 @@
         var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
         if (!item || item.price == null) return;
         patchMacroTile(row, id, formatFxPrice(item.price),
-          macroChangeWithSource(item.changePct, item.source || 'ЦБ РФ'));
+          macroMeta(item.changePct, (item.source || 'ЦБ РФ').split(' · ')[0],
+            (item.source || '').indexOf(' · ') >= 0 ? (item.source || '').split(' · ').slice(1).join(' · ') : 'валюта'));
       });
     }
     var commodities = moexCacheGet('macro.commodities');
@@ -1401,9 +1439,9 @@
   function formatCommodityMacroPrice(kind, price) {
     if (price == null || !isFinite(price)) return '—';
     var n = Number(price);
-    if (kind === 'oil') return n.toFixed(2).replace('.', ',') + ' $/bbl';
-    if (kind === 'coffee') return n.toFixed(2).replace('.', ',') + ' $/lb';
-    if (kind === 'cocoa') return n.toFixed(1).replace('.', ',') + ' · FORTS';
+    if (kind === 'oil') return n.toFixed(2).replace('.', ',') + ' $/барр.';
+    if (kind === 'coffee') return n.toFixed(2).replace('.', ',') + ' $/фунт';
+    if (kind === 'cocoa') return n.toFixed(1).replace('.', ',') + ' $/100 кг';
     if (kind === 'metals') {
       return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' $';
     }
@@ -1414,10 +1452,10 @@
 
   function renderMacroCommodityTilesHtml() {
     return (
-      renderMacroTile('oil', 'Нефть', '…', { text: 'Brent · FORTS', cls: 'muted' }) +
-      renderMacroTile('metals', 'Металлы', '…', { text: 'Au · Ag · Ni · Zn', cls: 'muted' }) +
-      renderMacroTile('coffee', 'Кофе', '…', { text: 'арабика · FORTS', cls: 'muted' }) +
-      renderMacroTile('cocoa', 'Какао', '…', { text: 'FORTS · МосБиржа', cls: 'muted' })
+      renderMacroTile('oil', 'Нефть', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'Brent')) +
+      renderMacroTile('metals', 'Металлы', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'золото · Au Ag Ni Zn')) +
+      renderMacroTile('coffee', 'Кофе', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'арабика')) +
+      renderMacroTile('cocoa', 'Какао', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'фьючерс'))
     );
   }
 
@@ -1514,8 +1552,10 @@
       coffee: coffee ? { price: coffee.price, changePct: coffee.changePct } : null,
       cocoa: cocoa ? { price: cocoa.price, changePct: cocoa.changePct } : null,
       metals: gold || metalPicks.length ? {
+        goldPrice: gold ? gold.price : metalPicks[0].price,
         price: gold ? gold.price : metalPicks[0].price,
-        changePct: avgMetalChg != null ? avgMetalChg : (gold ? gold.changePct : null)
+        changePct: avgMetalChg != null ? avgMetalChg : (gold ? gold.changePct : null),
+        metalCount: metalPicks.length
       } : null
     };
   }
@@ -1526,19 +1566,20 @@
     if (!row || !snap) return;
     if (snap.oil) {
       patchMacroTile(row, 'oil', formatCommodityMacroPrice('oil', snap.oil.price),
-        macroChangeWithSource(snap.oil.changePct, 'МосБиржа · FORTS'));
+        macroMeta(snap.oil.changePct, 'МосБиржа', 'FORTS', 'Brent'));
     }
     if (snap.metals) {
-      patchMacroTile(row, 'metals', formatCommodityMacroPrice('metals', snap.metals.price),
-        macroChangeWithSource(snap.metals.changePct, 'МосБиржа · Au Ag Ni Zn'));
+      patchMacroTile(row, 'metals', formatCommodityMacroPrice('metals', snap.metals.goldPrice || snap.metals.price),
+        macroMeta(snap.metals.changePct, 'МосБиржа', 'FORTS', 'золото · ср. Au Ag Ni Zn'),
+        'цена золота · изменение по 4 металлам');
     }
     if (snap.coffee) {
       patchMacroTile(row, 'coffee', formatCommodityMacroPrice('coffee', snap.coffee.price),
-        macroChangeWithSource(snap.coffee.changePct, 'МосБиржа · FORTS'));
+        macroMeta(snap.coffee.changePct, 'МосБиржа', 'FORTS', 'арабика'));
     }
     if (snap.cocoa) {
       patchMacroTile(row, 'cocoa', formatCommodityMacroPrice('cocoa', snap.cocoa.price),
-        macroChangeWithSource(snap.cocoa.changePct, 'МосБиржа · FORTS'));
+        macroMeta(snap.cocoa.changePct, 'МосБиржа', 'FORTS', 'фьючерс'));
     }
   }
 
@@ -1564,7 +1605,7 @@
     fetchMacroCommodities(!!forceRefresh).then(function (snap) {
       if (!snap) {
         ['oil', 'metals', 'coffee', 'cocoa'].forEach(function (id) {
-          patchMacroTile(row, id, '—', { text: 'нет данных', cls: 'muted' });
+          patchMacroTile(row, id, '—', { changeText: 'нет данных', changeCls: 'muted' });
         });
         return;
       }
@@ -1581,12 +1622,15 @@
 
 
 
-  function renderMacroTile(id, label, valueHtml, subHtml) {
+  function renderMacroTile(id, label, valueHtml, meta) {
+    var metaHtml = meta
+      ? '<div class="macro-tile-meta">' + buildMacroMetaHtml(meta) + '</div>'
+      : '';
     return (
       '<div class="macro-tile" data-macro-id="' + escapeHtml(id) + '">' +
         '<div class="macro-tile-lbl">' + escapeHtml(label) + '</div>' +
         '<div class="macro-tile-val">' + valueHtml + '</div>' +
-        (subHtml ? '<div class="macro-tile-sub ' + (subHtml.cls || 'muted') + '">' + subHtml.text + '</div>' : '') +
+        metaHtml +
       '</div>'
     );
   }
@@ -2038,9 +2082,9 @@
     if (!row || typeof Markets === 'undefined') return;
     row.hidden = false;
     row.innerHTML =
-      renderMacroTile('spy', 'S&P 500', '…', { text: 'ETF SPY · США', cls: 'muted' }) +
-      renderMacroTile('qqq', 'Nasdaq 100', '…', { text: 'ETF QQQ · США', cls: 'muted' }) +
-      renderMacroTile('vix', 'VIX', '…', { text: 'волатильность · США', cls: 'muted' }) +
+      renderMacroTile('spy', 'S&P 500', '…', macroMeta(null, 'Yahoo', 'ETF SPY', 'США')) +
+      renderMacroTile('qqq', 'Nasdaq 100', '…', macroMeta(null, 'Yahoo', 'ETF QQQ', 'США')) +
+      renderMacroTile('vix', 'VIX', '…', macroMeta(null, 'Yahoo', 'индекс', 'волатильность')) +
       renderMacroCommodityTilesHtml();
 
     applyMacroBootstrap(row);
@@ -2049,9 +2093,9 @@
     [['spy', 'SPY'], ['qqq', 'QQQ'], ['vix', '^VIX']].forEach(function (pair) {
       Markets.fetchUsQuote(pair[1]).then(function (q) {
         var val = q && q.price != null ? formatChartPrice(q.price, pair[1]) : '—';
-        patchMacroTile(row, pair[0], val, macroChangeWithSource(q && q.changePct, 'Yahoo'));
+        patchMacroTile(row, pair[0], val, macroMeta(q && q.changePct, 'Yahoo', pair[1] === '^VIX' ? 'индекс' : 'ETF ' + pair[1]));
       }).catch(function () {
-        patchMacroTile(row, pair[0], '—', { text: 'нет данных', cls: 'muted' });
+        patchMacroTile(row, pair[0], '—', { changeText: 'нет данных', changeCls: 'muted', source: 'Yahoo' });
       });
     });
 
@@ -2075,11 +2119,11 @@
     if (forceRefresh) invalidateMacroLiveCaches(false);
     row.hidden = false;
     row.innerHTML =
-      renderMacroTile('imoex', 'Индекс', '…', { text: 'IMOEX · МосБиржа', cls: 'muted' }) +
-      renderMacroTile('rate', 'Ставка', '…', { text: 'ключевая · ЦБ РФ', cls: 'muted' }) +
-      renderMacroTile('usd', 'USD', '…', { text: 'загрузка…', cls: 'muted' }) +
-      renderMacroTile('eur', 'EUR', '…', { text: 'загрузка…', cls: 'muted' }) +
-      renderMacroTile('cny', 'CNY', '…', { text: 'загрузка…', cls: 'muted' }) +
+      renderMacroTile('imoex', 'Индекс', '…', macroMeta(null, 'МосБиржа', 'IMOEX')) +
+      renderMacroTile('rate', 'Ставка', '…', macroMeta(null, 'ЦБ РФ', 'ключевая')) +
+      renderMacroTile('usd', 'USD', '…', macroMeta(null, 'МосБиржа', 'валюта')) +
+      renderMacroTile('eur', 'EUR', '…', macroMeta(null, 'ЦБ РФ', 'валюта')) +
+      renderMacroTile('cny', 'CNY', '…', macroMeta(null, 'МосБиржа', 'валюта')) +
       renderMacroCommodityTilesHtml();
 
     applyMacroBootstrap(row);
@@ -2087,27 +2131,28 @@
 
     fetchCbrKeyRate().then(function (kr) {
       patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
-        macroChangeWithSource(kr.changePct, 'ЦБ РФ'));
+        macroMeta(kr.changePct, 'ЦБ РФ', 'ключевая'));
     }).catch(function () {
-      patchMacroTile(row, 'rate', '—', { text: 'ЦБ РФ', cls: 'muted' });
+      patchMacroTile(row, 'rate', '—', { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ' });
     });
 
     fetchMoexQuote('IMOEX').then(function (q) {
       var val = q && q.price != null ? formatChartPrice(q.price, 'IMOEX') : '—';
-      patchMacroTile(row, 'imoex', val, macroChangeWithSource(q && q.changePct, 'МосБиржа'));
-    }).catch(function () { patchMacroTile(row, 'imoex', '—', { text: 'нет данных', cls: 'muted' }); });
+      patchMacroTile(row, 'imoex', val, macroMeta(q && q.changePct, 'МосБиржа', 'IMOEX'));
+    }).catch(function () {
+      patchMacroTile(row, 'imoex', '—', { changeText: 'нет данных', changeCls: 'muted', source: 'МосБиржа' });
+    });
 
     fetchCbrFxRatesFromJson().then(function (data) {
       var quick = parseCbrDailyJson(data);
       if (!quick) return;
       var dated = data && data.Date ? String(data.Date).slice(0, 10) : '';
-      var src = dated ? 'ЦБ РФ · ' + dated : 'ЦБ РФ';
       ['USD', 'EUR', 'CNY'].forEach(function (code) {
         var item = quick[code];
         var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
         if (!item || item.price == null) return;
         patchMacroTile(row, id, formatFxPrice(item.price),
-          macroChangeWithSource(item.changePct, src));
+          macroMeta(item.changePct, 'ЦБ РФ', 'валюта', dated || ''));
       });
     }).catch(function () { /* moex spot ниже */ });
 
@@ -2117,15 +2162,16 @@
         var item = fx[code];
         var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
         if (!item || item.price == null) {
-          patchMacroTile(row, id, '—', { text: 'нет данных', cls: 'muted' });
+          patchMacroTile(row, id, '—', { changeText: 'нет данных', changeCls: 'muted', source: 'МосБиржа' });
           return;
         }
+        var srcParts = String(item.source || 'МосБиржа').split(' · ');
         patchMacroTile(row, id, formatFxPrice(item.price),
-          macroChangeWithSource(item.changePct, item.source || 'ЦБ РФ'));
+          macroMeta(item.changePct, srcParts[0], 'валюта', srcParts.slice(1).join(' · ') || ''));
       });
     }).catch(function () {
       ['usd', 'eur', 'cny'].forEach(function (id) {
-        patchMacroTile(row, id, '—', { text: 'нет данных', cls: 'muted' });
+        patchMacroTile(row, id, '—', { changeText: 'нет данных', changeCls: 'muted', source: 'МосБиржа' });
       });
     });
 
@@ -2136,30 +2182,38 @@
 
 
 
-  function patchMacroTile(row, id, value, change, sourceHint) {
+  function patchMacroTile(row, id, value, meta, valNote) {
     var tile = row.querySelector('[data-macro-id="' + id + '"]');
     if (!tile) return;
     var valEl = tile.querySelector('.macro-tile-val');
-    var subEl = tile.querySelector('.macro-tile-sub');
     if (valEl) valEl.textContent = value;
-    if (!subEl) return;
-    if (change && (change.text != null || change.source)) {
-      var line = change.text != null ? change.text : '—';
-      if (change.source) line = line + ' · ' + change.source;
-      subEl.textContent = line;
-      subEl.className = 'macro-tile-sub ' + (change.cls || 'muted');
-    } else if (sourceHint) {
-      subEl.textContent = sourceHint;
-      subEl.className = 'macro-tile-sub muted';
+    var noteEl = tile.querySelector('.macro-tile-val-note');
+    if (valNote) {
+      if (!noteEl) {
+        noteEl = document.createElement('div');
+        noteEl.className = 'macro-tile-val-note muted';
+        if (valEl && valEl.parentNode) valEl.insertAdjacentElement('afterend', noteEl);
+      }
+      noteEl.textContent = valNote;
+    } else if (noteEl) {
+      noteEl.remove();
     }
+    var metaEl = tile.querySelector('.macro-tile-meta');
+    if (!metaEl) {
+      metaEl = document.createElement('div');
+      metaEl.className = 'macro-tile-meta';
+      tile.appendChild(metaEl);
+    }
+    if (meta && typeof meta === 'object' && (meta.text != null || meta.cls)) {
+      meta = { changeText: meta.text, changeCls: meta.cls || 'muted' };
+    }
+    metaEl.innerHTML = buildMacroMetaHtml(meta || {});
   }
 
 
 
   function macroChangeWithSource(pct, source) {
-    var ch = formatMacroChange(pct);
-    ch.source = source || '';
-    return ch;
+    return macroMeta(pct, source, '');
   }
 
 
