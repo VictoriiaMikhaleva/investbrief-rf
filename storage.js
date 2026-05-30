@@ -26,7 +26,8 @@
     dayMoveThreshold: 3,
     weekDownThreshold: 7,
     weekUpThreshold: 8,
-    turnoverMultiplier: 1.5
+    turnoverMultiplier: 1.5,
+    notifyAttention: false
   };
 
   var PRIVACY_POLICY_VERSION = '1.0';
@@ -305,7 +306,8 @@
       dayMoveThreshold: isFinite(Number(s.dayMoveThreshold)) ? Number(s.dayMoveThreshold) : DEFAULT_AGENT_SETTINGS.dayMoveThreshold,
       weekDownThreshold: isFinite(Number(s.weekDownThreshold)) ? Number(s.weekDownThreshold) : DEFAULT_AGENT_SETTINGS.weekDownThreshold,
       weekUpThreshold: isFinite(Number(s.weekUpThreshold)) ? Number(s.weekUpThreshold) : DEFAULT_AGENT_SETTINGS.weekUpThreshold,
-      turnoverMultiplier: isFinite(Number(s.turnoverMultiplier)) ? Number(s.turnoverMultiplier) : DEFAULT_AGENT_SETTINGS.turnoverMultiplier
+      turnoverMultiplier: isFinite(Number(s.turnoverMultiplier)) ? Number(s.turnoverMultiplier) : DEFAULT_AGENT_SETTINGS.turnoverMultiplier,
+      notifyAttention: !!s.notifyAttention
     };
   }
 

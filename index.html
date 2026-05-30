@@ -151,29 +151,15 @@
           <section class="home-block agent-section glass" id="agentObservationSection" aria-labelledby="agentSectionTitle">
             <div class="agent-header">
               <h3 class="home-block-title" id="agentSectionTitle">Агент наблюдения</h3>
-              <p class="muted agent-subtitle hint-frame">Следит за выбранными бумагами и объясняет, почему появилась зона внимания. Не совершает сделки и не является индивидуальной инвестиционной рекомендацией.</p>
+              <p class="muted agent-subtitle">Следит за выбранными бумагами и показывает, где сейчас стоит обратить внимание.</p>
             </div>
+            <p class="agent-zones-today" id="agentZonesToday" aria-live="polite"></p>
+            <p class="muted agent-disabled-note" id="agentDisabledNote" hidden>Агент выключен. Включите его в настройках.</p>
             <div class="agent-controls row">
-              <button type="button" id="agentRefreshBtn" class="primary">Обновить сигналы</button>
-              <button type="button" id="agentConfigureListBtn" class="ghost" aria-expanded="false" aria-controls="agentListPanel">Настроить список</button>
-              <button type="button" id="agentConfigureRulesBtn" class="ghost" aria-expanded="false" aria-controls="agentRulesPanel">Настроить чувствительность</button>
+              <button type="button" id="agentRefreshBtn" class="primary">Обновить</button>
+              <button type="button" id="agentConfigureBtn" class="ghost">Настроить</button>
             </div>
-            <div id="agentListPanel" class="agent-list-panel" hidden>
-              <div class="agent-controls row">
-                <div class="ticker-ac-wrap grow">
-                  <input id="agentTickerInput" class="agent-ticker-input" placeholder="Тикер или название бумаги" autocomplete="off" spellcheck="false" />
-                </div>
-                <button type="button" id="agentAddTickerBtn" class="primary">Добавить</button>
-                <button type="button" id="agentResetTop20Btn" class="ghost">Вернуть топ-20</button>
-              </div>
-              <div id="agentTickerChips" class="agent-ticker-chips" aria-label="Список наблюдения"></div>
-            </div>
-            <div id="agentRulesPanel" class="agent-rules-panel" hidden></div>
             <div id="agentGrid" class="agent-grid" aria-live="polite"></div>
-            <div class="agent-history">
-              <h4 class="agent-history-title">История наблюдений</h4>
-              <div id="agentHistoryList"></div>
-            </div>
             <p class="muted agent-disclaimer hint-frame">Агент не даёт инвестиционных рекомендаций. Он только помогает заметить необычные движения и события.</p>
           </section>
 
@@ -568,7 +554,36 @@
             <input id="profileName" placeholder="Инвестор" />
           </div>
 
-          <div class="glass settings-block" id="agentSettingsSensitivityRoot"></div>
+          <div class="glass settings-block" id="agentSettingsBlock">
+            <h3>Агент наблюдения</h3>
+            <p class="muted hint-frame agent-settings-lead">Список бумаг, чувствительность и уведомления агента.</p>
+            <div class="check-row agent-settings-toggle">
+              <input type="checkbox" id="agentEnabledToggle" checked />
+              <label for="agentEnabledToggle" class="check-row-text">Следить за выбранными бумагами</label>
+            </div>
+            <h4 class="agent-settings-subtitle">Бумаги для наблюдения</h4>
+            <div class="agent-settings-list">
+              <div class="row agent-settings-list-controls">
+                <div class="ticker-ac-wrap grow">
+                  <input id="agentSettingsTickerInput" placeholder="Тикер или название бумаги" autocomplete="off" spellcheck="false" />
+                </div>
+                <button type="button" id="agentSettingsAddTickerBtn" class="primary">Добавить</button>
+                <button type="button" id="agentSettingsResetTop20Btn" class="ghost">Топ‑20 по обороту</button>
+              </div>
+              <div id="agentSettingsTickerChips" class="agent-ticker-chips" aria-label="Список наблюдения"></div>
+            </div>
+            <div id="agentSettingsSensitivityRoot"></div>
+            <h4 class="agent-settings-subtitle">Уведомления</h4>
+            <div class="check-row">
+              <input type="checkbox" id="agentNotifyAttention" />
+              <label for="agentNotifyAttention" class="check-row-text">Уведомлять в браузере о новых зонах внимания</label>
+            </div>
+            <p class="muted agent-settings-hint">Email и Telegram настраиваются в блоке «Уведомления» ниже.</p>
+            <details class="agent-settings-history-details">
+              <summary>История наблюдений</summary>
+              <div id="agentHistoryList"></div>
+            </details>
+          </div>
 
           <div class="glass settings-block">
             <h3>Данные</h3>

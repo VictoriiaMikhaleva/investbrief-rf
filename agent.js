@@ -9,9 +9,9 @@
 
   var _agentCards = [];
   var _agentLoading = false;
-  var _agentListOpen = false;
-  var _agentRulesOpen = false;
-  var _agentBound = false;
+  var _agentBriefingBound = false;
+  var _agentSettingsBound = false;
+  var AGENT_SETTINGS_PREFIX = 'agentSettings';
 
   var SENSITIVITY_PRESETS = {
     calm: {
@@ -87,8 +87,8 @@
       );
     }).join('');
     return (
-      '<' + titleTag + ' class="agent-rules-title">Настроить чувствительность</' + titleTag + '>' +
-      '<p class="muted agent-sensitivity-lead hint-frame">Чем чувствительнее агент, тем чаще он будет показывать зоны внимания.</p>' +
+      '<' + titleTag + ' class="agent-rules-title agent-settings-subtitle">Настроить чувствительность</' + titleTag + '>' +
+      '<p class="muted agent-sensitivity-lead">Чем чувствительнее агент, тем чаще он будет показывать зоны внимания.</p>' +
       '<div class="agent-sensitivity-modes" role="group" aria-label="Режим чувствительности">' + modesHtml + '</div>' +
       '<p class="agent-sensitivity-summary" id="' + escapeHtml(p) + 'SensitivitySummary"></p>' +
       '<details class="agent-sensitivity-advanced">' +
@@ -120,22 +120,13 @@
     );
   }
 
-  function mountAgentSensitivityPanels() {
-    var rulesPanel = document.getElementById('agentRulesPanel');
-    if (rulesPanel && !rulesPanel.dataset.mounted) {
-      rulesPanel.innerHTML = buildAgentSensitivityHtml({
-        prefix: 'agentRule',
-        saveBtnId: 'agentSaveRulesBtn',
-        headingTag: 'h4'
-      });
-      rulesPanel.dataset.mounted = '1';
-    }
+  function mountAgentSensitivityPanel() {
     var settingsRoot = document.getElementById('agentSettingsSensitivityRoot');
     if (settingsRoot && !settingsRoot.dataset.mounted) {
       settingsRoot.innerHTML = buildAgentSensitivityHtml({
-        prefix: 'agentSettings',
+        prefix: AGENT_SETTINGS_PREFIX,
         saveBtnId: 'agentSettingsSaveRulesBtn',
-        headingTag: 'h3'
+        headingTag: 'h4'
       });
       settingsRoot.dataset.mounted = '1';
     }
@@ -174,34 +165,32 @@
   function loadAgentRulesToUI() {
     ensureAgentSensitivityBound();
     var s = getAgentSettings();
+    var prefix = AGENT_SETTINGS_PREFIX;
     var mode = s.sensitivityMode;
     if (mode !== 'custom') {
       var detected = detectSensitivityMode(s);
       mode = detected === 'custom' ? 'custom' : (s.sensitivityMode || detected);
     }
     if (mode === 'custom') {
-      ['agentRule', 'agentSettings'].forEach(function (prefix) {
-        var map = {
-          DayMove: s.dayMoveThreshold,
-          WeekDown: s.weekDownThreshold,
-          WeekUp: s.weekUpThreshold,
-          Turnover: s.turnoverMultiplier
-        };
-        Object.keys(map).forEach(function (key) {
-          var el = document.getElementById(prefix + key);
-          if (el) el.value = map[key];
-        });
-        updateSensitivityModeCards(prefix, 'custom');
-        updateSensitivitySummary(prefix, 'custom', s);
+      var map = {
+        DayMove: s.dayMoveThreshold,
+        WeekDown: s.weekDownThreshold,
+        WeekUp: s.weekUpThreshold,
+        Turnover: s.turnoverMultiplier
+      };
+      Object.keys(map).forEach(function (key) {
+        var el = document.getElementById(prefix + key);
+        if (el) el.value = map[key];
       });
+      updateSensitivityModeCards(prefix, 'custom');
+      updateSensitivitySummary(prefix, 'custom', s);
       return;
     }
-    applyPresetToPanel('agentRule', mode);
-    applyPresetToPanel('agentSettings', mode);
+    applyPresetToPanel(prefix, mode);
   }
 
   function readAgentRulesFromPanel(prefix) {
-    prefix = prefix || 'agentRule';
+    prefix = prefix || AGENT_SETTINGS_PREFIX;
     function num(suffix, fallback) {
       var el = document.getElementById(prefix + suffix);
       var v = el ? parseFloat(el.value) : NaN;
@@ -218,9 +207,9 @@
     return values;
   }
 
-  function bindAgentSensitivityPanel(prefix, saveBtnId) {
-    var rootId = prefix === 'agentRule' ? 'agentRulesPanel' : 'agentSettingsSensitivityRoot';
-    var root = document.getElementById(rootId);
+  function bindAgentSensitivityPanel() {
+    var prefix = AGENT_SETTINGS_PREFIX;
+    var root = document.getElementById('agentSettingsSensitivityRoot');
     if (!root || root.dataset.sensitivityBound) return;
     root.dataset.sensitivityBound = '1';
 
@@ -238,7 +227,7 @@
         updateSensitivitySummary(prefix, values.sensitivityMode, values);
       });
     });
-    var saveBtn = document.getElementById(saveBtnId);
+    var saveBtn = document.getElementById('agentSettingsSaveRulesBtn');
     if (saveBtn) {
       saveBtn.addEventListener('click', function () {
         var next = readAgentRulesFromPanel(prefix);
@@ -251,9 +240,8 @@
   }
 
   function ensureAgentSensitivityBound() {
-    mountAgentSensitivityPanels();
-    bindAgentSensitivityPanel('agentRule', 'agentSaveRulesBtn');
-    bindAgentSensitivityPanel('agentSettings', 'agentSettingsSaveRulesBtn');
+    mountAgentSensitivityPanel();
+    bindAgentSensitivityPanel();
   }
 
   function loadTopTurnoverTickers(limit) {
@@ -627,8 +615,55 @@
     return '';
   }
 
+  function pluralZones(count) {
+    var mod10 = count % 10;
+    var mod100 = count % 100;
+    if (mod10 === 1 && mod100 !== 11) return 'зона внимания';
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'зоны внимания';
+    return 'зон внимания';
+  }
+
+  function countAttentionZones(cards) {
+    if (!cards || !cards.length) return 0;
+    return cards.reduce(function (sum, card) {
+      if (card.insufficient || !card.signals || !card.signals.length) return sum;
+      return sum + card.signals.length;
+    }, 0);
+  }
+
+  function renderAgentBriefingMeta() {
+    var settings = getAgentSettings();
+    var zonesEl = document.getElementById('agentZonesToday');
+    var disabledEl = document.getElementById('agentDisabledNote');
+    var grid = document.getElementById('agentGrid');
+    var section = document.getElementById('agentObservationSection');
+    if (!zonesEl) return;
+
+    if (!settings.enabled) {
+      zonesEl.textContent = '';
+      if (disabledEl) disabledEl.hidden = false;
+      if (grid) grid.hidden = true;
+      if (section) section.classList.add('agent-section--disabled');
+      return;
+    }
+
+    if (disabledEl) disabledEl.hidden = true;
+    if (grid) grid.hidden = false;
+    if (section) section.classList.remove('agent-section--disabled');
+
+    if (_agentLoading) {
+      zonesEl.textContent = 'Проверяем бумаги…';
+      return;
+    }
+
+    var count = countAttentionZones(_agentCards);
+    zonesEl.textContent = count
+      ? ('Сегодня: ' + count + ' ' + pluralZones(count))
+      : 'Сегодня зон внимания нет';
+  }
+
   function renderAgentChips(tickers) {
-    var el = document.getElementById('agentTickerChips');
+    var el = document.getElementById('agentSettingsTickerChips');
     if (!el) return;
     if (!tickers.length) {
       el.innerHTML = '<p class="muted agent-empty-chips">Добавьте бумаги, за которыми агент будет наблюдать.</p>';
@@ -720,13 +755,21 @@
     if (!grid) return;
     if (_agentLoading) {
       grid.innerHTML = '<p class="muted">Загрузка данных агента…</p>';
+      renderAgentBriefingMeta();
+      return;
+    }
+    if (!getAgentSettings().enabled) {
+      grid.innerHTML = '';
+      renderAgentBriefingMeta();
       return;
     }
     if (!_agentCards.length) {
-      grid.innerHTML = '<p class="muted">Список наблюдения пуст. Настройте бумаги или верните топ‑20 по обороту.</p>';
+      grid.innerHTML = '<p class="muted">Список наблюдения пуст. Нажмите «Настроить», чтобы выбрать бумаги.</p>';
+      renderAgentBriefingMeta();
       return;
     }
     grid.innerHTML = _agentCards.map(renderAgentCardHtml).join('');
+    renderAgentBriefingMeta();
   }
 
   function refreshAgentSignals(force) {
@@ -871,59 +914,45 @@
     expanded.hidden = false;
   }
 
-  function bindAgentUI() {
-    if (_agentBound) return;
-    _agentBound = true;
-    ensureAgentSensitivityBound();
-    loadAgentRulesToUI();
+  function syncAgentSettingsControls() {
+    var settings = getAgentSettings();
+    var enabledToggle = document.getElementById('agentEnabledToggle');
+    if (enabledToggle) enabledToggle.checked = settings.enabled !== false;
+    var notifyToggle = document.getElementById('agentNotifyAttention');
+    if (notifyToggle) notifyToggle.checked = !!settings.notifyAttention;
+    var listWrap = document.querySelector('.agent-settings-list');
+    if (listWrap) listWrap.classList.toggle('agent-settings-list--disabled', settings.enabled === false);
+    var sensRoot = document.getElementById('agentSettingsSensitivityRoot');
+    if (sensRoot) sensRoot.classList.toggle('agent-settings-panel--disabled', settings.enabled === false);
+  }
+
+  function openAgentSettings() {
+    if (typeof switchTab === 'function') switchTab('settings');
+    window.setTimeout(function () {
+      renderAgentSettings();
+      var block = document.getElementById('agentSettingsBlock');
+      if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }
+
+  function bindAgentBriefingUI() {
+    if (_agentBriefingBound) return;
+    _agentBriefingBound = true;
 
     var refreshBtn = document.getElementById('agentRefreshBtn');
-    var configBtn = document.getElementById('agentConfigureListBtn');
-    var rulesBtn = document.getElementById('agentConfigureRulesBtn');
-    var addBtn = document.getElementById('agentAddTickerBtn');
-    var resetBtn = document.getElementById('agentResetTop20Btn');
-    var input = document.getElementById('agentTickerInput');
+    var configureBtn = document.getElementById('agentConfigureBtn');
 
     if (refreshBtn) {
       refreshBtn.addEventListener('click', function () { refreshAgentSignals(true); });
     }
-    if (configBtn) {
-      configBtn.addEventListener('click', function () {
-        _agentListOpen = !_agentListOpen;
-        var panel = document.getElementById('agentListPanel');
-        if (panel) panel.hidden = !_agentListOpen;
-        configBtn.setAttribute('aria-expanded', _agentListOpen ? 'true' : 'false');
-      });
+    if (configureBtn) {
+      configureBtn.addEventListener('click', openAgentSettings);
     }
-    if (rulesBtn) {
-      rulesBtn.addEventListener('click', function () {
-        _agentRulesOpen = !_agentRulesOpen;
-        var panel = document.getElementById('agentRulesPanel');
-        if (panel) {
-          panel.hidden = !_agentRulesOpen;
-          if (_agentRulesOpen) loadAgentRulesToUI();
-        }
-        rulesBtn.setAttribute('aria-expanded', _agentRulesOpen ? 'true' : 'false');
-      });
-    }
-    if (addBtn && input) {
-      addBtn.addEventListener('click', function () { addAgentTicker(input.value); input.value = ''; });
-      input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { addAgentTicker(input.value); input.value = ''; }
-      });
-    }
-    if (resetBtn) resetBtn.addEventListener('click', resetAgentToTop20);
-    if (typeof setupTickerAutocomplete === 'function') setupTickerAutocomplete('agentTickerInput');
 
     document.addEventListener('click', function (e) {
       var hideBtn = e.target.closest('[data-agent-hide]');
       if (hideBtn) {
         hideAgentTicker(hideBtn.getAttribute('data-agent-hide'));
-        return;
-      }
-      var removeBtn = e.target.closest('[data-agent-remove]');
-      if (removeBtn) {
-        removeAgentTicker(removeBtn.getAttribute('data-agent-remove'));
         return;
       }
       var detailBtn = e.target.closest('[data-agent-detail]');
@@ -933,17 +962,65 @@
     });
   }
 
+  function bindAgentSettingsUI() {
+    if (_agentSettingsBound) return;
+    _agentSettingsBound = true;
+    ensureAgentSensitivityBound();
+
+    var enabledToggle = document.getElementById('agentEnabledToggle');
+    if (enabledToggle) {
+      enabledToggle.addEventListener('change', function () {
+        setAgentSettings({ enabled: enabledToggle.checked });
+        syncAgentSettingsControls();
+        refreshAgentSignals(true);
+      });
+    }
+
+    var notifyToggle = document.getElementById('agentNotifyAttention');
+    if (notifyToggle) {
+      notifyToggle.addEventListener('change', function () {
+        setAgentSettings({ notifyAttention: notifyToggle.checked });
+      });
+    }
+
+    var addBtn = document.getElementById('agentSettingsAddTickerBtn');
+    var resetBtn = document.getElementById('agentSettingsResetTop20Btn');
+    var input = document.getElementById('agentSettingsTickerInput');
+
+    if (addBtn && input) {
+      addBtn.addEventListener('click', function () { addAgentTicker(input.value); input.value = ''; });
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { addAgentTicker(input.value); input.value = ''; }
+      });
+    }
+    if (resetBtn) resetBtn.addEventListener('click', resetAgentToTop20);
+    if (typeof setupTickerAutocomplete === 'function') setupTickerAutocomplete('agentSettingsTickerInput');
+
+    document.addEventListener('click', function (e) {
+      var removeBtn = e.target.closest('[data-agent-remove]');
+      if (!removeBtn) return;
+      removeAgentTicker(removeBtn.getAttribute('data-agent-remove'));
+    });
+  }
+
+  function renderAgentSettings() {
+    bindAgentSettingsUI();
+    syncAgentSettingsControls();
+    loadAgentRulesToUI();
+    var settings = getAgentSettings();
+    resolveAgentTickerList(settings).then(function (tickers) {
+      renderAgentChips(settings.useTopTurnoverByDefault && !settings.tickers.length
+        ? tickers.slice()
+        : settings.tickers.slice());
+    });
+    renderAgentHistory();
+  }
+
   function renderAgentSection() {
     var section = document.getElementById('agentObservationSection');
     if (!section) return;
-    bindAgentUI();
-    loadAgentRulesToUI();
-    var settings = getAgentSettings();
-    var chipsTickers = settings.tickers.length
-      ? settings.tickers
-      : [];
-    if (chipsTickers.length) renderAgentChips(chipsTickers);
-    renderAgentHistory();
+    bindAgentBriefingUI();
+    renderAgentBriefingMeta();
     if (!_agentCards.length && !_agentLoading) {
       refreshAgentSignals(false);
     } else {
@@ -954,6 +1031,8 @@
   window.analyzeAgentSignals = analyzeAgentSignals;
   window.loadTopTurnoverTickers = loadTopTurnoverTickers;
   window.renderAgentSection = renderAgentSection;
+  window.renderAgentSettings = renderAgentSettings;
+  window.openAgentSettings = openAgentSettings;
   window.refreshAgentSignals = refreshAgentSignals;
   window.loadAgentRulesToUI = loadAgentRulesToUI;
 })();

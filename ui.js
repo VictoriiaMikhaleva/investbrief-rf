@@ -1777,7 +1777,7 @@
     }
     if (tab === 'settings') {
       renderAlerts();
-      if (typeof loadAgentRulesToUI === 'function') loadAgentRulesToUI();
+      if (typeof renderAgentSettings === 'function') renderAgentSettings();
       if (typeof refreshWatchdogDevUI === 'function') refreshWatchdogDevUI();
     }
     if (tab === 'articles' && typeof renderArticlesBlock === 'function') renderArticlesBlock();
