@@ -524,15 +524,24 @@
   }
 
   function ofzActionBtn(kind, ticker, active, titleAdd, titleRemove) {
+    var safe = String(ticker || '').replace(/[^A-Za-z0-9._-]/g, '');
     var cls = 'ofz-action-btn' + (active ? ' ofz-action-btn--on' : '');
     var label = active ? '−' : '+';
     var title = active ? titleRemove : titleAdd;
-    return '<button type="button" class="' + cls + '" data-ofz-' + kind + '="' + escapeHtml(ticker) + '" title="' + escapeHtml(title) + '" aria-label="' + escapeHtml(title) + '">' + label + '</button>';
+    return '<button type="button" class="' + cls + '" data-ofz-' + kind + '="' + safe + '" title="' + escapeHtml(title) + '" aria-label="' + escapeHtml(title) + '">' + label + '</button>';
+  }
+
+  function ofzFindRow(ticker) {
+    var t = normalizeTicker(ticker);
+    return _rows.find(function (r) { return normalizeTicker(r.ticker) === t; }) || null;
   }
 
   function ofzToggleWatchlist(ticker) {
     var t = normalizeTicker(ticker);
-    if (!t) return;
+    if (!t) {
+      showToast('Не удалось определить тикер');
+      return;
+    }
     if (ofzWatchlistHas(t)) {
       setWatchlist(getWatchlist().filter(function (x) {
         var n = typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(x) : { ticker: x, market: 'RU' };
@@ -540,6 +549,8 @@
         return !(n.ticker === t && (n.market === 'RU' || !n.market));
       }));
       showToast('Удалено из наблюдения: ' + t);
+    } else if (typeof addTicker === 'function') {
+      addTicker(t);
     } else {
       var item = typeof Markets !== 'undefined'
         ? Markets.normalizeWatchlistItem({
@@ -560,13 +571,17 @@
       setWatchlist(list);
       showToast('Добавлено в наблюдение: ' + t);
     }
-    if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
-    renderOfzTable(_rows);
-    renderOfzYieldCurve(_rows);
+    setTimeout(function () {
+      renderOfzTable(_rows);
+      renderOfzYieldCurve(_rows);
+    }, 0);
   }
 
   function ofzTogglePortfolio(row) {
-    if (!row || !row.ticker) return;
+    if (!row || !row.ticker) {
+      showToast('Данные выпуска не найдены');
+      return;
+    }
     var t = normalizeTicker(row.ticker);
     if (ofzPortfolioHas(t)) {
       var portfolio = getPortfolio();
@@ -577,8 +592,9 @@
       showToast('Удалено из портфеля: ' + t);
     } else {
       var portfolioAdd = getPortfolio();
+      if (!Array.isArray(portfolioAdd.positions)) portfolioAdd.positions = [];
       var price = row.price != null && isFinite(row.price) ? row.price : 100;
-      portfolioAdd.positions.push(normalizePosition({
+      var pos = normalizePosition({
         ticker: t,
         qty: 1,
         avgPrice: price,
@@ -587,12 +603,42 @@
         comment: '',
         market: 'RU',
         currency: 'RUB'
-      }));
+      });
+      if (!pos) {
+        showToast('Не удалось добавить в портфель: ' + t);
+        return;
+      }
+      portfolioAdd.positions.push(pos);
       setPortfolio(portfolioAdd);
       showToast('Добавлено в портфель: ' + (row.label || t));
     }
+    if (typeof renderPortfolio === 'function') renderPortfolio();
     renderOfzTable(_rows);
     renderOfzYieldCurve(_rows);
+  }
+
+  function handleOfzTableClick(e) {
+    var pfBtn = e.target.closest('[data-ofz-portfolio]');
+    if (pfBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var pfRow = ofzFindRow(pfBtn.getAttribute('data-ofz-portfolio'));
+      if (pfRow) ofzTogglePortfolio(pfRow);
+      else showToast('Обновите таблицу ОФЗ (↻)');
+      return;
+    }
+    var wlBtn = e.target.closest('[data-ofz-watch]');
+    if (wlBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      ofzToggleWatchlist(wlBtn.getAttribute('data-ofz-watch'));
+      return;
+    }
+    var pick = e.target.closest('[data-ofz-pick]');
+    if (pick) {
+      e.preventDefault();
+      selectOfzTicker(pick.getAttribute('data-ofz-pick'));
+    }
   }
 
   function drawOfzYieldCurveChart(canvas, rows, selectedTicker) {
@@ -952,33 +998,17 @@
     _bound = true;
     renderOfzUsage();
 
+    var tbody = document.getElementById('ofzCompareBody');
+    if (tbody && !tbody._ofzClickBound) {
+      tbody._ofzClickBound = true;
+      tbody.addEventListener('click', handleOfzTableClick);
+    }
+
     var section = document.getElementById('ofzSection');
     if (section) {
       section.addEventListener('change', function (e) {
         if (e.target && e.target.id === 'ofzBondSelect') {
           selectOfzTicker(e.target.value);
-        }
-      });
-      section.addEventListener('click', function (e) {
-        var pick = e.target.closest('[data-ofz-pick]');
-        if (pick) {
-          e.preventDefault();
-          selectOfzTicker(pick.getAttribute('data-ofz-pick'));
-          return;
-        }
-        var pfBtn = e.target.closest('[data-ofz-portfolio]');
-        if (pfBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          var pfRow = _rows.find(function (r) { return r.ticker === pfBtn.getAttribute('data-ofz-portfolio'); });
-          if (pfRow) ofzTogglePortfolio(pfRow);
-          return;
-        }
-        var wlBtn = e.target.closest('[data-ofz-watch]');
-        if (wlBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          ofzToggleWatchlist(wlBtn.getAttribute('data-ofz-watch'));
         }
       });
     }

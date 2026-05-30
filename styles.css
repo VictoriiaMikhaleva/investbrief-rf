@@ -667,6 +667,7 @@
     .portfolio-cards { display: none; }
     @media (max-width: 699px) {
       .table-wrap { display: none; }
+      .ofz-table-wrap { display: block; }
       .portfolio-cards { display: block; }
     }
     .portfolio-card {
@@ -2928,6 +2929,9 @@
       font-size: 0.95rem;
       line-height: 1;
       cursor: pointer;
+      position: relative;
+      z-index: 1;
+      pointer-events: auto;
     }
     .ofz-action-btn:hover { background: rgba(45, 122, 70, 0.22); }
     .ofz-action-btn--on {
