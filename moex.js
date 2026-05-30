@@ -1360,7 +1360,7 @@
 
   function invalidateMacroLiveCaches(hard) {
     var keys = ['macro.fx', 'imoex.turnover.week', 'moex.topvol.20',
-      'moex.fx.USD', 'moex.fx.EUR', 'moex.fx.CNY'];
+      'moex.fx.USD', 'moex.fx.EUR', 'moex.fx.CNY', 'forts.rows', 'macro.commodities'];
     if (hard) keys.push('cbr.fx', 'cbr.keyrate');
     keys.forEach(function (key) {
       try { localStorage.removeItem(MOEX_CACHE_PREFIX + key); } catch (e) { /* */ }
@@ -1390,6 +1390,186 @@
           macroChangeWithSource(item.changePct, item.source || 'ЦБ РФ'));
       });
     }
+    var commodities = moexCacheGet('macro.commodities');
+    if (commodities) applyMacroCommodityBootstrap(row, commodities);
+  }
+
+
+
+  var MACRO_METAL_ASSETS = ['GOLD', 'SILV', 'NICKEL', 'ZINC'];
+
+  function formatCommodityMacroPrice(kind, price) {
+    if (price == null || !isFinite(price)) return '—';
+    var n = Number(price);
+    if (kind === 'oil') return n.toFixed(2).replace('.', ',') + ' $/bbl';
+    if (kind === 'coffee') return n.toFixed(2).replace('.', ',') + ' $/lb';
+    if (kind === 'cocoa') return n.toFixed(1).replace('.', ',') + ' · FORTS';
+    if (kind === 'metals') {
+      return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' $';
+    }
+    return n.toFixed(2).replace('.', ',');
+  }
+
+
+
+  function renderMacroCommodityTilesHtml() {
+    return (
+      renderMacroTile('oil', 'Нефть', '…', { text: 'Brent · FORTS', cls: 'muted' }) +
+      renderMacroTile('metals', 'Металлы', '…', { text: 'Au · Ag · Ni · Zn', cls: 'muted' }) +
+      renderMacroTile('coffee', 'Кофе', '…', { text: 'арабика · FORTS', cls: 'muted' }) +
+      renderMacroTile('cocoa', 'Какао', '…', { text: 'FORTS · МосБиржа', cls: 'muted' })
+    );
+  }
+
+
+
+  function fetchMoexFortsRows(skipCache) {
+    var cacheKey = 'forts.rows';
+    if (!skipCache) {
+      var cached = moexCacheGet(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
+    var all = [];
+    var start = 0;
+    var pageSize = 100;
+
+    function pageFetch() {
+      var url = MOEX_ISS + '/engines/futures/markets/forts/securities.json' +
+        '?iss.meta=off&securities.columns=SECID,SHORTNAME,ASSETCODE' +
+        '&marketdata.columns=SECID,LAST,LASTTOPREVPRICE,VALTODAY&start=' + start + '&limit=' + pageSize;
+      return moexFetchJson(url).then(function (json) {
+        var sec = json.securities;
+        var md = json.marketdata;
+        if (!md || !md.data || !md.data.length) return all;
+        var secCols = sec.columns;
+        var mdCols = md.columns;
+        var iAsset = secCols.indexOf('ASSETCODE');
+        var iName = secCols.indexOf('SHORTNAME');
+        var iSecMd = mdCols.indexOf('SECID');
+        var iLast = mdCols.indexOf('LAST');
+        var iChg = mdCols.indexOf('LASTTOPREVPRICE');
+        var iVal = mdCols.indexOf('VALTODAY');
+        var names = {};
+        var assets = {};
+        (sec.data || []).forEach(function (row) {
+          names[row[0]] = row[secCols.indexOf('SHORTNAME')] || row[0];
+          if (iAsset >= 0) assets[row[0]] = row[iAsset];
+        });
+        md.data.forEach(function (row) {
+          var secid = row[iSecMd];
+          var price = row[iLast];
+          if (!secid || price == null || !isFinite(Number(price)) || Number(price) <= 0) return;
+          var chg = row[iChg];
+          all.push({
+            secid: secid,
+            name: names[secid] || secid,
+            assetCode: assets[secid] || '',
+            price: Number(price),
+            changePct: chg != null && isFinite(Number(chg)) ? Number(chg) : null,
+            valToday: row[iVal] != null && isFinite(Number(row[iVal])) ? Number(row[iVal]) : 0
+          });
+        });
+        var cursor = md.cursor && md.cursor.data && md.cursor.data[0];
+        if (cursor && start + pageSize < cursor[1]) {
+          start += pageSize;
+          return pageFetch();
+        }
+        moexCacheSet(cacheKey, all, IMOEX_TURNOVER_CACHE_MS);
+        return all;
+      });
+    }
+
+    return pageFetch();
+  }
+
+
+
+  function pickFortsByAsset(rows, assetCode) {
+    var best = null;
+    rows.forEach(function (r) {
+      if (r.assetCode !== assetCode) return;
+      if (!best || (r.valToday || 0) > (best.valToday || 0)) best = r;
+    });
+    return best;
+  }
+
+
+
+  function buildMacroCommoditySnapshot(rows) {
+    var oil = pickFortsByAsset(rows, 'BR');
+    var coffee = pickFortsByAsset(rows, 'COFFEE');
+    var cocoa = pickFortsByAsset(rows, 'COCOA');
+    var metalPicks = MACRO_METAL_ASSETS.map(function (code) {
+      return pickFortsByAsset(rows, code);
+    }).filter(Boolean);
+    var gold = pickFortsByAsset(rows, 'GOLD');
+    var metalChanges = metalPicks.map(function (p) { return p.changePct; }).filter(function (v) {
+      return v != null && isFinite(v);
+    });
+    var avgMetalChg = metalChanges.length
+      ? metalChanges.reduce(function (a, b) { return a + b; }, 0) / metalChanges.length
+      : null;
+    return {
+      oil: oil ? { price: oil.price, changePct: oil.changePct } : null,
+      coffee: coffee ? { price: coffee.price, changePct: coffee.changePct } : null,
+      cocoa: cocoa ? { price: cocoa.price, changePct: cocoa.changePct } : null,
+      metals: gold || metalPicks.length ? {
+        price: gold ? gold.price : metalPicks[0].price,
+        changePct: avgMetalChg != null ? avgMetalChg : (gold ? gold.changePct : null)
+      } : null
+    };
+  }
+
+
+
+  function applyMacroCommodityBootstrap(row, snap) {
+    if (!row || !snap) return;
+    if (snap.oil) {
+      patchMacroTile(row, 'oil', formatCommodityMacroPrice('oil', snap.oil.price),
+        macroChangeWithSource(snap.oil.changePct, 'МосБиржа · FORTS'));
+    }
+    if (snap.metals) {
+      patchMacroTile(row, 'metals', formatCommodityMacroPrice('metals', snap.metals.price),
+        macroChangeWithSource(snap.metals.changePct, 'МосБиржа · Au Ag Ni Zn'));
+    }
+    if (snap.coffee) {
+      patchMacroTile(row, 'coffee', formatCommodityMacroPrice('coffee', snap.coffee.price),
+        macroChangeWithSource(snap.coffee.changePct, 'МосБиржа · FORTS'));
+    }
+    if (snap.cocoa) {
+      patchMacroTile(row, 'cocoa', formatCommodityMacroPrice('cocoa', snap.cocoa.price),
+        macroChangeWithSource(snap.cocoa.changePct, 'МосБиржа · FORTS'));
+    }
+  }
+
+
+
+  function fetchMacroCommodities(forceRefresh) {
+    var cacheKey = 'macro.commodities';
+    if (!forceRefresh) {
+      var cached = moexCacheGet(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
+    return fetchMoexFortsRows(!!forceRefresh).then(function (rows) {
+      var snap = buildMacroCommoditySnapshot(rows);
+      moexCacheSet(cacheKey, snap, IMOEX_TURNOVER_CACHE_MS);
+      return snap;
+    }).catch(function () { return null; });
+  }
+
+
+
+  function patchMacroCommodityTiles(row, forceRefresh) {
+    if (!row) return;
+    fetchMacroCommodities(!!forceRefresh).then(function (snap) {
+      if (!snap) {
+        ['oil', 'metals', 'coffee', 'cocoa'].forEach(function (id) {
+          patchMacroTile(row, id, '—', { text: 'нет данных', cls: 'muted' });
+        });
+        return;
+      }
+      applyMacroCommodityBootstrap(row, snap);
+    });
   }
 
 
@@ -1860,9 +2040,11 @@
     row.innerHTML =
       renderMacroTile('spy', 'S&P 500', '…', { text: 'ETF SPY · США', cls: 'muted' }) +
       renderMacroTile('qqq', 'Nasdaq 100', '…', { text: 'ETF QQQ · США', cls: 'muted' }) +
-      renderMacroTile('vix', 'VIX', '…', { text: 'волатильность · США', cls: 'muted' });
+      renderMacroTile('vix', 'VIX', '…', { text: 'волатильность · США', cls: 'muted' }) +
+      renderMacroCommodityTilesHtml();
 
     applyMacroBootstrap(row);
+    patchMacroCommodityTiles(row, !!forceRefresh);
 
     [['spy', 'SPY'], ['qqq', 'QQQ'], ['vix', '^VIX']].forEach(function (pair) {
       Markets.fetchUsQuote(pair[1]).then(function (q) {
@@ -1897,9 +2079,11 @@
       renderMacroTile('rate', 'Ставка', '…', { text: 'ключевая · ЦБ РФ', cls: 'muted' }) +
       renderMacroTile('usd', 'USD', '…', { text: 'загрузка…', cls: 'muted' }) +
       renderMacroTile('eur', 'EUR', '…', { text: 'загрузка…', cls: 'muted' }) +
-      renderMacroTile('cny', 'CNY', '…', { text: 'загрузка…', cls: 'muted' });
+      renderMacroTile('cny', 'CNY', '…', { text: 'загрузка…', cls: 'muted' }) +
+      renderMacroCommodityTilesHtml();
 
     applyMacroBootstrap(row);
+    patchMacroCommodityTiles(row, !!forceRefresh);
 
     fetchCbrKeyRate().then(function (kr) {
       patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
