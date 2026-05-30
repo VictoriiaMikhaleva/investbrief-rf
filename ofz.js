@@ -46,6 +46,39 @@
     return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
+  function formatOfzDateShort(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  function formatOfzNum(v, digits) {
+    if (v == null || !isFinite(v)) return '—';
+    return Number(v).toFixed(digits == null ? 2 : digits).replace('.', ',');
+  }
+
+  function formatOfzVolMln(v) {
+    if (v == null || !isFinite(v)) return '—';
+    return (v / 1e6).toFixed(1).replace('.', ',');
+  }
+
+  function yearsToMaturity(matDate) {
+    if (!matDate) return null;
+    var end = new Date(matDate).getTime();
+    if (!isFinite(end)) return null;
+    return (end - Date.now()) / (365.25 * 86400000);
+  }
+
+  function couponYieldOnPrice(couponValue, pricePct, faceValue, payCount) {
+    if (couponValue == null || pricePct == null || !faceValue || !payCount) return null;
+    var priceRub = Number(pricePct) / 100 * Number(faceValue);
+    if (!isFinite(priceRub) || priceRub <= 0) return null;
+    return Number(couponValue) / priceRub * payCount * 100;
+  }
+
+  var OFZ_TABLE_COLS = 16;
+
   function couponsPerYear(periodDays) {
     var p = Number(periodDays);
     if (!isFinite(p) || p <= 0) return null;
@@ -77,8 +110,8 @@
   function fetchOfzBondCatalog() {
     var url = MOEX_ISS + '/engines/stock/markets/bonds/boards/TQOB/securities.json' +
       '?iss.meta=off&iss.only=securities,marketdata' +
-      '&securities.columns=SECID,SHORTNAME,COUPONPERCENT,MATDATE,COUPONPERIOD,FACEVALUE' +
-      '&marketdata.columns=SECID,LAST,YIELDATWAPRICE,VALTODAY' +
+      '&securities.columns=SECID,SHORTNAME,COUPONPERCENT,MATDATE,COUPONPERIOD,FACEVALUE,COUPONVALUE,NEXTCOUPON,ACCRUEDINT' +
+      '&marketdata.columns=SECID,LAST,YIELDATWAPRICE,VALTODAY,DURATION,UPDATETIME' +
       '&limit=500';
     return moexFetchJson(url).then(function (json) {
       var secBlock = json.securities;
@@ -91,17 +124,24 @@
       var mat = sCols.indexOf('MATDATE');
       var period = sCols.indexOf('COUPONPERIOD');
       var fv = sCols.indexOf('FACEVALUE');
+      var cv = sCols.indexOf('COUPONVALUE');
+      var nc = sCols.indexOf('NEXTCOUPON');
+      var ai = sCols.indexOf('ACCRUEDINT');
       var mdMap = {};
       if (mdBlock && mdBlock.columns && mdBlock.data) {
         var mi = mdBlock.columns.indexOf('SECID');
         var li = mdBlock.columns.indexOf('LAST');
         var yi = mdBlock.columns.indexOf('YIELDATWAPRICE');
         var vi = mdBlock.columns.indexOf('VALTODAY');
+        var di = mdBlock.columns.indexOf('DURATION');
+        var ui = mdBlock.columns.indexOf('UPDATETIME');
         mdBlock.data.forEach(function (row) {
           mdMap[row[mi]] = {
             last: li >= 0 ? row[li] : null,
             yield: yi >= 0 ? row[yi] : null,
-            vol: vi >= 0 ? row[vi] : null
+            vol: vi >= 0 ? row[vi] : null,
+            duration: di >= 0 ? row[di] : null,
+            updateTime: ui >= 0 ? row[ui] : null
           };
         });
       }
@@ -122,9 +162,14 @@
           matDate: mat >= 0 ? row[mat] : null,
           couponPeriod: period >= 0 && row[period] != null ? Number(row[period]) : null,
           faceValue: fv >= 0 && row[fv] != null ? Number(row[fv]) : 1000,
+          couponValue: cv >= 0 && row[cv] != null ? Number(row[cv]) : null,
+          nextCoupon: nc >= 0 ? row[nc] : null,
+          accruedInt: ai >= 0 && row[ai] != null ? Number(row[ai]) : null,
           last: md.last != null ? Number(md.last) : null,
           yieldPct: md.yield != null ? Number(md.yield) : null,
-          vol: md.vol != null ? Number(md.vol) : 0
+          vol: md.vol != null ? Number(md.vol) : 0,
+          durationDays: md.duration != null ? Number(md.duration) : null,
+          updateTime: md.updateTime || null
         };
       }).sort(function (a, b) {
         return (b.vol || 0) - (a.vol || 0);
@@ -145,6 +190,10 @@
   function rowFromCatalogEntry(entry) {
     var fallback = entry.kind ? { kind: entry.kind, kindLabel: entry.kindLabel } : null;
     var kindInfo = detectKindFromName(entry.shortname, fallback);
+    var payCount = couponsPerYear(entry.couponPeriod);
+    var durationYears = entry.durationDays != null && entry.durationDays > 0
+      ? entry.durationDays / 365.25
+      : null;
     return {
       ticker: entry.ticker,
       secid: entry.secid || null,
@@ -154,9 +203,17 @@
       price: entry.last,
       yieldPct: entry.yieldPct,
       couponPct: entry.couponPct,
-      payCount: couponsPerYear(entry.couponPeriod),
+      payCount: payCount,
       matDate: entry.matDate,
       faceValue: entry.faceValue || 1000,
+      couponValue: entry.couponValue,
+      couponYieldLast: couponYieldOnPrice(entry.couponValue, entry.last, entry.faceValue || 1000, payCount),
+      yearsToMat: yearsToMaturity(entry.matDate),
+      durationYears: durationYears,
+      vol: entry.vol,
+      accruedInt: entry.accruedInt,
+      nextCoupon: entry.nextCoupon,
+      updateTime: entry.updateTime,
       coupons: null
     };
   }
@@ -377,6 +434,7 @@
       { lbl: 'Цена', val: formatOfzPrice(row.price) },
       { lbl: 'Доходность', val: formatOfzYield(row.yieldPct) },
       { lbl: 'Купон', val: formatOfzCouponPct(row.couponPct) },
+      { lbl: 'Дюрация', val: row.durationYears != null ? formatOfzNum(row.durationYears, 2) + ' лет' : '—' },
       { lbl: 'Выплат в год', val: row.payCount != null ? String(row.payCount) : '—' },
       { lbl: 'Погашение', val: formatOfzDate(row.matDate) }
     ].map(function (k) {
@@ -384,28 +442,296 @@
     }).join('');
   }
 
+  function ofzWatchlistHas(ticker) {
+    var t = normalizeTicker(ticker);
+    var list = getWatchlist();
+    if (typeof Markets !== 'undefined') return Markets.watchlistHasTicker(list, t, 'RU');
+    return list.some(function (x) { return normalizeTicker(x) === t || normalizeTicker(x && x.ticker) === t; });
+  }
+
+  function ofzPortfolioHas(ticker) {
+    var t = normalizeTicker(ticker);
+    return (getPortfolio().positions || []).some(function (p) {
+      return normalizeTicker(p.ticker) === t;
+    });
+  }
+
+  function ofzActionBtn(kind, ticker, active, titleAdd, titleRemove) {
+    var cls = 'ofz-action-btn' + (active ? ' ofz-action-btn--on' : '');
+    var label = active ? '−' : '+';
+    var title = active ? titleRemove : titleAdd;
+    return '<button type="button" class="' + cls + '" data-ofz-' + kind + '="' + escapeHtml(ticker) + '" title="' + escapeHtml(title) + '" aria-label="' + escapeHtml(title) + '">' + label + '</button>';
+  }
+
+  function ofzToggleWatchlist(ticker) {
+    var t = normalizeTicker(ticker);
+    if (ofzWatchlistHas(t)) {
+      setWatchlist(getWatchlist().filter(function (x) {
+        var n = typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(x) : { ticker: x, market: 'RU' };
+        if (!n) return false;
+        return !(n.ticker === t && (n.market === 'RU' || !n.market));
+      }));
+      showToast('Удалено из аналитики: ' + t);
+    } else {
+      var list = getWatchlist().slice();
+      list.push(typeof Markets !== 'undefined'
+        ? Markets.normalizeWatchlistItem({ ticker: t, market: 'RU', currency: 'RUB', type: 'bond', name: getTickerSubtitle(t) || t })
+        : t);
+      setWatchlist(list);
+      showToast('Добавлено в аналитику: ' + t);
+    }
+    renderOfzTable(_rows);
+    renderOfzYieldCurve(_rows);
+  }
+
+  function ofzTogglePortfolio(row) {
+    if (!row || !row.ticker) return;
+    var t = normalizeTicker(row.ticker);
+    if (ofzPortfolioHas(t)) {
+      var portfolio = getPortfolio();
+      portfolio.positions = (portfolio.positions || []).filter(function (p) {
+        return normalizeTicker(p.ticker) !== t;
+      });
+      setPortfolio(portfolio);
+      showToast('Удалено из портфеля: ' + t);
+    } else {
+      var portfolioAdd = getPortfolio();
+      var price = row.price != null && isFinite(row.price) ? row.price : 100;
+      portfolioAdd.positions.push(normalizePosition({
+        ticker: t,
+        qty: 1,
+        avgPrice: price,
+        currentPrice: price,
+        buyDate: new Date().toISOString().slice(0, 10),
+        comment: '',
+        market: 'RU',
+        currency: 'RUB'
+      }));
+      setPortfolio(portfolioAdd);
+      showToast('Добавлено в портфель: ' + (row.label || t));
+    }
+    renderOfzTable(_rows);
+    renderOfzYieldCurve(_rows);
+  }
+
+  function drawOfzYieldCurveChart(canvas, rows, selectedTicker) {
+    if (!canvas) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var rect = canvas.getBoundingClientRect();
+    var w = Math.max(rect.width, 320);
+    var h = Math.max(rect.height, 260);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var points = (rows || []).filter(function (r) {
+      return r.durationYears > 0 && r.yieldPct > 0 && isFinite(r.durationYears) && isFinite(r.yieldPct);
+    }).map(function (r) {
+      var shortLabel = String(r.label || r.ticker).replace(/^ОФЗ\s*/i, '').trim();
+      return { x: r.durationYears, y: r.yieldPct, row: r, label: shortLabel || r.ticker };
+    });
+
+    if (points.length < 2) {
+      canvas._ofzYieldMeta = null;
+      ctx.fillStyle = '#6B6B6B';
+      ctx.font = '14px Golos Text, IBM Plex Sans, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Недостаточно данных для кривой', w / 2, h / 2);
+      return;
+    }
+
+    var xs = points.map(function (p) { return p.x; });
+    var ys = points.map(function (p) { return p.y; });
+    var minX = Math.min.apply(null, xs);
+    var maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys);
+    var maxY = Math.max.apply(null, ys);
+    var padX = Math.max((maxX - minX) * 0.08, 0.25);
+    var padY = Math.max((maxY - minY) * 0.15, 0.25);
+    minX = Math.max(0, minX - padX);
+    maxX += padX;
+    minY -= padY;
+    maxY += padY;
+
+    var pad = { top: 16, right: 14, bottom: 38, left: 46 };
+    var plotW = w - pad.left - pad.right;
+    var plotH = h - pad.top - pad.bottom;
+
+    function xAt(v) { return pad.left + ((v - minX) / (maxX - minX || 1)) * plotW; }
+    function yAt(v) { return pad.top + plotH - ((v - minY) / (maxY - minY || 1)) * plotH; }
+
+    ctx.strokeStyle = 'rgba(43, 43, 43, 0.08)';
+    ctx.lineWidth = 1;
+    for (var g = 0; g <= 4; g++) {
+      var gy = pad.top + (plotH * g) / 4;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, gy);
+      ctx.lineTo(pad.left + plotW, gy);
+      ctx.stroke();
+      var yVal = maxY - ((maxY - minY) * g) / 4;
+      ctx.fillStyle = '#6B6B6B';
+      ctx.font = '10px Inter, Manrope, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(yVal.toFixed(1).replace('.', ',') + '%', pad.left - 6, gy + 3);
+    }
+
+    for (var gx = 0; gx <= 5; gx++) {
+      var xVal = minX + ((maxX - minX) * gx) / 5;
+      var gxPos = xAt(xVal);
+      ctx.fillStyle = '#6B6B6B';
+      ctx.textAlign = 'center';
+      ctx.fillText(xVal.toFixed(1).replace('.', ','), gxPos, h - 12);
+    }
+
+    ctx.fillStyle = '#6B6B6B';
+    ctx.font = '11px Inter, Manrope, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Дюрация, лет', pad.left + plotW / 2, h - 2);
+    ctx.save();
+    ctx.translate(12, pad.top + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Доходность, %', 0, 0);
+    ctx.restore();
+
+    var sorted = points.slice().sort(function (a, b) { return a.x - b.x; });
+    ctx.strokeStyle = 'rgba(61, 122, 153, 0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    sorted.forEach(function (p, i) {
+      var px = xAt(p.x);
+      var py = yAt(p.y);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    points.forEach(function (p) {
+      var selected = p.row.ticker === selectedTicker;
+      var px = xAt(p.x);
+      var py = yAt(p.y);
+      ctx.beginPath();
+      ctx.arc(px, py, selected ? 5.5 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = selected ? '#3D5C47' : 'rgba(61, 122, 153, 0.9)';
+      ctx.fill();
+      if (selected) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.fillStyle = selected ? '#2B2B2B' : '#555';
+      ctx.font = (selected ? '10px' : '8px') + ' Inter, Manrope, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(p.label, px, py - (selected ? 10 : 7));
+    });
+
+    canvas._ofzYieldMeta = {
+      points: points,
+      pad: pad,
+      plotW: plotW,
+      plotH: plotH,
+      w: w,
+      h: h,
+      minX: minX,
+      maxX: maxX,
+      minY: minY,
+      maxY: maxY
+    };
+  }
+
+  function renderOfzYieldCurve(rows) {
+    var canvas = document.getElementById('ofzYieldCurveChart');
+    if (!canvas) return;
+    drawOfzYieldCurveChart(canvas, rows, _selectedTicker);
+    var note = document.getElementById('ofzYieldCurveNote');
+    if (note) {
+      var n = (rows || []).filter(function (r) {
+        return r.durationYears > 0 && r.yieldPct > 0;
+      }).length;
+      note.textContent = n
+        ? n + ' выпусков на графике · дюрация и доходность к погашению по данным TQOB'
+        : 'Дюрация и доходность к погашению · TQOB';
+    }
+  }
+
+  function bindOfzYieldCurveHover() {
+    var canvas = document.getElementById('ofzYieldCurveChart');
+    var tip = document.getElementById('ofzYieldCurveTip');
+    var wrap = canvas && canvas.parentElement;
+    if (!canvas || !wrap || canvas._ofzYieldHoverBound) return;
+    canvas._ofzYieldHoverBound = true;
+
+    function hideTip() {
+      if (tip) tip.classList.remove('is-visible');
+    }
+
+    wrap.addEventListener('mousemove', function (e) {
+      var meta = canvas._ofzYieldMeta;
+      if (!meta || !meta.points || !meta.points.length) {
+        hideTip();
+        return;
+      }
+      var rect = canvas.getBoundingClientRect();
+      var mx = e.clientX - rect.left;
+      var my = e.clientY - rect.top;
+      var best = null;
+      var bestDist = 999;
+      meta.points.forEach(function (p) {
+        var px = meta.pad.left + ((p.x - meta.minX) / (meta.maxX - meta.minX || 1)) * meta.plotW;
+        var py = meta.pad.top + meta.plotH - ((p.y - meta.minY) / (meta.maxY - meta.minY || 1)) * meta.plotH;
+        var dist = Math.hypot(mx - px, my - py);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { p: p, px: px, py: py };
+        }
+      });
+      if (!best || bestDist > 18 || !tip) {
+        hideTip();
+        return;
+      }
+      tip.textContent = (best.p.row.label || best.p.row.ticker) +
+        ' · дюр. ' + formatOfzNum(best.p.x, 2) + ' лет · дох. ' + formatOfzYield(best.p.y);
+      tip.style.left = Math.min(Math.max(best.px, 40), meta.w - 40) + 'px';
+      tip.style.top = Math.max(best.py - 8, 8) + 'px';
+      tip.classList.add('is-visible');
+    });
+    wrap.addEventListener('mouseleave', hideTip);
+  }
+
   function renderOfzTable(rows) {
     var tbody = document.getElementById('ofzCompareBody');
     if (!tbody) return;
     if (_loading) {
-      tbody.innerHTML = '<tr><td colspan="7" class="muted">Загрузка данных МосБиржи…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + OFZ_TABLE_COLS + '" class="muted">Загрузка данных МосБиржи…</td></tr>';
       return;
     }
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="muted">Нет данных</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + OFZ_TABLE_COLS + '" class="muted">Нет данных</td></tr>';
       return;
     }
-    tbody.innerHTML = rows.map(function (r) {
+    tbody.innerHTML = rows.map(function (r, idx) {
       var active = r.ticker === _selectedTicker ? ' class="ofz-row-active"' : '';
+      var inPf = ofzPortfolioHas(r.ticker);
+      var inWl = ofzWatchlistHas(r.ticker);
       return (
         '<tr data-ofz-ticker="' + escapeHtml(r.ticker) + '"' + active + '>' +
+          '<td class="ofz-num muted">' + String(idx + 1) + '</td>' +
           '<td><button type="button" class="ofz-row-btn" data-ofz-pick="' + escapeHtml(r.ticker) + '">' + escapeHtml(r.label || r.ticker) + '</button></td>' +
-          '<td>' + escapeHtml(r.kindLabel || '—') + '</td>' +
-          '<td>' + escapeHtml(formatOfzPrice(r.price)) + '</td>' +
-          '<td>' + escapeHtml(formatOfzYield(r.yieldPct)) + '</td>' +
-          '<td>' + escapeHtml(formatOfzCouponPct(r.couponPct)) + '</td>' +
-          '<td>' + escapeHtml(r.payCount != null ? String(r.payCount) : '—') + '</td>' +
-          '<td>' + escapeHtml(formatOfzDate(r.matDate)) + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(formatOfzDateShort(r.matDate)) + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(formatOfzNum(r.yearsToMat, 1)) + '</td>' +
+          '<td class="ofz-num ofz-yield-val">' + escapeHtml(formatOfzYield(r.yieldPct)) + '</td>' +
+          '<td class="ofz-num ofz-yield-val">' + escapeHtml(formatOfzCouponPct(r.couponPct)) + '</td>' +
+          '<td class="ofz-num ofz-yield-val">' + escapeHtml(formatOfzYield(r.couponYieldLast)) + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(formatOfzPrice(r.price)) + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(formatOfzVolMln(r.vol)) + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(formatOfzNum(r.couponValue, 2)) + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(r.payCount != null ? String(r.payCount) : '—') + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(formatOfzNum(r.accruedInt, 1)) + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(formatOfzNum(r.durationYears, 2)) + '</td>' +
+          '<td class="ofz-num">' + escapeHtml(formatOfzDateShort(r.nextCoupon)) + '</td>' +
+          '<td class="ofz-action-cell">' + ofzActionBtn('portfolio', r.ticker, inPf, 'В портфель', 'Убрать из портфеля') + '</td>' +
+          '<td class="ofz-action-cell">' + ofzActionBtn('watch', r.ticker, inWl, 'В аналитику', 'Убрать из аналитики') + '</td>' +
         '</tr>'
       );
     }).join('');
@@ -479,11 +805,13 @@
     renderOfzTable(_rows);
     renderOfzIncomeTypes(row);
     renderOfzKpis(row);
+    renderOfzYieldCurve(_rows);
     if (!row) return Promise.resolve();
     return ensureOfzRowDetails(row).then(function (enriched) {
       renderOfzTable(_rows);
       renderOfzIncomeTypes(enriched);
       renderOfzKpis(enriched);
+      renderOfzYieldCurve(_rows);
       return renderOfzCharts(enriched);
     });
   }
@@ -510,6 +838,7 @@
         select.value = _selectedTicker;
       }
       renderOfzTable(_rows);
+      renderOfzYieldCurve(_rows);
       return selectOfzTicker(_selectedTicker);
     }).catch(function () {
       _loading = false;
@@ -534,9 +863,27 @@
     }
     document.addEventListener('click', function (e) {
       var pick = e.target.closest('[data-ofz-pick]');
-      if (!pick) return;
-      selectOfzTicker(pick.getAttribute('data-ofz-pick'));
+      if (pick) {
+        selectOfzTicker(pick.getAttribute('data-ofz-pick'));
+        return;
+      }
+      var pfBtn = e.target.closest('[data-ofz-portfolio]');
+      if (pfBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var pfRow = _rows.find(function (r) { return r.ticker === pfBtn.getAttribute('data-ofz-portfolio'); });
+        if (pfRow) ofzTogglePortfolio(pfRow);
+        return;
+      }
+      var wlBtn = e.target.closest('[data-ofz-watch]');
+      if (wlBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        ofzToggleWatchlist(wlBtn.getAttribute('data-ofz-watch'));
+      }
     });
+
+    bindOfzYieldCurveHover();
 
     ['ofzPriceChart', 'ofzCouponChart', 'ofzProfitChart'].forEach(function (id) {
       var canvas = document.getElementById(id);

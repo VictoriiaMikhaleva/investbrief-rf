@@ -2903,8 +2903,38 @@
     .ofz-kpi-lbl { display: block; font-size: 0.72rem; margin-bottom: 0.15rem; }
     .ofz-kpi-val { font-size: 0.92rem; font-weight: 600; color: var(--accent); }
     .ofz-charts-grid { margin-bottom: 0.85rem; }
-    .ofz-table-wrap { overflow-x: auto; overflow-y: auto; max-height: 28rem; margin-bottom: 0.45rem; }
-    .ofz-compare-table { min-width: 640px; }
+    .ofz-yield-curve-panel { margin-bottom: 0.85rem; }
+    .ofz-yield-curve-wrap { height: 320px; position: relative; }
+    .ofz-table-wrap { overflow-x: auto; overflow-y: auto; max-height: 32rem; margin-bottom: 0.45rem; }
+    .ofz-market-table { min-width: 1080px; font-size: 0.76rem; }
+    .ofz-market-table th,
+    .ofz-market-table td { white-space: nowrap; padding: 0.32rem 0.4rem; vertical-align: middle; }
+    .ofz-market-table .ofz-yield-val { color: #2d7a46; font-weight: 600; }
+    .ofz-market-table .ofz-num { font-variant-numeric: tabular-nums; }
+    .ofz-action-cell { text-align: center; }
+    .ofz-action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.45rem;
+      height: 1.45rem;
+      padding: 0;
+      border-radius: 4px;
+      border: 1px solid rgba(45, 122, 70, 0.35);
+      background: rgba(45, 122, 70, 0.12);
+      color: #2d7a46;
+      font-weight: 700;
+      font-size: 0.95rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .ofz-action-btn:hover { background: rgba(45, 122, 70, 0.22); }
+    .ofz-action-btn--on {
+      border-color: rgba(154, 60, 60, 0.35);
+      background: rgba(154, 60, 60, 0.12);
+      color: #9a3c3c;
+    }
+    .ofz-action-btn--on:hover { background: rgba(154, 60, 60, 0.2); }
     .ofz-row-btn {
       border: none;
       background: none;
@@ -2915,7 +2945,7 @@
       text-align: left;
     }
     .ofz-row-btn:hover { text-decoration: underline; }
-    .ofz-compare-table tr.ofz-row-active { background: rgba(61, 92, 71, 0.08); }
+    .ofz-market-table tr.ofz-row-active { background: rgba(61, 92, 71, 0.08); }
     .agent-controls {
       flex-wrap: wrap;
       gap: 0.5rem;

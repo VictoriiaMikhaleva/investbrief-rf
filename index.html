@@ -308,6 +308,15 @@
 
             <div class="ofz-kpis" id="ofzKpis" aria-live="polite"></div>
 
+            <div class="analytics-chart-panel ofz-yield-curve-panel">
+              <h4 class="analytics-chart-lbl">Кривая доходности ОФЗ</h4>
+              <p class="analytics-chart-note muted" id="ofzYieldCurveNote">Дюрация и доходность к погашению · TQOB</p>
+              <div class="chart-canvas-wrap analytics-chart-wrap ofz-yield-curve-wrap">
+                <canvas id="ofzYieldCurveChart" aria-label="Кривая доходности ОФЗ по дюрации"></canvas>
+                <div class="chart-hover-tip" id="ofzYieldCurveTip"></div>
+              </div>
+            </div>
+
             <div class="analytics-charts-grid ofz-charts-grid">
               <div class="analytics-chart-panel">
                 <h4 class="analytics-chart-lbl">Цена · год</h4>
@@ -333,16 +342,25 @@
             </div>
 
             <div class="table-wrap ofz-table-wrap">
-              <table class="strategy-table ofz-compare-table" id="ofzCompareTable">
+              <table class="strategy-table ofz-market-table" id="ofzCompareTable">
                 <thead>
                   <tr>
+                    <th>№</th>
                     <th>Выпуск</th>
-                    <th>Тип</th>
-                    <th>Цена</th>
-                    <th>Доходность</th>
-                    <th>Купон, %</th>
-                    <th>Выплат в год</th>
                     <th>Погашение</th>
+                    <th>Лет</th>
+                    <th>Дох.</th>
+                    <th>Год. куп.</th>
+                    <th>Куп/цена</th>
+                    <th>Цена</th>
+                    <th>Объём, млн</th>
+                    <th>Купон, ₽</th>
+                    <th>Част.</th>
+                    <th>НКД</th>
+                    <th>Дюр.</th>
+                    <th>Купон дата</th>
+                    <th title="Портфель">Порт.</th>
+                    <th title="Аналитика">Анал.</th>
                   </tr>
                 </thead>
                 <tbody id="ofzCompareBody"></tbody>
@@ -825,7 +843,7 @@
   <script src="./moex.js?v=20250903"></script>
   <script src="./manual-data.js?v=20250828"></script>
   <script src="./analytics.js?v=20250903"></script>
-  <script src="./ofz.js?v=20260530"></script>
+  <script src="./ofz.js?v=20260530b"></script>
   <script src="./portfolio.js?v=20250828e"></script>
   <script src="./agent.js?v=20260530"></script>
   <script src="./watchdog.js?v=20260530"></script>
