@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v8.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v9.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -136,17 +136,33 @@
     return val.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽/акц.';
   }
 
-  function sumDividendsInYear(dividends, year) {
-    var y = String(year);
+  function sumDividendsInReportingYear(dividends, reportingYear) {
+    var y = String(reportingYear);
     var sum = 0;
     (dividends || []).forEach(function (d) {
-      if (!d.date || d.date.indexOf(y) !== 0 || !isFinite(d.value) || d.value <= 0) return;
+      if (dividendReportingYear(d.date) !== y) return;
+      if (!isFinite(d.value) || d.value <= 0) return;
       sum += d.value;
     });
     return sum;
   }
 
+  function getLastDividendPaymentDate(dividends) {
+    var last = '';
+    (dividends || []).forEach(function (d) {
+      if (!d.date || !isFinite(d.value) || d.value <= 0) return;
+      if (!last || d.date > last) last = d.date;
+    });
+    return last;
+  }
 
+  function monthsSinceIsoDate(isoDate) {
+    var dt = new Date(String(isoDate || '').slice(0, 10) + 'T12:00:00');
+    if (isNaN(dt.getTime())) return Infinity;
+    var now = new Date();
+    now.setHours(12, 0, 0, 0);
+    return (now.getFullYear() - dt.getFullYear()) * 12 + (now.getMonth() - dt.getMonth());
+  }
 
   function computeDividendForecast12m(dividends) {
     if (!dividends || !dividends.length) {
@@ -187,16 +203,26 @@
       };
     }
 
-    var thisYear = now.getFullYear();
-    var y;
-    for (y = thisYear - 1; y >= thisYear - 6; y--) {
-      var yearSum = sumDividendsInYear(dividends, y);
+    var lastPay = getLastDividendPaymentDate(dividends);
+    if (lastPay && monthsSinceIsoDate(lastPay) > 18) {
+      return {
+        amount: null,
+        paid12m: null,
+        upcoming12m: null,
+        source: 'новых выплат не объявлено (МосБиржа)'
+      };
+    }
+
+    var windowYears = getYieldWindowYears();
+    var i;
+    for (i = windowYears.length - 1; i >= 0; i--) {
+      var yearSum = sumDividendsInReportingYear(dividends, windowYears[i]);
       if (yearSum > 0) {
         return {
           amount: yearSum,
           paid12m: paid12m,
           upcoming12m: yearSum,
-          source: 'оценка по дивидендам ' + y + ' г. (МосБиржа)'
+          source: 'оценка по дивидендам ' + windowYears[i] + ' г. (МосБиржа)'
         };
       }
     }
@@ -267,27 +293,32 @@
     var source = hasAnnounced ? 'по датам отсечки (МосБиржа)' : '';
 
     if (!hasAnnounced) {
-      var refYear = null;
-      var yRef;
-      for (yRef = now.getFullYear() - 1; yRef >= now.getFullYear() - 6; yRef--) {
-        if (sumDividendsInYear(dividends, yRef) > 0) {
-          refYear = yRef;
-          break;
+      var lastPay = getLastDividendPaymentDate(dividends);
+      if (lastPay && monthsSinceIsoDate(lastPay) <= 18) {
+        var refYear = null;
+        var windowYears = getYieldWindowYears();
+        var yRef;
+        for (yRef = windowYears.length - 1; yRef >= 0; yRef--) {
+          if (sumDividendsInReportingYear(dividends, windowYears[yRef]) > 0) {
+            refYear = windowYears[yRef];
+            break;
+          }
         }
-      }
-      if (refYear == null) refYear = now.getFullYear() - 1;
-      (dividends || []).forEach(function (div) {
-        if (div.date.indexOf(String(refYear)) !== 0) return;
-        var dt = new Date(div.date + 'T12:00:00');
-        if (isNaN(dt.getTime())) return;
-        var bucket = monthByKey[monthKeyFromDate(new Date(now.getFullYear(), dt.getMonth(), 1))];
-        if (!bucket) return;
-        bucket.perShare += div.value;
-        bucket.items.push({ date: div.date, value: div.value, estimated: true });
-        bucket.estimated = true;
-      });
-      if (months.some(function (m) { return m.perShare > 0; })) {
-        source = 'оценка: календарь выплат ' + refYear + ' г.';
+        if (refYear != null) {
+          (dividends || []).forEach(function (div) {
+            if (dividendReportingYear(div.date) !== String(refYear)) return;
+            var dt = new Date(div.date + 'T12:00:00');
+            if (isNaN(dt.getTime())) return;
+            var bucket = monthByKey[monthKeyFromDate(new Date(now.getFullYear(), dt.getMonth(), 1))];
+            if (!bucket) return;
+            bucket.perShare += div.value;
+            bucket.items.push({ date: div.date, value: div.value, estimated: true });
+            bucket.estimated = true;
+          });
+          if (months.some(function (m) { return m.perShare > 0; })) {
+            source = 'оценка: календарь выплат ' + refYear + ' г.';
+          }
+        }
       }
     }
 
@@ -549,10 +580,16 @@
     return todayMs - lastMs > 4 * 24 * 60 * 60 * 1000;
   }
 
+  function isAnalyticsFullCacheStale(cached) {
+    if (!cached) return true;
+    if (isMoexHistoryCacheStale(cached.volumeByDay)) return true;
+    return false;
+  }
+
   function fetchMoexShareHistoryDaily(ticker, yearsBack) {
     ticker = normalizeTicker(ticker);
     yearsBack = yearsBack || YIELD_YEARS;
-    var cacheKey = 'hist.v2.' + ticker + '.' + yearsBack;
+    var cacheKey = 'hist.v3.' + ticker + '.' + yearsBack;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
 
@@ -806,9 +843,9 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v5.' + ticker;
+    var cacheKey = 'full.v6.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
-    if (cached) return Promise.resolve(cached);
+    if (cached && !isAnalyticsFullCacheStale(cached)) return Promise.resolve(cached);
 
     return Promise.all([
       fetchMoexDividends(ticker),
