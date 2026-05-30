@@ -465,7 +465,13 @@
 
   function syncUsMarketUi() {
     var available = US_MARKET_AVAILABLE;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.classList.toggle('us-market-unavailable', !available);
+    }
     document.querySelectorAll('[data-briefing-market="US"], [data-briefing-market="BOTH"]').forEach(function (btn) {
+      btn.hidden = !available;
+    });
+    document.querySelectorAll('[data-news-market="US"]').forEach(function (btn) {
       btn.hidden = !available;
     });
     document.querySelectorAll('.briefing-market-toolbar').forEach(function (toolbar) {
@@ -864,4 +870,8 @@
     fetchUsTopStocksByVolume: fetchUsTopStocksByVolume,
     fetchUsHistory: fetchUsHistory
   };
+
+  if (typeof document !== 'undefined' && document.documentElement) {
+    syncUsMarketUi();
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

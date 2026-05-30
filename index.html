@@ -1,5 +1,5 @@
 ﻿<!doctype html>
-<html lang="ru">
+<html lang="ru" class="us-market-unavailable">
 <head>
   <script>
     /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS и JS на мобильных. */
@@ -124,11 +124,11 @@
           <section class="home-block">
             <h3 class="home-block-title">Котировки</h3>
             <p class="muted home-hint hint-frame">Индекс МосБиржи · котировка и динамика</p>
-            <div class="briefing-market-toolbar">
+            <div class="briefing-market-toolbar" hidden>
               <div class="market-filter-tabs" id="briefingMarketTabs" role="tablist" aria-label="Рынок в сводке">
                 <button type="button" data-briefing-market="RU" class="active">Рынок РФ</button>
-                <button type="button" data-briefing-market="US">Рынок США</button>
-                <button type="button" data-briefing-market="BOTH">Рынок РФ и США</button>
+                <button type="button" data-briefing-market="US" hidden>Рынок США</button>
+                <button type="button" data-briefing-market="BOTH" hidden>Рынок РФ и США</button>
               </div>
             </div>
             <div class="market-tiles market-tiles--compact bento-section market-tiles--index-only" id="marketTiles" aria-label="Индекс МосБиржи"></div>
@@ -199,7 +199,7 @@
             <div class="market-filter-tabs" id="newsMarketFilterTabs" role="tablist" aria-label="Рынок в сводке">
               <button type="button" data-news-market="all" class="active">Все</button>
               <button type="button" data-news-market="RU">Россия</button>
-              <button type="button" data-news-market="US">США</button>
+              <button type="button" data-news-market="US" hidden>США</button>
             </div>
           </div>
 
@@ -232,11 +232,11 @@
             <p>Не является индивидуальной инвестиционной рекомендацией. Графики, дивиденды, обороты торгов и последние события по интересующим позициям.</p>
           </div>
 
-          <div class="briefing-market-toolbar">
+          <div class="briefing-market-toolbar" hidden>
             <div class="market-filter-tabs" id="analyticsMarketTabs" role="tablist" aria-label="Рынок в аналитике">
               <button type="button" data-briefing-market="RU" class="active">Рынок РФ</button>
-              <button type="button" data-briefing-market="US">Рынок США</button>
-              <button type="button" data-briefing-market="BOTH">Рынок РФ и США</button>
+              <button type="button" data-briefing-market="US" hidden>Рынок США</button>
+              <button type="button" data-briefing-market="BOTH" hidden>Рынок РФ и США</button>
             </div>
           </div>
 
@@ -334,11 +334,11 @@
             <p>Не является индивидуальной инвестиционной рекомендацией. Позиции хранятся локально. Котировки — с МосБиржи и Yahoo Finance.</p>
           </div>
 
-          <div class="briefing-market-toolbar">
+          <div class="briefing-market-toolbar" hidden>
             <div class="market-filter-tabs" id="portfolioMarketTabs" role="tablist" aria-label="Рынок в портфеле">
               <button type="button" data-briefing-market="RU" class="active">Рынок РФ</button>
-              <button type="button" data-briefing-market="US">Рынок США</button>
-              <button type="button" data-briefing-market="BOTH">Рынок РФ и США</button>
+              <button type="button" data-briefing-market="US" hidden>Рынок США</button>
+              <button type="button" data-briefing-market="BOTH" hidden>Рынок РФ и США</button>
             </div>
           </div>
 
