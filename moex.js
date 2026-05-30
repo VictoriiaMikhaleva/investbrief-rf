@@ -1437,8 +1437,7 @@
   var MACRO_METAL_TILES = [
     { id: 'gold', label: 'Золото', asset: 'GOLD', tag: 'Au · FORTS' },
     { id: 'silver', label: 'Серебро', asset: 'SILV', tag: 'Ag · FORTS' },
-    { id: 'nickel', label: 'Никель', asset: 'NICKEL', tag: 'Ni · FORTS' },
-    { id: 'zinc', label: 'Цинк', asset: 'ZINC', tag: 'Zn · FORTS' }
+    { id: 'nickel', label: 'Никель', asset: 'NICKEL', tag: 'Ni · FORTS' }
   ];
 
   var MACRO_COMMODITY_TILE_IDS = ['oil', 'coffee', 'cocoa'].concat(
