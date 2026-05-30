@@ -2,41 +2,7 @@
 (function () {
   'use strict';
 
-  var DIVIDEND_DATA = {
-    SBER: {
-      avgYield5y: 9.1,
-      history: [
-        { year: 2021, yield: 6.8, dividend: 18.7 },
-        { year: 2022, yield: 0, dividend: 0 },
-        { year: 2023, yield: 10.5, dividend: 25.0 },
-        { year: 2024, yield: 11.2, dividend: 33.3 },
-        { year: 2025, yield: 9.4, dividend: 34.8 }
-      ],
-      source: 'manual'
-    },
-    LKOH: {
-      avgYield5y: 10.3,
-      history: [
-        { year: 2021, yield: 7.6, dividend: 537 },
-        { year: 2022, yield: 0, dividend: 0 },
-        { year: 2023, yield: 12.1, dividend: 945 },
-        { year: 2024, yield: 11.0, dividend: 890 },
-        { year: 2025, yield: 10.7, dividend: 920 }
-      ],
-      source: 'manual'
-    },
-    MTSS: {
-      avgYield5y: 11.4,
-      history: [
-        { year: 2021, yield: 9.8, dividend: 29.5 },
-        { year: 2022, yield: 10.1, dividend: 33.9 },
-        { year: 2023, yield: 12.8, dividend: 34.3 },
-        { year: 2024, yield: 12.4, dividend: 35.0 },
-        { year: 2025, yield: 11.9, dividend: 35.0 }
-      ],
-      source: 'manual'
-    }
-  };
+  var DIVIDEND_DATA = {};
 
   var STRATEGY_EXAMPLES = {
     isExample: true,

@@ -2,7 +2,9 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v6.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v8.';
+  var DIV_YIELD_MAX_SANE_PCT = 35;
+  var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
   var HISTORY_PAGE_LIMIT = 500;
   var VOLUME_YEAR_DAYS = 252;
@@ -72,9 +74,6 @@
     for (i = yearly.length - 1; i >= 0; i--) {
       var y = yearly[i];
       if (y.yieldPct != null && isFinite(y.yieldPct) && y.yieldPct > 0) return y.yieldPct;
-      if (y.totalDiv > 0 && quotePrice != null && isFinite(quotePrice) && quotePrice > 0) {
-        return (y.totalDiv / quotePrice) * 100;
-      }
     }
     if (a.divForecast && a.divForecast.amount != null && isFinite(a.divForecast.amount) &&
         quotePrice != null && isFinite(quotePrice) && quotePrice > 0) {
@@ -324,9 +323,10 @@
 
 
 
-  function formatDividendPaymentMonthsLine(dividends, year) {
+  function formatDividendPaymentMonthsLine(dividends, reportingYear) {
+    var y = String(reportingYear);
     var items = (dividends || []).filter(function (d) {
-      return d.date && d.date.indexOf(String(year)) === 0;
+      return d.date && dividendReportingYear(d.date) === y;
     }).sort(function (a, b) { return a.date.localeCompare(b.date); });
     if (!items.length) return '';
     return items.map(function (d) {
@@ -387,7 +387,9 @@
       html.push('</div>');
     }
 
-    html.push('<p class="div-info-hint">Наведите на столбец графика — подсветка и сумма</p>');
+    var winYears = getYieldWindowYears();
+    html.push('<p class="div-info-hint">Доходность года = выплаты / средняя цена MOEX за год. Средняя 5 лет — по завершённым годам ' +
+      winYears[0] + '–' + winYears[winYears.length - 1] + ' (MOEX ISS).</p>');
     return html.join('');
   }
 
@@ -464,13 +466,34 @@
       var cols = block.columns;
       var iDate = cols.indexOf('registryclosedate');
       var iVal = cols.indexOf('value');
-      return block.data.map(function (row) {
+      var rows = block.data.map(function (row) {
         return {
           date: String(row[iDate] || '').slice(0, 10),
           value: Number(row[iVal])
         };
       }).filter(function (d) { return d.date && isFinite(d.value) && d.value > 0; });
+      return normalizeMoexDividends(rows);
     }).catch(function () { return []; });
+  }
+
+  /** Убирает повторы MOEX: та же сумма в пределах 14 дней. */
+  function normalizeMoexDividends(dividends) {
+    if (!dividends || !dividends.length) return [];
+    var sorted = dividends.slice().sort(function (a, b) {
+      return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+    });
+    var out = [];
+    sorted.forEach(function (d) {
+      var dup = out.some(function (prev) {
+        if (Math.abs(d.value - prev.value) > 0.001) return false;
+        var t0 = new Date(prev.date + 'T12:00:00').getTime();
+        var t1 = new Date(d.date + 'T12:00:00').getTime();
+        if (isNaN(t0) || isNaN(t1)) return false;
+        return Math.abs(t1 - t0) <= 14 * 24 * 60 * 60 * 1000;
+      });
+      if (!dup) out.push(d);
+    });
+    return out;
   }
 
   function moexHistoryLastTradeDate(rows) {
@@ -553,62 +576,126 @@
     });
   }
 
-  function computeYearlyDividendYields(dividends, dailyHistory) {
-    var thisYear = new Date().getFullYear();
-    var years = [];
-    for (var y = thisYear - (YIELD_YEARS - 1); y <= thisYear; y++) years.push(String(y));
+  /*
+   * Средняя див. доходность за 5 лет (divAvg5y), только MOEX ISS:
+   * — окно: 5 последних завершённых календарных лет;
+   * — выплата → отчётный год: янв–сен = год−1, окт–дек = текущий год;
+   * — доходность года = Σ выплат / средняя цена CLOSE за тот же год × 100;
+   * — год без выплат = 0%; год со сплитом (скачок средней цены ×5) исключается;
+   * — divAvg5y = среднее по всем годам окна с достаточными ценами (включая нули).
+   */
+  function dividendReportingYear(paymentDateIso) {
+    var parts = String(paymentDateIso || '').slice(0, 10).split('-');
+    var y = Number(parts[0]);
+    var m = Number(parts[1]);
+    if (!isFinite(y) || !isFinite(m)) return '';
+    if (m >= 1 && m <= 9) return String(y - 1);
+    return String(y);
+  }
 
+  function getYieldWindowYears() {
+    var endYear = new Date().getFullYear() - 1;
+    var years = [];
+    for (var i = YIELD_YEARS - 1; i >= 0; i--) years.push(endYear - i);
+    return years;
+  }
+
+  function yearEndClose(dailyHistory, year) {
+    var y = String(year);
+    var rows = dailyHistory.filter(function (h) {
+      return h.date && h.date.indexOf(y) === 0 && h.close > 0;
+    });
+    if (!rows.length) return null;
+    return rows[rows.length - 1].close;
+  }
+
+  function averageClose(dailyHistory, year) {
+    var y = String(year);
+    var prices = dailyHistory.filter(function (h) {
+      return h.date && h.date.indexOf(y) === 0 && h.close > 0;
+    }).map(function (h) { return h.close; });
+    if (!prices.length) return null;
+    return prices.reduce(function (a, b) { return a + b; }, 0) / prices.length;
+  }
+
+  function hasPriceScaleBreak(dailyHistory, year) {
+    var prev = averageClose(dailyHistory, year - 1);
+    var cur = averageClose(dailyHistory, year);
+    if (prev == null || cur == null || prev <= 0 || cur <= 0) return false;
+    var ratio = cur / prev;
+    return ratio >= DIV_PRICE_SCALE_BREAK_RATIO || ratio <= (1 / DIV_PRICE_SCALE_BREAK_RATIO);
+  }
+
+  function isSaneYearYield(yieldPct) {
+    return yieldPct != null && isFinite(yieldPct) && yieldPct >= 0 && yieldPct <= DIV_YIELD_MAX_SANE_PCT;
+  }
+
+  function computeYearlyDividendYields(dividends, dailyHistory, windowYears) {
+    windowYears = windowYears || getYieldWindowYears();
     var byYearDiv = {};
     dividends.forEach(function (d) {
-      var y = d.date.slice(0, 4);
+      var y = dividendReportingYear(d.date);
+      if (!y) return;
       if (!byYearDiv[y]) byYearDiv[y] = 0;
       byYearDiv[y] += d.value;
     });
 
-    var out = [];
-    years.forEach(function (y) {
+    return windowYears.map(function (yearNum) {
+      var y = String(yearNum);
       var totalDiv = byYearDiv[y] || 0;
-      var prices = dailyHistory.filter(function (h) { return h.date.indexOf(y) === 0 && h.close > 0; })
-        .map(function (h) { return h.close; });
+      var refPrice = averageClose(dailyHistory, yearNum);
+      if (refPrice == null) refPrice = yearEndClose(dailyHistory, yearNum);
       var yieldPct = null;
-      if (prices.length && totalDiv > 0) {
-        var avg = prices.reduce(function (a, b) { return a + b; }, 0) / prices.length;
-        yieldPct = (totalDiv / avg) * 100;
-      } else if (totalDiv > 0) {
-        yieldPct = null;
-      } else {
-        yieldPct = null;
+      var unreliable = hasPriceScaleBreak(dailyHistory, yearNum);
+      if (refPrice != null && refPrice > 0 && !unreliable) {
+        var raw = totalDiv > 0 ? (totalDiv / refPrice) * 100 : 0;
+        yieldPct = isSaneYearYield(raw) ? raw : null;
       }
-      out.push({ year: Number(y), yieldPct: yieldPct, totalDiv: totalDiv });
+      return {
+        year: yearNum,
+        yieldPct: yieldPct,
+        totalDiv: totalDiv,
+        refPrice: refPrice,
+        unreliable: unreliable
+      };
     });
-    return out;
   }
 
-  function averageYield5y(yearly, quotePrice) {
-    var vals = yearly.map(function (y) { return y.yieldPct; })
-      .filter(function (v) { return v != null && isFinite(v) && v > 0; });
-    if (vals.length) {
-      return vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
-    }
-    var totalDiv = yearly.reduce(function (s, y) { return s + (y.totalDiv || 0); }, 0);
-    if (totalDiv > 0 && quotePrice != null && isFinite(quotePrice) && quotePrice > 0) {
-      return (totalDiv / quotePrice) * 100;
-    }
-    if (!totalDiv) return 0;
-    return null;
+  function averageYield5y(yearly) {
+    if (!yearly || !yearly.length) return null;
+    var counted = yearly.filter(function (y) {
+      return y.yieldPct != null && isFinite(y.yieldPct);
+    });
+    if (counted.length < Math.min(3, yearly.length)) return null;
+    if (!counted.some(function (y) { return y.yieldPct > 0; })) return null;
+    return counted.reduce(function (s, y) { return s + y.yieldPct; }, 0) / counted.length;
   }
 
-  function finalizeDividendMetrics(dividends, yearly, forecast, quotePrice) {
+  function assessDivYieldQuality(yearly, dividends) {
+    if (!yearly || !yearly.length) return 'none';
+    var counted = yearly.filter(function (y) {
+      return y.yieldPct != null && isFinite(y.yieldPct);
+    });
+    if (!dividends || !dividends.length || counted.length < 3) return 'insufficient';
+    if (yearly.some(function (y) { return y.unreliable; })) return 'partial';
+    if (counted.length < yearly.length) return 'partial';
+    return 'ok';
+  }
+
+  function finalizeDividendMetrics(dividends, yearly, forecast) {
+    var quality = assessDivYieldQuality(yearly, dividends);
     if (dividends && dividends.length) {
       return {
-        divAvg5y: averageYield5y(yearly, quotePrice),
+        divAvg5y: averageYield5y(yearly),
+        divYieldQuality: quality,
         divForecast: forecast,
         noMoexDividends: false
       };
     }
     return {
-      divAvg5y: 0,
-      divForecast: {
+      divAvg5y: null,
+      divYieldQuality: 'none',
+      divForecast: forecast || {
         amount: 0,
         paid12m: 0,
         upcoming12m: 0,
@@ -616,14 +703,6 @@
       },
       noMoexDividends: true
     };
-  }
-
-  function getManualDividendData(ticker) {
-    var map = (typeof window !== 'undefined' && window.DIVIDEND_DATA) ? window.DIVIDEND_DATA : null;
-    if (!map) return null;
-    var item = map[normalizeTicker(ticker)];
-    if (!item || !item.history || !item.history.length) return null;
-    return item;
   }
 
   function formatTurnoverBln(v) {
@@ -688,7 +767,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v3.' + ticker;
+    var cacheKey = 'full.v5.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached) return Promise.resolve(cached);
 
@@ -702,7 +781,7 @@
       var quote = results[2] || {};
       var yearly = computeYearlyDividendYields(dividends, history);
       var forecast = computeDividendForecast12m(dividends);
-      var divMetrics = finalizeDividendMetrics(dividends, yearly, forecast, quote.price);
+      var divMetrics = finalizeDividendMetrics(dividends, yearly, forecast);
       var out = {
         ticker: ticker,
         eligible: true,
@@ -710,6 +789,7 @@
         quote: quote,
         dividends: dividends,
         divAvg5y: divMetrics.divAvg5y,
+        divYieldQuality: divMetrics.divYieldQuality,
         divForecast: divMetrics.divForecast,
         noMoexDividends: divMetrics.noMoexDividends,
         divYieldByYear: yearly,
@@ -717,26 +797,6 @@
         volumeByDay: sliceVolumeSeries(history, VOLUME_YEAR_DAYS),
         divDataSource: dividends.length ? 'moex' : ''
       };
-      var manual = getManualDividendData(ticker);
-      if (manual && !dividends.length) {
-        out.divYieldByYear = manual.history.map(function (y) {
-          return {
-            year: Number(y.year),
-            yieldPct: y.yield != null && isFinite(Number(y.yield)) ? Number(y.yield) : null,
-            totalDiv: y.dividend != null && isFinite(Number(y.dividend)) ? Number(y.dividend) : 0
-          };
-        });
-        out.divAvg5y = manual.avgYield5y != null && isFinite(Number(manual.avgYield5y)) ? Number(manual.avgYield5y) : out.divAvg5y;
-        out.noMoexDividends = false;
-        out.divForecast = {
-          amount: out.divYieldByYear.length ? out.divYieldByYear[out.divYieldByYear.length - 1].totalDiv : null,
-          paid12m: null,
-          upcoming12m: null,
-          source: manual.source === 'demo' ? 'данные требуют проверки' : 'оценка'
-        };
-        out.monthlyForecast = null;
-        out.divDataSource = manual.source || 'manual';
-      }
       out.divLatestYield = computeLatestDivYieldPct(out);
       analyticsCacheSet(cacheKey, out, ANALYTICS_TTL);
       return out;
@@ -820,12 +880,18 @@
       if (a.divDataSource === 'demo') {
         avgEl.textContent = 'данные требуют проверки';
         avgEl.className = 'quote-div-val muted';
-      } else if (a.noMoexDividends) {
+      } else if (a.noMoexDividends || a.divAvg5y == null || !isFinite(a.divAvg5y)) {
         avgEl.textContent = 'нет данных';
         avgEl.className = 'quote-div-val muted';
+        if (a.divYieldQuality === 'partial') {
+          avgEl.title = 'Недостаточно надёжных данных MOEX для средней за 5 лет';
+        }
       } else {
         avgEl.textContent = formatDivYieldPct(a.divAvg5y);
         avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
+        avgEl.title = a.divYieldQuality === 'partial'
+          ? 'Частичные данные MOEX (сплит, неполная история или аномалия)'
+          : 'Средняя див. доходность за 5 завершённых лет · MOEX ISS';
       }
     }
     if (turnoverEl) {

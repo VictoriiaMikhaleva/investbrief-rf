@@ -328,6 +328,48 @@
           </div>
           <div id="analyticsGrid" class="analytics-grid quote-cards-grid" aria-label="Карточки бумаг"></div>
 
+          <section class="glass analytics-detail" id="analyticsDetailSection" hidden>
+            <h3 class="analytics-detail-title">Подробная аналитика: <span id="analyticsDetailTicker">—</span></h3>
+            <p class="muted analytics-detail-meta" id="analyticsDetailMeta">—</p>
+            <div class="security-chart-tabs" id="securityChartTabs">
+              <button type="button" class="active" data-security-chart-tab="price">Цена</button>
+              <button type="button" data-security-chart-tab="dividends">Дивиденды</button>
+              <button type="button" data-security-chart-tab="volume">Оборот</button>
+            </div>
+            <div class="analytics-charts-grid security-overview-grid">
+              <div class="analytics-chart-panel active" data-security-chart-panel="price">
+                <h4 class="analytics-chart-lbl" id="analyticsPriceChartLbl">Цена · 5 лет</h4>
+                <div class="horizon-tabs analytics-price-horizon" id="analyticsPriceHorizonTabs">
+                  <button type="button" data-analytics-horizon="day">1 день</button>
+                  <button type="button" data-analytics-horizon="month">Месяц</button>
+                  <button type="button" data-analytics-horizon="5y" class="active">5 лет</button>
+                </div>
+                <div class="chart-canvas-wrap analytics-chart-wrap">
+                  <canvas id="analyticsPriceChart" aria-label="График цены"></canvas>
+                </div>
+              </div>
+              <div class="analytics-chart-panel" data-security-chart-panel="dividends">
+                <h4 class="analytics-chart-lbl">Дивиденды · 5 лет и прогноз 12 мес.</h4>
+                <div class="analytics-chart-note div-chart-info" id="analyticsDivNote">—</div>
+                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--div">
+                  <canvas id="analyticsDivChart" aria-label="Дивиденды"></canvas>
+                </div>
+              </div>
+              <div class="analytics-chart-panel" data-security-chart-panel="volume">
+                <h4 class="analytics-chart-lbl">Оборот торгов · год</h4>
+                <p class="analytics-chart-note chart-info-readable" id="analyticsVolNote">—</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--vol">
+                  <canvas id="analyticsVolChart" aria-label="Оборот"></canvas>
+                </div>
+              </div>
+            </div>
+            <section class="security-profile-card" id="securityProfileCard" hidden>
+              <h4 class="analytics-chart-lbl">Инвестиционный профиль</h4>
+              <div class="security-metric-card" id="securityProfileBadgeRow"></div>
+              <div class="security-overview-grid" id="securityProfileMetrics"></div>
+            </section>
+          </section>
+
           <section class="home-block ofz-section glass" id="ofzSection" aria-labelledby="ofzSectionTitle">
             <div class="ofz-section-head">
               <div>
@@ -430,48 +472,6 @@
               </table>
             </div>
             <p class="muted chart-source hint-frame">Котировки, купоны, дюрация и доходность — <a href="https://www.moex.com/" target="_blank" rel="noopener noreferrer">МосБиржа ISS</a> (TQOB). InvestBrief не связан со Smart-Lab. Доходность — расчётная к погашению по данным биржи.</p>
-          </section>
-
-          <section class="glass analytics-detail" id="analyticsDetailSection" hidden>
-            <h3 class="analytics-detail-title">Подробная аналитика: <span id="analyticsDetailTicker">—</span></h3>
-            <p class="muted analytics-detail-meta" id="analyticsDetailMeta">—</p>
-            <div class="security-chart-tabs" id="securityChartTabs">
-              <button type="button" class="active" data-security-chart-tab="price">Цена</button>
-              <button type="button" data-security-chart-tab="dividends">Дивиденды</button>
-              <button type="button" data-security-chart-tab="volume">Оборот</button>
-            </div>
-            <div class="analytics-charts-grid security-overview-grid">
-              <div class="analytics-chart-panel active" data-security-chart-panel="price">
-                <h4 class="analytics-chart-lbl" id="analyticsPriceChartLbl">Цена · 5 лет</h4>
-                <div class="horizon-tabs analytics-price-horizon" id="analyticsPriceHorizonTabs">
-                  <button type="button" data-analytics-horizon="day">1 день</button>
-                  <button type="button" data-analytics-horizon="month">Месяц</button>
-                  <button type="button" data-analytics-horizon="5y" class="active">5 лет</button>
-                </div>
-                <div class="chart-canvas-wrap analytics-chart-wrap">
-                  <canvas id="analyticsPriceChart" aria-label="График цены"></canvas>
-                </div>
-              </div>
-              <div class="analytics-chart-panel" data-security-chart-panel="dividends">
-                <h4 class="analytics-chart-lbl">Дивиденды · 5 лет и прогноз 12 мес.</h4>
-                <div class="analytics-chart-note div-chart-info" id="analyticsDivNote">—</div>
-                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--div">
-                  <canvas id="analyticsDivChart" aria-label="Дивиденды"></canvas>
-                </div>
-              </div>
-              <div class="analytics-chart-panel" data-security-chart-panel="volume">
-                <h4 class="analytics-chart-lbl">Оборот торгов · год</h4>
-                <p class="analytics-chart-note chart-info-readable" id="analyticsVolNote">—</p>
-                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--vol">
-                  <canvas id="analyticsVolChart" aria-label="Оборот"></canvas>
-                </div>
-              </div>
-            </div>
-            <section class="security-profile-card" id="securityProfileCard" hidden>
-              <h4 class="analytics-chart-lbl">Инвестиционный профиль</h4>
-              <div class="security-metric-card" id="securityProfileBadgeRow"></div>
-              <div class="security-overview-grid" id="securityProfileMetrics"></div>
-            </section>
           </section>
         </section>
 
@@ -906,7 +906,7 @@
   <script src="./news.js?v=20250831"></script>
   <script src="./moex.js?v=20250903"></script>
   <script src="./manual-data.js?v=20250828"></script>
-  <script src="./analytics.js?v=20250903"></script>
+  <script src="./analytics.js?v=20260530h"></script>
   <script src="./ofz.js?v=20260530e"></script>
   <script src="./portfolio.js?v=20250828e"></script>
   <script src="./agent.js?v=20260530f"></script>
