@@ -444,11 +444,19 @@
     var items = [
       {
         title: 'Купонный доход',
-        text: 'Регулярные выплаты по расписанию. Для ОФЗ с фиксированным купоном размер известен заранее.'
+        paragraphs: [
+          'Регулярные выплаты по расписанию.',
+          'Для ОФЗ с фиксированным купоном размер известен заранее.'
+        ]
       },
       {
         title: 'Переоценка',
-        text: 'Изменение рыночной цены облигации. Если продать дороже покупки — дополнительная прибыль (или убыток).'
+        paragraphs: [
+          'Цена ОФЗ меняется на рынке каждый день.',
+          'Если продать облигацию дороже цены покупки, вы получите дополнительную прибыль.',
+          'Если продать дешевле, зафиксируете убыток.',
+          'При удержании до погашения обычно возвращается номинал, при выполнении государством обязательства.'
+        ]
       },
       {
         title: selected && selected.kind === 'indexed' ? 'Индексация' : 'Ставка и срок',
@@ -460,10 +468,13 @@
       }
     ];
     el.innerHTML = items.map(function (item) {
+      var body = item.paragraphs
+        ? item.paragraphs.map(function (p) { return escapeHtml(p); }).join('<br><br>')
+        : escapeHtml(item.text || '');
       return (
         '<article class="ofz-income-card">' +
           '<h4 class="ofz-income-card__title">' + escapeHtml(item.title) + '</h4>' +
-          '<p class="muted ofz-income-card__text">' + escapeHtml(item.text) + '</p>' +
+          '<p class="muted ofz-income-card__text">' + body + '</p>' +
         '</article>'
       );
     }).join('');
