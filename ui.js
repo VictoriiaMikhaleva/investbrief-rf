@@ -3,6 +3,23 @@
   var CHART_COLOR_AUTUMN_SOFT = 'rgba(212, 135, 59, 0.42)';
   var CHART_COLOR_FORECAST = '#4A7356';
 
+  function divAvg5yValHtml(analytics) {
+    if (!analytics || analytics.divAvg5y == null || !isFinite(analytics.divAvg5y)) {
+      return escapeHtml('—');
+    }
+    if (typeof formatDivAvg5yDisplayHtml === 'function') {
+      var html = formatDivAvg5yDisplayHtml(analytics);
+      if (html) return html;
+    }
+    return escapeHtml(formatDivYieldPct(analytics.divAvg5y));
+  }
+
+  function divAvg5yMetaSuffix(analytics) {
+    if (!analytics || analytics.divAvg5y == null || !isFinite(analytics.divAvg5y)) return '';
+    if (analytics.divDataSource === 'yahoo') return ' Yahoo';
+    return ' MOEX';
+  }
+
   function setupTickerAutocomplete(inputId, opts) {
     opts = opts || {};
     var input = document.getElementById(inputId);
@@ -655,7 +672,9 @@
     buildSecurityAnalytics(ticker).then(function (a) {
       if (metaEl) {
         var parts = [a.name || getTickerSubtitle(ticker)];
-        if (a.divAvg5y != null) parts.push('Ср. див. доходность 5л: ' + formatDivYieldPct(a.divAvg5y));
+        if (a.divAvg5y != null) {
+          parts.push('Ср. див. доходность 5л: ' + formatDivYieldPct(a.divAvg5y) + divAvg5yMetaSuffix(a));
+        }
         metaEl.textContent = parts.join(' · ');
       }
       if (divCanvas) {
@@ -1145,7 +1164,7 @@
       '<article class="security-metric-card"><span class="lbl">Тип</span><span class="val">' + escapeHtml(type) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Рынок</span><span class="val">' + escapeHtml(isUs ? 'США' : 'Россия') + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Валюта</span><span class="val">' + escapeHtml(isUs ? '$' : '₽') + '</span></article>' +
-      '<article class="security-metric-card"><span class="lbl">Средняя дивдоходность 5 лет</span><span class="val">' + escapeHtml(analytics ? formatDivYieldPct(analytics.divAvg5y) : '—') + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">Средняя дивдоходность 5 лет</span><span class="val">' + divAvg5yValHtml(analytics) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Последняя дивидендная доходность</span><span class="val">' + escapeHtml(latestYield) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Оборот торгов</span><span class="val">' + escapeHtml(turnover) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Последнее важное событие</span><span class="val">' + escapeHtml(lastBrief ? lastBrief.title : 'События пока не найдены') + '</span></article>';
@@ -1207,7 +1226,9 @@
       }
       if (metaEl) {
         var parts = [a.name || getTickerSubtitle(ticker)];
-        if (a.divAvg5y != null) parts.push('Ср. див. 5л: ' + formatDivYieldPct(a.divAvg5y));
+        if (a.divAvg5y != null) {
+          parts.push('Ср. див. 5л: ' + formatDivYieldPct(a.divAvg5y) + divAvg5yMetaSuffix(a));
+        }
         if (a.divForecast && a.divForecast.amount != null) {
           parts.push('Прогноз: ' + formatDivRubPerShare(a.divForecast.amount));
         }
@@ -1323,7 +1344,7 @@
       }
       if (kpisEl) {
         kpisEl.innerHTML =
-          '<div class="insight-kpi"><span class="insight-kpi-lbl">Див. 5л ср.</span><span class="insight-kpi-val">' + escapeHtml(formatDivYieldPct(a.divAvg5y)) + '</span></div>' +
+          '<div class="insight-kpi"><span class="insight-kpi-lbl">Див. 5л ср.</span><span class="insight-kpi-val">' + divAvg5yValHtml(a) + '</span></div>' +
           '<div class="insight-kpi"><span class="insight-kpi-lbl">Прогноз 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(formatDivRubPerShare(fc && fc.amount)) + '</span></div>' +
           '<div class="insight-kpi"><span class="insight-kpi-lbl">На позицию</span><span class="insight-kpi-val">' + escapeHtml(forecastTotal != null ? forecastTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>' +
           '<div class="insight-kpi"><span class="insight-kpi-lbl">Выплачено 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(paidTotal != null ? paidTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>';

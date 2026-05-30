@@ -65,6 +65,43 @@
     return pct.toFixed(1).replace('.', ',') + '%';
   }
 
+  function formatDivYieldSourceBadge(source) {
+    var label = source === 'yahoo' ? 'Yahoo' : 'MOEX';
+    return '<span class="quote-div-src" title="Источник данных: ' + label + '">' + label + '</span>';
+  }
+
+  /** HTML: «8,7% MOEX» — только при валидном divAvg5y. */
+  function formatDivAvg5yDisplayHtml(a) {
+    if (!a || a.divDataSource === 'demo') return null;
+    if (a.noMoexDividends || a.divAvg5y == null || !isFinite(a.divAvg5y)) return null;
+    if (a.divYieldQuality === 'insufficient') return null;
+    var src = a.divDataSource === 'yahoo' ? 'yahoo' : 'moex';
+    return escapeHtml(formatDivYieldPct(a.divAvg5y)) + ' ' + formatDivYieldSourceBadge(src);
+  }
+
+  function formatBondYieldDisplayHtml(yieldPct) {
+    if (yieldPct == null || !isFinite(yieldPct)) return null;
+    return escapeHtml(formatDivYieldPct(yieldPct)) + ' ' + formatDivYieldSourceBadge('moex');
+  }
+
+  function setDivAvg5yElement(avgEl, a) {
+    if (!avgEl) return;
+    var html = formatDivAvg5yDisplayHtml(a);
+    if (!html) {
+      avgEl.textContent = 'нет данных';
+      avgEl.className = 'quote-div-val muted';
+      avgEl.title = a && a.divYieldQuality === 'partial'
+        ? 'Недостаточно надёжных данных MOEX для средней за 5 лет'
+        : '';
+      return;
+    }
+    avgEl.innerHTML = html;
+    avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
+    avgEl.title = a.divYieldQuality === 'partial'
+      ? 'Частичные данные MOEX (сплит, неполная история или аномалия)'
+      : 'Средняя див. доходность за 5 завершённых лет · MOEX ISS';
+  }
+
   /** Последняя (самая свежая) дивидендная доходность по бумаге. */
   function computeLatestDivYieldPct(a) {
     if (!a) return null;
@@ -684,9 +721,11 @@
 
   function finalizeDividendMetrics(dividends, yearly, forecast) {
     var quality = assessDivYieldQuality(yearly, dividends);
+    var avg = averageYield5y(yearly);
+    if (quality === 'insufficient') avg = null;
     if (dividends && dividends.length) {
       return {
-        divAvg5y: averageYield5y(yearly),
+        divAvg5y: avg,
         divYieldQuality: quality,
         divForecast: forecast,
         noMoexDividends: false
@@ -820,8 +859,15 @@
     }
     if (avgEl) {
       if (q.yieldPct != null && isFinite(q.yieldPct)) {
-        avgEl.textContent = formatDivYieldPct(q.yieldPct);
-        avgEl.className = 'quote-div-val' + (q.yieldPct > 0 ? ' pnl-pos' : '');
+        var bondHtml = formatBondYieldDisplayHtml(q.yieldPct);
+        if (bondHtml) {
+          avgEl.innerHTML = bondHtml;
+          avgEl.className = 'quote-div-val' + (q.yieldPct > 0 ? ' pnl-pos' : '');
+          avgEl.title = 'Доходность к погашению · MOEX ISS';
+        } else {
+          avgEl.textContent = '—';
+          avgEl.className = 'quote-div-val muted';
+        }
       } else {
         avgEl.textContent = '—';
         avgEl.className = 'quote-div-val muted';
@@ -850,7 +896,7 @@
     var compact = !!opts.compact;
     var bond = !!opts.bond;
     var blockCls = 'quote-card-div-block' + (compact ? ' quote-card-div-block--compact' : '');
-    var avgLbl = bond ? 'Доходность' : (compact ? 'Див. TTM' : 'Див. доходность 5 лет');
+    var avgLbl = bond ? 'Доходность' : (opts.us ? 'Див. TTM' : (compact ? 'Див. 5л' : 'Див. доходность 5 лет'));
     var turnLbl = compact ? 'Оборот' : 'Оборот за день';
     return (
       '<div class="' + blockCls + '" data-div-block>' +
@@ -880,18 +926,8 @@
       if (a.divDataSource === 'demo') {
         avgEl.textContent = 'данные требуют проверки';
         avgEl.className = 'quote-div-val muted';
-      } else if (a.noMoexDividends || a.divAvg5y == null || !isFinite(a.divAvg5y)) {
-        avgEl.textContent = 'нет данных';
-        avgEl.className = 'quote-div-val muted';
-        if (a.divYieldQuality === 'partial') {
-          avgEl.title = 'Недостаточно надёжных данных MOEX для средней за 5 лет';
-        }
       } else {
-        avgEl.textContent = formatDivYieldPct(a.divAvg5y);
-        avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
-        avgEl.title = a.divYieldQuality === 'partial'
-          ? 'Частичные данные MOEX (сплит, неполная история или аномалия)'
-          : 'Средняя див. доходность за 5 завершённых лет · MOEX ISS';
+        setDivAvg5yElement(avgEl, a);
       }
     }
     if (turnoverEl) {
@@ -952,12 +988,12 @@
         divAvg5y: q.divYieldPct,
         noMoexDividends: q.divYieldPct == null,
         divDataSource: 'yahoo',
+        divYieldQuality: q.divYieldPct != null ? 'partial' : 'insufficient',
         quote: { valueToday: q.volume }
       });
       var avgEl = wrapEl.querySelector('[data-div-avg]');
-      if (avgEl && q.divYieldPct == null) {
-        avgEl.textContent = 'нет данных';
-        avgEl.className = 'quote-div-val muted';
+      if (avgEl && q.divYieldPct != null) {
+        avgEl.title = 'Trailing 12M · Yahoo Finance (не средняя за 5 лет)';
       }
       var turnoverEl = wrapEl.querySelector('[data-turnover]');
       if (turnoverEl && q.volume != null) {
@@ -1194,6 +1230,7 @@
   window.isRuStockForAnalytics = isRuStockForAnalytics;
   window.isRuBondTicker = isRuBondTicker;
   window.formatDivYieldPct = formatDivYieldPct;
+  window.formatDivAvg5yDisplayHtml = formatDivAvg5yDisplayHtml;
   window.computeLatestDivYieldPct = computeLatestDivYieldPct;
   window.formatDivRubPerShare = formatDivRubPerShare;
   window.buildSecurityAnalytics = buildSecurityAnalytics;

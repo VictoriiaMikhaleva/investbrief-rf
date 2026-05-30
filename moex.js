@@ -1917,7 +1917,7 @@
       grid.innerHTML = rows.map(function (r, i) {
         var ch = formatMacroChange(r.changePct);
         var divHtml = typeof window.quoteCardDivMetricsHtml === 'function'
-          ? window.quoteCardDivMetricsHtml({ compact: isUs })
+          ? window.quoteCardDivMetricsHtml({ compact: isUs, us: isUs })
           : '';
         return (
           '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '" data-market="' + market + '">' +

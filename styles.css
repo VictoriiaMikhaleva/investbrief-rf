@@ -1761,6 +1761,17 @@
     }
     .quote-div-lbl { color: var(--text-muted); font-weight: 500; }
     .quote-div-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .quote-div-src {
+      display: inline-block;
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-left: 0.25rem;
+      vertical-align: middle;
+      opacity: 0.85;
+    }
     .pf-div-cell { font-size: 0.78rem; line-height: 1.35; min-width: 8.5rem; }
     .pf-div-forecast { display: block; font-weight: 600; }
     .pf-div-sub { display: block; font-size: 0.7rem; }
