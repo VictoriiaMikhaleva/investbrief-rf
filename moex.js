@@ -167,8 +167,16 @@
       if (!isIndex && !isShare && !isBond) return;
       seen[secid] = true;
       var name = moexPickDisplayName(col(row, 'shortname'), col(row, 'secname'), col(row, 'name'), secid);
+      var ticker = normalizeTicker(secid);
+      if (isBond && /OFZ|ОФЗ/i.test(name)) {
+        var issue = String(name).match(/(\d{5})/) || String(secid).match(/(\d{5})/);
+        if (issue) {
+          ticker = 'OFZ_' + issue[1];
+          if (typeof BOND_SECID_MAP !== 'undefined') BOND_SECID_MAP[ticker] = secid;
+        }
+      }
       out.push({
-        ticker: normalizeTicker(secid),
+        ticker: ticker,
         name: name,
         kind: isIndex ? 'index' : (isBond ? 'bond' : 'stock')
       });

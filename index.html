@@ -289,7 +289,8 @@
             <div class="ofz-section-head">
               <div>
                 <h3 class="home-block-title" id="ofzSectionTitle">ОФЗ — облигации федерального займа</h3>
-                <p class="muted ofz-section-lead">Ликвидные выпуски на МосБирже: доходность, купоны и сравнение. Не является индивидуальной инвестиционной рекомендацией.</p>
+                <p class="muted ofz-section-lead">Котировки и параметры выпусков — напрямую с МосБиржи (ISS, доска TQOB). Не аффилировано со Smart-Lab. Не является индивидуальной инвестиционной рекомендацией.</p>
+                <p class="muted ofz-load-status" id="ofzLoadStatus"></p>
               </div>
               <div class="ofz-section-controls row">
                 <label class="muted" for="ofzBondSelect">Выпуск</label>
@@ -310,7 +311,7 @@
 
             <div class="analytics-chart-panel ofz-yield-curve-panel">
               <h4 class="analytics-chart-lbl">Кривая доходности ОФЗ</h4>
-              <p class="analytics-chart-note muted" id="ofzYieldCurveNote">Дюрация и доходность к погашению · TQOB</p>
+              <p class="analytics-chart-note muted" id="ofzYieldCurveNote">Дюрация и доходность к погашению · данные МосБиржа ISS</p>
               <div class="chart-canvas-wrap analytics-chart-wrap ofz-yield-curve-wrap">
                 <canvas id="ofzYieldCurveChart" aria-label="Кривая доходности ОФЗ по дюрации"></canvas>
                 <div class="chart-hover-tip" id="ofzYieldCurveTip"></div>
@@ -360,13 +361,13 @@
                     <th>Дюр.</th>
                     <th>Купон дата</th>
                     <th title="Портфель">Порт.</th>
-                    <th title="Аналитика">Анал.</th>
+                    <th title="Наблюдение">Набл.</th>
                   </tr>
                 </thead>
                 <tbody id="ofzCompareBody"></tbody>
               </table>
             </div>
-            <p class="muted chart-source hint-frame">Котировки и купоны — МосБиржа ISS. Доходность — расчётная к погашению по данным биржи.</p>
+            <p class="muted chart-source hint-frame">Котировки, купоны, дюрация и доходность — <a href="https://www.moex.com/" target="_blank" rel="noopener noreferrer">МосБиржа ISS</a> (TQOB). InvestBrief не связан со Smart-Lab. Доходность — расчётная к погашению по данным биржи.</p>
           </section>
 
           <section class="glass analytics-detail" id="analyticsDetailSection" hidden>
@@ -843,7 +844,7 @@
   <script src="./moex.js?v=20250903"></script>
   <script src="./manual-data.js?v=20250828"></script>
   <script src="./analytics.js?v=20250903"></script>
-  <script src="./ofz.js?v=20260530b"></script>
+  <script src="./ofz.js?v=20260530c"></script>
   <script src="./portfolio.js?v=20250828e"></script>
   <script src="./agent.js?v=20260530"></script>
   <script src="./watchdog.js?v=20260530"></script>

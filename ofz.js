@@ -22,7 +22,9 @@
   var _rows = [];
   var _loading = false;
   var _bound = false;
-  var _detailLoadingTicker = null;
+  var _loadError = '';
+  var _visibilityBound = false;
+  var OFZ_CATALOG_CACHE_KEY = 'ofz.catalog.tqob.v2';
 
   function formatOfzPrice(price) {
     if (price == null || !isFinite(price)) return '—';
@@ -108,6 +110,10 @@
   }
 
   function fetchOfzBondCatalog() {
+    if (typeof moexCacheGet === 'function') {
+      var cached = moexCacheGet(OFZ_CATALOG_CACHE_KEY);
+      if (cached && cached.length) return Promise.resolve(cached);
+    }
     var url = MOEX_ISS + '/engines/stock/markets/bonds/boards/TQOB/securities.json' +
       '?iss.meta=off&iss.only=securities,marketdata' +
       '&securities.columns=SECID,SHORTNAME,COUPONPERCENT,MATDATE,COUPONPERIOD,FACEVALUE,COUPONVALUE,NEXTCOUPON,ACCRUEDINT' +
@@ -116,7 +122,9 @@
     return moexFetchJson(url).then(function (json) {
       var secBlock = json.securities;
       var mdBlock = json.marketdata;
-      if (!secBlock || !secBlock.columns || !secBlock.data) return [];
+      if (!secBlock || !secBlock.columns || !secBlock.data || !secBlock.data.length) {
+        return ofzFallbackCatalog();
+      }
       var sCols = secBlock.columns;
       var si = sCols.indexOf('SECID');
       var sn = sCols.indexOf('SHORTNAME');
@@ -174,16 +182,18 @@
       }).sort(function (a, b) {
         return (b.vol || 0) - (a.vol || 0);
       });
+      if (!list.length) return ofzFallbackCatalog();
+      if (typeof moexCacheSet === 'function') {
+        moexCacheSet(OFZ_CATALOG_CACHE_KEY, list, 5 * 60 * 1000);
+      }
       return list;
-    }).catch(function () {
-      return OFZ_BONDS_FALLBACK.map(function (b) {
-        return {
-          ticker: b.ticker,
-          shortname: (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(b.ticker) : null) || b.ticker,
-          kind: b.kind,
-          kindLabel: b.kindLabel
-        };
-      });
+    }).catch(function (err) {
+      _loadError = 'МосБиржа недоступна — показан краткий список.';
+      if (typeof moexCacheGet === 'function') {
+        var stale = moexCacheGet(OFZ_CATALOG_CACHE_KEY);
+        if (stale && stale.length) return stale;
+      }
+      return ofzFallbackCatalog();
     });
   }
 
@@ -218,11 +228,57 @@
     };
   }
 
-  function updateOfzSectionLead(count) {
+  function ofzPluralRu(n) {
+    n = Math.abs(Number(n) || 0);
+    if (n % 10 === 1 && n % 100 !== 11) return '';
+    if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'а';
+    return 'ов';
+  }
+
+  function ofzFallbackCatalog() {
+    return OFZ_BONDS_FALLBACK.map(function (b) {
+      return {
+        ticker: b.ticker,
+        shortname: (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(b.ticker) : null) || b.ticker,
+        kind: b.kind,
+        kindLabel: b.kindLabel
+      };
+    });
+  }
+
+  function updateOfzSectionLead(count, note) {
     var el = document.querySelector('.ofz-section-lead');
-    if (!el || !count) return;
-    el.textContent = count + ' выпуск' + (count % 10 === 1 && count % 100 !== 11 ? '' : (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20) ? 'а' : 'ов')) +
-      ' на TQOB: доходность, купоны и сравнение. Не является индивидуальной инвестиционной рекомендацией.';
+    if (!el) return;
+    var statusEl = document.getElementById('ofzLoadStatus');
+    if (_loading) {
+      el.textContent = 'Загрузка выпусков ОФЗ с доски TQOB (МосБиржа ISS)…';
+      if (statusEl) statusEl.textContent = '';
+      return;
+    }
+    if (!count) {
+      el.textContent = _loadError || 'Не удалось загрузить список ОФЗ. Нажмите ↻ для повторной попытки.';
+      if (statusEl) statusEl.textContent = _loadError ? 'Ошибка загрузки' : '';
+      return;
+    }
+    el.textContent = count + ' выпуск' + ofzPluralRu(count) +
+      ' на TQOB · котировки и параметры — МосБиржа ISS. Не аффилировано со Smart-Lab. Не является индивидуальной инвестиционной рекомендацией.';
+    if (statusEl) {
+      statusEl.textContent = note || ('Обновлено: ' + count + ' выпуск' + ofzPluralRu(count));
+    }
+  }
+
+  function syncOfzBondSelect(rows) {
+    var select = document.getElementById('ofzBondSelect');
+    if (!select) return;
+    var prev = select.value;
+    select.innerHTML = rows.map(function (r) {
+      return '<option value="' + escapeHtml(r.ticker) + '">' + escapeHtml(r.label || r.ticker) + '</option>';
+    }).join('');
+    var next = rows.some(function (r) { return r.ticker === _selectedTicker; })
+      ? _selectedTicker
+      : (rows.some(function (r) { return r.ticker === prev; }) ? prev : (rows[0] ? rows[0].ticker : ''));
+    _selectedTicker = next || _selectedTicker;
+    select.value = _selectedTicker;
   }
 
   function parseIssTable(block) {
@@ -465,21 +521,35 @@
 
   function ofzToggleWatchlist(ticker) {
     var t = normalizeTicker(ticker);
+    if (!t) return;
     if (ofzWatchlistHas(t)) {
       setWatchlist(getWatchlist().filter(function (x) {
         var n = typeof Markets !== 'undefined' ? Markets.normalizeWatchlistItem(x) : { ticker: x, market: 'RU' };
         if (!n) return false;
         return !(n.ticker === t && (n.market === 'RU' || !n.market));
       }));
-      showToast('Удалено из аналитики: ' + t);
+      showToast('Удалено из наблюдения: ' + t);
     } else {
+      var item = typeof Markets !== 'undefined'
+        ? Markets.normalizeWatchlistItem({
+          ticker: t,
+          market: 'RU',
+          currency: 'RUB',
+          type: 'bond',
+          kind: 'bond',
+          name: (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(t) : '') || t
+        })
+        : t;
+      if (!item) {
+        showToast('Не удалось добавить: ' + t);
+        return;
+      }
       var list = getWatchlist().slice();
-      list.push(typeof Markets !== 'undefined'
-        ? Markets.normalizeWatchlistItem({ ticker: t, market: 'RU', currency: 'RUB', type: 'bond', name: getTickerSubtitle(t) || t })
-        : t);
+      list.push(item);
       setWatchlist(list);
-      showToast('Добавлено в аналитику: ' + t);
+      showToast('Добавлено в наблюдение: ' + t);
     }
+    if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
     renderOfzTable(_rows);
     renderOfzYieldCurve(_rows);
   }
@@ -731,7 +801,7 @@
           '<td class="ofz-num">' + escapeHtml(formatOfzNum(r.durationYears, 2)) + '</td>' +
           '<td class="ofz-num">' + escapeHtml(formatOfzDateShort(r.nextCoupon)) + '</td>' +
           '<td class="ofz-action-cell">' + ofzActionBtn('portfolio', r.ticker, inPf, 'В портфель', 'Убрать из портфеля') + '</td>' +
-          '<td class="ofz-action-cell">' + ofzActionBtn('watch', r.ticker, inWl, 'В аналитику', 'Убрать из аналитики') + '</td>' +
+          '<td class="ofz-action-cell">' + ofzActionBtn('watch', r.ticker, inWl, 'В наблюдение', 'Убрать из наблюдения') + '</td>' +
         '</tr>'
       );
     }).join('');
@@ -775,10 +845,9 @@
   function ensureOfzRowDetails(row) {
     if (!row || row.error) return Promise.resolve(row);
     if (row.coupons && row.coupons.length) return Promise.resolve(row);
-    if (_detailLoadingTicker === row.ticker) return Promise.resolve(row);
-    _detailLoadingTicker = row.ticker;
+    var ticker = row.ticker;
     return fetchOfzBondSnapshot({
-      ticker: row.ticker,
+      ticker: ticker,
       secid: row.secid,
       price: row.price,
       yieldPct: row.yieldPct,
@@ -787,33 +856,48 @@
       matDate: row.matDate,
       faceValue: row.faceValue
     }).then(function (full) {
-      if (_detailLoadingTicker === row.ticker) _detailLoadingTicker = null;
       if (!full || full.error) return row;
       Object.keys(full).forEach(function (k) { row[k] = full[k]; });
       return row;
     }).catch(function () {
-      if (_detailLoadingTicker === row.ticker) _detailLoadingTicker = null;
       return row;
     });
   }
 
-  function selectOfzTicker(ticker) {
-    _selectedTicker = ticker;
-    var select = document.getElementById('ofzBondSelect');
-    if (select) select.value = ticker;
-    var row = _rows.find(function (r) { return r.ticker === ticker; }) || null;
+  function renderOfzSelection(row) {
     renderOfzTable(_rows);
     renderOfzIncomeTypes(row);
     renderOfzKpis(row);
     renderOfzYieldCurve(_rows);
+  }
+
+  function selectOfzTicker(ticker) {
+    if (!ticker) return Promise.resolve();
+    _selectedTicker = ticker;
+    var select = document.getElementById('ofzBondSelect');
+    if (select && select.value !== ticker) select.value = ticker;
+    var row = _rows.find(function (r) { return r.ticker === ticker; }) || null;
+    renderOfzSelection(row);
     if (!row) return Promise.resolve();
     return ensureOfzRowDetails(row).then(function (enriched) {
-      renderOfzTable(_rows);
-      renderOfzIncomeTypes(enriched);
-      renderOfzKpis(enriched);
-      renderOfzYieldCurve(_rows);
+      if (_selectedTicker !== ticker) return null;
+      renderOfzSelection(enriched);
       return renderOfzCharts(enriched);
     });
+  }
+
+  function applyOfzCatalog(catalog) {
+    _rows = (catalog || []).map(rowFromCatalogEntry);
+    _loading = false;
+    _loadError = _rows.length ? '' : 'Пустой ответ МосБиржи.';
+    updateOfzSectionLead(_rows.length, _loadError ? '' : undefined);
+    if (_rows.length && !_rows.some(function (r) { return r.ticker === _selectedTicker; })) {
+      _selectedTicker = _rows[0].ticker;
+    }
+    syncOfzBondSelect(_rows);
+    renderOfzTable(_rows);
+    renderOfzYieldCurve(_rows);
+    return selectOfzTicker(_selectedTicker);
   }
 
   function loadOfzData(force) {
@@ -821,29 +905,35 @@
     if (!section) return Promise.resolve();
     if (_loading && !force) return Promise.resolve();
     _loading = true;
+    _loadError = '';
+    updateOfzSectionLead(0);
     renderOfzTable(_rows);
 
     return fetchOfzBondCatalog().then(function (catalog) {
-      _rows = catalog.map(rowFromCatalogEntry);
-      _loading = false;
-      updateOfzSectionLead(_rows.length);
-      if (!_rows.some(function (r) { return r.ticker === _selectedTicker; })) {
-        _selectedTicker = _rows.length ? _rows[0].ticker : '';
-      }
-      var select = document.getElementById('ofzBondSelect');
-      if (select) {
-        select.innerHTML = _rows.map(function (r) {
-          return '<option value="' + escapeHtml(r.ticker) + '">' + escapeHtml(r.label || r.ticker) + '</option>';
-        }).join('');
-        select.value = _selectedTicker;
-      }
-      renderOfzTable(_rows);
-      renderOfzYieldCurve(_rows);
-      return selectOfzTicker(_selectedTicker);
+      return applyOfzCatalog(catalog);
     }).catch(function () {
       _loading = false;
+      _loadError = 'Ошибка загрузки данных МосБиржи.';
+      updateOfzSectionLead(0);
       renderOfzTable(_rows);
     });
+  }
+
+  function bindOfzVisibilityRefresh() {
+    if (_visibilityBound) return;
+    var section = document.getElementById('ofzSection');
+    var panel = document.getElementById('tab-watchlist');
+    if (!section || !panel || typeof IntersectionObserver === 'undefined') return;
+    _visibilityBound = true;
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting || !_rows.length) return;
+        renderOfzYieldCurve(_rows);
+        var row = _rows.find(function (r) { return r.ticker === _selectedTicker; });
+        if (row) renderOfzCharts(row);
+      });
+    }, { threshold: 0.12 });
+    obs.observe(section);
   }
 
   function bindOfzUI() {
@@ -851,39 +941,49 @@
     _bound = true;
     renderOfzUsage();
 
-    var select = document.getElementById('ofzBondSelect');
-    if (select) {
-      select.addEventListener('change', function () {
-        selectOfzTicker(select.value);
+    var section = document.getElementById('ofzSection');
+    if (section) {
+      section.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'ofzBondSelect') {
+          selectOfzTicker(e.target.value);
+        }
+      });
+      section.addEventListener('click', function (e) {
+        var pick = e.target.closest('[data-ofz-pick]');
+        if (pick) {
+          e.preventDefault();
+          selectOfzTicker(pick.getAttribute('data-ofz-pick'));
+          return;
+        }
+        var pfBtn = e.target.closest('[data-ofz-portfolio]');
+        if (pfBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          var pfRow = _rows.find(function (r) { return r.ticker === pfBtn.getAttribute('data-ofz-portfolio'); });
+          if (pfRow) ofzTogglePortfolio(pfRow);
+          return;
+        }
+        var wlBtn = e.target.closest('[data-ofz-watch]');
+        if (wlBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          ofzToggleWatchlist(wlBtn.getAttribute('data-ofz-watch'));
+        }
       });
     }
+
     var refreshBtn = document.getElementById('ofzRefreshBtn');
     if (refreshBtn) {
-      refreshBtn.addEventListener('click', function () { loadOfzData(true); });
+      refreshBtn.addEventListener('click', function () {
+        if (typeof moexCacheGet === 'function') {
+          try { localStorage.removeItem((typeof MOEX_CACHE_PREFIX !== 'undefined' ? MOEX_CACHE_PREFIX : 'ibrf.moex.') + OFZ_CATALOG_CACHE_KEY); } catch (e) { /* */ }
+        }
+        loadOfzData(true);
+      });
     }
-    document.addEventListener('click', function (e) {
-      var pick = e.target.closest('[data-ofz-pick]');
-      if (pick) {
-        selectOfzTicker(pick.getAttribute('data-ofz-pick'));
-        return;
-      }
-      var pfBtn = e.target.closest('[data-ofz-portfolio]');
-      if (pfBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        var pfRow = _rows.find(function (r) { return r.ticker === pfBtn.getAttribute('data-ofz-portfolio'); });
-        if (pfRow) ofzTogglePortfolio(pfRow);
-        return;
-      }
-      var wlBtn = e.target.closest('[data-ofz-watch]');
-      if (wlBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        ofzToggleWatchlist(wlBtn.getAttribute('data-ofz-watch'));
-      }
-    });
 
     bindOfzYieldCurveHover();
+    bindOfzVisibilityRefresh();
 
     ['ofzPriceChart', 'ofzCouponChart', 'ofzProfitChart'].forEach(function (id) {
       var canvas = document.getElementById(id);
@@ -900,8 +1000,9 @@
     }
     section.hidden = false;
     bindOfzUI();
-    if (!_rows.length) loadOfzData(false);
-    else selectOfzTicker(_selectedTicker);
+    if (!_rows.length && !_loading) loadOfzData(false);
+    else if (_rows.length) selectOfzTicker(_selectedTicker);
+    else updateOfzSectionLead(0);
   }
 
   window.renderOfzSection = renderOfzSection;

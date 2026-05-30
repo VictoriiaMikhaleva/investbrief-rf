@@ -102,7 +102,7 @@
         ticker: tk,
         market: mk,
         currency: item.currency === 'USD' ? 'USD' : defaultCurrencyForMarket(mk),
-        type: item.type || (usInfo ? usInfo.type : 'stock'),
+        type: item.type || item.kind || (usInfo ? usInfo.type : 'stock'),
         name: String(item.name || '').trim() || (usInfo ? usInfo.name : '')
       };
     }
@@ -289,13 +289,14 @@
             kind: info.type
           };
         }
+        var isBond = t.indexOf('OFZ') >= 0 || (t.indexOf('SU') === 0 && t.length > 8);
         return {
           ticker: t,
           name: getTickerNamesMap()[t] || TICKER_SUBTITLES[t] || '',
           market: 'RU',
           currency: 'RUB',
-          type: 'stock',
-          kind: 'stock'
+          type: isBond ? 'bond' : 'stock',
+          kind: isBond ? 'bond' : 'stock'
         };
       });
     }
