@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var OFZ_BONDS = [
+  var OFZ_BONDS_FALLBACK = [
     { ticker: 'OFZ_26238', kind: 'fixed', kindLabel: 'Фиксированный купон' },
     { ticker: 'OFZ_26241', kind: 'fixed', kindLabel: 'Фиксированный купон' },
     { ticker: 'OFZ_26243', kind: 'fixed', kindLabel: 'Фиксированный купон' },
@@ -18,10 +18,11 @@
     { title: 'Прозрачность', text: 'Направления расходов бюджета публикует Минфин России. ОФЗ не привязаны к одному проекту — это займ государства в целом.' }
   ];
 
-  var _selectedTicker = OFZ_BONDS[0].ticker;
+  var _selectedTicker = 'OFZ_26238';
   var _rows = [];
   var _loading = false;
   var _bound = false;
+  var _detailLoadingTicker = null;
 
   function formatOfzPrice(price) {
     if (price == null || !isFinite(price)) return '—';
@@ -57,6 +58,114 @@
     if (s.indexOf('ОФЗ-ИН') >= 0 || s.indexOf('OFZ-IN') >= 0) return { kind: 'indexed', kindLabel: 'ОФЗ-ИН · инфляция' };
     if (s.indexOf('ОФЗ-ПД') >= 0 || s.indexOf('OFZ-PD') >= 0 || s.indexOf('ПД') >= 0) return { kind: 'float', kindLabel: 'ОФЗ-ПД · плавающий' };
     return fallback || { kind: 'fixed', kindLabel: 'Фиксированный купон' };
+  }
+
+  function ofzTickerFromBoard(secid, shortname) {
+    var name = String(shortname || '');
+    var m = name.match(/(\d{5})/);
+    if (m) return 'OFZ_' + m[1];
+    m = String(secid || '').match(/(\d{5})/);
+    if (m) return 'OFZ_' + m[1];
+    return String(secid || name || 'OFZ');
+  }
+
+  function registerOfzTicker(ticker, secid, shortname) {
+    if (typeof BOND_SECID_MAP !== 'undefined' && ticker && secid) BOND_SECID_MAP[ticker] = secid;
+    if (shortname && typeof saveTickerName === 'function') saveTickerName(ticker, shortname);
+  }
+
+  function fetchOfzBondCatalog() {
+    var url = MOEX_ISS + '/engines/stock/markets/bonds/boards/TQOB/securities.json' +
+      '?iss.meta=off&iss.only=securities,marketdata' +
+      '&securities.columns=SECID,SHORTNAME,COUPONPERCENT,MATDATE,COUPONPERIOD,FACEVALUE' +
+      '&marketdata.columns=SECID,LAST,YIELDATWAPRICE,VALTODAY' +
+      '&limit=500';
+    return moexFetchJson(url).then(function (json) {
+      var secBlock = json.securities;
+      var mdBlock = json.marketdata;
+      if (!secBlock || !secBlock.columns || !secBlock.data) return [];
+      var sCols = secBlock.columns;
+      var si = sCols.indexOf('SECID');
+      var sn = sCols.indexOf('SHORTNAME');
+      var cp = sCols.indexOf('COUPONPERCENT');
+      var mat = sCols.indexOf('MATDATE');
+      var period = sCols.indexOf('COUPONPERIOD');
+      var fv = sCols.indexOf('FACEVALUE');
+      var mdMap = {};
+      if (mdBlock && mdBlock.columns && mdBlock.data) {
+        var mi = mdBlock.columns.indexOf('SECID');
+        var li = mdBlock.columns.indexOf('LAST');
+        var yi = mdBlock.columns.indexOf('YIELDATWAPRICE');
+        var vi = mdBlock.columns.indexOf('VALTODAY');
+        mdBlock.data.forEach(function (row) {
+          mdMap[row[mi]] = {
+            last: li >= 0 ? row[li] : null,
+            yield: yi >= 0 ? row[yi] : null,
+            vol: vi >= 0 ? row[vi] : null
+          };
+        });
+      }
+      var list = secBlock.data.filter(function (row) {
+        var name = sn >= 0 ? String(row[sn] || '') : '';
+        return /ОФЗ|OFZ/i.test(name);
+      }).map(function (row) {
+        var secid = si >= 0 ? row[si] : null;
+        var shortname = sn >= 0 ? String(row[sn] || secid) : String(secid);
+        var ticker = ofzTickerFromBoard(secid, shortname);
+        registerOfzTicker(ticker, secid, shortname);
+        var md = mdMap[secid] || {};
+        return {
+          ticker: ticker,
+          secid: secid,
+          shortname: shortname,
+          couponPct: cp >= 0 && row[cp] != null ? Number(row[cp]) : null,
+          matDate: mat >= 0 ? row[mat] : null,
+          couponPeriod: period >= 0 && row[period] != null ? Number(row[period]) : null,
+          faceValue: fv >= 0 && row[fv] != null ? Number(row[fv]) : 1000,
+          last: md.last != null ? Number(md.last) : null,
+          yieldPct: md.yield != null ? Number(md.yield) : null,
+          vol: md.vol != null ? Number(md.vol) : 0
+        };
+      }).sort(function (a, b) {
+        return (b.vol || 0) - (a.vol || 0);
+      });
+      return list;
+    }).catch(function () {
+      return OFZ_BONDS_FALLBACK.map(function (b) {
+        return {
+          ticker: b.ticker,
+          shortname: (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(b.ticker) : null) || b.ticker,
+          kind: b.kind,
+          kindLabel: b.kindLabel
+        };
+      });
+    });
+  }
+
+  function rowFromCatalogEntry(entry) {
+    var fallback = entry.kind ? { kind: entry.kind, kindLabel: entry.kindLabel } : null;
+    var kindInfo = detectKindFromName(entry.shortname, fallback);
+    return {
+      ticker: entry.ticker,
+      secid: entry.secid || null,
+      label: entry.shortname || entry.ticker,
+      kind: kindInfo.kind,
+      kindLabel: kindInfo.kindLabel,
+      price: entry.last,
+      yieldPct: entry.yieldPct,
+      couponPct: entry.couponPct,
+      payCount: couponsPerYear(entry.couponPeriod),
+      matDate: entry.matDate,
+      faceValue: entry.faceValue || 1000,
+      coupons: null
+    };
+  }
+
+  function updateOfzSectionLead(count) {
+    var el = document.querySelector('.ofz-section-lead');
+    if (!el || !count) return;
+    el.textContent = count + ' выпуск' + (count % 10 === 1 && count % 100 !== 11 ? '' : (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20) ? 'а' : 'ов')) +
+      ' на TQOB: доходность, купоны и сравнение. Не является индивидуальной инвестиционной рекомендацией.';
   }
 
   function parseIssTable(block) {
@@ -111,8 +220,11 @@
   function fetchOfzBondSnapshot(cfg) {
     cfg = cfg || {};
     var ticker = cfg.ticker;
-    var preset = OFZ_BONDS.find(function (b) { return b.ticker === ticker; }) || {};
-    return resolveRuBondInstrument(ticker).then(function (inst) {
+    var preset = cfg.preset || {};
+    var instP = cfg.secid
+      ? Promise.resolve({ type: 'bond', engine: 'stock', market: 'bonds', board: 'TQOB', secid: cfg.secid })
+      : resolveRuBondInstrument(ticker);
+    return instP.then(function (inst) {
       return Promise.all([
         fetchMoexQuote(ticker),
         fetchOfzSecurityMeta(inst.secid),
@@ -135,13 +247,13 @@
           label: meta.shortname || getTickerSubtitle(ticker) || ticker,
           kind: kindInfo.kind,
           kindLabel: preset.kindLabel || kindInfo.kindLabel,
-          price: quote.price,
+          price: quote.price != null ? quote.price : cfg.price,
           changePct: quote.changePct,
-          yieldPct: quote.yieldPct,
-          couponPct: meta.couponPct,
-          payCount: payCount,
-          matDate: meta.matDate,
-          faceValue: meta.faceValue || 1000,
+          yieldPct: quote.yieldPct != null ? quote.yieldPct : cfg.yieldPct,
+          couponPct: meta.couponPct != null ? meta.couponPct : cfg.couponPct,
+          payCount: payCount != null ? payCount : cfg.payCount,
+          matDate: meta.matDate || cfg.matDate,
+          faceValue: meta.faceValue || cfg.faceValue || 1000,
           coupons: coupons
         };
       });
@@ -334,6 +446,31 @@
     });
   }
 
+  function ensureOfzRowDetails(row) {
+    if (!row || row.error) return Promise.resolve(row);
+    if (row.coupons && row.coupons.length) return Promise.resolve(row);
+    if (_detailLoadingTicker === row.ticker) return Promise.resolve(row);
+    _detailLoadingTicker = row.ticker;
+    return fetchOfzBondSnapshot({
+      ticker: row.ticker,
+      secid: row.secid,
+      price: row.price,
+      yieldPct: row.yieldPct,
+      couponPct: row.couponPct,
+      payCount: row.payCount,
+      matDate: row.matDate,
+      faceValue: row.faceValue
+    }).then(function (full) {
+      if (_detailLoadingTicker === row.ticker) _detailLoadingTicker = null;
+      if (!full || full.error) return row;
+      Object.keys(full).forEach(function (k) { row[k] = full[k]; });
+      return row;
+    }).catch(function () {
+      if (_detailLoadingTicker === row.ticker) _detailLoadingTicker = null;
+      return row;
+    });
+  }
+
   function selectOfzTicker(ticker) {
     _selectedTicker = ticker;
     var select = document.getElementById('ofzBondSelect');
@@ -342,7 +479,13 @@
     renderOfzTable(_rows);
     renderOfzIncomeTypes(row);
     renderOfzKpis(row);
-    return renderOfzCharts(row);
+    if (!row) return Promise.resolve();
+    return ensureOfzRowDetails(row).then(function (enriched) {
+      renderOfzTable(_rows);
+      renderOfzIncomeTypes(enriched);
+      renderOfzKpis(enriched);
+      return renderOfzCharts(enriched);
+    });
   }
 
   function loadOfzData(force) {
@@ -352,14 +495,16 @@
     _loading = true;
     renderOfzTable(_rows);
 
-    return Promise.all(OFZ_BONDS.map(function (b) {
-      return fetchOfzBondSnapshot(b);
-    })).then(function (rows) {
-      _rows = rows;
+    return fetchOfzBondCatalog().then(function (catalog) {
+      _rows = catalog.map(rowFromCatalogEntry);
       _loading = false;
+      updateOfzSectionLead(_rows.length);
+      if (!_rows.some(function (r) { return r.ticker === _selectedTicker; })) {
+        _selectedTicker = _rows.length ? _rows[0].ticker : '';
+      }
       var select = document.getElementById('ofzBondSelect');
       if (select) {
-        select.innerHTML = rows.map(function (r) {
+        select.innerHTML = _rows.map(function (r) {
           return '<option value="' + escapeHtml(r.ticker) + '">' + escapeHtml(r.label || r.ticker) + '</option>';
         }).join('');
         select.value = _selectedTicker;
