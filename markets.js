@@ -27,6 +27,12 @@
 
   var DEFAULT_MARKETS = { ru: true, us: false };
   var DEFAULT_BASE_CURRENCY = 'RUB';
+  /** Временно отключено: котировки США через Yahoo нестабильны */
+  var US_MARKET_AVAILABLE = false;
+
+  function isUsMarketAvailable() {
+    return US_MARKET_AVAILABLE;
+  }
 
   function normalizeMarketsSettings(raw) {
     var m = raw && raw.markets && typeof raw.markets === 'object' ? raw.markets : {};
@@ -37,7 +43,12 @@
   }
 
   function getMarketsEnabled() {
-    return normalizeMarketsSettings(typeof getSettings === 'function' ? getSettings() : {});
+    var m = normalizeMarketsSettings(typeof getSettings === 'function' ? getSettings() : {});
+    if (!US_MARKET_AVAILABLE) {
+      m.us = false;
+      if (!m.ru) m.ru = true;
+    }
+    return m;
   }
 
   function isMarketEnabled(code) {
@@ -141,7 +152,12 @@
       return { ok: false, message: 'Введите тикер или название' };
     }
     if (item.market === 'US' && !canAddUsSecurities()) {
-      return { ok: false, message: 'Включите рынок США в настройках, чтобы добавить американские акции.' };
+      return {
+        ok: false,
+        message: US_MARKET_AVAILABLE
+          ? 'Включите рынок США в настройках, чтобы добавить американские акции.'
+          : 'Рынок США временно недоступен.'
+      };
     }
     if (item.market === 'RU' && !isMarketEnabled('RU')) {
       return { ok: false, message: 'Включите российский рынок в настройках.' };
@@ -404,8 +420,9 @@
 
 
   function applyBriefingMarkets(mode) {
+    if (!US_MARKET_AVAILABLE && (mode === 'US' || mode === 'BOTH')) mode = 'RU';
     var ru = mode === 'RU' || mode === 'BOTH';
-    var us = mode === 'US' || mode === 'BOTH';
+    var us = US_MARKET_AVAILABLE && (mode === 'US' || mode === 'BOTH');
     if (!ru && !us) ru = true;
     var s = typeof getSettings === 'function' ? getSettings() : {};
     if (typeof setSettings === 'function') {
@@ -446,7 +463,24 @@
 
 
 
+  function syncUsMarketUi() {
+    var available = US_MARKET_AVAILABLE;
+    document.querySelectorAll('[data-briefing-market="US"], [data-briefing-market="BOTH"]').forEach(function (btn) {
+      btn.hidden = !available;
+    });
+    document.querySelectorAll('.briefing-market-toolbar').forEach(function (toolbar) {
+      toolbar.hidden = !available;
+    });
+    var usCard = document.getElementById('marketUsCard');
+    if (usCard) usCard.hidden = !available;
+    var hint = document.getElementById('marketUsHint');
+    if (hint) hint.hidden = !available;
+  }
+
+
+
   function renderBriefingMarketTabs(rootId) {
+    syncUsMarketUi();
     var el = document.getElementById(rootId || 'briefingMarketTabs');
     if (!el) return;
     var mode = briefingMarketsModeFromSettings();
@@ -793,6 +827,9 @@
 
   global.Markets = {
     US_CATALOG: US_CATALOG,
+    US_MARKET_AVAILABLE: US_MARKET_AVAILABLE,
+    isUsMarketAvailable: isUsMarketAvailable,
+    syncUsMarketUi: syncUsMarketUi,
     normalizeMarketsSettings: normalizeMarketsSettings,
     getMarketsEnabled: getMarketsEnabled,
     isMarketEnabled: isMarketEnabled,

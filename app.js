@@ -80,14 +80,28 @@
 
   function loadMarketsToUI() {
     var m = getSettings().markets || { ru: true, us: false };
+    if (typeof Markets !== 'undefined' && !Markets.isUsMarketAvailable() && m.us) {
+      var s = getSettings();
+      setSettings({
+        briefFormat: s.briefFormat,
+        briefingScope: s.briefingScope,
+        essayStyle: s.essayStyle,
+        riskProfile: s.riskProfile,
+        markets: { ru: true, us: false },
+        baseCurrency: 'RUB'
+      });
+      m = { ru: true, us: false };
+      if (typeof state !== 'undefined') state.newsMarketFilter = 'RU';
+    }
     var ruEl = document.getElementById('marketRu');
     var usEl = document.getElementById('marketUs');
     if (!ruEl || !usEl) return;
     ruEl.checked = !!m.ru;
     usEl.checked = !!m.us;
     updateMarketSettingsControls();
-    if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
-      Markets.renderBriefingMarketTabs();
+    if (typeof Markets !== 'undefined') {
+      if (Markets.syncUsMarketUi) Markets.syncUsMarketUi();
+      if (Markets.renderBriefingMarketTabs) Markets.renderBriefingMarketTabs();
     }
   }
 
