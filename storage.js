@@ -22,6 +22,7 @@
     enabled: true,
     tickers: [],
     useTopTurnoverByDefault: true,
+    sensitivityMode: 'normal',
     dayMoveThreshold: 3,
     weekDownThreshold: 7,
     weekUpThreshold: 8,
@@ -294,10 +295,13 @@
     var tickers = Array.isArray(s.tickers) ? s.tickers.map(normalizeTicker).filter(Boolean) : [];
     var useTop = s.useTopTurnoverByDefault;
     if (useTop == null) useTop = !tickers.length;
+    var mode = s.sensitivityMode;
+    if (['calm', 'normal', 'sensitive', 'custom'].indexOf(mode) < 0) mode = 'normal';
     return {
       enabled: s.enabled !== false,
       tickers: tickers,
       useTopTurnoverByDefault: !!useTop,
+      sensitivityMode: mode,
       dayMoveThreshold: isFinite(Number(s.dayMoveThreshold)) ? Number(s.dayMoveThreshold) : DEFAULT_AGENT_SETTINGS.dayMoveThreshold,
       weekDownThreshold: isFinite(Number(s.weekDownThreshold)) ? Number(s.weekDownThreshold) : DEFAULT_AGENT_SETTINGS.weekDownThreshold,
       weekUpThreshold: isFinite(Number(s.weekUpThreshold)) ? Number(s.weekUpThreshold) : DEFAULT_AGENT_SETTINGS.weekUpThreshold,

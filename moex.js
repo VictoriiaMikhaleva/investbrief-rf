@@ -1434,7 +1434,16 @@
 
 
 
-  var MACRO_METAL_ASSETS = ['GOLD', 'SILV', 'NICKEL', 'ZINC'];
+  var MACRO_METAL_TILES = [
+    { id: 'gold', label: 'Золото', asset: 'GOLD', tag: 'Au · FORTS' },
+    { id: 'silver', label: 'Серебро', asset: 'SILV', tag: 'Ag · FORTS' },
+    { id: 'nickel', label: 'Никель', asset: 'NICKEL', tag: 'Ni · FORTS' },
+    { id: 'zinc', label: 'Цинк', asset: 'ZINC', tag: 'Zn · FORTS' }
+  ];
+
+  var MACRO_COMMODITY_TILE_IDS = ['oil', 'coffee', 'cocoa'].concat(
+    MACRO_METAL_TILES.map(function (m) { return m.id; })
+  );
 
   function formatCommodityMacroPrice(kind, price) {
     if (price == null || !isFinite(price)) return '—';
@@ -1442,7 +1451,7 @@
     if (kind === 'oil') return n.toFixed(2).replace('.', ',') + ' $/барр.';
     if (kind === 'coffee') return n.toFixed(2).replace('.', ',') + ' $/фунт';
     if (kind === 'cocoa') return n.toFixed(1).replace('.', ',') + ' $/100 кг';
-    if (kind === 'metals') {
+    if (kind === 'metal') {
       return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' $';
     }
     return n.toFixed(2).replace('.', ',');
@@ -1451,12 +1460,13 @@
 
 
   function renderMacroCommodityTilesHtml() {
-    return (
-      renderMacroTile('oil', 'Нефть', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'Brent')) +
-      renderMacroTile('metals', 'Металлы', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'золото · Au Ag Ni Zn')) +
-      renderMacroTile('coffee', 'Кофе', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'арабика')) +
-      renderMacroTile('cocoa', 'Какао', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'фьючерс'))
-    );
+    var html = renderMacroTile('oil', 'Нефть', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'Brent'));
+    MACRO_METAL_TILES.forEach(function (m) {
+      html += renderMacroTile(m.id, m.label, '…', macroMeta(null, 'МосБиржа', 'FORTS', m.tag.split(' · ')[0]));
+    });
+    html += renderMacroTile('coffee', 'Кофе', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'арабика'));
+    html += renderMacroTile('cocoa', 'Какао', '…', macroMeta(null, 'МосБиржа', 'FORTS', 'фьючерс'));
+    return html;
   }
 
 
@@ -1537,27 +1547,16 @@
     var oil = pickFortsByAsset(rows, 'BR');
     var coffee = pickFortsByAsset(rows, 'COFFEE');
     var cocoa = pickFortsByAsset(rows, 'COCOA');
-    var metalPicks = MACRO_METAL_ASSETS.map(function (code) {
-      return pickFortsByAsset(rows, code);
-    }).filter(Boolean);
-    var gold = pickFortsByAsset(rows, 'GOLD');
-    var metalChanges = metalPicks.map(function (p) { return p.changePct; }).filter(function (v) {
-      return v != null && isFinite(v);
-    });
-    var avgMetalChg = metalChanges.length
-      ? metalChanges.reduce(function (a, b) { return a + b; }, 0) / metalChanges.length
-      : null;
-    return {
+    var snap = {
       oil: oil ? { price: oil.price, changePct: oil.changePct } : null,
       coffee: coffee ? { price: coffee.price, changePct: coffee.changePct } : null,
-      cocoa: cocoa ? { price: cocoa.price, changePct: cocoa.changePct } : null,
-      metals: gold || metalPicks.length ? {
-        goldPrice: gold ? gold.price : metalPicks[0].price,
-        price: gold ? gold.price : metalPicks[0].price,
-        changePct: avgMetalChg != null ? avgMetalChg : (gold ? gold.changePct : null),
-        metalCount: metalPicks.length
-      } : null
+      cocoa: cocoa ? { price: cocoa.price, changePct: cocoa.changePct } : null
     };
+    MACRO_METAL_TILES.forEach(function (m) {
+      var pick = pickFortsByAsset(rows, m.asset);
+      snap[m.id] = pick ? { price: pick.price, changePct: pick.changePct } : null;
+    });
+    return snap;
   }
 
 
@@ -1568,11 +1567,12 @@
       patchMacroTile(row, 'oil', formatCommodityMacroPrice('oil', snap.oil.price),
         macroMeta(snap.oil.changePct, 'МосБиржа', 'FORTS', 'Brent'));
     }
-    if (snap.metals) {
-      patchMacroTile(row, 'metals', formatCommodityMacroPrice('metals', snap.metals.goldPrice || snap.metals.price),
-        macroMeta(snap.metals.changePct, 'МосБиржа', 'FORTS', 'золото · ср. Au Ag Ni Zn'),
-        'цена золота · изменение по 4 металлам');
-    }
+    MACRO_METAL_TILES.forEach(function (m) {
+      var item = snap[m.id];
+      if (!item) return;
+      patchMacroTile(row, m.id, formatCommodityMacroPrice('metal', item.price),
+        macroMeta(item.changePct, 'МосБиржа', 'FORTS', m.tag.split(' · ')[0]));
+    });
     if (snap.coffee) {
       patchMacroTile(row, 'coffee', formatCommodityMacroPrice('coffee', snap.coffee.price),
         macroMeta(snap.coffee.changePct, 'МосБиржа', 'FORTS', 'арабика'));
@@ -1604,7 +1604,7 @@
     if (!row) return;
     fetchMacroCommodities(!!forceRefresh).then(function (snap) {
       if (!snap) {
-        ['oil', 'metals', 'coffee', 'cocoa'].forEach(function (id) {
+        MACRO_COMMODITY_TILE_IDS.forEach(function (id) {
           patchMacroTile(row, id, '—', { changeText: 'нет данных', changeCls: 'muted' });
         });
         return;

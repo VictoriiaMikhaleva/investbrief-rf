@@ -13,6 +13,249 @@
   var _agentRulesOpen = false;
   var _agentBound = false;
 
+  var SENSITIVITY_PRESETS = {
+    calm: {
+      sensitivityMode: 'calm',
+      dayMoveThreshold: 5,
+      weekDownThreshold: 10,
+      weekUpThreshold: 12,
+      turnoverMultiplier: 2
+    },
+    normal: {
+      sensitivityMode: 'normal',
+      dayMoveThreshold: 3,
+      weekDownThreshold: 7,
+      weekUpThreshold: 8,
+      turnoverMultiplier: 1.5
+    },
+    sensitive: {
+      sensitivityMode: 'sensitive',
+      dayMoveThreshold: 2,
+      weekDownThreshold: 5,
+      weekUpThreshold: 6,
+      turnoverMultiplier: 1.2
+    }
+  };
+
+  var SENSITIVITY_MODE_LABELS = {
+    calm: { title: 'Спокойная', desc: 'Показывает только сильные движения.' },
+    normal: { title: 'Обычная', desc: 'Подходит большинству инвесторов.' },
+    sensitive: { title: 'Чуткая', desc: 'Показывает больше зон внимания.' }
+  };
+
+  function thresholdsMatch(a, b) {
+    return a.dayMoveThreshold === b.dayMoveThreshold &&
+      a.weekDownThreshold === b.weekDownThreshold &&
+      a.weekUpThreshold === b.weekUpThreshold &&
+      a.turnoverMultiplier === b.turnoverMultiplier;
+  }
+
+  function detectSensitivityMode(settings) {
+    var keys = ['calm', 'normal', 'sensitive'];
+    for (var i = 0; i < keys.length; i++) {
+      if (thresholdsMatch(settings, SENSITIVITY_PRESETS[keys[i]])) return keys[i];
+    }
+    return 'custom';
+  }
+
+  function getSensitivitySummaryText(mode, settings) {
+    settings = settings || getAgentSettings();
+    if (mode === 'calm') {
+      return 'Агент будет реагировать только на сильные движения и заметный рост оборота.';
+    }
+    if (mode === 'normal') {
+      return 'Агент покажет зону внимания при движении от 3% за день, снижении от 7% за неделю или обороте в 1,5 раза выше обычного.';
+    }
+    if (mode === 'sensitive') {
+      return 'Агент будет показывать больше зон внимания, включая умеренные движения цены и оборота.';
+    }
+    return 'Свои значения: от ' + settings.dayMoveThreshold + '% за день, снижение от ' +
+      settings.weekDownThreshold + '% за неделю, рост от ' + settings.weekUpThreshold +
+      '%, оборот ×' + String(settings.turnoverMultiplier).replace('.', ',') + '.';
+  }
+
+  function buildAgentSensitivityHtml(cfg) {
+    var p = cfg.prefix;
+    var titleTag = cfg.headingTag || 'h4';
+    var modesHtml = ['calm', 'normal', 'sensitive'].map(function (mode) {
+      var lbl = SENSITIVITY_MODE_LABELS[mode];
+      return (
+        '<button type="button" class="agent-mode-card" data-agent-prefix="' + escapeHtml(p) + '" data-agent-mode="' + mode + '" aria-pressed="false">' +
+          '<span class="agent-mode-card__title">' + escapeHtml(lbl.title) + '</span>' +
+          '<span class="agent-mode-card__desc">' + escapeHtml(lbl.desc) + '</span>' +
+        '</button>'
+      );
+    }).join('');
+    return (
+      '<' + titleTag + ' class="agent-rules-title">Настроить чувствительность</' + titleTag + '>' +
+      '<p class="muted agent-sensitivity-lead hint-frame">Чем чувствительнее агент, тем чаще он будет показывать зоны внимания.</p>' +
+      '<div class="agent-sensitivity-modes" role="group" aria-label="Режим чувствительности">' + modesHtml + '</div>' +
+      '<p class="agent-sensitivity-summary" id="' + escapeHtml(p) + 'SensitivitySummary"></p>' +
+      '<details class="agent-sensitivity-advanced">' +
+        '<summary>Расширенные настройки</summary>' +
+        '<div class="agent-advanced-fields">' +
+          '<div class="agent-advanced-field">' +
+            '<label class="muted" for="' + p + 'DayMove">Заметное движение за день</label>' +
+            '<input type="number" id="' + p + 'DayMove" min="0.5" max="20" step="0.5" value="3" />' +
+            '<p class="agent-field-hint muted">Агент покажет зону внимания, если цена изменилась сильнее этого значения за день.</p>' +
+          '</div>' +
+          '<div class="agent-advanced-field">' +
+            '<label class="muted" for="' + p + 'WeekDown">Заметное снижение за неделю</label>' +
+            '<input type="number" id="' + p + 'WeekDown" min="1" max="30" step="0.5" value="7" />' +
+            '<p class="agent-field-hint muted">Агент покажет зону внимания, если бумага заметно снизилась за неделю.</p>' +
+          '</div>' +
+          '<div class="agent-advanced-field">' +
+            '<label class="muted" for="' + p + 'WeekUp">Заметный рост за неделю</label>' +
+            '<input type="number" id="' + p + 'WeekUp" min="1" max="30" step="0.5" value="8" />' +
+            '<p class="agent-field-hint muted">Агент покажет зону внимания, если бумага быстро выросла за неделю.</p>' +
+          '</div>' +
+          '<div class="agent-advanced-field">' +
+            '<label class="muted" for="' + p + 'Turnover">Необычный оборот торгов</label>' +
+            '<input type="number" id="' + p + 'Turnover" min="1" max="5" step="0.1" value="1.5" />' +
+            '<p class="agent-field-hint muted">Агент покажет зону внимания, если оборот выше обычного в указанное число раз.</p>' +
+          '</div>' +
+        '</div>' +
+      '</details>' +
+      '<button type="button" id="' + escapeHtml(cfg.saveBtnId) + '" class="primary agent-sensitivity-save">Сохранить настройки</button>'
+    );
+  }
+
+  function mountAgentSensitivityPanels() {
+    var rulesPanel = document.getElementById('agentRulesPanel');
+    if (rulesPanel && !rulesPanel.dataset.mounted) {
+      rulesPanel.innerHTML = buildAgentSensitivityHtml({
+        prefix: 'agentRule',
+        saveBtnId: 'agentSaveRulesBtn',
+        headingTag: 'h4'
+      });
+      rulesPanel.dataset.mounted = '1';
+    }
+    var settingsRoot = document.getElementById('agentSettingsSensitivityRoot');
+    if (settingsRoot && !settingsRoot.dataset.mounted) {
+      settingsRoot.innerHTML = buildAgentSensitivityHtml({
+        prefix: 'agentSettings',
+        saveBtnId: 'agentSettingsSaveRulesBtn',
+        headingTag: 'h3'
+      });
+      settingsRoot.dataset.mounted = '1';
+    }
+  }
+
+  function updateSensitivityModeCards(prefix, mode) {
+    document.querySelectorAll('.agent-mode-card[data-agent-prefix="' + prefix + '"]').forEach(function (btn) {
+      var active = btn.getAttribute('data-agent-mode') === mode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function updateSensitivitySummary(prefix, mode, settings) {
+    var el = document.getElementById(prefix + 'SensitivitySummary');
+    if (el) el.textContent = getSensitivitySummaryText(mode, settings);
+  }
+
+  function applyPresetToPanel(prefix, mode) {
+    var preset = SENSITIVITY_PRESETS[mode];
+    if (!preset) return;
+    var map = {
+      DayMove: preset.dayMoveThreshold,
+      WeekDown: preset.weekDownThreshold,
+      WeekUp: preset.weekUpThreshold,
+      Turnover: preset.turnoverMultiplier
+    };
+    Object.keys(map).forEach(function (key) {
+      var el = document.getElementById(prefix + key);
+      if (el) el.value = map[key];
+    });
+    updateSensitivityModeCards(prefix, mode);
+    updateSensitivitySummary(prefix, mode, preset);
+  }
+
+  function loadAgentRulesToUI() {
+    ensureAgentSensitivityBound();
+    var s = getAgentSettings();
+    var mode = s.sensitivityMode;
+    if (mode !== 'custom') {
+      var detected = detectSensitivityMode(s);
+      mode = detected === 'custom' ? 'custom' : (s.sensitivityMode || detected);
+    }
+    if (mode === 'custom') {
+      ['agentRule', 'agentSettings'].forEach(function (prefix) {
+        var map = {
+          DayMove: s.dayMoveThreshold,
+          WeekDown: s.weekDownThreshold,
+          WeekUp: s.weekUpThreshold,
+          Turnover: s.turnoverMultiplier
+        };
+        Object.keys(map).forEach(function (key) {
+          var el = document.getElementById(prefix + key);
+          if (el) el.value = map[key];
+        });
+        updateSensitivityModeCards(prefix, 'custom');
+        updateSensitivitySummary(prefix, 'custom', s);
+      });
+      return;
+    }
+    applyPresetToPanel('agentRule', mode);
+    applyPresetToPanel('agentSettings', mode);
+  }
+
+  function readAgentRulesFromPanel(prefix) {
+    prefix = prefix || 'agentRule';
+    function num(suffix, fallback) {
+      var el = document.getElementById(prefix + suffix);
+      var v = el ? parseFloat(el.value) : NaN;
+      return isFinite(v) ? v : fallback;
+    }
+    var values = {
+      dayMoveThreshold: num('DayMove', 3),
+      weekDownThreshold: num('WeekDown', 7),
+      weekUpThreshold: num('WeekUp', 8),
+      turnoverMultiplier: num('Turnover', 1.5)
+    };
+    var mode = detectSensitivityMode(values);
+    values.sensitivityMode = mode;
+    return values;
+  }
+
+  function bindAgentSensitivityPanel(prefix, saveBtnId) {
+    var rootId = prefix === 'agentRule' ? 'agentRulesPanel' : 'agentSettingsSensitivityRoot';
+    var root = document.getElementById(rootId);
+    if (!root || root.dataset.sensitivityBound) return;
+    root.dataset.sensitivityBound = '1';
+
+    root.addEventListener('click', function (e) {
+      var btn = e.target.closest('.agent-mode-card[data-agent-prefix="' + prefix + '"]');
+      if (!btn) return;
+      applyPresetToPanel(prefix, btn.getAttribute('data-agent-mode'));
+    });
+    ['DayMove', 'WeekDown', 'WeekUp', 'Turnover'].forEach(function (suffix) {
+      var el = document.getElementById(prefix + suffix);
+      if (!el) return;
+      el.addEventListener('input', function () {
+        var values = readAgentRulesFromPanel(prefix);
+        updateSensitivityModeCards(prefix, values.sensitivityMode);
+        updateSensitivitySummary(prefix, values.sensitivityMode, values);
+      });
+    });
+    var saveBtn = document.getElementById(saveBtnId);
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function () {
+        var next = readAgentRulesFromPanel(prefix);
+        setAgentSettings(next);
+        loadAgentRulesToUI();
+        refreshAgentSignals(true);
+        if (typeof showToast === 'function') showToast('Настройки сохранены');
+      });
+    }
+  }
+
+  function ensureAgentSensitivityBound() {
+    mountAgentSensitivityPanels();
+    bindAgentSensitivityPanel('agentRule', 'agentSaveRulesBtn');
+    bindAgentSensitivityPanel('agentSettings', 'agentSettingsSaveRulesBtn');
+  }
+
   function loadTopTurnoverTickers(limit) {
     limit = limit || 20;
     var cacheKey = 'moex.topvol.' + limit;
@@ -486,39 +729,6 @@
     grid.innerHTML = _agentCards.map(renderAgentCardHtml).join('');
   }
 
-  function loadAgentRulesToUI() {
-    var s = getAgentSettings();
-    var map = {
-      agentRuleDayMove: s.dayMoveThreshold,
-      agentRuleWeekDown: s.weekDownThreshold,
-      agentRuleWeekUp: s.weekUpThreshold,
-      agentRuleTurnover: s.turnoverMultiplier,
-      agentSettingsDayMove: s.dayMoveThreshold,
-      agentSettingsWeekDown: s.weekDownThreshold,
-      agentSettingsWeekUp: s.weekUpThreshold,
-      agentSettingsTurnover: s.turnoverMultiplier
-    };
-    Object.keys(map).forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) el.value = map[id];
-    });
-  }
-
-  function readAgentRulesFromPanel(prefix) {
-    prefix = prefix || 'agentRule';
-    function num(id, fallback) {
-      var el = document.getElementById(prefix + id);
-      var v = el ? parseFloat(el.value) : NaN;
-      return isFinite(v) ? v : fallback;
-    }
-    return {
-      dayMoveThreshold: num('DayMove', 3),
-      weekDownThreshold: num('WeekDown', 7),
-      weekUpThreshold: num('WeekUp', 8),
-      turnoverMultiplier: num('Turnover', 1.5)
-    };
-  }
-
   function refreshAgentSignals(force) {
     var settings = getAgentSettings();
     if (!settings.enabled) {
@@ -664,6 +874,8 @@
   function bindAgentUI() {
     if (_agentBound) return;
     _agentBound = true;
+    ensureAgentSensitivityBound();
+    loadAgentRulesToUI();
 
     var refreshBtn = document.getElementById('agentRefreshBtn');
     var configBtn = document.getElementById('agentConfigureListBtn');
@@ -671,8 +883,6 @@
     var addBtn = document.getElementById('agentAddTickerBtn');
     var resetBtn = document.getElementById('agentResetTop20Btn');
     var input = document.getElementById('agentTickerInput');
-    var saveRulesBtn = document.getElementById('agentSaveRulesBtn');
-    var saveSettingsRulesBtn = document.getElementById('agentSettingsSaveRulesBtn');
 
     if (refreshBtn) {
       refreshBtn.addEventListener('click', function () { refreshAgentSignals(true); });
@@ -704,32 +914,6 @@
     }
     if (resetBtn) resetBtn.addEventListener('click', resetAgentToTop20);
     if (typeof setupTickerAutocomplete === 'function') setupTickerAutocomplete('agentTickerInput');
-
-    function saveRules(readFn) {
-      var rules = readFn();
-      setAgentSettings(rules);
-      loadAgentRulesToUI();
-      refreshAgentSignals(true);
-      showToast('Правила агента сохранены');
-    }
-
-    if (saveRulesBtn) {
-      saveRulesBtn.addEventListener('click', function () {
-        saveRules(function () { return readAgentRulesFromPanel('agentRule'); });
-      });
-    }
-    if (saveSettingsRulesBtn) {
-      saveSettingsRulesBtn.addEventListener('click', function () {
-        var elDay = document.getElementById('agentSettingsDayMove');
-        var rules = {
-          dayMoveThreshold: elDay ? parseFloat(elDay.value) : 3,
-          weekDownThreshold: parseFloat(document.getElementById('agentSettingsWeekDown').value) || 7,
-          weekUpThreshold: parseFloat(document.getElementById('agentSettingsWeekUp').value) || 8,
-          turnoverMultiplier: parseFloat(document.getElementById('agentSettingsTurnover').value) || 1.5
-        };
-        saveRules(function () { return rules; });
-      });
-    }
 
     document.addEventListener('click', function (e) {
       var hideBtn = e.target.closest('[data-agent-hide]');
