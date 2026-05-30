@@ -10,8 +10,8 @@
     "test:analytics-server": "node scripts/test-analytics-server.mjs",
     "start": "npm run sync:core && node server/server.js",
     "functions:install": "npm install --prefix functions",
-    "deploy:watchdog": "npm run sync:core && firebase deploy --only functions:dataWatchdogHourly,firestore:rules",
-    "deploy:api": "npm run sync:core && firebase deploy --only functions:getAnalytics,functions:dataWatchdogHourly,firestore:rules"
+    "deploy:watchdog": "npm run sync:core && npx firebase-tools deploy --only functions:dataWatchdogHourly,firestore:rules",
+    "deploy:api": "npm run sync:core && npx firebase-tools deploy --only functions:getAnalytics,functions:dataWatchdogHourly,firestore:rules"
   },
   "repository": {
     "type": "git",
