@@ -603,15 +603,16 @@
             <input type="time" id="digestTime" value="08:00" />
             <hr style="margin:0.85rem 0;border:none;border-top:1px solid var(--border);" />
             <h4 style="margin:0 0 0.45rem;font-size:0.88rem;">Сторож данных (невидимый)</h4>
-            <p class="muted hint-frame" style="margin:0 0 0.55rem;font-size:0.8rem;">Тихо проверяет сводку, котировки и агента. Облачный сторож (Firebase) — каждый час, даже если браузер закрыт.</p>
+            <p class="muted hint-frame" style="margin:0 0 0.55rem;font-size:0.8rem;">Тихо проверяет сводку, котировки и агента, пока открыта вкладка. Раз в час или при возврате на страницу.</p>
+            <p class="muted hint-frame" id="watchdogCloudHint" hidden style="margin:0 0 0.55rem;font-size:0.8rem;">Облачный сторож (Firebase Blaze) — каждый час, даже если браузер закрыт.</p>
             <div class="check-row">
               <input type="checkbox" id="watchdogEnabled" checked />
               <label for="watchdogEnabled" class="check-row-text">Включить сторож</label>
             </div>
             <label class="muted">Интервал, мин (мин. 5)</label>
             <input type="number" id="watchdogIntervalMin" min="5" max="1440" step="5" value="60" style="margin-bottom:0.55rem;max-width:6rem;" />
-            <button type="button" id="watchdogRunNowBtn" class="ghost" style="margin-bottom:0.45rem;">Проверить локально</button>
-            <button type="button" id="watchdogCloudCheckBtn" class="ghost" style="margin-bottom:0.45rem;">Сверить с облаком</button>
+            <button type="button" id="watchdogRunNowBtn" class="ghost" style="margin-bottom:0.45rem;">Проверить сейчас</button>
+            <button type="button" id="watchdogCloudCheckBtn" class="ghost" hidden style="margin-bottom:0.45rem;">Сверить с облаком</button>
             <p class="muted" id="watchdogDevStatus" style="font-size:0.78rem;line-height:1.4;"></p>
           </details>
 
