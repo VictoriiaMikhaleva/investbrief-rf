@@ -2181,7 +2181,26 @@
     });
   }
 
+
+
+  function refreshMacroDataSilent(force) {
+    force = !!force;
+    if (force) invalidateMacroLiveCaches(false);
+    return Promise.all([
+      fetchCbrKeyRate().catch(function () { return null; }),
+      fetchMoexQuote('IMOEX').catch(function () { return null; }),
+      fetchMacroFxRates(force).catch(function () { return null; }),
+      fetchMacroCommodities(force).catch(function () { return null; }),
+      fetchTopMoexSharesByVolume(20, force).catch(function () { return null; })
+    ]).then(function () {
+      if (!state || state.tab !== 'briefing') return;
+      if (typeof renderMarketMacro === 'function') renderMarketMacro(false);
+      if (typeof renderMarketTiles === 'function') renderMarketTiles();
+    });
+  }
+
   window.scheduleMarketMacroRefresh = scheduleMarketMacroRefresh;
   window.fetchTopMoexSharesByVolume = fetchTopMoexSharesByVolume;
+  window.refreshMacroDataSilent = refreshMacroDataSilent;
 
 

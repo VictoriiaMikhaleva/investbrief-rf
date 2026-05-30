@@ -4,7 +4,9 @@
   "description": "",
   "main": "analytics.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "functions:install": "npm install --prefix functions",
+    "deploy:watchdog": "firebase deploy --only functions:dataWatchdogHourly,firestore:rules"
   },
   "repository": {
     "type": "git",

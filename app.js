@@ -542,6 +542,7 @@
       renderMarketTiles();
       renderMarketMacro();
       if (typeof scheduleMarketMacroRefresh === 'function') scheduleMarketMacroRefresh();
+      if (typeof initWatchdog === 'function') initWatchdog();
       if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
         ['briefingMarketTabs', 'analyticsMarketTabs', 'portfolioMarketTabs'].forEach(function (id) {
           Markets.renderBriefingMarketTabs(id);

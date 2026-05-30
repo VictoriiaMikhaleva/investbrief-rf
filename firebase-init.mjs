@@ -19,6 +19,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  onSnapshot,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
@@ -55,6 +56,7 @@ try {
     doc: doc,
     getDoc: getDoc,
     setDoc: setDoc,
+    onSnapshot: onSnapshot,
     serverTimestamp: serverTimestamp,
     signInWithPopup: signInWithPopup,
     signInWithEmailAndPassword: signInWithEmailAndPassword,
