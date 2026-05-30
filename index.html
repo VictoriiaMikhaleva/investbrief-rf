@@ -342,24 +342,43 @@
               </div>
             </div>
 
+            <div class="ofz-table-toolbar">
+              <div class="ofz-table-filters row">
+                <label>
+                  <span class="muted">Тип выпуска</span>
+                  <select id="ofzFilterKind" aria-label="Фильтр по типу ОФЗ">
+                    <option value="all">Все</option>
+                    <option value="fixed">Фиксированный купон</option>
+                    <option value="indexed">ОФЗ-ИН</option>
+                    <option value="float">ОФЗ-ПД</option>
+                  </select>
+                </label>
+                <label class="grow">
+                  <span class="muted">Поиск выпуска</span>
+                  <input id="ofzFilterSearch" type="search" placeholder="26247, ОФЗ…" autocomplete="off" spellcheck="false" aria-label="Поиск выпуска ОФЗ" />
+                </label>
+                <button type="button" id="ofzFilterResetBtn" class="ghost small">Сброс</button>
+              </div>
+              <p class="muted ofz-table-filter-note" id="ofzTableFilterNote"></p>
+            </div>
             <div class="table-wrap ofz-table-wrap">
               <table class="strategy-table ofz-market-table" id="ofzCompareTable">
                 <thead>
                   <tr>
                     <th>№</th>
-                    <th>Выпуск</th>
-                    <th>Погашение</th>
-                    <th>Лет</th>
-                    <th>Дох.</th>
-                    <th>Год. куп.</th>
-                    <th>Куп/цена</th>
-                    <th>Цена</th>
-                    <th>Объём, млн</th>
-                    <th>Купон, ₽</th>
-                    <th>Част.</th>
-                    <th>НКД</th>
-                    <th>Дюр.</th>
-                    <th>Купон дата</th>
+                    <th data-ofz-sort="label" data-ofz-label="Выпуск">Выпуск</th>
+                    <th data-ofz-sort="matDate" data-ofz-label="Погашение">Погашение</th>
+                    <th data-ofz-sort="yearsToMat" data-ofz-label="Лет">Лет</th>
+                    <th data-ofz-sort="yieldPct" data-ofz-label="Дох.">Дох.</th>
+                    <th data-ofz-sort="couponPct" data-ofz-label="Год. куп.">Год. куп.</th>
+                    <th data-ofz-sort="couponYieldLast" data-ofz-label="Куп/цена">Куп/цена</th>
+                    <th data-ofz-sort="price" data-ofz-label="Цена">Цена</th>
+                    <th data-ofz-sort="vol" data-ofz-label="Объём, млн" class="ofz-sort-active">Объём, млн ↓</th>
+                    <th data-ofz-sort="couponValue" data-ofz-label="Купон, ₽">Купон, ₽</th>
+                    <th data-ofz-sort="payCount" data-ofz-label="Част.">Част.</th>
+                    <th data-ofz-sort="accruedInt" data-ofz-label="НКД">НКД</th>
+                    <th data-ofz-sort="durationYears" data-ofz-label="Дюр.">Дюр.</th>
+                    <th data-ofz-sort="nextCoupon" data-ofz-label="Купон дата">Купон дата</th>
                     <th title="Портфель">Порт.</th>
                     <th title="Наблюдение">Набл.</th>
                   </tr>
@@ -844,7 +863,7 @@
   <script src="./moex.js?v=20250903"></script>
   <script src="./manual-data.js?v=20250828"></script>
   <script src="./analytics.js?v=20250903"></script>
-  <script src="./ofz.js?v=20260530d"></script>
+  <script src="./ofz.js?v=20260530e"></script>
   <script src="./portfolio.js?v=20250828e"></script>
   <script src="./agent.js?v=20260530"></script>
   <script src="./watchdog.js?v=20260530"></script>

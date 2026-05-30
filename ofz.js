@@ -25,6 +25,8 @@
   var _loadError = '';
   var _visibilityBound = false;
   var OFZ_CATALOG_CACHE_KEY = 'ofz.catalog.tqob.v2';
+  var _tableView = { sortBy: 'vol', sortDir: 'desc', kind: 'all', search: '' };
+  var _filterSearchTimer = null;
 
   function formatOfzPrice(price) {
     if (price == null || !isFinite(price)) return '—';
@@ -77,6 +79,149 @@
     var priceRub = Number(pricePct) / 100 * Number(faceValue);
     if (!isFinite(priceRub) || priceRub <= 0) return null;
     return Number(couponValue) / priceRub * payCount * 100;
+  }
+
+  function ofzSortValue(row, key) {
+    if (!row) return null;
+    switch (key) {
+      case 'label': return String(row.label || row.ticker || '').toLowerCase();
+      case 'matDate': return row.matDate ? new Date(row.matDate).getTime() : null;
+      case 'yearsToMat': return row.yearsToMat;
+      case 'yieldPct': return row.yieldPct;
+      case 'couponPct': return row.couponPct;
+      case 'couponYieldLast': return row.couponYieldLast;
+      case 'price': return row.price;
+      case 'vol': return row.vol;
+      case 'couponValue': return row.couponValue;
+      case 'payCount': return row.payCount;
+      case 'accruedInt': return row.accruedInt;
+      case 'durationYears': return row.durationYears;
+      case 'nextCoupon': return row.nextCoupon ? new Date(row.nextCoupon).getTime() : null;
+      default: return null;
+    }
+  }
+
+  function getFilteredSortedRows() {
+    if (!_rows.length) return [];
+    var list = _rows.slice();
+    if (_tableView.kind && _tableView.kind !== 'all') {
+      list = list.filter(function (r) { return r.kind === _tableView.kind; });
+    }
+    var q = String(_tableView.search || '').trim().toLowerCase();
+    if (q) {
+      list = list.filter(function (r) {
+        var hay = (String(r.label || '') + ' ' + String(r.ticker || '') + ' ' + String(r.secid || '')).toLowerCase();
+        return hay.indexOf(q) >= 0;
+      });
+    }
+    var key = _tableView.sortBy || 'vol';
+    var dir = _tableView.sortDir === 'asc' ? 1 : -1;
+    list.sort(function (a, b) {
+      var va = ofzSortValue(a, key);
+      var vb = ofzSortValue(b, key);
+      var aEmpty = va == null || (typeof va === 'number' && !isFinite(va));
+      var bEmpty = vb == null || (typeof vb === 'number' && !isFinite(vb));
+      if (aEmpty && bEmpty) return 0;
+      if (aEmpty) return 1;
+      if (bEmpty) return -1;
+      if (typeof va === 'string') return dir * va.localeCompare(vb, 'ru');
+      return dir * (va - vb);
+    });
+    return list;
+  }
+
+  function syncTableViewFromUI() {
+    var kindEl = document.getElementById('ofzFilterKind');
+    var searchEl = document.getElementById('ofzFilterSearch');
+    if (kindEl) _tableView.kind = kindEl.value || 'all';
+    if (searchEl) _tableView.search = searchEl.value || '';
+  }
+
+  function updateOfzSortHeaders() {
+    var table = document.getElementById('ofzCompareTable');
+    if (!table) return;
+    table.querySelectorAll('[data-ofz-sort]').forEach(function (th) {
+      var key = th.getAttribute('data-ofz-sort');
+      var base = th.getAttribute('data-ofz-label');
+      if (!base) {
+        base = th.textContent.replace(/\s*[↑↓]\s*$/, '').trim();
+        th.setAttribute('data-ofz-label', base);
+      }
+      th.classList.toggle('ofz-sort-active', key === _tableView.sortBy);
+      var arrow = key === _tableView.sortBy ? (_tableView.sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+      th.textContent = base + arrow;
+    });
+  }
+
+  function updateOfzTableFilterNote(shown, total) {
+    var el = document.getElementById('ofzTableFilterNote');
+    if (!el) return;
+    if (_loading || !total) {
+      el.textContent = '';
+      return;
+    }
+    var parts = [];
+    if (shown !== total) parts.push('Показано ' + shown + ' из ' + total);
+    else parts.push(total + ' выпуск' + ofzPluralRu(total));
+    el.textContent = parts.join(' · ');
+  }
+
+  function applyOfzTableView() {
+    syncTableViewFromUI();
+    var shown = getFilteredSortedRows();
+    renderOfzTable();
+    renderOfzYieldCurve(shown);
+    updateOfzTableFilterNote(shown.length, _rows.length);
+  }
+
+  function setOfzTableSort(key) {
+    if (!key) return;
+    if (_tableView.sortBy === key) {
+      _tableView.sortDir = _tableView.sortDir === 'desc' ? 'asc' : 'desc';
+    } else {
+      _tableView.sortBy = key;
+      _tableView.sortDir = (key === 'label' || key === 'matDate' || key === 'nextCoupon') ? 'asc' : 'desc';
+    }
+    applyOfzTableView();
+  }
+
+  function resetOfzTableView() {
+    _tableView = { sortBy: 'vol', sortDir: 'desc', kind: 'all', search: '' };
+    var kindEl = document.getElementById('ofzFilterKind');
+    var searchEl = document.getElementById('ofzFilterSearch');
+    if (kindEl) kindEl.value = 'all';
+    if (searchEl) searchEl.value = '';
+    applyOfzTableView();
+  }
+
+  function bindOfzTableFilters() {
+    if (document.getElementById('ofzSection') && document.getElementById('ofzSection')._ofzFiltersBound) return;
+    var section = document.getElementById('ofzSection');
+    if (section) section._ofzFiltersBound = true;
+
+    var kindEl = document.getElementById('ofzFilterKind');
+    if (kindEl) kindEl.addEventListener('change', applyOfzTableView);
+
+    var searchEl = document.getElementById('ofzFilterSearch');
+    if (searchEl) {
+      searchEl.addEventListener('input', function () {
+        clearTimeout(_filterSearchTimer);
+        _filterSearchTimer = setTimeout(applyOfzTableView, 180);
+      });
+    }
+
+    var resetBtn = document.getElementById('ofzFilterResetBtn');
+    if (resetBtn) resetBtn.addEventListener('click', resetOfzTableView);
+
+    var thead = document.querySelector('#ofzCompareTable thead');
+    if (thead && !thead._ofzSortBound) {
+      thead._ofzSortBound = true;
+      thead.addEventListener('click', function (e) {
+        var th = e.target.closest('[data-ofz-sort]');
+        if (!th) return;
+        setOfzTableSort(th.getAttribute('data-ofz-sort'));
+      });
+    }
   }
 
   var OFZ_TABLE_COLS = 16;
@@ -572,8 +717,7 @@
       showToast('Добавлено в наблюдение: ' + t);
     }
     setTimeout(function () {
-      renderOfzTable(_rows);
-      renderOfzYieldCurve(_rows);
+      applyOfzTableView();
     }, 0);
   }
 
@@ -613,8 +757,7 @@
       showToast('Добавлено в портфель: ' + (row.label || t));
     }
     if (typeof renderPortfolio === 'function') renderPortfolio();
-    renderOfzTable(_rows);
-    renderOfzYieldCurve(_rows);
+    applyOfzTableView();
   }
 
   function handleOfzTableClick(e) {
@@ -826,15 +969,25 @@
     wrap.addEventListener('mouseleave', hideTip);
   }
 
-  function renderOfzTable(rows) {
+  function renderOfzTable() {
     var tbody = document.getElementById('ofzCompareBody');
     if (!tbody) return;
     if (_loading) {
       tbody.innerHTML = '<tr><td colspan="' + OFZ_TABLE_COLS + '" class="muted">Загрузка данных МосБиржи…</td></tr>';
+      updateOfzTableFilterNote(0, 0);
+      return;
+    }
+    var rows = getFilteredSortedRows();
+    if (!_rows.length) {
+      tbody.innerHTML = '<tr><td colspan="' + OFZ_TABLE_COLS + '" class="muted">Нет данных</td></tr>';
+      updateOfzTableFilterNote(0, 0);
+      updateOfzSortHeaders();
       return;
     }
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="' + OFZ_TABLE_COLS + '" class="muted">Нет данных</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + OFZ_TABLE_COLS + '" class="muted">Нет выпусков по фильтру — измените условия или нажмите «Сброс»</td></tr>';
+      updateOfzTableFilterNote(0, _rows.length);
+      updateOfzSortHeaders();
       return;
     }
     tbody.innerHTML = rows.map(function (r, idx) {
@@ -862,6 +1015,8 @@
         '</tr>'
       );
     }).join('');
+    updateOfzTableFilterNote(rows.length, _rows.length);
+    updateOfzSortHeaders();
   }
 
   function renderOfzCharts(row) {
@@ -922,10 +1077,9 @@
   }
 
   function renderOfzSelection(row) {
-    renderOfzTable(_rows);
+    applyOfzTableView();
     renderOfzIncomeTypes(row);
     renderOfzKpis(row);
-    renderOfzYieldCurve(_rows);
   }
 
   function selectOfzTicker(ticker) {
@@ -952,8 +1106,7 @@
       _selectedTicker = _rows[0].ticker;
     }
     syncOfzBondSelect(_rows);
-    renderOfzTable(_rows);
-    renderOfzYieldCurve(_rows);
+    applyOfzTableView();
     return selectOfzTicker(_selectedTicker);
   }
 
@@ -964,7 +1117,7 @@
     _loading = true;
     _loadError = '';
     updateOfzSectionLead(0);
-    renderOfzTable(_rows);
+    renderOfzTable();
 
     return fetchOfzBondCatalog().then(function (catalog) {
       return applyOfzCatalog(catalog);
@@ -972,7 +1125,7 @@
       _loading = false;
       _loadError = 'Ошибка загрузки данных МосБиржи.';
       updateOfzSectionLead(0);
-      renderOfzTable(_rows);
+      renderOfzTable();
     });
   }
 
@@ -985,7 +1138,7 @@
     var obs = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (!entry.isIntersecting || !_rows.length) return;
-        renderOfzYieldCurve(_rows);
+        applyOfzTableView();
         var row = _rows.find(function (r) { return r.ticker === _selectedTicker; });
         if (row) renderOfzCharts(row);
       });
@@ -1025,6 +1178,7 @@
 
     bindOfzYieldCurveHover();
     bindOfzVisibilityRefresh();
+    bindOfzTableFilters();
 
     ['ofzPriceChart', 'ofzCouponChart', 'ofzProfitChart'].forEach(function (id) {
       var canvas = document.getElementById(id);

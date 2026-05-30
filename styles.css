@@ -2908,7 +2908,30 @@
     .ofz-yield-curve-panel { margin-bottom: 0.85rem; }
     .ofz-yield-curve-wrap { height: 320px; position: relative; }
     .ofz-table-wrap { overflow-x: auto; overflow-y: auto; max-height: 32rem; margin-bottom: 0.45rem; }
+    .ofz-table-toolbar { margin-bottom: 0.55rem; }
+    .ofz-table-filters { flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; }
+    .ofz-table-filters label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      font-size: 0.72rem;
+      min-width: 0;
+    }
+    .ofz-table-filters select,
+    .ofz-table-filters input {
+      font-size: 0.78rem;
+      min-width: 7rem;
+      max-width: 100%;
+    }
+    .ofz-table-filter-note { margin: 0.35rem 0 0; font-size: 0.74rem; }
     .ofz-market-table { min-width: 1080px; font-size: 0.76rem; }
+    .ofz-market-table th[data-ofz-sort] {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .ofz-market-table th[data-ofz-sort]:hover { color: var(--accent); }
+    .ofz-market-table th.ofz-sort-active { color: var(--accent); }
     .ofz-market-table th,
     .ofz-market-table td { white-space: nowrap; padding: 0.32rem 0.4rem; vertical-align: middle; }
     .ofz-market-table .ofz-yield-val { color: #2d7a46; font-weight: 600; }
