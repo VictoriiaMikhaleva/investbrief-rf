@@ -2803,6 +2803,84 @@
     .agent-settings-history-details > summary::-webkit-details-marker { display: none; }
     .agent-settings-history-details[open] > summary { border-bottom: 1px solid rgba(61, 92, 71, 0.1); }
     .agent-settings-history-details #agentHistoryList { padding: 0.65rem; }
+    .ofz-section { margin-top: 1rem; }
+    .ofz-section-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem 1rem;
+      margin-bottom: 0.85rem;
+    }
+    .ofz-section-lead { margin: 0.35rem 0 0; max-width: 42rem; line-height: 1.45; }
+    .ofz-section-controls { align-items: center; gap: 0.45rem; }
+    .ofz-section-controls select { min-width: 12rem; }
+    .ofz-income-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.65rem;
+      margin-bottom: 0.85rem;
+    }
+    @media (max-width: 720px) {
+      .ofz-income-grid { grid-template-columns: 1fr; }
+    }
+    .ofz-income-card {
+      padding: 0.65rem 0.75rem;
+      border-radius: calc(var(--radius) - 6px);
+      border: 1px solid rgba(61, 92, 71, 0.12);
+      background: rgba(255, 255, 255, 0.45);
+    }
+    .ofz-income-card__title {
+      margin: 0 0 0.35rem;
+      font-size: 0.84rem;
+      color: var(--accent);
+    }
+    .ofz-income-card__text { margin: 0; font-size: 0.78rem; line-height: 1.4; }
+    .ofz-usage-details {
+      margin-bottom: 0.85rem;
+      border: 1px solid rgba(61, 92, 71, 0.12);
+      border-radius: calc(var(--radius) - 6px);
+      background: rgba(255, 255, 255, 0.35);
+    }
+    .ofz-usage-details > summary {
+      cursor: pointer;
+      padding: 0.55rem 0.65rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--accent);
+      list-style: none;
+    }
+    .ofz-usage-details > summary::-webkit-details-marker { display: none; }
+    .ofz-usage-list {
+      margin: 0;
+      padding: 0 0.85rem 0.65rem 1.35rem;
+      font-size: 0.8rem;
+      line-height: 1.45;
+    }
+    .ofz-usage-source { margin: 0 0.65rem 0.65rem; font-size: 0.75rem; }
+    .ofz-kpis {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 1rem;
+      margin-bottom: 0.85rem;
+    }
+    .ofz-kpi { min-width: 5.5rem; }
+    .ofz-kpi-lbl { display: block; font-size: 0.72rem; margin-bottom: 0.15rem; }
+    .ofz-kpi-val { font-size: 0.92rem; font-weight: 600; color: var(--accent); }
+    .ofz-charts-grid { margin-bottom: 0.85rem; }
+    .ofz-table-wrap { overflow-x: auto; margin-bottom: 0.45rem; }
+    .ofz-compare-table { min-width: 640px; }
+    .ofz-row-btn {
+      border: none;
+      background: none;
+      padding: 0;
+      color: var(--accent);
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+    }
+    .ofz-row-btn:hover { text-decoration: underline; }
+    .ofz-compare-table tr.ofz-row-active { background: rgba(61, 92, 71, 0.08); }
     .agent-controls {
       flex-wrap: wrap;
       gap: 0.5rem;

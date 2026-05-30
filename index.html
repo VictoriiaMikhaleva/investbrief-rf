@@ -285,6 +285,72 @@
           </div>
           <div id="analyticsGrid" class="analytics-grid quote-cards-grid" aria-label="Карточки бумаг"></div>
 
+          <section class="home-block ofz-section glass" id="ofzSection" aria-labelledby="ofzSectionTitle">
+            <div class="ofz-section-head">
+              <div>
+                <h3 class="home-block-title" id="ofzSectionTitle">ОФЗ — облигации федерального займа</h3>
+                <p class="muted ofz-section-lead">Ликвидные выпуски на МосБирже: доходность, купоны и сравнение. Не является индивидуальной инвестиционной рекомендацией.</p>
+              </div>
+              <div class="ofz-section-controls row">
+                <label class="muted" for="ofzBondSelect">Выпуск</label>
+                <select id="ofzBondSelect" aria-label="Выбор выпуска ОФЗ"></select>
+                <button type="button" id="ofzRefreshBtn" class="ghost" title="Обновить">↻</button>
+              </div>
+            </div>
+
+            <div class="ofz-income-grid" id="ofzIncomeTypes" aria-label="Виды дохода по ОФЗ"></div>
+
+            <details class="ofz-usage-details">
+              <summary>На что направляются средства от размещения ОФЗ</summary>
+              <ul class="ofz-usage-list muted" id="ofzUsageList"></ul>
+              <p class="muted ofz-usage-source">Подробнее о бюджете и госдолге: <a href="https://minfin.gov.ru/ru/perfomance/budget/fedbud/" target="_blank" rel="noopener noreferrer">Минфин России</a> · <a href="https://www.moex.com/ru/bondization/" target="_blank" rel="noopener noreferrer">раскрытие на МосБирже</a></p>
+            </details>
+
+            <div class="ofz-kpis" id="ofzKpis" aria-live="polite"></div>
+
+            <div class="analytics-charts-grid ofz-charts-grid">
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Цена · год</h4>
+                <p class="analytics-chart-note muted">Котировка в % от номинала</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap">
+                  <canvas id="ofzPriceChart" aria-label="График цены ОФЗ"></canvas>
+                </div>
+              </div>
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Купонные выплаты</h4>
+                <p class="analytics-chart-note muted" id="ofzCouponNote">—</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap bar-chart-wrap analytics-chart-wrap--div">
+                  <canvas id="ofzCouponChart" aria-label="График купонов ОФЗ"></canvas>
+                </div>
+              </div>
+              <div class="analytics-chart-panel">
+                <h4 class="analytics-chart-lbl">Доход от позиции · пример</h4>
+                <p class="analytics-chart-note muted" id="ofzProfitNote">—</p>
+                <div class="chart-canvas-wrap analytics-chart-wrap">
+                  <canvas id="ofzProfitChart" aria-label="График дохода ОФЗ"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-wrap ofz-table-wrap">
+              <table class="strategy-table ofz-compare-table" id="ofzCompareTable">
+                <thead>
+                  <tr>
+                    <th>Выпуск</th>
+                    <th>Тип</th>
+                    <th>Цена</th>
+                    <th>Доходность</th>
+                    <th>Купон, %</th>
+                    <th>Выплат в год</th>
+                    <th>Погашение</th>
+                  </tr>
+                </thead>
+                <tbody id="ofzCompareBody"></tbody>
+              </table>
+            </div>
+            <p class="muted chart-source hint-frame">Котировки и купоны — МосБиржа ISS. Доходность — расчётная к погашению по данным биржи.</p>
+          </section>
+
           <section class="glass analytics-detail" id="analyticsDetailSection" hidden>
             <h3 class="analytics-detail-title">Подробная аналитика: <span id="analyticsDetailTicker">—</span></h3>
             <p class="muted analytics-detail-meta" id="analyticsDetailMeta">—</p>
@@ -759,6 +825,7 @@
   <script src="./moex.js?v=20250903"></script>
   <script src="./manual-data.js?v=20250828"></script>
   <script src="./analytics.js?v=20250903"></script>
+  <script src="./ofz.js?v=20260530"></script>
   <script src="./portfolio.js?v=20250828e"></script>
   <script src="./agent.js?v=20260530"></script>
   <script src="./watchdog.js?v=20260530"></script>

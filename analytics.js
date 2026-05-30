@@ -1104,6 +1104,7 @@
     }
     if (typeof renderMoexIndexBox === 'function') renderMoexIndexBox();
     renderAnalyticsGrid();
+    if (typeof renderOfzSection === 'function') renderOfzSection();
     if (state.analyticsTicker) selectAnalyticsTicker(state.analyticsTicker);
   }
 
