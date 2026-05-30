@@ -1775,7 +1775,10 @@
       if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
       else if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
     }
-    if (tab === 'settings') renderAlerts();
+    if (tab === 'settings') {
+      renderAlerts();
+      if (typeof loadAgentRulesToUI === 'function') loadAgentRulesToUI();
+    }
     if (tab === 'articles' && typeof renderArticlesBlock === 'function') renderArticlesBlock();
   }
 

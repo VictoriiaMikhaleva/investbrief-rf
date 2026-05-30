@@ -13,7 +13,19 @@
     lastVisit: 'ibrf.lastVisit',
     marketTiles: 'ibrf.marketTiles',
     tickerNames: 'ibrf.tickerNames',
-    consents: 'ibrf.consents'
+    consents: 'ibrf.consents',
+    agentSettings: 'ibrf.agentSettings',
+    agentSignalHistory: 'ibrf.agentSignalHistory'
+  };
+
+  var DEFAULT_AGENT_SETTINGS = {
+    enabled: true,
+    tickers: [],
+    useTopTurnoverByDefault: true,
+    dayMoveThreshold: 3,
+    weekDownThreshold: 7,
+    weekUpThreshold: 8,
+    turnoverMultiplier: 1.5
   };
 
   var PRIVACY_POLICY_VERSION = '1.0';
@@ -72,7 +84,13 @@
     ALRS: 'АЛРОСА',
     OFZ_26241: 'ОФЗ 26241',
     OFZ_26238: 'ОФЗ 26238',
-    OFZ_26243: 'ОФЗ 26243'
+    OFZ_26243: 'ОФЗ 26243',
+    OZPH: 'Озон Фармацевтика',
+    YDEX: 'Яндекс',
+    SNGS: 'Сургутнефтегаз',
+    SNGSP: 'Сургутнефтегаз-п',
+    AFLT: 'Аэрофлот',
+    SVCB: 'Совкомбанк'
   };
 
 
@@ -271,6 +289,42 @@
 
 
 
+  function normalizeAgentSettings(raw) {
+    var s = raw && typeof raw === 'object' ? raw : {};
+    var tickers = Array.isArray(s.tickers) ? s.tickers.map(normalizeTicker).filter(Boolean) : [];
+    var useTop = s.useTopTurnoverByDefault;
+    if (useTop == null) useTop = !tickers.length;
+    return {
+      enabled: s.enabled !== false,
+      tickers: tickers,
+      useTopTurnoverByDefault: !!useTop,
+      dayMoveThreshold: isFinite(Number(s.dayMoveThreshold)) ? Number(s.dayMoveThreshold) : DEFAULT_AGENT_SETTINGS.dayMoveThreshold,
+      weekDownThreshold: isFinite(Number(s.weekDownThreshold)) ? Number(s.weekDownThreshold) : DEFAULT_AGENT_SETTINGS.weekDownThreshold,
+      weekUpThreshold: isFinite(Number(s.weekUpThreshold)) ? Number(s.weekUpThreshold) : DEFAULT_AGENT_SETTINGS.weekUpThreshold,
+      turnoverMultiplier: isFinite(Number(s.turnoverMultiplier)) ? Number(s.turnoverMultiplier) : DEFAULT_AGENT_SETTINGS.turnoverMultiplier
+    };
+  }
+
+  function getAgentSettings() {
+    return normalizeAgentSettings(loadJSON(KEYS.agentSettings, null));
+  }
+
+  function setAgentSettings(s) {
+    var next = normalizeAgentSettings(Object.assign({}, getAgentSettings(), s || {}));
+    saveJSON(KEYS.agentSettings, next);
+    if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
+    return next;
+  }
+
+  function getAgentSignalHistory() {
+    var list = loadJSON(KEYS.agentSignalHistory, []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  function setAgentSignalHistory(list) {
+    saveJSON(KEYS.agentSignalHistory, Array.isArray(list) ? list.slice(0, 50) : []);
+  }
+
   function setConsents(c) {
     var cur = getConsents();
     saveJSON(KEYS.consents, {
@@ -346,7 +400,8 @@
       portfolio: getPortfolio(),
       filters: getFilters(),
       marketTiles: getMarketTickers(),
-      tickerNames: getTickerNamesMap()
+      tickerNames: getTickerNamesMap(),
+      agentSettings: getAgentSettings()
     };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
@@ -394,6 +449,7 @@
     if (data.filters) saveJSON(KEYS.filters, data.filters);
     if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);
     if (data.tickerNames) saveJSON(KEYS.tickerNames, data.tickerNames);
+    if (data.agentSettings) saveJSON(KEYS.agentSettings, normalizeAgentSettings(data.agentSettings));
     loadProfileToUI();
     loadFiltersToUI();
     renderWatchlist();

@@ -27,7 +27,8 @@
       alerts: getAlerts(),
       digest: getDigest(),
       consents: getConsents(),
-      marketTiles: getMarketTickers()
+      marketTiles: getMarketTickers(),
+      agentSettings: getAgentSettings()
     };
   }
 
@@ -43,6 +44,7 @@
       if (data.digest) saveJSON(KEYS.digest, normalizeDigest(data.digest));
       if (data.consents) saveJSON(KEYS.consents, data.consents);
       if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);
+      if (data.agentSettings) saveJSON(KEYS.agentSettings, normalizeAgentSettings(data.agentSettings));
     } finally {
       window._ibrfApplyingCloudData = false;
     }
@@ -72,6 +74,7 @@
     if (typeof renderAlerts === 'function') renderAlerts();
     if (typeof updateStats === 'function') updateStats();
     if (typeof renderFeed === 'function') renderFeed();
+    if (typeof renderAgentSection === 'function') renderAgentSection();
   }
 
   function setCurrentFirebaseUser(user) {

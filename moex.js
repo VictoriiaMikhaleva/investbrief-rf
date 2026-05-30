@@ -1998,5 +1998,6 @@
   }
 
   window.scheduleMarketMacroRefresh = scheduleMarketMacroRefresh;
+  window.fetchTopMoexSharesByVolume = fetchTopMoexSharesByVolume;
 
 

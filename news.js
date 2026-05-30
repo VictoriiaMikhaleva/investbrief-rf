@@ -1470,6 +1470,7 @@
       }
       initBriefingBento();
       updateStats();
+      if (typeof renderAgentSection === 'function') renderAgentSection();
       return;
     }
     var base = filterBriefsForBriefing();
@@ -1483,6 +1484,7 @@
       : 'Добавьте интересующие позиции — здесь появятся связанные новости.');
     initBriefingBento();
     updateStats();
+    if (typeof renderAgentSection === 'function') renderAgentSection();
   }
 
   var TODAY_CATEGORIES = [

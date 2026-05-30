@@ -2713,3 +2713,238 @@
       font-weight: 400;
       letter-spacing: 0;
     }
+
+    /* Агент наблюдения */
+    .agent-section {
+      border: 1px solid rgba(61, 92, 71, 0.14);
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+      background: linear-gradient(165deg, rgba(61, 92, 71, 0.06) 0%, rgba(247, 244, 238, 0.5) 100%);
+    }
+    .agent-header { margin-bottom: 0.75rem; }
+    .agent-subtitle { margin: 0.35rem 0 0; font-size: 0.85rem; line-height: 1.45; }
+    .agent-controls {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      align-items: center;
+    }
+    .agent-list-panel,
+    .agent-rules-panel {
+      margin-bottom: 0.85rem;
+      padding: 0.75rem;
+      border-radius: calc(var(--radius) - 4px);
+      background: rgba(255, 255, 255, 0.45);
+      border: 1px solid rgba(61, 92, 71, 0.1);
+    }
+    .agent-ticker-input { width: 100%; min-width: 0; }
+    .agent-ticker-chips {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.4rem;
+      overflow-x: auto;
+      padding: 0.35rem 0 0.15rem;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+    }
+    .agent-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.45rem 0.25rem 0.6rem;
+      border-radius: 999px;
+      background: rgba(61, 92, 71, 0.12);
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .agent-chip-remove {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0 0.15rem;
+    }
+    .agent-chip-remove:hover { color: var(--accent); }
+    .agent-empty-chips { margin: 0.35rem 0 0; font-size: 0.82rem; }
+    .agent-rules-title,
+    .agent-history-title {
+      margin: 0 0 0.55rem;
+      font-size: 0.88rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .agent-rules-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.45rem 0.75rem;
+      align-items: center;
+      max-width: 420px;
+    }
+    .agent-rules-grid--settings { max-width: 480px; }
+    .agent-rules-grid input {
+      width: 5.5rem;
+      justify-self: start;
+    }
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 0.85rem;
+    }
+    .agent-card {
+      border: 1px solid rgba(61, 92, 71, 0.12);
+      border-radius: calc(var(--radius) - 4px);
+      padding: 0.75rem 0.85rem;
+      background: rgba(255, 255, 255, 0.55);
+    }
+    .agent-card--empty { opacity: 0.85; }
+    .agent-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin-bottom: 0.45rem;
+    }
+    .agent-card-id { min-width: 0; }
+    .agent-card-ticker {
+      display: block;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--accent);
+    }
+    .agent-card-name {
+      display: block;
+      font-size: 0.75rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .agent-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .agent-status--calm {
+      background: rgba(90, 108, 126, 0.12);
+      color: var(--text-muted);
+    }
+    .agent-status--watch {
+      background: rgba(61, 92, 71, 0.14);
+      color: var(--accent);
+    }
+    .agent-status--strong {
+      background: rgba(61, 92, 71, 0.2);
+      color: #2e4838;
+    }
+    .agent-status--event {
+      background: rgba(74, 115, 86, 0.22);
+      color: #2e4838;
+    }
+    .agent-card-metrics {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .agent-metric { font-weight: 600; }
+    .agent-change--up { color: #3d6b4a; }
+    .agent-change--down { color: #a04545; }
+    .agent-signals-preview .agent-signal { margin-bottom: 0.55rem; }
+    .agent-signal-titles {
+      margin: 0;
+      padding-left: 1rem;
+      font-size: 0.8rem;
+    }
+    .agent-signal-titles .agent-signal-title {
+      margin: 0.15rem 0;
+      color: var(--accent);
+      font-weight: 600;
+      list-style: disc;
+    }
+    .agent-reasons,
+    .agent-checklist {
+      font-size: 0.76rem;
+      line-height: 1.4;
+      color: var(--text-muted);
+    }
+    .agent-reasons-lbl,
+    .agent-checklist-lbl {
+      margin: 0.25rem 0 0.15rem;
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.74rem;
+    }
+    .agent-reasons ol,
+    .agent-checklist ul,
+    .agent-signal--expanded ol,
+    .agent-signal--expanded ul {
+      margin: 0.15rem 0 0;
+      padding-left: 1.1rem;
+    }
+    .agent-signals-preview .agent-reasons,
+    .agent-signals-preview .agent-checklist { display: none; }
+    .agent-calm-text { margin: 0; font-size: 0.8rem; }
+    .agent-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.55rem;
+    }
+    .agent-card-expanded {
+      margin-top: 0.65rem;
+      padding-top: 0.65rem;
+      border-top: 1px dashed rgba(61, 92, 71, 0.18);
+    }
+    .agent-signal--expanded h5 {
+      margin: 0 0 0.35rem;
+      font-size: 0.84rem;
+      color: var(--accent);
+    }
+    .agent-event-list {
+      margin: 0.35rem 0 0;
+      padding-left: 1.1rem;
+      font-size: 0.78rem;
+    }
+    .agent-history {
+      margin-bottom: 0.65rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid rgba(61, 92, 71, 0.1);
+    }
+    .agent-history-item {
+      padding: 0.45rem 0;
+      border-bottom: 1px solid rgba(61, 92, 71, 0.08);
+    }
+    .agent-history-item:last-child { border-bottom: none; }
+    .agent-history-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.5rem;
+      align-items: center;
+    }
+    .agent-history-ticker {
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 0.82rem;
+    }
+    .agent-history-title { font-size: 0.8rem; }
+    .agent-history-time { font-size: 0.72rem; display: block; margin-top: 0.15rem; }
+    .agent-disclaimer {
+      margin: 0;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+    @media (max-width: 640px) {
+      .agent-grid { grid-template-columns: 1fr; }
+      .agent-controls .grow { width: 100%; flex: 1 1 100%; }
+    }
