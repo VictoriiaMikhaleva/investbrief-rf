@@ -438,6 +438,12 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--accent);
   color: #fff;
 }
+.security-chart-tabs button.security-chart-tab--disabled,
+.security-chart-tabs button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 
 .security-overview-grid {
   display: grid;

@@ -1118,15 +1118,50 @@
     return '5 лет';
   }
 
+  function securityChartSupportsStockAnalytics(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker)) return false;
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) return false;
+    return true;
+  }
+
+  function syncSecurityChartTabsForTicker(ticker) {
+    var tabs = document.getElementById('securityChartTabs');
+    if (!tabs) return;
+    var stockAnalytics = securityChartSupportsStockAnalytics(ticker);
+    tabs.querySelectorAll('[data-security-chart-tab]').forEach(function (btn) {
+      var id = btn.getAttribute('data-security-chart-tab');
+      var disabled = (id === 'dividends' || id === 'volume') && !stockAnalytics;
+      btn.disabled = disabled;
+      btn.classList.toggle('security-chart-tab--disabled', disabled);
+      btn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      if (disabled) btn.title = id === 'dividends'
+        ? 'Дивиденды доступны только для акций'
+        : 'Оборот TQBR доступен только для акций';
+      else btn.removeAttribute('title');
+    });
+    if (!stockAnalytics) setSecurityChartTab('price');
+  }
+
   function setSecurityChartTab(tab) {
     var tabs = document.getElementById('securityChartTabs');
     if (!tabs) return;
+    var target = tabs.querySelector('[data-security-chart-tab="' + tab + '"]');
+    if (target && target.disabled) return;
     tabs.querySelectorAll('[data-security-chart-tab]').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-security-chart-tab') === tab);
     });
     document.querySelectorAll('[data-security-chart-panel]').forEach(function (panel) {
       panel.classList.toggle('active', panel.getAttribute('data-security-chart-panel') === tab);
     });
+  }
+
+  function indexAnalyticsDivNote() {
+    return 'У индекса IMOEX нет дивидендов на акцию. Смотрите дивидендную доходность отдельных эмитентов из состава индекса.';
+  }
+
+  function indexAnalyticsVolNote() {
+    return 'Оборот TQBR считается по акциям, не по индексу. Для динамики рынка используйте график цены IMOEX выше.';
   }
 
   function getLatestBriefForTicker(ticker) {
@@ -1147,12 +1182,15 @@
     var inPortfolio = typeof findPortfolioPosition === 'function' && !!findPortfolioPosition(ticker);
     var lastBrief = getLatestBriefForTicker(ticker);
     var isUs = typeof Markets !== 'undefined' && Markets.isUsTicker(ticker);
+    var isIndex = typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker);
     var type = (ticker.indexOf('OFZ') >= 0 || ticker.indexOf('SU') === 0)
       ? 'облигация'
-      : (ticker === 'IMOEX' ? 'индекс' : 'акция');
-    var turnover = analytics && analytics.quote && analytics.quote.valueToday != null
-      ? (Number(analytics.quote.valueToday) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд ₽'
-      : '—';
+      : (isIndex ? 'индекс' : 'акция');
+    var turnover = isIndex
+      ? 'не применимо'
+      : (analytics && analytics.quote && analytics.quote.valueToday != null
+        ? (Number(analytics.quote.valueToday) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд ₽'
+        : '—');
     var latestPct = null;
     if (analytics) {
       if (typeof computeLatestDivYieldPct === 'function') {
@@ -1161,13 +1199,14 @@
         latestPct = analytics.divLatestYield;
       }
     }
-    var latestYield = formatDivYieldPct(latestPct);
+    var latestYield = isIndex ? 'не применимо' : formatDivYieldPct(latestPct);
+    var divAvgHtml = isIndex ? '<span class="muted">не применимо</span>' : divAvg5yValHtml(analytics);
     badgeRow.innerHTML = '<span class="tag tag-importance">' + (inPortfolio ? 'Есть в портфеле' : 'В наблюдении') + '</span>';
     metrics.innerHTML =
       '<article class="security-metric-card"><span class="lbl">Тип</span><span class="val">' + escapeHtml(type) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Рынок</span><span class="val">' + escapeHtml(isUs ? 'США' : 'Россия') + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Валюта</span><span class="val">' + escapeHtml(isUs ? '$' : '₽') + '</span></article>' +
-      '<article class="security-metric-card"><span class="lbl">Средняя дивдоходность 5 лет</span><span class="val">' + divAvg5yValHtml(analytics) + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">Средняя дивдоходность 5 лет</span><span class="val">' + divAvgHtml + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Последняя дивидендная доходность</span><span class="val">' + escapeHtml(latestYield) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Оборот торгов</span><span class="val">' + escapeHtml(turnover) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Последнее важное событие</span><span class="val">' + escapeHtml(lastBrief ? lastBrief.title : 'События пока не найдены') + '</span></article>';
@@ -1189,15 +1228,16 @@
     if (titleEl) titleEl.textContent = ticker;
     if (metaEl) metaEl.textContent = 'Загрузка…';
     sec.hidden = false;
+    syncSecurityChartTabsForTicker(ticker);
     setSecurityChartTab('price');
 
     var horizon = resolveAnalyticsPriceHorizon(state.analyticsPriceHorizon);
     if (priceLbl) priceLbl.textContent = 'Цена · ' + analyticsPriceHorizonLabel(horizon);
 
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
-      if (metaEl) metaEl.textContent = 'Рынок США · дивиденды и оборот МосБиржи недоступны';
-      if (divNote) divNote.textContent = 'Используйте отчётность эмитента.';
-      if (volNote) volNote.textContent = 'Данные по объёму торгов пока недоступны.';
+      if (metaEl) metaEl.textContent = 'Рынок США · дивиденды и оборот TQBR недоступны для американских бумаг';
+      if (divNote) divNote.textContent = 'Дивиденды MOEX/TQBR не рассчитываются для бумаг США. Смотрите отчётность эмитента.';
+      if (volNote) volNote.textContent = 'Оборот TQBR доступен только для акций на МосБирже.';
       renderSecurityProfile(ticker, null);
       if (typeof Markets.fetchUsQuoteExtended === 'function') {
         Markets.fetchUsQuoteExtended(ticker).then(function (q) {
@@ -1213,9 +1253,9 @@
     if (typeof buildSecurityAnalytics !== 'function') return;
     buildSecurityAnalytics(ticker).then(function (a) {
       if (!a.eligible) {
-        if (metaEl) metaEl.textContent = (a.name || getTickerSubtitle(ticker)) + ' · дивиденды и оборот TQBR недоступны для индексов';
-        if (divNote) divNote.textContent = 'История дивидендов пока не добавлена.';
-        if (volNote) volNote.textContent = 'Данные по объёму торгов пока недоступны.';
+        if (metaEl) metaEl.textContent = (a.name || getTickerSubtitle(ticker)) + ' · для индекса доступен график цены';
+        if (divNote) divNote.textContent = indexAnalyticsDivNote();
+        if (volNote) volNote.textContent = indexAnalyticsVolNote();
         if (divCanvas) {
           var dctx = divCanvas.getContext('2d');
           if (dctx) dctx.clearRect(0, 0, divCanvas.width, divCanvas.height);
