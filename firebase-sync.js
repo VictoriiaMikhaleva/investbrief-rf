@@ -18,6 +18,24 @@
       : null;
   }
 
+  function mergeAgentActionLogs(local, cloud) {
+    var byId = {};
+    var merged = [];
+    (Array.isArray(local) ? local : []).concat(Array.isArray(cloud) ? cloud : []).forEach(function (raw) {
+      var e = typeof normalizeAgentLogEntry === 'function' ? normalizeAgentLogEntry(raw) : raw;
+      if (!e) return;
+      var prev = byId[e.id];
+      if (!prev || new Date(e.createdAt).getTime() > new Date(prev.createdAt).getTime()) {
+        byId[e.id] = e;
+      }
+    });
+    Object.keys(byId).forEach(function (id) { merged.push(byId[id]); });
+    merged.sort(function (a, b) {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return merged.slice(0, 200);
+  }
+
   function collectLocalUserData() {
     return {
       profile: getProfile(),
@@ -46,7 +64,9 @@
       if (data.consents) saveJSON(KEYS.consents, data.consents);
       if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);
       if (data.agentSettings) saveJSON(KEYS.agentSettings, normalizeAgentSettings(data.agentSettings));
-      if (data.agentActionLog) setAgentActionLog(data.agentActionLog);
+      if (data.agentActionLog) {
+        setAgentActionLog(mergeAgentActionLogs(getAgentActionLog(), data.agentActionLog));
+      }
     } finally {
       window._ibrfApplyingCloudData = false;
     }
@@ -76,6 +96,7 @@
     if (typeof renderAlerts === 'function') renderAlerts();
     if (typeof updateStats === 'function') updateStats();
     if (typeof renderFeed === 'function') renderFeed();
+    if (typeof invalidateAgentRefresh === 'function') invalidateAgentRefresh();
     if (typeof renderAgentSection === 'function') renderAgentSection();
   }
 

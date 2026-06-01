@@ -9,6 +9,12 @@
 
   var _agentCards = [];
   var _agentLoading = false;
+  var _agentLastRefreshAt = 0;
+  var _agentLastSignalFingerprint = '';
+  var _agentRefreshTimer = null;
+  var _agentVisibilityBound = false;
+  var AGENT_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+  var AGENT_STALE_AFTER_MS = 20 * 60 * 1000;
   var _agentBriefingBound = false;
   var _agentSettingsBound = false;
   var _agentLogBound = false;
@@ -580,16 +586,85 @@
     return 'agent-status--calm';
   }
 
+  function signalLogDayKey(iso) {
+    var d = iso ? new Date(iso) : new Date();
+    if (typeof moexFormatDateMsk === 'function') return moexFormatDateMsk(d);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function shouldRefreshAgentData(force) {
+    if (force) return true;
+    if (_agentLoading) return false;
+    if (!_agentCards.length) return true;
+    if (!_agentLastRefreshAt) return true;
+    return Date.now() - _agentLastRefreshAt >= AGENT_STALE_AFTER_MS;
+  }
+
+  function buildAgentSignalFingerprint(cards) {
+    if (!cards || !cards.length) return '';
+    return cards.map(function (c) {
+      if (!c.signals || !c.signals.length) return c.ticker + ':';
+      return c.ticker + ':' + c.signals.map(function (s) { return s.id; }).sort().join(',');
+    }).sort().join('|');
+  }
+
+  function maybeNotifyAgentAttention(cards) {
+    var settings = getAgentSettings();
+    if (!settings.notifyAttention) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    var fp = buildAgentSignalFingerprint(cards);
+    if (!fp) return;
+    if (!_agentLastSignalFingerprint) {
+      _agentLastSignalFingerprint = fp;
+      return;
+    }
+    if (fp === _agentLastSignalFingerprint) return;
+    _agentLastSignalFingerprint = fp;
+    var count = countAttentionZones(cards);
+    if (!count) return;
+    var samples = [];
+    cards.forEach(function (c) {
+      if (!c.signals || !c.signals.length) return;
+      c.signals.forEach(function (s) {
+        if (samples.length < 4) samples.push(c.ticker + ': ' + s.title);
+      });
+    });
+    try {
+      new Notification('InvestBrief — зоны внимания', {
+        body: count + ' ' + pluralZones(count) + (samples.length ? '. ' + samples.join('; ') : ''),
+        tag: 'ibrf-agent-attention',
+        renotify: true
+      });
+    } catch (e) { /* Safari / старые браузеры */ }
+  }
+
+  function scheduleAgentRefresh() {
+    if (typeof window === 'undefined' || _agentRefreshTimer) return;
+    _agentRefreshTimer = setInterval(function () {
+      if (document.hidden) return;
+      if (!getAgentSettings().enabled) return;
+      if (shouldRefreshAgentData(false)) refreshAgentSignals(false);
+    }, AGENT_REFRESH_INTERVAL_MS);
+    if (_agentVisibilityBound) return;
+    _agentVisibilityBound = true;
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      if (!getAgentSettings().enabled) return;
+      if (shouldRefreshAgentData(false)) refreshAgentSignals(false);
+    });
+  }
+
   function appendSignalHistory(cards) {
     var history = getAgentActionLog();
     var now = new Date().toISOString();
+    var todayKey = signalLogDayKey(now);
     cards.forEach(function (card) {
       if (!card.signals || !card.signals.length) return;
       card.signals.forEach(function (sig) {
         var dup = history.some(function (h) {
           return h.ticker === card.ticker && h.type === 'signal' &&
             (h.signalId === sig.id || h.title === sig.title) &&
-            (Date.now() - new Date(h.createdAt).getTime()) < 30 * 60 * 1000;
+            signalLogDayKey(h.createdAt) === todayKey;
         });
         if (dup) return;
         history.unshift({
@@ -802,9 +877,16 @@
     }
 
     var count = countAttentionZones(_agentCards);
-    zonesEl.textContent = count
+    var main = count
       ? ('Сегодня: ' + count + ' ' + pluralZones(count))
       : 'Сегодня зон внимания нет';
+    if (_agentLastRefreshAt) {
+      var refreshed = new Date(_agentLastRefreshAt).toLocaleString('ru-RU', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+      });
+      main += ' · данные ' + refreshed;
+    }
+    zonesEl.textContent = main;
   }
 
   function renderAgentChips(tickers) {
@@ -924,6 +1006,12 @@
     var settings = getAgentSettings();
     if (!settings.enabled) {
       _agentCards = [];
+      _agentLastRefreshAt = 0;
+      renderAgentGrid();
+      return Promise.resolve();
+    }
+    if (_agentLoading && !force) return Promise.resolve();
+    if (!shouldRefreshAgentData(!!force)) {
       renderAgentGrid();
       return Promise.resolve();
     }
@@ -956,7 +1044,9 @@
       })).then(function (cards) {
         _agentCards = cards;
         _agentLoading = false;
+        _agentLastRefreshAt = Date.now();
         appendSignalHistory(cards);
+        maybeNotifyAgentAttention(cards);
         renderAgentGrid();
         renderAgentHistory();
         renderAgentLogPanel();
@@ -1150,6 +1240,10 @@
     if (notifyToggle) {
       notifyToggle.addEventListener('change', function () {
         setAgentSettings({ notifyAttention: notifyToggle.checked });
+        if (notifyToggle.checked && typeof Notification !== 'undefined' &&
+            Notification.permission === 'default') {
+          Notification.requestPermission().catch(function () { /* */ });
+        }
       });
     }
 
@@ -1190,8 +1284,9 @@
     var section = document.getElementById('agentObservationSection');
     if (!section) return;
     bindAgentBriefingUI();
+    scheduleAgentRefresh();
     renderAgentBriefingMeta();
-    if (!_agentCards.length && !_agentLoading) {
+    if (shouldRefreshAgentData(false)) {
       refreshAgentSignals(false);
     } else {
       renderAgentGrid();
@@ -1205,5 +1300,8 @@
   window.renderAgentSettings = renderAgentSettings;
   window.openAgentSettings = openAgentSettings;
   window.refreshAgentSignals = refreshAgentSignals;
+  window.invalidateAgentRefresh = function () {
+    _agentLastRefreshAt = 0;
+  };
   window.loadAgentRulesToUI = loadAgentRulesToUI;
 })();
