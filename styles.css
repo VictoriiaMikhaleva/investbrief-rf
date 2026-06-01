@@ -3151,7 +3151,15 @@
       font-size: 0.72rem;
       line-height: 1.4;
     }
-    .agent-sensitivity-save { margin-top: 0.15rem; }
+    .agent-sensitivity-save {
+      margin-top: 0.65rem;
+      margin-bottom: 0.35rem;
+      position: relative;
+      z-index: 5;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    #agentSettingsBlock { padding-bottom: 0.25rem; }
     .agent-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

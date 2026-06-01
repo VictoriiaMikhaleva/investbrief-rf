@@ -103,48 +103,53 @@
       );
     }).join('');
     return (
-      '<' + titleTag + ' class="agent-rules-title agent-settings-subtitle">Настроить чувствительность</' + titleTag + '>' +
-      '<p class="muted agent-sensitivity-lead">Чем чувствительнее агент, тем чаще он будет показывать зоны внимания.</p>' +
-      '<div class="agent-sensitivity-modes" role="group" aria-label="Режим чувствительности">' + modesHtml + '</div>' +
-      '<p class="agent-sensitivity-summary" id="' + escapeHtml(p) + 'SensitivitySummary"></p>' +
-      '<details class="agent-sensitivity-advanced">' +
-        '<summary>Расширенные настройки</summary>' +
-        '<div class="agent-advanced-fields">' +
-          '<div class="agent-advanced-field">' +
-            '<label class="muted" for="' + p + 'DayMove">Заметное движение за день</label>' +
-            '<input type="number" id="' + p + 'DayMove" min="0.5" max="20" step="0.5" value="3" />' +
-            '<p class="agent-field-hint muted">Агент покажет зону внимания, если цена изменилась сильнее этого значения за день.</p>' +
+      '<div class="agent-sensitivity-body">' +
+        '<' + titleTag + ' class="agent-rules-title agent-settings-subtitle">Настроить чувствительность</' + titleTag + '>' +
+        '<p class="muted agent-sensitivity-lead">Чем чувствительнее агент, тем чаще он будет показывать зоны внимания.</p>' +
+        '<div class="agent-sensitivity-modes" role="group" aria-label="Режим чувствительности">' + modesHtml + '</div>' +
+        '<p class="agent-sensitivity-summary" id="' + escapeHtml(p) + 'SensitivitySummary"></p>' +
+        '<details class="agent-sensitivity-advanced">' +
+          '<summary>Расширенные настройки</summary>' +
+          '<div class="agent-advanced-fields">' +
+            '<div class="agent-advanced-field">' +
+              '<label class="muted" for="' + p + 'DayMove">Заметное движение за день</label>' +
+              '<input type="number" id="' + p + 'DayMove" min="0.5" max="20" step="0.5" value="3" />' +
+              '<p class="agent-field-hint muted">Агент покажет зону внимания, если цена изменилась сильнее этого значения за день.</p>' +
+            '</div>' +
+            '<div class="agent-advanced-field">' +
+              '<label class="muted" for="' + p + 'WeekDown">Заметное снижение за неделю</label>' +
+              '<input type="number" id="' + p + 'WeekDown" min="1" max="30" step="0.5" value="7" />' +
+              '<p class="agent-field-hint muted">Агент покажет зону внимания, если бумага заметно снизилась за неделю.</p>' +
+            '</div>' +
+            '<div class="agent-advanced-field">' +
+              '<label class="muted" for="' + p + 'WeekUp">Заметный рост за неделю</label>' +
+              '<input type="number" id="' + p + 'WeekUp" min="1" max="30" step="0.5" value="8" />' +
+              '<p class="agent-field-hint muted">Агент покажет зону внимания, если бумага быстро выросла за неделю.</p>' +
+            '</div>' +
+            '<div class="agent-advanced-field">' +
+              '<label class="muted" for="' + p + 'Turnover">Необычный оборот торгов</label>' +
+              '<input type="number" id="' + p + 'Turnover" min="1" max="5" step="0.1" value="1.5" />' +
+              '<p class="agent-field-hint muted">Агент покажет зону внимания, если оборот выше обычного в указанное число раз.</p>' +
+            '</div>' +
           '</div>' +
-          '<div class="agent-advanced-field">' +
-            '<label class="muted" for="' + p + 'WeekDown">Заметное снижение за неделю</label>' +
-            '<input type="number" id="' + p + 'WeekDown" min="1" max="30" step="0.5" value="7" />' +
-            '<p class="agent-field-hint muted">Агент покажет зону внимания, если бумага заметно снизилась за неделю.</p>' +
-          '</div>' +
-          '<div class="agent-advanced-field">' +
-            '<label class="muted" for="' + p + 'WeekUp">Заметный рост за неделю</label>' +
-            '<input type="number" id="' + p + 'WeekUp" min="1" max="30" step="0.5" value="8" />' +
-            '<p class="agent-field-hint muted">Агент покажет зону внимания, если бумага быстро выросла за неделю.</p>' +
-          '</div>' +
-          '<div class="agent-advanced-field">' +
-            '<label class="muted" for="' + p + 'Turnover">Необычный оборот торгов</label>' +
-            '<input type="number" id="' + p + 'Turnover" min="1" max="5" step="0.1" value="1.5" />' +
-            '<p class="agent-field-hint muted">Агент покажет зону внимания, если оборот выше обычного в указанное число раз.</p>' +
-          '</div>' +
-        '</div>' +
-      '</details>' +
+        '</details>' +
+      '</div>' +
       '<button type="button" id="' + escapeHtml(cfg.saveBtnId) + '" class="primary agent-sensitivity-save">Сохранить настройки</button>'
     );
   }
 
+  var AGENT_SENSITIVITY_MOUNT_VER = '2';
+
   function mountAgentSensitivityPanel() {
     var settingsRoot = document.getElementById('agentSettingsSensitivityRoot');
-    if (settingsRoot && !settingsRoot.dataset.mounted) {
+    if (settingsRoot && settingsRoot.dataset.mounted !== AGENT_SENSITIVITY_MOUNT_VER) {
       settingsRoot.innerHTML = buildAgentSensitivityHtml({
         prefix: AGENT_SETTINGS_PREFIX,
         saveBtnId: 'agentSettingsSaveRulesBtn',
         headingTag: 'h4'
       });
-      settingsRoot.dataset.mounted = '1';
+      settingsRoot.dataset.mounted = AGENT_SENSITIVITY_MOUNT_VER;
+      delete settingsRoot.dataset.sensitivityBound;
     }
   }
 
@@ -223,6 +228,16 @@
     return values;
   }
 
+  function saveAgentSensitivitySettings() {
+    ensureAgentSensitivityBound();
+    var prefix = AGENT_SETTINGS_PREFIX;
+    var next = readAgentRulesFromPanel(prefix);
+    setAgentSettings(next);
+    loadAgentRulesToUI();
+    refreshAgentSignals(true);
+    if (typeof showToast === 'function') showToast('Настройки сохранены');
+  }
+
   function bindAgentSensitivityPanel() {
     var prefix = AGENT_SETTINGS_PREFIX;
     var root = document.getElementById('agentSettingsSensitivityRoot');
@@ -243,16 +258,6 @@
         updateSensitivitySummary(prefix, values.sensitivityMode, values);
       });
     });
-    var saveBtn = document.getElementById('agentSettingsSaveRulesBtn');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', function () {
-        var next = readAgentRulesFromPanel(prefix);
-        setAgentSettings(next);
-        loadAgentRulesToUI();
-        refreshAgentSignals(true);
-        if (typeof showToast === 'function') showToast('Настройки сохранены');
-      });
-    }
   }
 
   function ensureAgentSensitivityBound() {
@@ -1170,8 +1175,10 @@
     if (notifyToggle) notifyToggle.checked = !!settings.notifyAttention;
     var listWrap = document.querySelector('.agent-settings-list');
     if (listWrap) listWrap.classList.toggle('agent-settings-list--disabled', settings.enabled === false);
-    var sensRoot = document.getElementById('agentSettingsSensitivityRoot');
-    if (sensRoot) sensRoot.classList.toggle('agent-settings-panel--disabled', settings.enabled === false);
+    var sensBody = document.querySelector('#agentSettingsSensitivityRoot .agent-sensitivity-body');
+    if (sensBody) sensBody.classList.toggle('agent-settings-panel--disabled', settings.enabled === false);
+    var saveBtn = document.getElementById('agentSettingsSaveRulesBtn');
+    if (saveBtn) saveBtn.disabled = false;
   }
 
   function openAgentSettings() {
@@ -1226,6 +1233,14 @@
     if (_agentSettingsBound) return;
     _agentSettingsBound = true;
     ensureAgentSensitivityBound();
+
+    var settingsBlock = document.getElementById('agentSettingsBlock');
+    if (settingsBlock && !settingsBlock.dataset.agentSaveBound) {
+      settingsBlock.dataset.agentSaveBound = '1';
+      settingsBlock.addEventListener('click', function (e) {
+        if (e.target.closest('#agentSettingsSaveRulesBtn')) saveAgentSensitivitySettings();
+      });
+    }
 
     var enabledToggle = document.getElementById('agentEnabledToggle');
     if (enabledToggle) {
