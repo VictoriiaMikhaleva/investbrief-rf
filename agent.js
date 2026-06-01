@@ -24,6 +24,7 @@
   var _agentBriefingBound = false;
   var _agentSettingsBound = false;
   var _agentLogBound = false;
+  var _agentPersistTimer = null;
   var _agentLogFilter = { kind: 'all', search: '' };
   var AGENT_SETTINGS_PREFIX = 'agentSettings';
 
@@ -230,6 +231,13 @@
       turnoverMultiplier: num('Turnover', 1.5)
     };
     var mode = detectSensitivityMode(values);
+    if (mode !== 'custom' && SENSITIVITY_PRESETS[mode]) {
+      var activeCard = document.querySelector(
+        '.agent-mode-card.active[data-agent-prefix="' + prefix + '"]'
+      );
+      var activeMode = activeCard ? activeCard.getAttribute('data-agent-mode') : '';
+      if (activeMode === mode) return Object.assign({}, SENSITIVITY_PRESETS[mode]);
+    }
     values.sensitivityMode = mode;
     return values;
   }
@@ -243,11 +251,10 @@
     return tickers;
   }
 
-  function saveAgentSettingsFromUI() {
+  function collectAgentSettingsFromUI() {
     ensureAgentSensitivityBound();
-    var prefix = AGENT_SETTINGS_PREFIX;
     var tickers = readAgentTickersFromChips();
-    var payload = Object.assign({}, readAgentRulesFromPanel(prefix), {
+    var payload = Object.assign({}, readAgentRulesFromPanel(AGENT_SETTINGS_PREFIX), {
       tickers: tickers,
       useTopTurnoverByDefault: !tickers.length
     });
@@ -255,12 +262,33 @@
     var notifyToggle = document.getElementById('agentNotifyAttention');
     if (enabledToggle) payload.enabled = enabledToggle.checked;
     if (notifyToggle) payload.notifyAttention = notifyToggle.checked;
-    setAgentSettings(payload);
-    renderAgentChips(tickers);
-    loadAgentRulesToUI();
-    syncAgentSettingsControls();
-    refreshAgentSignals(true);
-    if (typeof showToast === 'function') showToast('Настройки агента сохранены');
+    return payload;
+  }
+
+  function persistAgentSettings(opts) {
+    opts = opts || {};
+    var next = setAgentSettings(collectAgentSettingsFromUI());
+    if (opts.renderChips !== false) renderAgentChips(next.tickers);
+    if (opts.syncUi) {
+      loadAgentRulesToUI();
+      syncAgentSettingsControls();
+    }
+    if (opts.refresh !== false) refreshAgentSignals(true);
+    if (opts.toast && typeof showToast === 'function') {
+      showToast(opts.toast === true ? 'Настройки агента сохранены' : String(opts.toast));
+    }
+    return next;
+  }
+
+  function schedulePersistAgentSettings(delayMs) {
+    clearTimeout(_agentPersistTimer);
+    _agentPersistTimer = setTimeout(function () {
+      persistAgentSettings({ refresh: true, syncUi: false });
+    }, delayMs == null ? 450 : delayMs);
+  }
+
+  function saveAgentSettingsFromUI() {
+    persistAgentSettings({ toast: true, syncUi: true, renderChips: true });
   }
 
   function bindAgentSensitivityPanel() {
@@ -273,6 +301,7 @@
       var btn = e.target.closest('.agent-mode-card[data-agent-prefix="' + prefix + '"]');
       if (!btn) return;
       applyPresetToPanel(prefix, btn.getAttribute('data-agent-mode'));
+      persistAgentSettings({ toast: 'Чувствительность сохранена', refresh: true, syncUi: false });
     });
     ['DayMove', 'WeekDown', 'WeekUp', 'Turnover'].forEach(function (suffix) {
       var el = document.getElementById(prefix + suffix);
@@ -281,6 +310,7 @@
         var values = readAgentRulesFromPanel(prefix);
         updateSensitivityModeCards(prefix, values.sensitivityMode);
         updateSensitivitySummary(prefix, values.sensitivityMode, values);
+        schedulePersistAgentSettings(450);
       });
     });
   }
@@ -1396,16 +1426,14 @@
     var enabledToggle = document.getElementById('agentEnabledToggle');
     if (enabledToggle) {
       enabledToggle.addEventListener('change', function () {
-        setAgentSettings({ enabled: enabledToggle.checked });
-        syncAgentSettingsControls();
-        refreshAgentSignals(true);
+        persistAgentSettings({ refresh: true, syncUi: true });
       });
     }
 
     var notifyToggle = document.getElementById('agentNotifyAttention');
     if (notifyToggle) {
       notifyToggle.addEventListener('change', function () {
-        setAgentSettings({ notifyAttention: notifyToggle.checked });
+        persistAgentSettings({ refresh: false, syncUi: false });
         if (notifyToggle.checked && typeof Notification !== 'undefined' &&
             Notification.permission === 'default') {
           Notification.requestPermission().catch(function () { /* */ });

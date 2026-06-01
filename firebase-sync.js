@@ -8,14 +8,105 @@
   'use strict';
 
   var FIREBASE_SAVE_DELAY_MS = 1000;
+  var SYNC_ERROR_TOAST_MS = 45000;
   var _saveTimer = null;
   var _syncInited = false;
+  var _authUiBound = false;
   var _authBusy = false;
+  var _lastSyncErrorToastAt = 0;
 
   function getFb() {
     return window.investBriefFirebase && window.investBriefFirebase.ready
       ? window.investBriefFirebase
       : null;
+  }
+
+  function getFirebaseShell() {
+    return window.investBriefFirebase || null;
+  }
+
+  function firebaseUnavailableMessage() {
+    var fb = getFirebaseShell();
+    if (fb && fb.loading) {
+      return 'Облако загружается… Подождите пару секунд и нажмите снова.';
+    }
+    if (fb && fb.error && fb.error.userMessage) return fb.error.userMessage;
+    if (fb && fb.error && fb.error.message === 'file-protocol') {
+      return 'Синхронизация не работает при открытии HTML с диска. Запустите npm start и откройте http://localhost:8787';
+    }
+    if (!fb || !fb.ready) {
+      return 'Не удалось загрузить Firebase. Проверьте интернет и доступ к googleapis.com (иногда блокируется провайдером).';
+    }
+    return null;
+  }
+
+  function showCloudSyncError(message, opts) {
+    opts = opts || {};
+    if (typeof showToast !== 'function') return;
+    var now = Date.now();
+    if (!opts.force && now - _lastSyncErrorToastAt < SYNC_ERROR_TOAST_MS) return;
+    _lastSyncErrorToastAt = now;
+    showToast(message || 'Синхронизация недоступна, данные сохранены на этом устройстве');
+  }
+
+  function mapCloudSyncError(err) {
+    var code = err && err.code ? String(err.code) : '';
+    var msg = err && err.message ? String(err.message) : '';
+    if (code.indexOf('permission-denied') >= 0) {
+      return 'Нет доступа к облаку. Выйдите и войдите снова. Если не помогло — в Firebase Console должны быть развёрнуты правила Firestore (npm run deploy:rules).';
+    }
+    if (code.indexOf('unauthenticated') >= 0) {
+      return 'Сессия истекла — войдите в аккаунт снова для синхронизации.';
+    }
+    if (code.indexOf('resource-exhausted') >= 0 || msg.indexOf('longer than') >= 0) {
+      return 'Слишком много данных для облака. Очистите историю агента или экспортируйте лишнее.';
+    }
+    if (code.indexOf('unavailable') >= 0 || code.indexOf('network') >= 0 ||
+        code.indexOf('failed-precondition') >= 0 || msg.indexOf('offline') >= 0) {
+      return 'Нет связи с облаком Firebase. Проверьте интернет и повторите позже.';
+    }
+    if (msg.indexOf('Firestore API has not been used') >= 0 ||
+        msg.indexOf('firestore.googleapis.com') >= 0) {
+      return 'База Firestore не включена в проекте investor-brief-rf. Создайте Firestore в Firebase Console.';
+    }
+    return 'Синхронизация недоступна, данные сохранены на этом устройстве';
+  }
+
+  function sanitizeCloudValue(value) {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value === 'number') return isFinite(value) ? value : null;
+    if (typeof value === 'string' || typeof value === 'boolean') return value;
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) {
+      return value.map(sanitizeCloudValue).filter(function (v) { return v !== undefined; });
+    }
+    if (typeof value === 'object') {
+      var out = {};
+      Object.keys(value).forEach(function (key) {
+        var v = sanitizeCloudValue(value[key]);
+        if (v !== undefined) out[key] = v;
+      });
+      return out;
+    }
+    return null;
+  }
+
+  function prepareCloudPayload(data) {
+    var payload = sanitizeCloudValue(data || {});
+    if (payload.agentActionLog && payload.agentActionLog.length > 150) {
+      payload.agentActionLog = payload.agentActionLog.slice(0, 150);
+    }
+    return payload;
+  }
+
+  function updateFirebaseLoadStatus() {
+    var msg = firebaseUnavailableMessage();
+    if (!msg) {
+      if (!getFb() || !getFb().currentUser) return;
+      return;
+    }
+    setAuthSyncStatus(msg);
   }
 
   function mergeAgentActionLogs(local, cloud) {
@@ -112,6 +203,7 @@
     if (typeof renderFeed === 'function') renderFeed();
     if (typeof invalidateAgentRefresh === 'function') invalidateAgentRefresh();
     if (typeof renderAgentSection === 'function') renderAgentSection();
+    if (typeof renderAgentSettings === 'function') renderAgentSettings();
     if (typeof refreshAgentSignals === 'function') refreshAgentSignals(true);
   }
 
@@ -164,21 +256,21 @@
     statusEl.textContent = text;
   }
 
-  async function saveUserDataToFirebase() {
+  async function saveUserDataToFirebase(opts) {
+    opts = opts || {};
     var fb = getFb();
     if (!fb || !fb.currentUser || !fb.db) return false;
     try {
       var uid = fb.currentUser.uid;
       var ref = fb.doc(fb.db, 'users', uid);
-      var payload = collectLocalUserData();
+      var payload = prepareCloudPayload(collectLocalUserData());
       payload.updatedAt = fb.serverTimestamp();
       await fb.setDoc(ref, payload, { merge: true });
+      if (fb.currentUser) setAuthSyncStatus('Данные синхронизированы');
       return true;
     } catch (err) {
       console.warn('cloud save failed', err);
-      if (typeof showToast === 'function') {
-        showToast('Синхронизация недоступна, данные сохранены на этом устройстве');
-      }
+      if (!opts.silent) showCloudSyncError(mapCloudSyncError(err));
       return false;
     }
   }
@@ -202,10 +294,8 @@
       }
     } catch (err) {
       console.warn('cloud load failed', err);
-      setAuthSyncStatus('');
-      if (typeof showToast === 'function') {
-        showToast('Синхронизация недоступна, данные сохранены на этом устройстве');
-      }
+      setAuthSyncStatus(mapCloudSyncError(err));
+      showCloudSyncError(mapCloudSyncError(err));
     }
   }
 
@@ -215,7 +305,9 @@
     if (!fb || !fb.currentUser) return;
     clearTimeout(_saveTimer);
     _saveTimer = setTimeout(function () {
-      saveUserDataToFirebase();
+      saveUserDataToFirebase({ silent: true }).then(function (ok) {
+        if (!ok) saveUserDataToFirebase({ silent: false });
+      });
     }, FIREBASE_SAVE_DELAY_MS);
   }
 
@@ -301,6 +393,8 @@
   }
 
   function bindAuthUI() {
+    if (_authUiBound) return;
+    _authUiBound = true;
     var emailEl = document.getElementById('authEmail');
     var passEl = document.getElementById('authPassword');
     var signInBtn = document.getElementById('authSignInBtn');
@@ -312,7 +406,7 @@
       signInBtn.addEventListener('click', function () {
         var fb = getFb();
         if (!fb) {
-          showToast('Синхронизация недоступна, данные сохранены на этом устройстве');
+          showCloudSyncError(firebaseUnavailableMessage(), { force: true });
           return;
         }
         var email = emailEl ? emailEl.value.trim() : '';
@@ -333,7 +427,7 @@
       signUpBtn.addEventListener('click', function () {
         var fb = getFb();
         if (!fb) {
-          showToast('Синхронизация недоступна, данные сохранены на этом устройстве');
+          showCloudSyncError(firebaseUnavailableMessage(), { force: true });
           return;
         }
         var email = emailEl ? emailEl.value.trim() : '';
@@ -362,7 +456,7 @@
       googleBtn.addEventListener('click', function () {
         var fb = getFb();
         if (!fb) {
-          showToast('Синхронизация недоступна, данные сохранены на этом устройстве');
+          showCloudSyncError(firebaseUnavailableMessage(), { force: true });
           return;
         }
         withAuthBusy(function () {
@@ -396,13 +490,13 @@
   }
 
   function initFirebaseSync() {
+    bindAuthUI();
+    renderAuthUI();
     if (_syncInited) return;
     var fb = getFb();
     if (!fb) return;
     _syncInited = true;
-
-    bindAuthUI();
-    renderAuthUI();
+    setAuthSyncStatus('');
 
     fb.onAuthStateChanged(fb.auth, function (user) {
       setCurrentFirebaseUser(user);
@@ -423,16 +517,23 @@
   window.scheduleFirebaseSave = scheduleFirebaseSave;
 
   function tryInitFirebaseSync() {
-    if (getFb()) initFirebaseSync();
+    if (getFb()) {
+      initFirebaseSync();
+      return;
+    }
+    updateFirebaseLoadStatus();
   }
 
   window.addEventListener('ibrf-firebase-ready', tryInitFirebaseSync);
   window.addEventListener('ibrf-firebase-error', function () {
-    if (typeof showToast === 'function') {
-      showToast('Синхронизация недоступна, данные сохранены на этом устройстве');
-    }
+    updateFirebaseLoadStatus();
+    showCloudSyncError(firebaseUnavailableMessage(), { force: true });
   });
-  document.addEventListener('DOMContentLoaded', tryInitFirebaseSync);
+  document.addEventListener('DOMContentLoaded', function () {
+    bindAuthUI();
+    tryInitFirebaseSync();
+  });
   setTimeout(tryInitFirebaseSync, 0);
   setTimeout(tryInitFirebaseSync, 800);
+  setTimeout(tryInitFirebaseSync, 2500);
 })();

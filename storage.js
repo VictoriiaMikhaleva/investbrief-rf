@@ -297,6 +297,12 @@
     return true;
   }
 
+  function parseAgentBool(v, defaultVal) {
+    if (v === true || v === 1 || v === 'true' || v === '1') return true;
+    if (v === false || v === 0 || v === 'false' || v === '0') return false;
+    return defaultVal === undefined ? false : !!defaultVal;
+  }
+
   function normalizeAgentSettings(raw) {
     var s = raw && typeof raw === 'object' ? raw : {};
     var tickers = Array.isArray(s.tickers) ? s.tickers.map(normalizeTicker).filter(Boolean) : [];
@@ -315,7 +321,7 @@
       weekDownThreshold: isFinite(Number(s.weekDownThreshold)) ? Number(s.weekDownThreshold) : DEFAULT_AGENT_SETTINGS.weekDownThreshold,
       weekUpThreshold: isFinite(Number(s.weekUpThreshold)) ? Number(s.weekUpThreshold) : DEFAULT_AGENT_SETTINGS.weekUpThreshold,
       turnoverMultiplier: isFinite(Number(s.turnoverMultiplier)) ? Number(s.turnoverMultiplier) : DEFAULT_AGENT_SETTINGS.turnoverMultiplier,
-      notifyAttention: !!s.notifyAttention,
+      notifyAttention: parseAgentBool(s.notifyAttention, false),
       updatedAt: updatedAt
     };
   }
