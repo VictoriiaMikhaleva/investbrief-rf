@@ -563,6 +563,8 @@
         });
       }
       renderHomePage();
+      if (typeof invalidateAgentRefresh === 'function') invalidateAgentRefresh();
+      if (typeof refreshAgentSignals === 'function') refreshAgentSignals(true);
       renderPortfolio();
       updatePortfolioFormChrome();
       if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();

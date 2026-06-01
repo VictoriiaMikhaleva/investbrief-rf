@@ -8,6 +8,7 @@
     "test": "npm run sync:core && npm run test:analytics && npm run test:analytics-server",
     "test:analytics": "node scripts/test-analytics.mjs",
     "test:analytics-server": "node scripts/test-analytics-server.mjs",
+    "test:agent": "node scripts/test-agent.mjs",
     "start": "npm run sync:core && node server/server.js",
     "functions:install": "npm install --prefix functions",
     "deploy:watchdog": "npm run sync:core && npx firebase-tools deploy --only functions:dataWatchdogHourly,firestore:rules",

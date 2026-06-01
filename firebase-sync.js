@@ -112,6 +112,7 @@
     if (typeof renderFeed === 'function') renderFeed();
     if (typeof invalidateAgentRefresh === 'function') invalidateAgentRefresh();
     if (typeof renderAgentSection === 'function') renderAgentSection();
+    if (typeof refreshAgentSignals === 'function') refreshAgentSignals(true);
   }
 
   function setCurrentFirebaseUser(user) {

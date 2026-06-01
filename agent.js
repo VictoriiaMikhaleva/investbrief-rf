@@ -13,6 +13,12 @@
   var _agentLastSignalFingerprint = '';
   var _agentRefreshTimer = null;
   var _agentVisibilityBound = false;
+  var _agentRefreshSeq = 0;
+  var _agentLastError = null;
+
+  function agentMoexIss() {
+    return (typeof MOEX_ISS !== 'undefined' && MOEX_ISS) ? MOEX_ISS : 'https://iss.moex.com/iss';
+  }
   var AGENT_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
   var AGENT_STALE_AFTER_MS = 20 * 60 * 1000;
   var _agentBriefingBound = false;
@@ -312,12 +318,12 @@
     settings = settings || getAgentSettings();
     if (!settings.enabled) return Promise.resolve([]);
     if (settings.tickers.length) return Promise.resolve(settings.tickers.slice());
-    if (settings.useTopTurnoverByDefault) {
+    if (settings.useTopTurnoverByDefault || !settings.tickers.length) {
       return loadTopTurnoverTickers(20).then(function (list) {
         return list && list.length ? list : DEFAULT_AGENT_TICKERS.slice();
       });
     }
-    return Promise.resolve([]);
+    return Promise.resolve(DEFAULT_AGENT_TICKERS.slice());
   }
 
   function pctChange(first, last) {
@@ -333,7 +339,7 @@
     from.setDate(from.getDate() - daysBack);
     var fromStr = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(from) : from.toISOString().slice(0, 10);
     var tillStr = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(till) : till.toISOString().slice(0, 10);
-    var url = MOEX_ISS + '/history/engines/stock/markets/shares/boards/TQBR/securities/' +
+    var url = agentMoexIss() + '/history/engines/stock/markets/shares/boards/TQBR/securities/' +
       encodeURIComponent(ticker) + '.json?from=' + fromStr + '&till=' + tillStr +
       '&iss.meta=off&history.columns=TRADEDATE,VALUE';
     return moexFetchJson(url).then(function (json) {
@@ -916,6 +922,7 @@
   function renderAgentChips(tickers) {
     var el = document.getElementById('agentSettingsTickerChips');
     if (!el) return;
+    tickers = tickers || [];
     if (!tickers.length) {
       el.innerHTML = '<p class="muted agent-empty-chips">Добавьте бумаги, за которыми агент будет наблюдать.</p>';
       return;
@@ -1018,6 +1025,17 @@
       renderAgentBriefingMeta();
       return;
     }
+    if (_agentLastError) {
+      grid.innerHTML = '<p class="muted agent-error">' + escapeHtml(_agentLastError) +
+        ' <button type="button" class="ghost agent-retry-inline" id="agentRetryInlineBtn">Повторить</button></p>';
+      var retryBtn = document.getElementById('agentRetryInlineBtn');
+      if (retryBtn && !retryBtn.dataset.bound) {
+        retryBtn.dataset.bound = '1';
+        retryBtn.addEventListener('click', function () { refreshAgentSignals(true); });
+      }
+      renderAgentBriefingMeta();
+      return;
+    }
     if (!_agentCards.length) {
       grid.innerHTML = '<p class="muted">Список наблюдения пуст. Нажмите «Настроить», чтобы выбрать бумаги.</p>';
       renderAgentBriefingMeta();
@@ -1032,6 +1050,7 @@
     if (!settings.enabled) {
       _agentCards = [];
       _agentLastRefreshAt = 0;
+      _agentLastError = null;
       renderAgentGrid();
       return Promise.resolve();
     }
@@ -1040,15 +1059,18 @@
       renderAgentGrid();
       return Promise.resolve();
     }
+    var seq = ++_agentRefreshSeq;
     _agentLoading = true;
+    _agentLastError = null;
     renderAgentGrid();
     return resolveAgentTickerList(settings).then(function (tickers) {
-      renderAgentChips(settings.useTopTurnoverByDefault && !settings.tickers.length
-        ? tickers.slice()
-        : settings.tickers.slice());
+      if (seq !== _agentRefreshSeq) return;
+      var chips = settings.tickers.length ? settings.tickers.slice() : tickers.slice();
+      renderAgentChips(chips);
       if (!tickers.length) {
         _agentCards = [];
         _agentLoading = false;
+        _agentLastError = 'Не удалось получить список бумаг. Проверьте интернет.';
         renderAgentGrid();
         return;
       }
@@ -1058,7 +1080,7 @@
           var signals = analyzeAgentSignals(data, events, settings);
           return {
             ticker: ticker,
-            name: data.name || getTickerSubtitle(ticker),
+            name: data.name || (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(ticker) : ticker),
             currentPrice: data.currentPrice,
             dayChangePct: data.dayChangePct,
             insufficient: data.insufficient,
@@ -1067,18 +1089,27 @@
           };
         });
       })).then(function (cards) {
+        if (seq !== _agentRefreshSeq) return;
         _agentCards = cards;
         _agentLoading = false;
         _agentLastRefreshAt = Date.now();
+        _agentLastError = null;
+        var okCount = cards.filter(function (c) { return !c.insufficient; }).length;
+        if (!okCount) {
+          _agentLastError = 'Нет котировок MOEX по выбранным бумагам. Попробуйте обновить позже.';
+        }
         appendSignalHistory(cards);
         maybeNotifyAgentAttention(cards);
         renderAgentGrid();
         renderAgentHistory();
         renderAgentLogPanel();
       });
-    }).catch(function () {
+    }).catch(function (err) {
+      if (seq !== _agentRefreshSeq) return;
       _agentLoading = false;
       _agentCards = [];
+      _agentLastError = 'Ошибка загрузки данных агента. Проверьте интернет и нажмите «Обновить».';
+      console.warn('agent refresh failed', err);
       renderAgentGrid();
     });
   }
@@ -1088,7 +1119,10 @@
     var settings = getAgentSettings();
     resolveAgentTickerList(settings).then(function (current) {
       var next = current.filter(function (t) { return t !== ticker; });
-      setAgentSettings({ tickers: next, useTopTurnoverByDefault: false });
+      setAgentSettings({
+        tickers: next,
+        useTopTurnoverByDefault: !next.length
+      });
       refreshAgentSignals(true);
     });
   }
@@ -1117,7 +1151,10 @@
             return;
           }
           var next = current.concat([ticker]);
-          setAgentSettings({ tickers: next, useTopTurnoverByDefault: false });
+          setAgentSettings({
+            tickers: next,
+            useTopTurnoverByDefault: !next.length
+          });
           renderAgentChips(next);
           refreshAgentSignals(true);
         }).catch(function () {
@@ -1142,8 +1179,16 @@
     resolveAgentTickerList(settings).then(function (current) {
       var base = settings.tickers.length ? list : current;
       var next = base.filter(function (t) { return t !== ticker; });
-      setAgentSettings({ tickers: next, useTopTurnoverByDefault: false });
-      renderAgentChips(next);
+      setAgentSettings({
+        tickers: next,
+        useTopTurnoverByDefault: !next.length
+      });
+      renderAgentChips(next.length ? next : null);
+      if (!next.length) {
+        resolveAgentTickerList(getAgentSettings()).then(function (list) {
+          renderAgentChips(list);
+        });
+      }
       refreshAgentSignals(true);
     });
   }

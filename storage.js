@@ -291,16 +291,23 @@
 
 
 
+  function parseAgentEnabledFlag(v) {
+    if (v === false || v === 0 || v === 'false' || v === '0') return false;
+    if (v === true || v === 1 || v === 'true' || v === '1') return true;
+    return true;
+  }
+
   function normalizeAgentSettings(raw) {
     var s = raw && typeof raw === 'object' ? raw : {};
     var tickers = Array.isArray(s.tickers) ? s.tickers.map(normalizeTicker).filter(Boolean) : [];
     var useTop = s.useTopTurnoverByDefault;
-    if (useTop == null) useTop = !tickers.length;
+    if (!tickers.length) useTop = true;
+    else if (useTop == null) useTop = false;
     var mode = s.sensitivityMode;
     if (['calm', 'normal', 'sensitive', 'custom'].indexOf(mode) < 0) mode = 'normal';
     var updatedAt = typeof s.updatedAt === 'string' && s.updatedAt ? s.updatedAt : null;
     return {
-      enabled: s.enabled !== false,
+      enabled: parseAgentEnabledFlag(s.enabled),
       tickers: tickers,
       useTopTurnoverByDefault: !!useTop,
       sensitivityMode: mode,
