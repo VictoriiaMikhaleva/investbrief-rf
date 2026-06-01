@@ -1127,40 +1127,78 @@
     });
   }
 
+  function readAgentTickerInputValue() {
+    var input = document.getElementById('agentSettingsTickerInput');
+    if (!input) return '';
+    var picked = input.dataset.agentPickTicker;
+    var raw = String(picked || input.value || '').trim();
+    delete input.dataset.agentPickTicker;
+    return raw;
+  }
+
+  function resolveAgentTickerFromInput(raw) {
+    raw = String(raw || '').trim();
+    if (!raw) return Promise.resolve('');
+    if (typeof Markets !== 'undefined' && typeof Markets.resolveSecurityFromInput === 'function') {
+      return Markets.resolveSecurityFromInput(raw).then(function (item) {
+        if (!item || !item.ticker) return '';
+        var t = normalizeTicker(item.ticker);
+        if (item.market === 'US' || (typeof Markets.isUsTicker === 'function' && Markets.isUsTicker(t))) {
+          return '__ERR_US__';
+        }
+        if (item.kind === 'bond' || item.type === 'bond' || (typeof isRuBondTicker === 'function' && isRuBondTicker(t))) {
+          return '__ERR_BOND__';
+        }
+        if (typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(t)) {
+          return '__ERR_INDEX__';
+        }
+        return t;
+      });
+    }
+    if (typeof resolveTickerFromInput === 'function') {
+      return resolveTickerFromInput(raw).then(function (t) { return normalizeTicker(t); });
+    }
+    return Promise.resolve(normalizeTicker(raw));
+  }
+
   function addAgentTicker(raw) {
-    var input = String(raw || '').trim();
-    if (!input) return;
+    var inputRaw = raw != null ? String(raw).trim() : readAgentTickerInputValue();
+    if (!inputRaw) return;
     var settings = getAgentSettings();
     resolveAgentTickerList(settings).then(function (current) {
-      var resolveP = typeof resolveTickerFromInput === 'function'
-        ? resolveTickerFromInput(input)
-        : Promise.resolve(normalizeTicker(input));
-      resolveP.then(function (ticker) {
+      return resolveAgentTickerFromInput(inputRaw).then(function (ticker) {
+        if (ticker === '__ERR_US__') {
+          showToast('Агент наблюдает только акции МосБиржи (TQBR), не бумаги США.');
+          return;
+        }
+        if (ticker === '__ERR_BOND__') {
+          showToast('Для облигаций используйте раздел «Облигации» — агент настроен на акции.');
+          return;
+        }
+        if (ticker === '__ERR_INDEX__') {
+          showToast('Индекс IMOEX нельзя добавить в список — выберите акцию из состава индекса.');
+          return;
+        }
         ticker = normalizeTicker(ticker);
         if (!ticker) {
-          showToast('Не удалось найти бумагу. Проверьте тикер.');
+          showToast('Не удалось распознать тикер. Выберите бумагу из подсказки или введите тикер латиницей.');
           return;
         }
         if (current.indexOf(ticker) >= 0) {
           showToast('Бумага уже в списке наблюдения.');
           return;
         }
-        return fetchMoexQuote(ticker).then(function (q) {
-          if (!q || q.price == null) {
-            showToast('Не удалось найти бумагу. Проверьте тикер.');
-            return;
-          }
-          var next = current.concat([ticker]);
-          setAgentSettings({
-            tickers: next,
-            useTopTurnoverByDefault: !next.length
-          });
-          renderAgentChips(next);
-          refreshAgentSignals(true);
-        }).catch(function () {
-          showToast('Не удалось найти бумагу. Проверьте тикер.');
+        var next = current.concat([ticker]);
+        setAgentSettings({
+          tickers: next,
+          useTopTurnoverByDefault: !next.length
         });
+        renderAgentChips(next);
+        refreshAgentSignals(true);
+        showToast('Добавлено в наблюдение: ' + ticker);
       });
+    }).catch(function () {
+      showToast('Не удалось добавить бумагу. Попробуйте ещё раз.');
     });
   }
 
@@ -1170,6 +1208,7 @@
       renderAgentChips(tickers);
     });
     refreshAgentSignals(true);
+    showToast('Список сброшен: топ‑20 по обороту');
   }
 
   function removeAgentTicker(ticker) {
@@ -1190,6 +1229,7 @@
         });
       }
       refreshAgentSignals(true);
+      showToast('Удалено из наблюдения: ' + ticker);
     });
   }
 
@@ -1256,9 +1296,6 @@
     if (addBtn) addBtn.disabled = disabled;
     if (resetBtn) resetBtn.disabled = disabled;
     if (tickerInput) tickerInput.disabled = disabled;
-    document.querySelectorAll('#agentSettingsTickerChips [data-agent-remove]').forEach(function (btn) {
-      btn.disabled = disabled;
-    });
   }
 
   function openAgentSettings() {
@@ -1309,49 +1346,42 @@
     });
   }
 
-  function agentSettingsActionBlocked() {
-    if (getAgentSettings().enabled !== false) return false;
-    if (typeof showToast === 'function') showToast('Включите агента наблюдения');
-    return true;
-  }
-
   function bindAgentSettingsBlockActions() {
     var block = document.getElementById('agentSettingsBlock');
     if (!block || block.dataset.agentActionsBound) return;
     block.dataset.agentActionsBound = '1';
     block.addEventListener('click', function (e) {
       if (e.target.closest('#agentSettingsSaveRulesBtn')) {
+        e.preventDefault();
         saveAgentSettingsFromUI();
         return;
       }
       if (e.target.closest('#agentSettingsAddTickerBtn')) {
-        if (agentSettingsActionBlocked()) return;
+        e.preventDefault();
+        addAgentTicker();
         var input = document.getElementById('agentSettingsTickerInput');
-        if (input) {
-          addAgentTicker(input.value);
-          input.value = '';
-        }
+        if (input) input.value = '';
         return;
       }
       if (e.target.closest('#agentSettingsResetTop20Btn')) {
-        if (agentSettingsActionBlocked()) return;
+        e.preventDefault();
         resetAgentToTop20();
         return;
       }
-      var removeBtn = e.target.closest('#agentSettingsTickerChips [data-agent-remove]');
-      if (removeBtn) {
-        if (agentSettingsActionBlocked()) return;
+      var removeBtn = e.target.closest('[data-agent-remove]');
+      if (removeBtn && removeBtn.closest('#agentSettingsTickerChips')) {
         e.preventDefault();
+        e.stopPropagation();
         removeAgentTicker(removeBtn.getAttribute('data-agent-remove'));
       }
-    });
+    }, true);
     var input = document.getElementById('agentSettingsTickerInput');
     if (input && !input.dataset.agentEnterBound) {
       input.dataset.agentEnterBound = '1';
       input.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return;
-        if (agentSettingsActionBlocked()) return;
-        addAgentTicker(input.value);
+        e.preventDefault();
+        addAgentTicker();
         input.value = '';
       });
     }
@@ -1383,7 +1413,17 @@
       });
     }
 
-    if (typeof setupTickerAutocomplete === 'function') setupTickerAutocomplete('agentSettingsTickerInput');
+    if (typeof setupTickerAutocomplete === 'function') {
+      setupTickerAutocomplete('agentSettingsTickerInput', {
+        onSelect: function (item) {
+          var input = document.getElementById('agentSettingsTickerInput');
+          if (input && item && item.ticker) {
+            input.dataset.agentPickTicker = normalizeTicker(item.ticker);
+            input.value = item.ticker;
+          }
+        }
+      });
+    }
   }
 
   function renderAgentSettings() {
