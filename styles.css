@@ -2823,6 +2823,16 @@
       color: var(--accent);
       font-weight: 600;
     }
+    .agent-settings-list-controls .primary,
+    .agent-settings-list-controls .ghost {
+      position: relative;
+      z-index: 2;
+      pointer-events: auto;
+    }
+    #agentSettingsTickerInput {
+      position: relative;
+      z-index: 2;
+    }
     .agent-settings-list-controls {
       flex-wrap: wrap;
       gap: 0.5rem;
@@ -2833,7 +2843,9 @@
       font-size: 0.78rem;
       line-height: 1.4;
     }
-    .agent-settings-list--disabled,
+    .agent-settings-list--disabled {
+      opacity: 0.55;
+    }
     .agent-settings-panel--disabled {
       opacity: 0.55;
       pointer-events: none;
@@ -3035,6 +3047,9 @@
       font-size: 1rem;
       line-height: 1;
       padding: 0 0.15rem;
+      position: relative;
+      z-index: 2;
+      pointer-events: auto;
     }
     .agent-chip-remove:hover { color: var(--accent); }
     .agent-empty-chips { margin: 0.35rem 0 0; font-size: 0.82rem; }

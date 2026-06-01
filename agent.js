@@ -1098,6 +1098,7 @@
           }
           var next = current.concat([ticker]);
           setAgentSettings({ tickers: next, useTopTurnoverByDefault: false });
+          renderAgentChips(next);
           refreshAgentSignals(true);
         }).catch(function () {
           showToast('Не удалось найти бумагу. Проверьте тикер.');
@@ -1108,6 +1109,9 @@
 
   function resetAgentToTop20() {
     setAgentSettings({ tickers: [], useTopTurnoverByDefault: true });
+    resolveAgentTickerList(getAgentSettings()).then(function (tickers) {
+      renderAgentChips(tickers);
+    });
     refreshAgentSignals(true);
   }
 
@@ -1119,6 +1123,7 @@
       var base = settings.tickers.length ? list : current;
       var next = base.filter(function (t) { return t !== ticker; });
       setAgentSettings({ tickers: next, useTopTurnoverByDefault: false });
+      renderAgentChips(next);
       refreshAgentSignals(true);
     });
   }
@@ -1173,12 +1178,22 @@
     if (enabledToggle) enabledToggle.checked = settings.enabled !== false;
     var notifyToggle = document.getElementById('agentNotifyAttention');
     if (notifyToggle) notifyToggle.checked = !!settings.notifyAttention;
+    var disabled = settings.enabled === false;
     var listWrap = document.querySelector('.agent-settings-list');
-    if (listWrap) listWrap.classList.toggle('agent-settings-list--disabled', settings.enabled === false);
+    if (listWrap) listWrap.classList.toggle('agent-settings-list--disabled', disabled);
     var sensBody = document.querySelector('#agentSettingsSensitivityRoot .agent-sensitivity-body');
-    if (sensBody) sensBody.classList.toggle('agent-settings-panel--disabled', settings.enabled === false);
+    if (sensBody) sensBody.classList.toggle('agent-settings-panel--disabled', disabled);
     var saveBtn = document.getElementById('agentSettingsSaveRulesBtn');
     if (saveBtn) saveBtn.disabled = false;
+    var addBtn = document.getElementById('agentSettingsAddTickerBtn');
+    var resetBtn = document.getElementById('agentSettingsResetTop20Btn');
+    var tickerInput = document.getElementById('agentSettingsTickerInput');
+    if (addBtn) addBtn.disabled = disabled;
+    if (resetBtn) resetBtn.disabled = disabled;
+    if (tickerInput) tickerInput.disabled = disabled;
+    document.querySelectorAll('#agentSettingsTickerChips [data-agent-remove]').forEach(function (btn) {
+      btn.disabled = disabled;
+    });
   }
 
   function openAgentSettings() {
@@ -1229,18 +1244,59 @@
     });
   }
 
+  function agentSettingsActionBlocked() {
+    if (getAgentSettings().enabled !== false) return false;
+    if (typeof showToast === 'function') showToast('Включите агента наблюдения');
+    return true;
+  }
+
+  function bindAgentSettingsBlockActions() {
+    var block = document.getElementById('agentSettingsBlock');
+    if (!block || block.dataset.agentActionsBound) return;
+    block.dataset.agentActionsBound = '1';
+    block.addEventListener('click', function (e) {
+      if (e.target.closest('#agentSettingsSaveRulesBtn')) {
+        saveAgentSensitivitySettings();
+        return;
+      }
+      if (e.target.closest('#agentSettingsAddTickerBtn')) {
+        if (agentSettingsActionBlocked()) return;
+        var input = document.getElementById('agentSettingsTickerInput');
+        if (input) {
+          addAgentTicker(input.value);
+          input.value = '';
+        }
+        return;
+      }
+      if (e.target.closest('#agentSettingsResetTop20Btn')) {
+        if (agentSettingsActionBlocked()) return;
+        resetAgentToTop20();
+        return;
+      }
+      var removeBtn = e.target.closest('#agentSettingsTickerChips [data-agent-remove]');
+      if (removeBtn) {
+        if (agentSettingsActionBlocked()) return;
+        e.preventDefault();
+        removeAgentTicker(removeBtn.getAttribute('data-agent-remove'));
+      }
+    });
+    var input = document.getElementById('agentSettingsTickerInput');
+    if (input && !input.dataset.agentEnterBound) {
+      input.dataset.agentEnterBound = '1';
+      input.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        if (agentSettingsActionBlocked()) return;
+        addAgentTicker(input.value);
+        input.value = '';
+      });
+    }
+  }
+
   function bindAgentSettingsUI() {
     if (_agentSettingsBound) return;
     _agentSettingsBound = true;
     ensureAgentSensitivityBound();
-
-    var settingsBlock = document.getElementById('agentSettingsBlock');
-    if (settingsBlock && !settingsBlock.dataset.agentSaveBound) {
-      settingsBlock.dataset.agentSaveBound = '1';
-      settingsBlock.addEventListener('click', function (e) {
-        if (e.target.closest('#agentSettingsSaveRulesBtn')) saveAgentSensitivitySettings();
-      });
-    }
+    bindAgentSettingsBlockActions();
 
     var enabledToggle = document.getElementById('agentEnabledToggle');
     if (enabledToggle) {
@@ -1262,27 +1318,11 @@
       });
     }
 
-    var addBtn = document.getElementById('agentSettingsAddTickerBtn');
-    var resetBtn = document.getElementById('agentSettingsResetTop20Btn');
-    var input = document.getElementById('agentSettingsTickerInput');
-
-    if (addBtn && input) {
-      addBtn.addEventListener('click', function () { addAgentTicker(input.value); input.value = ''; });
-      input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { addAgentTicker(input.value); input.value = ''; }
-      });
-    }
-    if (resetBtn) resetBtn.addEventListener('click', resetAgentToTop20);
     if (typeof setupTickerAutocomplete === 'function') setupTickerAutocomplete('agentSettingsTickerInput');
-
-    document.addEventListener('click', function (e) {
-      var removeBtn = e.target.closest('[data-agent-remove]');
-      if (!removeBtn) return;
-      removeAgentTicker(removeBtn.getAttribute('data-agent-remove'));
-    });
   }
 
   function renderAgentSettings() {
+    bindAgentSettingsBlockActions();
     bindAgentSettingsUI();
     syncAgentSettingsControls();
     loadAgentRulesToUI();
