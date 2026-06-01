@@ -298,6 +298,7 @@
     if (useTop == null) useTop = !tickers.length;
     var mode = s.sensitivityMode;
     if (['calm', 'normal', 'sensitive', 'custom'].indexOf(mode) < 0) mode = 'normal';
+    var updatedAt = typeof s.updatedAt === 'string' && s.updatedAt ? s.updatedAt : null;
     return {
       enabled: s.enabled !== false,
       tickers: tickers,
@@ -307,7 +308,8 @@
       weekDownThreshold: isFinite(Number(s.weekDownThreshold)) ? Number(s.weekDownThreshold) : DEFAULT_AGENT_SETTINGS.weekDownThreshold,
       weekUpThreshold: isFinite(Number(s.weekUpThreshold)) ? Number(s.weekUpThreshold) : DEFAULT_AGENT_SETTINGS.weekUpThreshold,
       turnoverMultiplier: isFinite(Number(s.turnoverMultiplier)) ? Number(s.turnoverMultiplier) : DEFAULT_AGENT_SETTINGS.turnoverMultiplier,
-      notifyAttention: !!s.notifyAttention
+      notifyAttention: !!s.notifyAttention,
+      updatedAt: updatedAt
     };
   }
 
@@ -315,8 +317,28 @@
     return normalizeAgentSettings(loadJSON(KEYS.agentSettings, null));
   }
 
+  function agentSettingsUpdatedAtMs(settings) {
+    if (!settings || !settings.updatedAt) return 0;
+    var t = Date.parse(settings.updatedAt);
+    return isFinite(t) ? t : 0;
+  }
+
+  function mergeAgentSettings(local, cloud) {
+    local = normalizeAgentSettings(local || {});
+    cloud = normalizeAgentSettings(cloud || {});
+    var localT = agentSettingsUpdatedAtMs(local);
+    var cloudT = agentSettingsUpdatedAtMs(cloud);
+    if (cloudT > localT) return cloud;
+    if (localT > cloudT) return local;
+    return normalizeAgentSettings(Object.assign({}, cloud, local, {
+      updatedAt: local.updatedAt || cloud.updatedAt || null
+    }));
+  }
+
   function setAgentSettings(s) {
-    var next = normalizeAgentSettings(Object.assign({}, getAgentSettings(), s || {}));
+    var next = normalizeAgentSettings(Object.assign({}, getAgentSettings(), s || {}, {
+      updatedAt: new Date().toISOString()
+    }));
     saveJSON(KEYS.agentSettings, next);
     if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
     return next;

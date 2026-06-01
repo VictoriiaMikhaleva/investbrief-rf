@@ -228,14 +228,33 @@
     return values;
   }
 
-  function saveAgentSensitivitySettings() {
+  function readAgentTickersFromChips() {
+    var tickers = [];
+    document.querySelectorAll('#agentSettingsTickerChips [data-agent-remove]').forEach(function (btn) {
+      var t = normalizeTicker(btn.getAttribute('data-agent-remove') || '');
+      if (t && tickers.indexOf(t) < 0) tickers.push(t);
+    });
+    return tickers;
+  }
+
+  function saveAgentSettingsFromUI() {
     ensureAgentSensitivityBound();
     var prefix = AGENT_SETTINGS_PREFIX;
-    var next = readAgentRulesFromPanel(prefix);
-    setAgentSettings(next);
+    var tickers = readAgentTickersFromChips();
+    var payload = Object.assign({}, readAgentRulesFromPanel(prefix), {
+      tickers: tickers,
+      useTopTurnoverByDefault: !tickers.length
+    });
+    var enabledToggle = document.getElementById('agentEnabledToggle');
+    var notifyToggle = document.getElementById('agentNotifyAttention');
+    if (enabledToggle) payload.enabled = enabledToggle.checked;
+    if (notifyToggle) payload.notifyAttention = notifyToggle.checked;
+    setAgentSettings(payload);
+    renderAgentChips(tickers);
     loadAgentRulesToUI();
+    syncAgentSettingsControls();
     refreshAgentSignals(true);
-    if (typeof showToast === 'function') showToast('Настройки сохранены');
+    if (typeof showToast === 'function') showToast('Настройки агента сохранены');
   }
 
   function bindAgentSensitivityPanel() {
@@ -909,6 +928,7 @@
         '</span>'
       );
     }).join('');
+    syncAgentSettingsControls();
   }
 
   function renderAgentHistory() {
@@ -1256,7 +1276,7 @@
     block.dataset.agentActionsBound = '1';
     block.addEventListener('click', function (e) {
       if (e.target.closest('#agentSettingsSaveRulesBtn')) {
-        saveAgentSensitivitySettings();
+        saveAgentSettingsFromUI();
         return;
       }
       if (e.target.closest('#agentSettingsAddTickerBtn')) {

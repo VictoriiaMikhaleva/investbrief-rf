@@ -63,12 +63,26 @@
       if (data.digest) saveJSON(KEYS.digest, normalizeDigest(data.digest));
       if (data.consents) saveJSON(KEYS.consents, data.consents);
       if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);
-      if (data.agentSettings) saveJSON(KEYS.agentSettings, normalizeAgentSettings(data.agentSettings));
+      if (data.agentSettings) {
+        var localAgent = getAgentSettings();
+        var mergedAgent = typeof mergeAgentSettings === 'function'
+          ? mergeAgentSettings(localAgent, data.agentSettings)
+          : normalizeAgentSettings(data.agentSettings);
+        saveJSON(KEYS.agentSettings, mergedAgent);
+        if (agentSettingsUpdatedAtMs(localAgent) >= agentSettingsUpdatedAtMs(normalizeAgentSettings(data.agentSettings))) {
+          window._ibrfPushAgentSettings = true;
+        }
+      }
       if (data.agentActionLog) {
         setAgentActionLog(mergeAgentActionLogs(getAgentActionLog(), data.agentActionLog));
       }
     } finally {
       window._ibrfApplyingCloudData = false;
+    }
+
+    if (window._ibrfPushAgentSettings) {
+      window._ibrfPushAgentSettings = false;
+      if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
     }
 
     var cloudConsents = getConsents();
