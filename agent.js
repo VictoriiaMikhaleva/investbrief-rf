@@ -1042,14 +1042,13 @@
       );
     }
 
+    var hasSignals = !!(card.signals && card.signals.length);
     var signalsHtml = '';
-    if (card.signals.length) {
-      signalsHtml = '<ul class="agent-signal-titles">' +
+    if (hasSignals) {
+      signalsHtml = '<div class="agent-signals-preview"><ul class="agent-signal-titles">' +
         card.signals.map(function (sig) {
           return '<li class="agent-signal-title">' + escapeHtml(sig.title) + '</li>';
-        }).join('') + '</ul>';
-    } else {
-      signalsHtml = '<p class="muted agent-calm-text">Сильных движений и необычного оборота не найдено.</p>';
+        }).join('') + '</ul></div>';
     }
 
     return (
@@ -1065,9 +1064,11 @@
           '<span class="agent-metric">' + escapeHtml(formatAgentPrice(card.currentPrice)) + '</span>' +
           '<span class="agent-metric ' + dayChangeClass(card.dayChangePct) + '">' + escapeHtml(formatAgentDayChange(card.dayChangePct)) + ' за день</span>' +
         '</div>' +
-        '<div class="agent-signals-preview">' + signalsHtml + '</div>' +
+        signalsHtml +
         '<div class="agent-card-actions">' +
-          '<button type="button" class="ghost agent-detail-btn" data-agent-detail="' + escapeHtml(card.ticker) + '">Подробнее</button>' +
+          (hasSignals
+            ? '<button type="button" class="ghost agent-detail-btn" data-agent-detail="' + escapeHtml(card.ticker) + '">Подробнее</button>'
+            : '') +
           '<button type="button" class="ghost agent-hide-btn" data-agent-hide="' + escapeHtml(card.ticker) + '">Скрыть из наблюдения</button>' +
         '</div>' +
         '<div class="agent-card-expanded" id="agentExpanded-' + escapeHtml(card.ticker) + '" hidden></div>' +
@@ -1335,7 +1336,7 @@
             '</div>'
           );
         }).join('')
-      : '<p class="muted">Сильных движений и необычного оборота не найдено.</p>';
+      : '';
     expanded.innerHTML = html;
     expanded.hidden = false;
   }
