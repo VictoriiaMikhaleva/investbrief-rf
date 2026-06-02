@@ -717,14 +717,37 @@
     if (!count) return;
     var samples = [];
     cards.forEach(function (c) {
-      if (!c.signals || !c.signals.length) return;
-      c.signals.forEach(function (s) {
-        if (samples.length < 4) samples.push(c.ticker + ': ' + s.title);
+      if (!c.signals || !c.signals.length || samples.length >= 2) return;
+      var titles = c.signals.map(function (s) {
+        if (s.id === 'turnover-high') return 'оборот выше обычного';
+        if (s.id === 'week-down') return 'снижение за неделю';
+        if (s.id === 'week-up') return 'рост за неделю';
+        if (s.id === 'day-down') return 'снижение за день';
+        if (s.id === 'day-up') return 'рост за день';
+        if (s.id === 'month-low') return 'близко к нижней границе месяца';
+        if (s.id === 'month-high') return 'близко к верхней границе месяца';
+        if (s.id === 'event') return 'есть событие';
+        return (s.title || '').toLowerCase();
       });
+      var uniq = [];
+      titles.forEach(function (t) {
+        if (!t || uniq.indexOf(t) >= 0) return;
+        uniq.push(t);
+      });
+      if (!uniq.length) return;
+      var sampleText = uniq.length === 1
+        ? uniq[0]
+        : (uniq.slice(0, uniq.length - 1).join(', ') + ' и ' + uniq[uniq.length - 1]);
+      samples.push(c.ticker + ' — ' + sampleText);
     });
+    var bodyLines = [
+      'ИнвестБриф заметил ' + count + ' ' + pluralZones(count)
+    ];
+    samples.forEach(function (line) { bodyLines.push(line); });
+    bodyLines.push('Откройте сводку, чтобы посмотреть детали.');
     try {
       new Notification('InvestBrief — зоны внимания', {
-        body: count + ' ' + pluralZones(count) + (samples.length ? '. ' + samples.join('; ') : ''),
+        body: bodyLines.join('\n'),
         tag: 'ibrf-agent-attention',
         renotify: true
       });
