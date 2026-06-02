@@ -27,6 +27,7 @@
   var OFZ_CATALOG_CACHE_KEY = 'ofz.catalog.tqob.v2';
   var _tableView = { sortBy: 'vol', sortDir: 'desc', kind: 'all', search: '' };
   var _filterSearchTimer = null;
+  var _ofzSnapshotMeta = null;
 
   function formatOfzPrice(price) {
     if (price == null || !isFinite(price)) return '—';
@@ -255,6 +256,19 @@
   }
 
   function fetchOfzBondCatalog() {
+    if (typeof getInvestbriefDataFile === 'function') {
+      return getInvestbriefDataFile('ofz.json').then(function (snapshot) {
+        if (snapshot && snapshot.data && Array.isArray(snapshot.data.catalog) && snapshot.data.catalog.length) {
+          _ofzSnapshotMeta = snapshot;
+          return snapshot.data.catalog;
+        }
+        return fetchOfzBondCatalogDirect();
+      });
+    }
+    return fetchOfzBondCatalogDirect();
+  }
+
+  function fetchOfzBondCatalogDirect() {
     if (typeof moexCacheGet === 'function') {
       var cached = moexCacheGet(OFZ_CATALOG_CACHE_KEY);
       if (cached && cached.length) return Promise.resolve(cached);
@@ -408,7 +422,14 @@
     el.textContent = count + ' выпуск' + ofzPluralRu(count) +
       ' на TQOB · котировки и параметры — МосБиржа ISS. Не аффилировано со Smart-Lab. Не является индивидуальной инвестиционной рекомендацией.';
     if (statusEl) {
-      statusEl.textContent = note || ('Обновлено: ' + count + ' выпуск' + ofzPluralRu(count));
+      var snapHm = (typeof formatInvestbriefDataUpdatedHm === 'function')
+        ? formatInvestbriefDataUpdatedHm(_ofzSnapshotMeta)
+        : '';
+      var base = note || (snapHm ? ('Обновлено: ' + snapHm) : ('Обновлено: ' + count + ' выпуск' + ofzPluralRu(count)));
+      if (typeof isInvestbriefDataStale === 'function' && isInvestbriefDataStale(_ofzSnapshotMeta)) {
+        base += ' · Показываем последние доступные данные. Обновление задерживается.';
+      }
+      statusEl.textContent = base;
     }
   }
 

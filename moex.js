@@ -62,6 +62,44 @@
     });
   }
 
+  var _dataFileCache = {};
+  var DATA_FILE_TTL_MS = 60 * 1000;
+  var _topTurnoverSnapshotMeta = null;
+  var _marketSnapshotMeta = null;
+
+  function fetchInvestbriefDataFile(filename, force) {
+    force = !!force;
+    var now = Date.now();
+    var cache = _dataFileCache[filename];
+    if (!force && cache && now - cache.ts < DATA_FILE_TTL_MS) {
+      return Promise.resolve(cache.payload);
+    }
+    return fetch('./data/' + filename + '?ts=' + Math.floor(now / 10000), {
+      method: 'GET',
+      credentials: 'omit',
+      cache: 'no-store'
+    }).then(function (res) {
+      if (!res.ok) throw new Error('data file http ' + res.status);
+      return res.json();
+    }).then(function (json) {
+      _dataFileCache[filename] = { ts: now, payload: json };
+      return json;
+    }).catch(function () {
+      return null;
+    });
+  }
+
+  function isDataSnapshotStale(snapshot) {
+    return !!(snapshot && snapshot.status === 'stale');
+  }
+
+  function formatSnapshotUpdatedHm(snapshot) {
+    if (!snapshot || !snapshot.updatedAt) return '';
+    var d = new Date(snapshot.updatedAt);
+    if (!isFinite(d.getTime())) return '';
+    return d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  }
+
   var acControllers = {};
 
 
@@ -1759,6 +1797,16 @@
 
 
   function fetchImoexTurnoverWeek(skipCache) {
+    return fetchInvestbriefDataFile('top-turnover.json', !!skipCache).then(function (snapshot) {
+      if (snapshot && snapshot.data && Array.isArray(snapshot.data.turnoverWeek) && snapshot.data.turnoverWeek.length) {
+        _topTurnoverSnapshotMeta = snapshot;
+        return snapshot.data.turnoverWeek;
+      }
+      return fetchImoexTurnoverWeekDirect(skipCache);
+    });
+  }
+
+  function fetchImoexTurnoverWeekDirect(skipCache) {
     var cacheKey = 'imoex.turnover.week';
     if (!skipCache) {
       var cached = moexCacheGet(cacheKey);
@@ -1814,6 +1862,16 @@
 
 
   function fetchTopMoexSharesByVolume(limit, skipCache) {
+    return fetchInvestbriefDataFile('top-turnover.json', !!skipCache).then(function (snapshot) {
+      if (snapshot && snapshot.data && Array.isArray(snapshot.data.top) && snapshot.data.top.length) {
+        _topTurnoverSnapshotMeta = snapshot;
+        return (snapshot.data.top || []).slice(0, limit || 20);
+      }
+      return fetchTopMoexSharesByVolumeDirect(limit, skipCache);
+    });
+  }
+
+  function fetchTopMoexSharesByVolumeDirect(limit, skipCache) {
     limit = limit || 20;
     var cacheKey = 'moex.topvol.' + limit;
     if (!skipCache) {
@@ -2072,8 +2130,15 @@
       renderImoexVolumeBars(results[0]);
       renderImoexTopVolumeTable(results[1], 'RU');
       if (src) {
-        src.textContent = 'МосБиржа · оборот IMOEX и топ TQBR · обновлено ' +
-          new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        var updatedHm = formatSnapshotUpdatedHm(_topTurnoverSnapshotMeta);
+        var base = _topTurnoverSnapshotMeta
+          ? ((_topTurnoverSnapshotMeta.source || 'MOEX ISS') + (updatedHm ? ' · Обновлено: ' + updatedHm : ''))
+          : ('МосБиржа · оборот IMOEX и топ TQBR · обновлено ' +
+            new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+        if (isDataSnapshotStale(_topTurnoverSnapshotMeta)) {
+          base += ' · Показываем последние доступные данные. Обновление задерживается.';
+        }
+        src.textContent = base;
       }
     }).catch(function () {
       if (bars) bars.innerHTML = '<p class="muted hint-frame">Объём торгов временно недоступен</p>';
@@ -2109,6 +2174,32 @@
     renderImoexMarketPanel(forceRefresh);
   }
 
+  function applyMarketSnapshotFromFile(row, forceRefresh) {
+    return fetchInvestbriefDataFile('market-snapshot.json', !!forceRefresh).then(function (snapshot) {
+      _marketSnapshotMeta = snapshot;
+      if (!snapshot || !snapshot.data) return false;
+      var d = snapshot.data || {};
+      if (d.keyRate && d.keyRate.rate != null) {
+        patchMacroTile(row, 'rate', formatKeyRateLabel(d.keyRate.rate),
+          macroMeta(d.keyRate.changePct, 'snapshot', 'ключевая'));
+      }
+      if (d.imoex && d.imoex.price != null) {
+        patchMacroTile(row, 'imoex', formatChartPrice(d.imoex.price, 'IMOEX'),
+          macroMeta(d.imoex.changePct, 'snapshot', 'IMOEX'));
+      }
+      ['USD', 'EUR', 'CNY'].forEach(function (code) {
+        var item = d.fx && d.fx[code];
+        if (!item || item.price == null) return;
+        var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
+        patchMacroTile(row, id, formatFxPrice(item.price), macroMeta(item.changePct, 'snapshot', 'валюта'));
+      });
+      if (isDataSnapshotStale(snapshot) && typeof showToast === 'function') {
+        showToast('Показываем последние доступные данные. Обновление задерживается.');
+      }
+      return true;
+    });
+  }
+
 
 
   function renderMarketMacro(forceRefresh) {
@@ -2135,6 +2226,7 @@
 
     applyMacroBootstrap(row);
     patchMacroCommodityTiles(row, !!forceRefresh);
+    applyMarketSnapshotFromFile(row, forceRefresh);
 
     fetchCbrKeyRate().then(function (kr) {
       patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
@@ -2263,5 +2355,8 @@
   window.scheduleMarketMacroRefresh = scheduleMarketMacroRefresh;
   window.fetchTopMoexSharesByVolume = fetchTopMoexSharesByVolume;
   window.refreshMacroDataSilent = refreshMacroDataSilent;
+  window.getInvestbriefDataFile = fetchInvestbriefDataFile;
+  window.isInvestbriefDataStale = isDataSnapshotStale;
+  window.formatInvestbriefDataUpdatedHm = formatSnapshotUpdatedHm;
 
 

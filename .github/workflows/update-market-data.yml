@@ -1,0 +1,35 @@
+name: Update Market Data
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Update data snapshots
+        run: node scripts/update-market-data.js
+
+      - name: Commit changes
+        run: |
+          if [ -n "$(git status --porcelain data/*.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/*.json
+            git commit -m "chore(data): refresh market snapshots"
+            git push
+          else
+            echo "No data changes"
+          fi

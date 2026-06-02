@@ -25,6 +25,8 @@
   var _agentSettingsBound = false;
   var _agentLogBound = false;
   var _agentPersistTimer = null;
+  var _agentSnapshotMeta = null;
+  var _agentDataSourceMode = 'live';
   var _agentLogFilter = { kind: 'all', search: '' };
   var AGENT_SETTINGS_PREFIX = 'agentSettings';
 
@@ -456,6 +458,47 @@
       });
     }).catch(function () {
       return { ticker: ticker, insufficient: true };
+    });
+  }
+
+  function loadAgentCardsFromSnapshot(tickers) {
+    if (typeof getInvestbriefDataFile !== 'function') return Promise.resolve(null);
+    return getInvestbriefDataFile('agent-signals.json').then(function (snapshot) {
+      if (!snapshot || !snapshot.data || !Array.isArray(snapshot.data.cards)) return null;
+      _agentSnapshotMeta = snapshot;
+      var byTicker = {};
+      snapshot.data.cards.forEach(function (card) {
+        if (!card || !card.ticker) return;
+        byTicker[normalizeTicker(card.ticker)] = card;
+      });
+      var cards = (tickers || []).map(function (ticker) {
+        var src = byTicker[normalizeTicker(ticker)];
+        if (!src) {
+          return {
+            ticker: ticker,
+            name: typeof getTickerSubtitle === 'function' ? getTickerSubtitle(ticker) : ticker,
+            insufficient: true,
+            currentPrice: null,
+            dayChangePct: null,
+            signals: [],
+            status: 'Спокойно'
+          };
+        }
+        var safeSignals = Array.isArray(src.signals) ? src.signals : [];
+        var insufficient = !!src.insufficient;
+        return {
+          ticker: normalizeTicker(src.ticker || ticker),
+          name: src.name || (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(ticker) : ticker),
+          currentPrice: src.currentPrice != null && isFinite(Number(src.currentPrice)) ? Number(src.currentPrice) : null,
+          dayChangePct: src.dayChangePct != null && isFinite(Number(src.dayChangePct)) ? Number(src.dayChangePct) : null,
+          insufficient: insufficient,
+          signals: insufficient ? [] : safeSignals,
+          status: insufficient ? 'Спокойно' : deriveAgentStatus(safeSignals)
+        };
+      });
+      return { cards: cards, snapshot: snapshot };
+    }).catch(function () {
+      return null;
     });
   }
 
@@ -970,6 +1013,7 @@
   function renderAgentBriefingMeta() {
     var settings = getAgentSettings();
     var zonesEl = document.getElementById('agentZonesToday');
+    var sourceEl = document.getElementById('agentDataSourceLabel');
     var disabledEl = document.getElementById('agentDisabledNote');
     var grid = document.getElementById('agentGrid');
     var section = document.getElementById('agentObservationSection');
@@ -977,6 +1021,7 @@
 
     if (!settings.enabled) {
       zonesEl.textContent = '';
+      if (sourceEl) sourceEl.textContent = '';
       if (disabledEl) disabledEl.hidden = false;
       if (grid) grid.hidden = true;
       if (section) section.classList.add('agent-section--disabled');
@@ -989,6 +1034,7 @@
 
     if (_agentLoading) {
       zonesEl.textContent = 'Проверяем бумаги…';
+      if (sourceEl) sourceEl.textContent = '';
       return;
     }
 
@@ -996,13 +1042,47 @@
     var main = count
       ? ('Сегодня: ' + count + ' ' + pluralZones(count))
       : 'Сегодня зон внимания нет';
-    if (_agentLastRefreshAt) {
+    var snapshotHm = (typeof formatInvestbriefDataUpdatedHm === 'function')
+      ? formatInvestbriefDataUpdatedHm(_agentSnapshotMeta)
+      : '';
+    if (snapshotHm) {
+      main += ' · Обновлено: ' + snapshotHm;
+    } else if (_agentLastRefreshAt) {
       var refreshed = new Date(_agentLastRefreshAt).toLocaleString('ru-RU', {
         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
       });
       main += ' · данные ' + refreshed;
     }
+    if (typeof isInvestbriefDataStale === 'function' && isInvestbriefDataStale(_agentSnapshotMeta)) {
+      main += ' · Показываем последние доступные данные. Обновление задерживается.';
+    }
     zonesEl.textContent = main;
+    if (sourceEl) {
+      sourceEl.textContent = _agentDataSourceMode === 'snapshot'
+        ? 'Источник данных: сохраненный снимок'
+        : 'Источник данных: прямое обновление';
+    }
+  }
+
+  function agentCardSortPriority(card) {
+    if (!card || card.insufficient) return 9;
+    if (card.status === 'Сильное движение') return 0;
+    if (card.status === 'Зона внимания') return 1;
+    if (card.status === 'Есть событие') return 2;
+    if (card.status === 'Спокойно') return 3;
+    return 8;
+  }
+
+  function sortAgentCards(cards) {
+    return (cards || []).slice().sort(function (a, b) {
+      var pa = agentCardSortPriority(a);
+      var pb = agentCardSortPriority(b);
+      if (pa !== pb) return pa - pb;
+      var sa = a && a.signals ? a.signals.length : 0;
+      var sb = b && b.signals ? b.signals.length : 0;
+      if (sb !== sa) return sb - sa;
+      return String(a && a.ticker || '').localeCompare(String(b && b.ticker || ''));
+    });
   }
 
   function renderAgentChips(tickers) {
@@ -1074,8 +1154,11 @@
         }).join('') + '</ul></div>';
     }
 
+    var toneClass = card.status === 'Сильное движение' ? 'agent-card--strong'
+      : (card.status === 'Зона внимания' ? 'agent-card--watch'
+        : (card.status === 'Есть событие' ? 'agent-card--event' : 'agent-card--calm'));
     return (
-      '<article class="agent-card" data-agent-ticker="' + escapeHtml(card.ticker) + '">' +
+      '<article class="agent-card ' + toneClass + '" data-agent-ticker="' + escapeHtml(card.ticker) + '">' +
         '<div class="agent-card-head">' +
           '<div class="agent-card-id">' +
             '<span class="agent-card-ticker">' + escapeHtml(card.ticker) + '</span>' +
@@ -1161,7 +1244,24 @@
         renderAgentGrid();
         return;
       }
-      return Promise.all(tickers.map(function (ticker) {
+      return loadAgentCardsFromSnapshot(tickers).then(function (snapshotResult) {
+        if (snapshotResult && snapshotResult.cards && snapshotResult.cards.length) {
+          if (seq !== _agentRefreshSeq) return;
+          _agentDataSourceMode = 'snapshot';
+          _agentCards = sortAgentCards(snapshotResult.cards);
+          _agentLoading = false;
+          _agentLastRefreshAt = Date.now();
+          _agentLastError = null;
+          appendSignalHistory(snapshotResult.cards);
+          maybeNotifyAgentAttention(snapshotResult.cards);
+          renderAgentGrid();
+          renderAgentHistory();
+          renderAgentLogPanel();
+          return;
+        }
+        _agentSnapshotMeta = null;
+        _agentDataSourceMode = 'live';
+        return Promise.all(tickers.map(function (ticker) {
         return fetchAgentSecurityData(ticker).then(function (data) {
           var events = findRelatedEventsForTicker(ticker);
           var signals = analyzeAgentSignals(data, events, settings);
@@ -1175,9 +1275,9 @@
             status: deriveAgentStatus(signals)
           };
         });
-      })).then(function (cards) {
+        })).then(function (cards) {
         if (seq !== _agentRefreshSeq) return;
-        _agentCards = cards;
+        _agentCards = sortAgentCards(cards);
         _agentLoading = false;
         _agentLastRefreshAt = Date.now();
         _agentLastError = null;
@@ -1190,6 +1290,7 @@
         renderAgentGrid();
         renderAgentHistory();
         renderAgentLogPanel();
+        });
       });
     }).catch(function (err) {
       if (seq !== _agentRefreshSeq) return;
