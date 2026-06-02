@@ -477,21 +477,47 @@
     var wUp = s.weekUpThreshold;
     var turnMul = s.turnoverMultiplier;
 
+    function fmtPct(v) {
+      if (v == null || !isFinite(v)) return '—';
+      var sign = v > 0 ? '+' : '';
+      return sign + Number(v).toFixed(2).replace('.', ',') + '%';
+    }
+
+    function fmtNum(v, digits) {
+      if (v == null || !isFinite(v)) return '—';
+      var n = Number(v);
+      return n.toLocaleString('ru-RU', {
+        minimumFractionDigits: digits || 0,
+        maximumFractionDigits: digits || 0
+      });
+    }
+
+    function fmtTurn(v) {
+      if (v == null || !isFinite(v)) return '—';
+      if (v >= 1e9) return fmtNum(v / 1e9, 2) + ' млрд ₽';
+      if (v >= 1e6) return fmtNum(v / 1e6, 1) + ' млн ₽';
+      return fmtNum(v, 0) + ' ₽';
+    }
+
+    var turnoverFactor = (d.todayTurnover != null && d.avgTurnover7d != null && d.avgTurnover7d > 0)
+      ? (d.todayTurnover / d.avgTurnover7d)
+      : null;
+
     if (d.dayChangePct != null && d.dayChangePct <= -dayTh) {
       signals.push({
         id: 'day-down',
         title: 'Заметное снижение за день',
         reasons: [
-          'Цена снизилась больше чем на ' + dayTh + '% за день.',
-          'Такое движение может быть связано с новостью, общим рынком или продажами в секторе.',
-          'Агент отмечает бумагу как зону внимания, но не делает торговую рекомендацию.'
+          'Факт: за день ' + fmtPct(d.dayChangePct) + ' (порог сигнала: ≤ −' + fmtNum(dayTh, 1) + '%).',
+          'Текущая цена: ' + formatAgentPrice(d.currentPrice) + '.',
+          'Оборот сегодня: ' + fmtTurn(d.todayTurnover) + (turnoverFactor != null ? ' (×' + fmtNum(turnoverFactor, 2) + ' к 7-дневному среднему).' : '.')
         ],
         checklist: [
-          'новости по компании',
-          'общий индекс МосБиржи',
-          'оборот торгов',
-          'дивиденды или отчётность',
-          'долю бумаги в портфеле'
+          'Изменение за неделю: ' + fmtPct(d.weekChangePct),
+          'Диапазон 30 дней: ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh),
+          'Средний оборот за 7 дней: ' + fmtTurn(d.avgTurnover7d),
+          'Источник и дата последней новости по тикеру',
+          'Доля бумаги в портфеле после движения'
         ]
       });
     }
@@ -501,16 +527,16 @@
         id: 'day-up',
         title: 'Заметный рост за день',
         reasons: [
-          'Цена выросла больше чем на ' + dayTh + '% за день.',
-          'Движение может быть связано с новостью, ожиданиями дивидендов или общим ростом рынка.',
-          'Если бумага есть в портфеле, стоит проверить, не выросла ли её доля слишком сильно.'
+          'Факт: за день ' + fmtPct(d.dayChangePct) + ' (порог сигнала: ≥ +' + fmtNum(dayTh, 1) + '%).',
+          'Текущая цена: ' + formatAgentPrice(d.currentPrice) + '.',
+          'Оборот сегодня: ' + fmtTurn(d.todayTurnover) + (turnoverFactor != null ? ' (×' + fmtNum(turnoverFactor, 2) + ' к 7-дневному среднему).' : '.')
         ],
         checklist: [
-          'причину роста',
-          'оборот торгов',
-          'новости по компании',
-          'ближайшие корпоративные события',
-          'долю позиции в портфеле'
+          'Изменение за неделю: ' + fmtPct(d.weekChangePct),
+          'Диапазон 30 дней: ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh),
+          'Средний оборот за 7 дней: ' + fmtTurn(d.avgTurnover7d),
+          'Источник и дата последней новости по тикеру',
+          'Доля бумаги в портфеле после движения'
         ]
       });
     }
@@ -520,16 +546,16 @@
         id: 'week-down',
         title: 'Снижение за неделю',
         reasons: [
-          'Цена заметно снизилась за неделю.',
-          'Агент проверяет такие движения, потому что они могут указывать на изменение ожиданий рынка.',
-          'Важно понять, это временная просадка или ухудшение факторов по бумаге.'
+          'Факт: за неделю ' + fmtPct(d.weekChangePct) + ' (порог сигнала: ≤ −' + fmtNum(wDown, 1) + '%).',
+          'Текущая цена: ' + formatAgentPrice(d.currentPrice) + '.',
+          'Движение за день: ' + fmtPct(d.dayChangePct) + '.'
         ],
         checklist: [
-          'новости за неделю',
-          'сектор',
-          'индекс МосБиржи',
-          'дивидендные ожидания',
-          'финансовые показатели компании'
+          'Диапазон 30 дней: ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh),
+          'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
+          'Ключевые новости за 7 дней по тикеру',
+          'Дата ближайшей отчетности/дивидендной отсечки',
+          'Текущая доля бумаги в портфеле'
         ]
       });
     }
@@ -539,15 +565,16 @@
         id: 'week-up',
         title: 'Рост за неделю',
         reasons: [
-          'Бумага быстро выросла за неделю.',
-          'Рост может быть реакцией на позитивные новости, дивиденды или приток спроса.',
-          'Агент отмечает движение, чтобы пользователь оценил его устойчивость.'
+          'Факт: за неделю ' + fmtPct(d.weekChangePct) + ' (порог сигнала: ≥ +' + fmtNum(wUp, 1) + '%).',
+          'Текущая цена: ' + formatAgentPrice(d.currentPrice) + '.',
+          'Движение за день: ' + fmtPct(d.dayChangePct) + '.'
         ],
         checklist: [
-          'подтверждается ли рост оборотом',
-          'есть ли свежие новости',
-          'не находится ли бумага около локального максимума',
-          'не выросла ли доля бумаги в портфеле'
+          'Диапазон 30 дней: ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh),
+          'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
+          'Ключевые новости за 7 дней по тикеру',
+          'Дата ближайшей отчетности/дивидендной отсечки',
+          'Текущая доля бумаги в портфеле'
         ]
       });
     }
@@ -558,15 +585,16 @@
         id: 'turnover-high',
         title: 'Оборот выше среднего',
         reasons: [
-          'Сегодня по бумаге торгуют активнее обычного.',
-          'Рост оборота может означать повышенный интерес рынка или реакцию на событие.',
-          'Такой сигнал важен, потому что движение цены с высоким оборотом обычно заслуживает большего внимания.'
+          'Факт: оборот сегодня ' + fmtTurn(d.todayTurnover) + '.',
+          'Средний оборот за 7 дней: ' + fmtTurn(d.avgTurnover7d) + '.',
+          'Отношение: ×' + fmtNum(turnoverFactor, 2) + ' (порог сигнала: ×' + fmtNum(turnMul, 1) + ').'
         ],
         checklist: [
-          'была ли новость по бумаге',
-          'совпадает ли рост оборота с изменением цены',
-          'как ведёт себя сектор',
-          'есть ли дивидендные или отчётные события'
+          'Изменение цены за день: ' + fmtPct(d.dayChangePct),
+          'Изменение цены за неделю: ' + fmtPct(d.weekChangePct),
+          'Текущая цена: ' + formatAgentPrice(d.currentPrice),
+          'Последние события по тикеру с датой публикации',
+          'Сравнение оборота с прошлыми пиками за месяц'
         ]
       });
     }
@@ -578,15 +606,15 @@
           id: 'month-low',
           title: 'Близко к нижней границе месяца',
           reasons: [
-            'Цена находится рядом с нижней частью месячного диапазона.',
-            'Это может быть зона повышенного внимания для инвестора.',
-            'Важно понять, снижение связано с временной волатильностью или с ухудшением факторов.'
+            'Факт: цена ' + formatAgentPrice(d.currentPrice) + ', минимум 30 дней ' + formatAgentPrice(d.monthLow) + '.',
+            'До минимума осталось: ' + fmtPct(((d.currentPrice - d.monthLow) / d.monthLow) * 100) + '.',
+            'Граница сигнала: нижние 15% диапазона ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh) + '.'
           ],
           checklist: [
-            'новости по компании',
-            'динамику оборота',
-            'рынок в целом',
-            'ближайшие отчёты и дивиденды'
+            'Изменение за день/неделю: ' + fmtPct(d.dayChangePct) + ' / ' + fmtPct(d.weekChangePct),
+            'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
+            'Последние новости по тикеру за 7 дней',
+            'Ближайшая отчетность и дивидендные даты'
           ]
         });
       }
@@ -595,35 +623,40 @@
           id: 'month-high',
           title: 'Близко к верхней границе месяца',
           reasons: [
-            'Цена находится рядом с верхней частью месячного диапазона.',
-            'Это может означать сильный спрос или приближение к зоне фиксации прибыли другими участниками.',
-            'Агент не предлагает действие, а показывает, что бумага находится около важной области.'
+            'Факт: цена ' + formatAgentPrice(d.currentPrice) + ', максимум 30 дней ' + formatAgentPrice(d.monthHigh) + '.',
+            'До максимума осталось: ' + fmtPct(((d.monthHigh - d.currentPrice) / d.currentPrice) * 100) + '.',
+            'Граница сигнала: верхние 15% диапазона ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh) + '.'
           ],
           checklist: [
-            'подтверждается ли движение оборотом',
-            'есть ли свежий позитив',
-            'не выглядит ли рост перегретым',
-            'как изменилась доля бумаги в портфеле'
+            'Изменение за день/неделю: ' + fmtPct(d.dayChangePct) + ' / ' + fmtPct(d.weekChangePct),
+            'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
+            'Последние новости по тикеру за 7 дней',
+            'Текущая доля бумаги в портфеле'
           ]
         });
       }
     }
 
     if (relatedEvents && relatedEvents.length) {
+      var latestEvent = relatedEvents[0] || {};
+      var latestDate = latestEvent.publishedAt
+        ? (typeof formatDateRu === 'function' ? formatDateRu(latestEvent.publishedAt) : String(latestEvent.publishedAt))
+        : 'дата не указана';
+      var latestSource = latestEvent.sourceName || 'источник не указан';
       signals.push({
         id: 'event',
         title: 'Есть событие по бумаге',
         reasons: [
-          'В сводке найдено событие по этой бумаге.',
-          'События по компании могут влиять на ожидания рынка.',
-          'Агент показывает его отдельно, чтобы пользователь не пропустил важную информацию.'
+          'Факт: найдено событий по тикеру — ' + relatedEvents.length + '.',
+          'Последнее событие: «' + String(latestEvent.title || 'без заголовка') + '».',
+          'Источник/дата: ' + latestSource + ' / ' + latestDate + '.'
         ],
         checklist: [
-          'источник события',
-          'дату публикации',
-          'влияние на дивиденды',
-          'влияние на прибыль или долговую нагрузку',
-          'реакцию цены и оборота'
+          'Изменение цены за день: ' + fmtPct(d.dayChangePct),
+          'Изменение цены за неделю: ' + fmtPct(d.weekChangePct),
+          'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
+          'Есть ли прямое упоминание дивидендов, прибыли или долга в тексте события',
+          'Дата и первоисточник публикации'
         ],
         events: relatedEvents
       });
