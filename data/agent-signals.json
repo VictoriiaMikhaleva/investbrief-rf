@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-06-07T23:55:37.243Z",
+  "updatedAt": "2026-06-08T02:31:03.334Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -182,8 +182,15 @@
         "insufficient": false,
         "currentPrice": 133.4,
         "dayChangePct": 0.23,
-        "signals": [],
-        "status": "Спокойно"
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
       },
       {
         "ticker": "AFKS",
