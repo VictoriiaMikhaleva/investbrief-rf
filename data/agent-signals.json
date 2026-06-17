@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-06-16T23:21:35.038Z",
+  "updatedAt": "2026-06-17T01:45:48.324Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -39,8 +39,15 @@
         "insufficient": false,
         "currentPrice": 320.25,
         "dayChangePct": -1.34,
-        "signals": [],
-        "status": "Спокойно"
+        "signals": [
+          {
+            "id": "month-low",
+            "title": "Близко к нижней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
       },
       {
         "ticker": "LKOH",
