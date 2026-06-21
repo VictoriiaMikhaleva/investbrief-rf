@@ -1631,22 +1631,46 @@
 
   var ARTICLE_READ_LABEL = 'Читать →';
 
-  function getArticleBadges(article) {
-    if (article.badges && article.badges.length) return article.badges.slice();
-    var chips = [];
-    if (article.riskLevel) {
-      var r = String(article.riskLevel);
-      if (/риск/i.test(r) || r === 'Смешанный профиль') chips.push(r);
-      else chips.push(r + ' риск');
+  function formatArticleReadTimeLabel(article) {
+    if (!article) return '';
+    if (article.readMinutesLabel) {
+      return 'время прочтения/время ознакомления: ' + article.readMinutesLabel;
     }
-    if (article.horizon) chips.push(article.horizon);
+    var m = Number(article.readMinutes);
+    if (!m || m < 1) return '';
+    var word = (m % 10 === 1 && m % 100 !== 11) ? 'минута'
+      : (m % 10 >= 2 && m % 10 <= 4 && (m % 100 < 10 || m % 100 >= 20)) ? 'минуты'
+      : 'минут';
+    return 'время прочтения/время ознакомления: ' + m + ' ' + word;
+  }
+
+  function isReadingTimeBadge(text) {
+    return /\d+[\s–-]*\d*\s*минут/i.test(String(text || ''));
+  }
+
+  function getArticleBadges(article) {
+    var chips = [];
+    if (article.badges && article.badges.length) {
+      chips = article.badges.filter(function (b) { return !isReadingTimeBadge(b); });
+    } else {
+      if (article.riskLevel) {
+        var r = String(article.riskLevel);
+        if (/риск/i.test(r) || r === 'Смешанный профиль') chips.push(r);
+        else chips.push(r + ' риск');
+      }
+      if (article.horizon) chips.push(article.horizon);
+    }
+    var readLabel = formatArticleReadTimeLabel(article);
+    if (readLabel) chips.push(readLabel);
     return chips;
   }
 
   function renderArticleMetaChips(badges) {
     if (!badges || !badges.length) return '';
     return '<div class="article-meta">' + badges.map(function (b) {
-      return '<span class="article-meta-chip">' + escapeHtml(b) + '</span>';
+      var readCls = String(b).indexOf('время прочтения/время ознакомления') === 0
+        ? ' article-meta-chip--read-time' : '';
+      return '<span class="article-meta-chip' + readCls + '">' + escapeHtml(b) + '</span>';
     }).join('') + '</div>';
   }
 
