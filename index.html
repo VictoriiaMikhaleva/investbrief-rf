@@ -30,7 +30,7 @@
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <link rel="manifest" href="./site.webmanifest" />
   <title>ИнвестБриф РФ — инвестиционная сводка</title>
-  <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, персональный список бумаг." />
+  <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, агент наблюдения, ОФЗ, дивиденды и обороты торгов." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -42,7 +42,7 @@
     <aside class="sidebar" aria-label="Навигация">
       <div class="sidebar-brand">
         <div class="logo">ИнвестБриф РФ</div>
-        <div class="tagline hint-frame">Ежедневная инвестиционная сводка</div>
+        <div class="tagline hint-frame">Сводка рынка · без аккаунта</div>
       </div>
       <nav class="sidebar-nav" id="sidebarNav" aria-label="Разделы">
         <button type="button" class="book-nav active" data-tab="briefing" style="--book-color:#3D5C47;--book-text:#F7F4EE">
@@ -111,7 +111,7 @@
     <div class="main">
       <header class="header header-mobile-only">
         <h1>ИнвестБриф РФ</h1>
-        <p class="subtitle hint-frame">Ежедневная инвестиционная сводка · данные на вашем устройстве</p>
+        <p class="subtitle hint-frame">Сводка рынка · работает без аккаунта</p>
       </header>
 
       <main class="content">
@@ -123,31 +123,35 @@
 
           <section class="home-block value-section" aria-labelledby="valueSectionTitle">
             <h3 class="home-block-title" id="valueSectionTitle">Зачем нужен ИнвестБриф</h3>
-            <p class="value-section-lead value-line-one">ИнвестБриф помогает быстро понять, что происходит на рынке и какие события важны именно для ваших позиций.</p>
+            <p class="value-section-lead value-line-one">Сводка рынка, агент наблюдения, ОФЗ, дивиденды, обороты торгов и понятные объяснения — в одном месте.</p>
             <div class="value-grid">
               <article class="value-card">
                 <h4 class="value-card-title"><span class="value-card-num">1</span> Экономит время</h4>
                 <p>Собирает ключевые события, котировки и показатели в одну ежедневную сводку.</p>
               </article>
               <article class="value-card">
-                <h4 class="value-card-title"><span class="value-card-num">2</span> Подстраивается под вас</h4>
-                <p>Добавьте интересующие позиции — и сводка станет персональной.</p>
+                <h4 class="value-card-title"><span class="value-card-num">2</span> Сводка по интересующим бумагам</h4>
+                <p>Добавьте позиции в список — события по ним соберутся отдельным блоком. Без аккаунта список хранится в браузере.</p>
               </article>
               <article class="value-card">
-                <h4 class="value-card-title"><span class="value-card-num">3</span> Показывает дивиденды шире</h4>
+                <h4 class="value-card-title"><span class="value-card-num">3</span> Агент наблюдения</h4>
+                <p>Замечает необычные движения цены и оборота по выбранным бумагам и подсказывает, куда посмотреть.</p>
+              </article>
+              <article class="value-card">
+                <h4 class="value-card-title"><span class="value-card-num">4</span> Показывает дивиденды шире</h4>
                 <p>История выплат, средняя доходность и прогноз помогают оценивать бумагу не только по цене.</p>
               </article>
               <article class="value-card">
-                <h4 class="value-card-title"><span class="value-card-num">4</span> Следит за активностью рынка</h4>
+                <h4 class="value-card-title"><span class="value-card-num">5</span> Следит за активностью рынка</h4>
                 <p>Обороты торгов показывают, где сейчас сосредоточен интерес инвесторов.</p>
-              </article>
-              <article class="value-card">
-                <h4 class="value-card-title"><span class="value-card-num">5</span> Объясняет простым языком</h4>
-                <p>Показывает, что произошло, почему это важно и на что обратить внимание.</p>
               </article>
               <article class="value-card">
                 <h4 class="value-card-title"><span class="value-card-num">6</span> Даёт обзор защитной части портфеля</h4>
                 <p>ОФЗ, купоны, доходность и сроки собраны в одном месте — чтобы легче сравнивать выпуски и понимать роль облигаций в портфеле.</p>
+              </article>
+              <article class="value-card">
+                <h4 class="value-card-title"><span class="value-card-num">7</span> Объясняет простым языком</h4>
+                <p>Показывает, что произошло, почему это важно и на что обратить внимание.</p>
               </article>
             </div>
             <div class="value-disclaimer">
@@ -266,7 +270,7 @@
           </section>
 
           <section class="home-block">
-            <h3 class="home-block-title">По моим позициям</h3>
+            <h3 class="home-block-title">Сводка по интересующим бумагам</h3>
             <div id="myBriefsList" class="briefing-list briefing-list--stack"></div>
           </section>
         </section>
@@ -587,12 +591,12 @@
         <section id="tab-settings" class="panel" data-panel="settings">
           <h2>Настройки</h2>
           <div class="panel-intro hint-frame panel-intro--one-line">
-            <p>Не является индивидуальной инвестиционной рекомендацией.</p>
+            <p>Не является индивидуальной инвестиционной рекомендацией. Вход необязателен — без аккаунта список бумаг, портфель и настройки сохраняются в этом браузере.</p>
           </div>
 
           <div class="glass settings-block auth-account" id="authAccountBlock">
-            <h3>Вход в аккаунт</h3>
-            <p class="muted auth-account-lead hint-frame">Войдите, чтобы сохранять список бумаг, портфель и настройки между устройствами.</p>
+            <h3>Вход для сохранения настроек</h3>
+            <p class="muted auth-account-lead hint-frame">Войдите, если нужно перенести список бумаг, портфель и настройки на другое устройство.</p>
             <p class="auth-sync-status muted" id="authSyncStatus" hidden></p>
 
             <div id="authSignedOut">
@@ -607,10 +611,7 @@
                   <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политику конфиденциальности</a>
                 </label>
               </div>
-              <div class="check-row">
-                <input type="checkbox" id="digestConsent" />
-                <label for="digestConsent" class="check-row-text">Я согласен(на) получать ежедневную сводку на email</label>
-              </div>
+              <p class="muted auth-soon-hint hint-frame">Дайджест скоро — email-рассылка пока в разработке.</p>
               <div class="auth-actions row" style="flex-wrap:wrap;gap:0.5rem;">
                 <button type="button" id="authSignInBtn" class="primary">Войти</button>
                 <button type="button" id="authSignUpBtn">Создать аккаунт</button>
@@ -649,7 +650,7 @@
           </div>
 
           <div class="glass settings-block">
-            <h3>Сводка</h3>
+            <h3>Сводка по интересующим бумагам</h3>
             <label class="muted">Формат</label>
             <select id="briefFormat" style="margin-bottom:0.75rem;">
               <option value="concise">Кратко</option>
@@ -659,42 +660,14 @@
             <label class="muted">Показывать</label>
             <select id="briefingScope">
               <option value="market">Весь рынок</option>
-              <option value="mine">Только мои бумаги</option>
+              <option value="mine">Только интересующие бумаги</option>
             </select>
           </div>
 
           <div class="glass settings-block">
-            <h3>Уведомления</h3>
-            <label class="muted">Важность событий</label>
-            <div class="slider-row">
-              <input type="range" id="alertThreshold" min="0" max="3" step="1" value="2" />
-              <span id="alertThresholdLabel" class="muted">Высокая и выше</span>
-            </div>
-            <div class="check-row">
-              <input type="checkbox" id="digestConsentSettings" />
-              <label for="digestConsentSettings" class="check-row-text">Я согласен(на) получать ежедневную сводку на email</label>
-            </div>
-            <label class="muted">Email для дайджеста</label>
-            <input type="email" id="digestEmailSettings" placeholder="ivanov@mail.ru" style="margin-bottom:0.65rem;" />
-            <label class="muted">Telegram (чат)</label>
-            <input type="text" id="telegramChatId" placeholder="@username или chat" style="margin-bottom:0.65rem;" />
-            <div class="checkbox-group" id="alertChannels">
-              <label><input type="checkbox" name="channel" value="push" checked /> В браузере</label>
-              <label><input type="checkbox" name="channel" value="email" /> Email</label>
-              <label><input type="checkbox" name="channel" value="telegram" /> Telegram</label>
-            </div>
-            <div id="alertRulesList" style="margin-top:0.75rem;"></div>
-            <div class="row" style="margin-top:0.75rem;">
-              <div class="ticker-ac-wrap grow">
-                <input id="alertRuleTicker" placeholder="Тикер" autocomplete="off" spellcheck="false" />
-              </div>
-              <select id="alertRuleType" style="width:auto;">
-                <option value="price">Цена</option>
-                <option value="brief">Новая сводка</option>
-                <option value="dividend">Дивиденд</option>
-              </select>
-              <button type="button" id="addAlertRuleBtn" class="primary">Добавить</button>
-            </div>
+            <h3>Уведомления скоро</h3>
+            <p class="muted hint-frame">Email-дайджест и оповещения в Telegram пока в разработке.</p>
+            <p class="muted hint-frame">Сейчас доступны уведомления агента в браузере — настройка в блоке «Агент наблюдения» ниже.</p>
           </div>
 
           <div class="glass settings-block">
@@ -727,7 +700,7 @@
               <input type="checkbox" id="agentNotifyAttention" />
               <label for="agentNotifyAttention" class="check-row-text">Уведомлять в браузере о новых зонах внимания</label>
             </div>
-            <p class="muted agent-settings-hint">Email и Telegram настраиваются в блоке «Уведомления» ниже.</p>
+            <p class="muted hint-frame">Сейчас доступны уведомления в браузере о новых зонах внимания.</p>
             <details class="agent-settings-history-details">
               <summary>История наблюдений</summary>
               <p class="muted agent-settings-history-hint">Последние записи. Полный журнал с фильтрами — в блоке «Агент наблюдения» на главной.</p>
@@ -747,10 +720,44 @@
 
           <details class="glass dev-settings" id="devSettings">
             <summary>Для разработчика</summary>
+            <h4 style="margin:0 0 0.45rem;font-size:0.88rem;">Дайджест скоро</h4>
+            <p class="muted hint-frame" style="margin:0 0 0.55rem;font-size:0.8rem;">Поля ниже сохраняются локально; рассылка пока не подключена.</p>
+            <div class="check-row">
+              <input type="checkbox" id="digestConsentSettings" />
+              <label for="digestConsentSettings" class="check-row-text">Согласие на email-дайджест (dev)</label>
+            </div>
+            <label class="muted">Email для дайджеста</label>
+            <input type="email" id="digestEmailSettings" placeholder="ivanov@mail.ru" style="margin-bottom:0.65rem;" />
+            <label class="muted">Время дайджеста</label>
+            <input type="time" id="digestTime" value="08:00" style="margin-bottom:0.65rem;" />
+            <h4 style="margin:0.65rem 0 0.45rem;font-size:0.88rem;">Уведомления (dev)</h4>
+            <label class="muted">Важность событий</label>
+            <div class="slider-row">
+              <input type="range" id="alertThreshold" min="0" max="3" step="1" value="2" />
+              <span id="alertThresholdLabel" class="muted">Высокая и выше</span>
+            </div>
+            <label class="muted">Telegram (чат)</label>
+            <input type="text" id="telegramChatId" placeholder="@username или chat" style="margin-bottom:0.65rem;" />
+            <div class="checkbox-group" id="alertChannels">
+              <label><input type="checkbox" name="channel" value="push" checked /> В браузере</label>
+              <label><input type="checkbox" name="channel" value="email" /> Email</label>
+              <label><input type="checkbox" name="channel" value="telegram" /> Telegram</label>
+            </div>
+            <div id="alertRulesList" style="margin-top:0.75rem;"></div>
+            <div class="row" style="margin-top:0.75rem;">
+              <div class="ticker-ac-wrap grow">
+                <input id="alertRuleTicker" placeholder="Тикер" autocomplete="off" spellcheck="false" />
+              </div>
+              <select id="alertRuleType" style="width:auto;">
+                <option value="price">Цена</option>
+                <option value="brief">Новая сводка</option>
+                <option value="dividend">Дивиденд</option>
+              </select>
+              <button type="button" id="addAlertRuleBtn" class="primary">Добавить</button>
+            </div>
+            <hr style="margin:0.85rem 0;border:none;border-top:1px solid var(--border);" />
             <label class="muted">Внутренний идентификатор</label>
             <input id="profileId" placeholder="user-001" />
-            <label class="muted">Время дайджеста</label>
-            <input type="time" id="digestTime" value="08:00" />
             <hr style="margin:0.85rem 0;border:none;border-top:1px solid var(--border);" />
             <h4 style="margin:0 0 0.45rem;font-size:0.88rem;">Сторож данных (невидимый)</h4>
             <p class="muted hint-frame" style="margin:0 0 0.55rem;font-size:0.8rem;">Тихо проверяет сводку, котировки и агента, пока открыта вкладка. Раз в час или при возврате на страницу.</p>
@@ -768,7 +775,7 @@
 
           <div class="glass">
             <h3>О приложении</h3>
-            <p class="muted hint-frame">ИнвестБриф РФ — сводка для частного инвестора. Котировки: Московская биржа. Без входа данные хранятся в браузере; после входа — синхронизация между устройствами.</p>
+            <p class="muted hint-frame">ИнвестБриф РФ — сводка рынка для частного инвестора: новости, агент наблюдения, ОФЗ, дивиденды и обороты. Котировки: Московская биржа. Вход необязателен — данные хранятся в браузере; аккаунт нужен только для переноса настроек на другое устройство.</p>
             <p class="muted"><a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a></p>
           </div>
         </section>
@@ -905,7 +912,7 @@
   <script src="./markets.js?v=20250831"></script>
   <script src="./storage.js?v=20260602b"></script>
   <script src="./ui.js?v=20260601e"></script>
-  <script src="./news.js?v=20260622b"></script>
+  <script src="./news.js?v=20260623"></script>
   <script src="./moex.js?v=20260602f"></script>
   <script src="./manual-data.js?v=20260622"></script>
   <script>
@@ -918,7 +925,7 @@
   <script src="./portfolio.js?v=20250828e"></script>
   <script src="./agent.js?v=20260602g"></script>
   <script src="./watchdog.js?v=20260530k"></script>
-  <script src="./firebase-sync.js?v=20260602c"></script>
-  <script src="./app.js?v=20260601e"></script>
+  <script src="./firebase-sync.js?v=20260623"></script>
+  <script src="./app.js?v=20260623"></script>
 </body>
 </html>

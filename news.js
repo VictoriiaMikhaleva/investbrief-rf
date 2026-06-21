@@ -1383,7 +1383,7 @@
             : 'Загружаем ленту из новостных источников…')));
     if (scope === 'mine') {
       if (positions.length) {
-        return escapeHtml('Сводка по вашим бумагам: ' + positions.join(', ') + '.') +
+        return escapeHtml('Сводка по интересующим бумагам: ' + positions.join(', ') + '.') +
           '<br>' + escapeHtml(sourceLine);
       }
       return escapeHtml('Добавьте интересующие позиции, чтобы видеть только релевантные события.') +
@@ -1480,8 +1480,8 @@
     var myList = sortBriefsByImportance(filterBriefsForPositions(base, positions)).slice(0, 12);
     renderBriefListInto(topEl, topList, 'Нет главных событий за выбранный горизонт.');
     renderBriefListInto(myEl, myList, positions.length
-      ? 'Нет новостей по вашим бумагам за этот период.'
-      : 'Добавьте интересующие позиции — здесь появятся связанные новости.');
+      ? 'Нет новостей по интересующим бумагам за этот период.'
+      : 'Добавьте интересующие позиции в список — здесь появятся связанные новости.');
     initBriefingBento();
     updateStats();
     if (typeof renderAgentSection === 'function') renderAgentSection();
@@ -1493,7 +1493,7 @@
     'Международные рынки',
     'Сырьё',
     'Валюта',
-    'По вашим позициям'
+    'Сводка по интересующим бумагам'
   ];
 
   function inferBriefCategory(b) {
@@ -1597,7 +1597,7 @@
       pushToCategory(b, b.category || inferBriefCategory(b));
     });
 
-    var contentCats = TODAY_CATEGORIES.filter(function (c) { return c !== 'По вашим позициям'; });
+    var contentCats = TODAY_CATEGORIES.filter(function (c) { return c !== 'Сводка по интересующим бумагам'; });
     contentCats.forEach(function (cat) {
       var pool = enriched.slice().sort(function (a, b) {
         return categoryMatchScore(b, cat) - categoryMatchScore(a, cat);
@@ -1614,7 +1614,7 @@
 
     enriched.forEach(function (b) {
       if (positions.indexOf(normalizeTicker(b.ticker)) >= 0) {
-        pushToCategory(b, 'По вашим позициям');
+        pushToCategory(b, 'Сводка по интересующим бумагам');
       }
     });
     el.innerHTML = TODAY_CATEGORIES.map(function (cat) {

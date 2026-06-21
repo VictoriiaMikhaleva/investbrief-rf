@@ -46,7 +46,7 @@
     var now = Date.now();
     if (!opts.force && now - _lastSyncErrorToastAt < SYNC_ERROR_TOAST_MS) return;
     _lastSyncErrorToastAt = now;
-    showToast(message || 'Синхронизация недоступна, данные сохранены на этом устройстве');
+    showToast(message || 'Не удалось синхронизировать — настройки сохранены в этом браузере');
   }
 
   function mapCloudSyncError(err) {
@@ -69,7 +69,7 @@
         msg.indexOf('firestore.googleapis.com') >= 0) {
       return 'База Firestore не включена в проекте investor-brief-rf. Создайте Firestore в Firebase Console.';
     }
-    return 'Синхронизация недоступна, данные сохранены на этом устройстве';
+    return 'Не удалось синхронизировать — настройки сохранены в этом браузере';
   }
 
   function sanitizeCloudValue(value) {
@@ -266,7 +266,7 @@
       var payload = prepareCloudPayload(collectLocalUserData());
       payload.updatedAt = fb.serverTimestamp();
       await fb.setDoc(ref, payload, { merge: true });
-      if (fb.currentUser) setAuthSyncStatus('Данные синхронизированы');
+      if (fb.currentUser) setAuthSyncStatus('Настройки синхронизированы');
       return true;
     } catch (err) {
       console.warn('cloud save failed', err);
@@ -283,13 +283,13 @@
       var snap = await fb.getDoc(ref);
       if (snap.exists()) {
         applyUserData(snap.data());
-        setAuthSyncStatus('Данные синхронизированы');
-        if (typeof showToast === 'function') showToast('Данные синхронизированы');
+        setAuthSyncStatus('Настройки синхронизированы');
+        if (typeof showToast === 'function') showToast('Настройки синхронизированы');
       } else {
         var ok = await saveUserDataToFirebase();
         if (ok) {
-          setAuthSyncStatus('Данные сохранены');
-          if (typeof showToast === 'function') showToast('Данные сохранены');
+          setAuthSyncStatus('Настройки сохранены в аккаунте');
+          if (typeof showToast === 'function') showToast('Настройки сохранены в аккаунте');
         }
       }
     } catch (err) {
@@ -479,9 +479,7 @@
           return fb.signOut(fb.auth).then(function () {
             setAuthSyncStatus('');
             var privacy = document.getElementById('privacyConsent');
-            var digestC = document.getElementById('digestConsent');
             if (privacy) privacy.checked = false;
-            if (digestC) digestC.checked = false;
             showToast('Вы вышли из аккаунта');
           });
         });

@@ -175,7 +175,7 @@
       var consentEl = document.getElementById('digestConsentSettings');
       var emailConsent = consentEl ? consentEl.checked : getDigest().emailConsent;
       if (emailVal && !emailConsent) {
-        showToast('Включите согласие на email-дайджест или очистите поле email');
+        showToast('Для dev-поля email укажите согласие или очистите поле');
         return;
       }
       setDigest({
