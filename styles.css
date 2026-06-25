@@ -109,6 +109,7 @@
     }
     .app {
       display: flex;
+      flex-wrap: wrap;
       min-height: 100vh;
     }
     .sidebar {
@@ -332,7 +333,7 @@
     }
     .header .subtitle { margin: 0; font-size: 0.9rem; color: var(--text-muted); max-width: 36rem; line-height: 1.55; }
     .content {
-      flex: 1;
+      flex: 0 0 auto;
       padding: 1.5rem 1.5rem calc(var(--bottom-nav-h) + var(--safe-bottom) + 2rem);
       max-width: 920px;
       width: 100%;
@@ -848,6 +849,13 @@
     @media (max-width: 899px) {
       :root {
         --bottom-nav-h: 108px;
+      }
+      .main {
+        flex: 1 0 auto;
+        width: 100%;
+      }
+      .content {
+        padding-bottom: 1.25rem;
       }
       .book-nav--bottom .book-nav__title {
         display: block !important;

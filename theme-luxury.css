@@ -355,6 +355,7 @@ input:focus, select:focus, textarea:focus {
   margin: 0 auto;
   width: 100%;
   max-width: 1080px;
+  flex: 0 0 100%;
   padding: 0.5rem 2.5rem 1rem;
   border-top: 1px solid rgba(23, 34, 51, 0.14);
   color: var(--text-muted);
@@ -380,7 +381,7 @@ input:focus, select:focus, textarea:focus {
 
 @media (max-width: 899px) {
   .app-footer {
-    padding: 0.35rem 1rem calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.7rem);
+    padding: 0.35rem 1rem calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.35rem);
     font-size: 0.78rem;
   }
 }
