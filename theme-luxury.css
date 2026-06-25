@@ -90,8 +90,8 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-/* Навигация: чистая и спокойная */
-.book-nav__3d { display: none !important; }
+/* Навигация: на десктопе — текст в сайдбаре; на мобиле нижняя панель — обложки из styles.css */
+.sidebar-nav .book-nav__3d { display: none !important; }
 
 .sidebar {
   background: rgba(255, 255, 255, 0.9);
@@ -381,8 +381,7 @@ input:focus, select:focus, textarea:focus {
 
 @media (max-width: 899px) {
   .app-footer {
-    padding: 0.35rem 1rem calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.35rem);
-    font-size: 0.78rem;
+    display: none;
   }
 }
 

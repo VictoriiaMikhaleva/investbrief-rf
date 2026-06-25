@@ -860,7 +860,7 @@
         width: 100%;
       }
       .content {
-        padding-bottom: 1.25rem;
+        padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.75rem);
       }
       .book-nav--bottom .book-nav__title {
         display: block !important;
@@ -882,8 +882,9 @@
       border-top: 1px solid var(--border);
       backdrop-filter: blur(14px);
       box-shadow: 0 -8px 32px rgba(31, 30, 28, 0.06);
-      z-index: 200;
+      z-index: 500;
       perspective: 700px;
+      touch-action: manipulation;
     }
     .book-nav--bottom {
       flex: 1;
