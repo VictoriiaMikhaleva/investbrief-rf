@@ -36,6 +36,10 @@
     });
   }
 
+  var MOBILE_BOTTOM_MIN_W = 4.25;
+  var MOBILE_BOTTOM_MIN_H = 2.72;
+  var MOBILE_BOTTOM_MIN_H_MULTI = 2.88;
+
   function fitBookNavSize(btn) {
     var box = btn.querySelector('.book-nav__3d');
     var title = btn.querySelector('.book-nav__title');
@@ -72,34 +76,28 @@
 
     title.classList.toggle('book-nav__title--multiline', multiline);
 
-    var wRem = Math.min(7.25, Math.max(4, longest * 0.32 + 1.6));
-    var hRem = multiline ? Math.max(2.85, wRem * 0.64) : Math.max(2.55, wRem * 0.56);
+    var wRem = Math.min(5.1, Math.max(MOBILE_BOTTOM_MIN_W, longest * 0.28 + 1.55));
+    var hRem = multiline
+      ? Math.max(MOBILE_BOTTOM_MIN_H_MULTI, wRem * 0.62)
+      : Math.max(MOBILE_BOTTOM_MIN_H, wRem * 0.58);
 
-    if (longest > 11) {
-      title.style.setProperty('--book-font', '0.52rem');
+    if (longest > 10) {
+      title.style.setProperty('--book-font', '0.5rem');
     } else if (longest > 8) {
+      title.style.setProperty('--book-font', '0.54rem');
+    } else if (longest > 6) {
       title.style.setProperty('--book-font', '0.56rem');
     } else {
-      title.style.setProperty('--book-font', '0.6rem');
+      title.style.setProperty('--book-font', '0.58rem');
     }
 
     var tab = btn.getAttribute('data-tab');
-    if (tab === 'settings') {
-      wRem = Math.max(wRem, 5.35);
-      hRem = Math.max(hRem, 3.05);
-      title.style.setProperty('--book-font', '0.54rem');
+    if (tab === 'settings' || tab === 'watchlist') {
+      title.style.setProperty('--book-font', '0.5rem');
     }
-    if (tab === 'briefing') {
-      wRem = Math.max(wRem, 4.65);
-      hRem = Math.max(hRem, 3.05);
-    }
-    if (tab === 'portfolio') {
-      wRem = Math.max(wRem, 4.55);
-      hRem = Math.max(hRem, 3);
-    }
-    if (tab === 'watchlist') {
-      wRem = Math.max(wRem, 4.45);
-      hRem = Math.max(hRem, 2.95);
+    if (tab === 'articles') {
+      wRem = MOBILE_BOTTOM_MIN_W;
+      hRem = MOBILE_BOTTOM_MIN_H;
     }
 
     box.style.setProperty('--book-w', wRem.toFixed(2) + 'rem');
