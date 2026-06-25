@@ -110,6 +110,8 @@
     .app {
       display: flex;
       flex-wrap: wrap;
+      align-content: flex-start;
+      align-items: flex-start;
       min-height: 100vh;
     }
     .sidebar {
@@ -850,8 +852,11 @@
       :root {
         --bottom-nav-h: 108px;
       }
+      .app {
+        min-height: auto;
+      }
       .main {
-        flex: 1 0 auto;
+        flex: 0 0 auto;
         width: 100%;
       }
       .content {
@@ -2948,6 +2953,18 @@
     .ofz-charts-grid { margin-bottom: 0.85rem; }
     .ofz-yield-curve-panel { margin-bottom: 0.85rem; }
     .ofz-yield-curve-wrap { height: 320px; position: relative; }
+    @media (max-width: 899px) {
+      .ofz-yield-curve-wrap { height: 220px; }
+      .ofz-charts-grid .analytics-chart-wrap {
+        min-height: 8.5rem;
+        height: 8.5rem;
+      }
+      .ofz-charts-grid .analytics-chart-wrap--div,
+      .ofz-charts-grid .analytics-chart-wrap--vol {
+        min-height: 9rem;
+        height: 9rem;
+      }
+    }
     .ofz-table-wrap { overflow-x: auto; overflow-y: auto; max-height: 32rem; margin-bottom: 0.45rem; }
     .ofz-table-toolbar { margin-bottom: 0.55rem; }
     .ofz-table-filters { flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; }
