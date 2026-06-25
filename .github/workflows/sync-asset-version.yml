@@ -1,0 +1,44 @@
+name: Sync Asset Version
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "**.css"
+      - "**.js"
+      - "**.mjs"
+      - "index.html"
+      - "privacy.html"
+      - "page-template.html"
+      - "scripts/**"
+      - "!asset-version.json"
+
+jobs:
+  bump:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Bump asset version and update HTML
+        run: node scripts/sync-asset-version.js --bump
+
+      - name: Commit cache-bust version
+        run: |
+          if [ -n "$(git status --porcelain asset-version.json index.html privacy.html page-template.html)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add asset-version.json index.html privacy.html page-template.html
+            git commit -m "chore(assets): bump cache version [skip ci]"
+            git push
+          else
+            echo "Asset version already in sync"
+          fi
