@@ -36,9 +36,8 @@
     });
   }
 
-  var MOBILE_BOTTOM_MIN_W = 4.25;
-  var MOBILE_BOTTOM_MIN_H = 2.72;
-  var MOBILE_BOTTOM_MIN_H_MULTI = 2.88;
+  var MOBILE_BOTTOM_W = 4.1;
+  var MOBILE_BOTTOM_H = 2.86;
 
   function fitBookNavSize(btn) {
     var box = btn.querySelector('.book-nav__3d');
@@ -76,28 +75,22 @@
 
     title.classList.toggle('book-nav__title--multiline', multiline);
 
-    var wRem = Math.min(5.1, Math.max(MOBILE_BOTTOM_MIN_W, longest * 0.28 + 1.55));
-    var hRem = multiline
-      ? Math.max(MOBILE_BOTTOM_MIN_H_MULTI, wRem * 0.62)
-      : Math.max(MOBILE_BOTTOM_MIN_H, wRem * 0.58);
+    var wRem = MOBILE_BOTTOM_W;
+    var hRem = MOBILE_BOTTOM_H;
 
     if (longest > 10) {
-      title.style.setProperty('--book-font', '0.5rem');
+      title.style.setProperty('--book-font', '0.48rem');
     } else if (longest > 8) {
-      title.style.setProperty('--book-font', '0.54rem');
+      title.style.setProperty('--book-font', '0.5rem');
     } else if (longest > 6) {
-      title.style.setProperty('--book-font', '0.56rem');
+      title.style.setProperty('--book-font', '0.52rem');
     } else {
-      title.style.setProperty('--book-font', '0.58rem');
+      title.style.setProperty('--book-font', '0.54rem');
     }
 
     var tab = btn.getAttribute('data-tab');
     if (tab === 'settings' || tab === 'watchlist') {
-      title.style.setProperty('--book-font', '0.5rem');
-    }
-    if (tab === 'articles') {
-      wRem = MOBILE_BOTTOM_MIN_W;
-      hRem = MOBILE_BOTTOM_MIN_H;
+      title.style.setProperty('--book-font', '0.48rem');
     }
 
     box.style.setProperty('--book-w', wRem.toFixed(2) + 'rem');

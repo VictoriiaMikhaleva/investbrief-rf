@@ -850,7 +850,7 @@
     .settings-block h3 { color: var(--accent); }
     @media (max-width: 899px) {
       :root {
-        --bottom-nav-h: 108px;
+        --bottom-nav-h: 54px;
       }
       .app {
         min-height: auto;
@@ -860,7 +860,20 @@
         width: 100%;
       }
       .content {
-        padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.75rem);
+        padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.5rem);
+      }
+      .bottom-nav {
+        height: auto;
+        padding: 0.22rem 0.08rem calc(0.22rem + var(--safe-bottom));
+      }
+      .book-nav--bottom {
+        padding: 0 0.04rem;
+      }
+      .book-nav--bottom .book-nav__3d {
+        width: var(--book-w, 4.1rem);
+        height: var(--book-h, 2.86rem);
+        min-height: 2.86rem;
+        max-height: 2.86rem;
       }
       .book-nav--bottom .book-nav__title {
         display: block !important;
@@ -871,6 +884,9 @@
       .book-nav--bottom.active .book-nav__3d,
       .book-nav--bottom:focus-visible .book-nav__3d {
         transform: none;
+      }
+      .toast {
+        bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.35rem);
       }
     }
     .bottom-nav {
@@ -931,9 +947,9 @@
         1px 2px 8px rgba(31, 30, 28, 0.14);
     }
     .book-nav--bottom .book-nav__title {
-      font-size: var(--book-font, 0.58rem);
-      line-height: 1.16;
-      padding: 0.22rem 0.16rem 0.22rem 0.1rem;
+      font-size: var(--book-font, 0.52rem);
+      line-height: 1.14;
+      padding: 0.18rem 0.12rem 0.18rem 0.08rem;
       text-align: center;
       text-transform: none;
       white-space: pre-line;
