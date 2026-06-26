@@ -2076,9 +2076,6 @@
               '<div class="quote-card-metrics">' +
                 '<span class="quote-card-price">' + escapeHtml(formatChartPrice(r.price, r.ticker)) + '</span>' +
                 '<span class="quote-card-change ' + ch.cls + '">' + escapeHtml(ch.text) + '</span>' +
-                (!isUs
-                  ? ('<span class="quote-card-meta muted">Оборот ' + escapeHtml(formatBlnRub(r.valToday)) + ' млрд</span>')
-                  : '') +
               '</div>' +
               divHtml +
             '</button>' +
@@ -2087,6 +2084,10 @@
       }).join('');
       rows.forEach(function (r) {
         var wrap = grid.querySelector('.quote-card-wrap[data-ticker="' + r.ticker + '"]');
+        if (wrap && !isUs && r.valToday != null) {
+          var turnoverEl = wrap.querySelector('[data-turnover]');
+          if (turnoverEl) turnoverEl.textContent = formatBlnRub(r.valToday) + ' млрд ₽';
+        }
         if (wrap && typeof queueEnrichQuoteCard === 'function') queueEnrichQuoteCard(wrap, r.ticker, market);
         else if (wrap && typeof enrichQuoteCard === 'function') enrichQuoteCard(wrap, r.ticker);
         if (wrap && isUs && r.divYieldPct != null) {

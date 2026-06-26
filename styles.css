@@ -2404,7 +2404,7 @@
       white-space: nowrap;
     }
     .modal--analytics {
-      max-width: 42rem;
+      max-width: min(56rem, calc(100vw - 2rem));
       width: calc(100% - 2rem);
       max-height: 92vh;
       overflow-y: auto;
@@ -2425,15 +2425,34 @@
       line-height: 1.4;
     }
     .security-chart-wrap {
+      width: 100%;
       min-height: 140px;
     }
     .security-chart-wrap--short {
       min-height: 100px;
     }
     .security-chart-wrap canvas {
-      width: 100%;
+      width: 100% !important;
       height: 140px;
       display: block;
+    }
+    .security-chart-wrap--vol {
+      min-height: 13rem;
+      height: 13rem;
+    }
+    @media (min-width: 900px) {
+      .modal--analytics .security-chart-wrap {
+        min-height: 14rem;
+        height: 14rem;
+      }
+      .modal--analytics .security-chart-wrap--vol {
+        min-height: 16rem;
+        height: 16rem;
+      }
+      .modal--analytics .security-chart-wrap--short:not(.security-chart-wrap--vol) {
+        min-height: 15rem;
+        height: 15rem;
+      }
     }
     .security-chart-wrap--short canvas {
       height: 100px;

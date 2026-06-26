@@ -594,7 +594,7 @@
     var w = rect.width;
     var h = rect.height;
     if (w < 100) {
-      var section = canvas.closest('.analytics-detail, .security-analytics-charts, #securityAnalyticsSection');
+      var section = canvas.closest('.analytics-detail, .security-analytics-charts, #securityAnalyticsSection, .modal--analytics');
       if (section) {
         var sw = section.getBoundingClientRect().width;
         if (sw >= 100) w = Math.max(sw - 32, minW);
@@ -611,6 +611,25 @@
       w: Math.max(w > 0 ? w : minW, minW),
       h: Math.max(h > 0 ? h : minH, minH)
     };
+  }
+
+  function buildVolumeBarSeries(volumeByDay) {
+    return (volumeByDay || []).map(function (p) {
+      var volStr = p.v > 0
+        ? p.v.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+        : '0';
+      return {
+        v: p.v,
+        date: p.date,
+        label: p.label || '',
+        valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
+        hoverLines: [
+          formatBarHoverDate(p) || p.label || '',
+          'Оборот: ' + volStr + ' млрд ₽'
+        ],
+        forecast: false
+      };
+    });
   }
 
   function drawMiniBarChart(canvas, series, options) {
@@ -705,25 +724,53 @@
         metaEl.textContent = parts.join(' · ');
       }
       if (divCanvas) {
-        drawMiniBarChart(divCanvas, (a.divYieldByYear || []).map(function (y) {
-          return { v: y.yieldPct != null && isFinite(y.yieldPct) ? y.yieldPct : 0 };
-        }), { color: CHART_COLOR_AUTUMN });
+        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
+          color: CHART_COLOR_AUTUMN,
+          forecastColor: CHART_COLOR_FORECAST,
+          ySuffix: '₽/акц.',
+          showValues: true,
+          compactBars: true
+        });
       }
       if (divNote) {
-        divNote.textContent = (a.divYieldByYear || []).map(function (y) {
-          return y.year + ': ' + (y.yieldPct != null ? formatDivYieldPct(y.yieldPct) : '—');
-        }).join(' · ');
+        divNote.innerHTML = typeof formatDividendChartInfoHtml === 'function'
+          ? formatDividendChartInfoHtml(a, null)
+          : ((a.divYieldByYear || []).map(function (y) {
+            return y.year + ': ' + (y.yieldPct != null ? formatDivYieldPct(y.yieldPct) : '—');
+          }).join(' · ') || '—');
+        divNote.className = 'analytics-chart-note div-chart-info';
       }
-      if (volCanvas) drawMiniBarChart(volCanvas, a.volumeByDay || [], { color: '#6B7A5A' });
-      if (volNote) volNote.textContent = typeof formatVolumeFreshnessNote === 'function'
-        ? formatVolumeFreshnessNote(a)
-        : ('Оборот TQBR, млрд ₽ · ' + (a.volumeByDay.length || 0) + ' торговых дней');
-      if (volNote && a.volumeStale) volNote.className = 'analytics-chart-note chart-info-readable data-stale-warning';
+      if (volCanvas) {
+        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), {
+          color: '#6B7A5A',
+          ySuffix: 'млрд ₽',
+          valueMode: 'bln',
+          showLabels: false,
+          showValues: false
+        });
+      }
+      if (volNote) {
+        volNote.textContent = (typeof formatVolumeFreshnessNote === 'function'
+          ? formatVolumeFreshnessNote(a)
+          : ('Оборот TQBR, млрд ₽ · ' + (a.volumeByDay.length || 0) + ' торговых дней'))
+          + ' · наведите на столбец: дата и оборот';
+        volNote.className = 'analytics-chart-note chart-info-readable' + (a.volumeStale ? ' data-stale-warning' : '');
+      }
       return fetchMoexHistory(ticker, 'month');
     }).then(function (r) {
       if (priceCanvas && r && r.series) {
         drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: 'month' });
       }
+      requestAnimationFrame(function () {
+        if (divCanvas && divCanvas._barChartState) {
+          drawFullBarChart(divCanvas, divCanvas._barChartState.series,
+            Object.assign({}, divCanvas._barChartState.baseOptions, { _redraw: true }));
+        }
+        if (volCanvas && volCanvas._barChartState) {
+          drawFullBarChart(volCanvas, volCanvas._barChartState.series,
+            Object.assign({}, volCanvas._barChartState.baseOptions, { _redraw: true }));
+        }
+      });
     }).catch(function () {
       if (metaEl) metaEl.textContent = 'Не удалось загрузить аналитику';
     });
@@ -1357,23 +1404,7 @@
         divNote.className = 'analytics-chart-note div-chart-info';
       }
       if (volCanvas) {
-        var volBars = (a.volumeByDay || []).map(function (p) {
-          var volStr = p.v > 0
-            ? p.v.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
-            : '0';
-          return {
-            v: p.v,
-            date: p.date,
-            label: p.label || '',
-            valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
-            hoverLines: [
-              formatBarHoverDate(p) || p.label || '',
-              'Оборот: ' + volStr + ' млрд ₽'
-            ],
-            forecast: false
-          };
-        });
-        drawFullBarChart(volCanvas, volBars, {
+        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), {
           color: '#6B7A5A',
           ySuffix: 'млрд ₽',
           valueMode: 'bln',
@@ -1483,23 +1514,7 @@
         divNote.className = 'analytics-chart-note div-chart-info';
       }
       if (volCanvas) {
-        var volBars = (a.volumeByDay || []).map(function (p) {
-          var volStr = p.v > 0
-            ? p.v.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
-            : '0';
-          return {
-            v: p.v,
-            date: p.date,
-            label: p.label || '',
-            valueLabel: p.v > 0 ? formatBarChartValue(p.v, { valueMode: 'bln' }) : '',
-            hoverLines: [
-              formatBarHoverDate(p) || p.label || '',
-              'Оборот: ' + volStr + ' млрд ₽'
-            ],
-            forecast: false
-          };
-        });
-        drawFullBarChart(volCanvas, volBars, {
+        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), {
           color: '#6B7A5A',
           ySuffix: 'млрд ₽',
           valueMode: 'bln',
