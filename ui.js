@@ -1463,6 +1463,10 @@
       if (priceCanvas && r && r.series) {
         drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
       }
+      requestAnimationFrame(function () {
+        var activeTab = document.querySelector('[data-security-chart-tab].active');
+        if (activeTab) redrawSecurityChartTab(activeTab.getAttribute('data-security-chart-tab'));
+      });
     }).catch(function () {
       if (metaEl) metaEl.textContent = 'Не удалось загрузить аналитику';
       if (divNote) divNote.textContent = 'История дивидендов пока не добавлена.';

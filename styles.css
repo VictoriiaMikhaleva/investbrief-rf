@@ -1823,10 +1823,35 @@
     .analytics-detail-meta { margin: 0 0 0.75rem; font-size: 0.9rem; line-height: 1.45; }
     .analytics-charts-grid {
       display: grid;
+      grid-template-columns: 1fr;
       gap: 1rem;
+      width: 100%;
     }
-    @media (min-width: 720px) {
-      .analytics-charts-grid { grid-template-columns: 1fr; }
+    .analytics-detail .analytics-chart-tabs-panels {
+      gap: 0;
+    }
+    .analytics-detail .analytics-chart-panel {
+      width: 100%;
+      max-width: none;
+    }
+    .analytics-detail .chart-canvas-wrap.analytics-chart-wrap {
+      width: 100%;
+      max-width: none;
+      box-sizing: border-box;
+    }
+    @media (min-width: 900px) {
+      .analytics-detail .analytics-chart-wrap {
+        min-height: 16rem;
+        height: 16rem;
+      }
+      .analytics-detail .analytics-chart-wrap--vol {
+        min-height: 18rem;
+        height: 18rem;
+      }
+      .analytics-detail .analytics-chart-wrap--div {
+        min-height: 17rem;
+        height: 17rem;
+      }
     }
     .analytics-chart-panel {
       padding: 0.65rem 0;
@@ -1925,20 +1950,6 @@
     .analytics-chart-wrap--div {
       min-height: 13.5rem;
       height: 13.5rem;
-    }
-    @media (min-width: 900px) {
-      .analytics-detail .analytics-chart-wrap {
-        min-height: 14rem;
-        height: 14rem;
-      }
-      .analytics-detail .analytics-chart-wrap--vol {
-        min-height: 16rem;
-        height: 16rem;
-      }
-      .analytics-detail .analytics-chart-wrap--div {
-        min-height: 15rem;
-        height: 15rem;
-      }
     }
     .analytics-chart-wrap canvas {
       display: block;
