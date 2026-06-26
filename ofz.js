@@ -454,8 +454,9 @@
       if (statusEl) statusEl.textContent = _loadError ? 'Ошибка загрузки' : '';
       return;
     }
-    el.textContent = count + ' выпуск' + ofzPluralRu(count) +
-      ' на TQOB · котировки и параметры — МосБиржа ISS. Не аффилировано со Smart-Lab. Не является индивидуальной инвестиционной рекомендацией.';
+    el.innerHTML = 'Это независимый проект для личного анализа ОФЗ.<br>ОФЗ — облигации федерального займа.<br>' +
+      count + ' выпуск' + ofzPluralRu(count) +
+      ' на TQOB · котировки и параметры — МосБиржа ISS.<br>Не является индивидуальной инвестиционной рекомендацией.';
     if (statusEl) {
       var updatedHm = '';
       if (_ofzDataLive && _ofzLastFetchedAt) {

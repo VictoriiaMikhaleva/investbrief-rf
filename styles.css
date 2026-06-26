@@ -2409,10 +2409,16 @@
     }
     .imoex-top-cards .quote-card-div-block--compact .quote-div-val {
       flex: 0 0 auto;
-      max-width: 52%;
+      max-width: 58%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      font-size: 0.68rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .imoex-top-cards .quote-card-div-block--compact .quote-div-val .quote-div-src {
+      font-size: 0.58rem;
     }
     .modal--analytics {
       max-width: min(56rem, calc(100vw - 2rem));

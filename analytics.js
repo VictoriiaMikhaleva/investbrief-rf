@@ -109,17 +109,32 @@
     return s.slice(5, 7) + '.' + s.slice(0, 4);
   }
 
-  /** Подпись вместо «нет данных»: дата последней выплаты или «без дивидендов». null — ещё грузится. */
-  function formatDivAvg5yFallbackLabel(a) {
+  function getLastDividendPayment(dividends) {
+    var last = null;
+    (dividends || []).forEach(function (d) {
+      if (!d.date || !isFinite(d.value) || d.value <= 0) return;
+      if (!last || d.date > last.date) last = { date: String(d.date).slice(0, 10), value: d.value };
+    });
+    return last;
+  }
+
+  /** HTML: «12,50 ₽ · 07.2024 MOEX» — последняя выплата, если нет средней за 5 лет. */
+  function formatDivLastPaymentDisplayHtml(a) {
+    if (!a || a.divDataSource === 'demo') return null;
+    var pay = getLastDividendPayment(a.dividends || []);
+    if (!pay) return null;
+    var monthYear = formatDivPaymentMonthYear(pay.date);
+    if (!monthYear) return null;
+    return escapeHtml(formatDividendRubShort(pay.value) + ' ₽ · ' + monthYear) +
+      ' ' + formatDivYieldSourceBadge('moex');
+  }
+
+  /** Текст вместо «нет данных»: «без дивидендов». null — ещё грузится. */
+  function formatDivAvg5yFallbackText(a) {
     if (!a) return '—';
     if (a.divDataSource === 'demo') return 'данные требуют проверки';
     if (a.dividends === undefined && a.noMoexDividends !== true && a.divYieldQuality == null) return null;
-
-    var lastIso = requireAnalyticsCore().getLastDividendPaymentDate(a.dividends || []);
-    if (lastIso) {
-      var monthYear = formatDivPaymentMonthYear(lastIso);
-      if (monthYear) return monthYear;
-    }
+    if (getLastDividendPayment(a.dividends || [])) return null;
     if (a.noMoexDividends || a.divYieldQuality === 'none') return 'без дивидендов';
     return 'без дивидендов';
   }
@@ -135,7 +150,14 @@
         : 'Средняя див. доходность за 5 завершённых лет · MOEX ISS';
       return;
     }
-    var fallback = formatDivAvg5yFallbackLabel(a);
+    var lastPayHtml = formatDivLastPaymentDisplayHtml(a);
+    if (lastPayHtml) {
+      avgEl.innerHTML = lastPayHtml;
+      avgEl.className = 'quote-div-val';
+      avgEl.title = 'Последняя выплата · средняя за 5 лет недоступна';
+      return;
+    }
+    var fallback = formatDivAvg5yFallbackText(a);
     if (fallback === null) {
       avgEl.textContent = '…';
       avgEl.className = 'quote-div-val muted';
@@ -144,9 +166,7 @@
     }
     avgEl.textContent = fallback;
     avgEl.className = 'quote-div-val muted';
-    if (/^\d{2}\.\d{4}$/.test(fallback)) {
-      avgEl.title = 'Последняя выплата · средняя за 5 лет недоступна';
-    } else if (fallback === 'без дивидендов') {
+    if (fallback === 'без дивидендов') {
       avgEl.title = a && a.divDataSource === 'yahoo'
         ? 'По данным Yahoo дивидендная доходность TTM не определена'
         : 'По данным MOEX дивидендных выплат нет';

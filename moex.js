@@ -70,6 +70,7 @@
   var _marketSnapshotMeta = null;
   var _marketMacroFetchedAt = 0;
   var _marketMacroDataLive = false;
+  var _marketMacroCbrFxDate = '';
 
   function fetchInvestbriefDataFile(filename, force) {
     force = !!force;
@@ -1428,8 +1429,9 @@
       var result = parseCbrDailyJson(data);
       if (!result || (!result.USD && !result.EUR && !result.CNY)) throw new Error('cbr json empty');
       var dated = data && data.Date ? String(data.Date).slice(0, 10) : '';
+      if (dated) _marketMacroCbrFxDate = dated;
       ['USD', 'EUR', 'CNY'].forEach(function (code) {
-        if (result[code]) result[code].source = dated ? 'ЦБ РФ · ' + dated : 'ЦБ РФ';
+        if (result[code]) result[code].source = 'ЦБ РФ';
       });
       moexCacheSet(cacheKey, result, 30 * 60 * 1000);
       return result;
@@ -1508,8 +1510,7 @@
         var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
         if (!item || item.price == null) return;
         patchMacroTile(row, id, formatFxPrice(item.price),
-          macroMeta(item.changePct, (item.source || 'ЦБ РФ').split(' · ')[0],
-            (item.source || '').indexOf(' · ') >= 0 ? (item.source || '').split(' · ').slice(1).join(' · ') : 'валюта'));
+          macroMeta(item.changePct, (item.source || 'ЦБ РФ').split(' · ')[0], 'валюта'));
       });
     }
     var commodities = moexCacheGet('macro.commodities');
@@ -1684,14 +1685,15 @@
 
 
   function patchMacroCommodityTiles(row, forceRefresh) {
-    if (!row) return;
-    fetchMacroCommodities(!!forceRefresh).then(function (snap) {
+    if (!row) return Promise.resolve();
+    return fetchMacroCommodities(!!forceRefresh).then(function (snap) {
       if (!snap) {
         MACRO_COMMODITY_TILE_IDS.forEach(function (id) {
           patchMacroTile(row, id, '—', { changeText: 'нет данных', changeCls: 'muted' });
         });
         return;
       }
+      markMarketMacroLive();
       applyMacroCommodityBootstrap(row, snap);
     });
   }
@@ -2268,6 +2270,9 @@
   function renderUsMarketMacro(forceRefresh) {
     var row = document.getElementById('marketMacroRow');
     if (!row || typeof Markets === 'undefined') return;
+    var macroSrcShow = document.getElementById('marketMacroSource');
+    if (macroSrcShow) macroSrcShow.hidden = false;
+    updateMarketMacroSource('loading');
     row.hidden = false;
     row.innerHTML =
       renderMacroTile('spy', 'S&P 500', '…', macroMeta(null, 'Yahoo', 'ETF SPY', 'США')) +
@@ -2276,15 +2281,21 @@
       renderMacroCommodityTilesHtml();
 
     applyMacroBootstrap(row);
-    patchMacroCommodityTiles(row, !!forceRefresh);
-
+    var usJobs = [
+      patchMacroCommodityTiles(row, !!forceRefresh)
+    ];
     [['spy', 'SPY'], ['qqq', 'QQQ'], ['vix', '^VIX']].forEach(function (pair) {
-      Markets.fetchUsQuote(pair[1]).then(function (q) {
+      usJobs.push(Markets.fetchUsQuote(pair[1]).then(function (q) {
+        if (q && q.price != null) markMarketMacroLive();
         var val = q && q.price != null ? formatChartPrice(q.price, pair[1]) : '—';
         patchMacroTile(row, pair[0], val, macroMeta(q && q.changePct, 'Yahoo', pair[1] === '^VIX' ? 'индекс' : 'ETF ' + pair[1]));
       }).catch(function () {
         patchMacroTile(row, pair[0], '—', { changeText: 'нет данных', changeCls: 'muted', source: 'Yahoo' });
-      });
+      }));
+    });
+
+    Promise.all(usJobs).finally(function () {
+      updateMarketMacroSource();
     });
 
     renderImoexMarketPanel(forceRefresh);
@@ -2312,6 +2323,7 @@
     if (isDataSnapshotStale(snapshot) && typeof showToast === 'function') {
       showToast('Показываем последние доступные данные. Обновление задерживается.');
     }
+    updateMarketMacroSource();
     return true;
   }
 
@@ -2334,20 +2346,70 @@
     _marketMacroFetchedAt = Date.now();
   }
 
+  function formatCbrFxDateRu(iso) {
+    var s = String(iso || '').slice(0, 10);
+    if (s.length < 10) return '';
+    return s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4);
+  }
+
+  function updateMarketMacroSource(mode) {
+    var el = document.getElementById('marketMacroSource');
+    if (!el) return;
+    if (mode === 'loading') {
+      el.textContent = shouldShowUsBriefingMarketBlocks()
+        ? 'Загрузка данных Yahoo Finance…'
+        : 'Загрузка данных МосБиржи и ЦБ РФ…';
+      return;
+    }
+    if (shouldShowUsBriefingMarketBlocks()) {
+      var usHm = _marketMacroDataLive && _marketMacroFetchedAt
+        ? new Date(_marketMacroFetchedAt).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        : new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      el.textContent = 'Yahoo Finance · МосБиржа FORTS · автообновление каждые 5 мин · обновлено ' + usHm;
+      return;
+    }
+    var updatedHm = '';
+    if (_marketMacroDataLive && _marketMacroFetchedAt) {
+      updatedHm = new Date(_marketMacroFetchedAt).toLocaleString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } else if (_marketSnapshotMeta) {
+      updatedHm = formatSnapshotUpdatedHm(_marketSnapshotMeta);
+    } else {
+      updatedHm = new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    }
+    var base = _marketMacroDataLive
+      ? 'МосБиржа ISS · ЦБ РФ · автообновление каждые 5 мин · обновлено ' + updatedHm
+      : 'МосБиржа ISS · ЦБ РФ · Обновлено: ' + updatedHm;
+    if (_marketMacroCbrFxDate) {
+      base += ' · официальный курс валют ЦБ на ' + formatCbrFxDateRu(_marketMacroCbrFxDate);
+    }
+    if (!_marketMacroDataLive && isDataSnapshotStale(_marketSnapshotMeta)) {
+      base += ' · Показываем последние доступные данные. Обновление задерживается.';
+    }
+    el.textContent = base;
+  }
+
 
 
   function renderMarketMacro(forceRefresh) {
     var row = document.getElementById('marketMacroRow');
     if (!row) return;
+    updateMarketMacroSource('loading');
     if (shouldShowUsBriefingMarketBlocks()) {
       renderUsMarketMacro(forceRefresh);
       return;
     }
     if (!shouldShowRuBriefingMarketBlocks()) {
       row.hidden = true;
+      var macroSrcHide = document.getElementById('marketMacroSource');
+      if (macroSrcHide) macroSrcHide.hidden = true;
       renderImoexMarketPanel(forceRefresh);
       return;
     }
+    var macroSrcShow = document.getElementById('marketMacroSource');
+    if (macroSrcShow) macroSrcShow.hidden = false;
     if (forceRefresh) invalidateMacroLiveCaches(false);
     row.hidden = false;
     var keepDom = !!(forceRefresh && row.querySelector('[data-macro-id="imoex"]'));
@@ -2361,63 +2423,69 @@
         renderMacroCommodityTilesHtml();
       applyMacroBootstrap(row);
     }
-    patchMacroCommodityTiles(row, !!forceRefresh);
     if (!forceRefresh) applyMarketSnapshotFromFile(row, false);
 
     var macroLiveFailed = false;
+    var macroJobs = [
+      patchMacroCommodityTiles(row, !!forceRefresh),
+      fetchCbrKeyRate().then(function (kr) {
+        patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
+          macroMeta(kr.changePct, 'ЦБ РФ', 'ключевая'));
+      }).catch(function () {
+        patchMacroTile(row, 'rate', '—', { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ' });
+      }),
 
-    fetchCbrKeyRate().then(function (kr) {
-      patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
-        macroMeta(kr.changePct, 'ЦБ РФ', 'ключевая'));
-    }).catch(function () {
-      patchMacroTile(row, 'rate', '—', { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ' });
-    });
+      fetchMoexQuote('IMOEX').then(function (q) {
+        if (q && q.price != null) markMarketMacroLive();
+        var val = q && q.price != null ? formatChartPrice(q.price, 'IMOEX') : '—';
+        patchMacroTile(row, 'imoex', val, macroMeta(q && q.changePct, 'МосБиржа', 'IMOEX'));
+      }).catch(function () {
+        macroLiveFailed = true;
+        patchMacroTile(row, 'imoex', '—', { changeText: 'нет данных', changeCls: 'muted', source: 'МосБиржа' });
+      }),
 
-    fetchMoexQuote('IMOEX').then(function (q) {
-      if (q && q.price != null) markMarketMacroLive();
-      var val = q && q.price != null ? formatChartPrice(q.price, 'IMOEX') : '—';
-      patchMacroTile(row, 'imoex', val, macroMeta(q && q.changePct, 'МосБиржа', 'IMOEX'));
-    }).catch(function () {
-      macroLiveFailed = true;
-      patchMacroTile(row, 'imoex', '—', { changeText: 'нет данных', changeCls: 'muted', source: 'МосБиржа' });
-    });
+      fetchCbrFxRatesFromJson().then(function (data) {
+        var quick = parseCbrDailyJson(data);
+        if (!quick) return;
+        var dated = data && data.Date ? String(data.Date).slice(0, 10) : '';
+        if (dated) _marketMacroCbrFxDate = dated;
+        ['USD', 'EUR', 'CNY'].forEach(function (code) {
+          var item = quick[code];
+          var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
+          if (!item || item.price == null) return;
+          patchMacroTile(row, id, formatFxPrice(item.price),
+            macroMeta(item.changePct, 'ЦБ РФ', 'валюта'));
+        });
+      }).catch(function () { /* moex spot ниже */ }),
 
-    fetchCbrFxRatesFromJson().then(function (data) {
-      var quick = parseCbrDailyJson(data);
-      if (!quick) return;
-      var dated = data && data.Date ? String(data.Date).slice(0, 10) : '';
-      ['USD', 'EUR', 'CNY'].forEach(function (code) {
-        var item = quick[code];
-        var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
-        if (!item || item.price == null) return;
-        patchMacroTile(row, id, formatFxPrice(item.price),
-          macroMeta(item.changePct, 'ЦБ РФ', 'валюта', dated || ''));
-      });
-    }).catch(function () { /* moex spot ниже */ });
-
-    fetchMacroFxRates(!!forceRefresh).then(function (fx) {
-      if (!fx) return;
-      if (Object.keys(fx).length) markMarketMacroLive();
-      ['USD', 'EUR', 'CNY'].forEach(function (code) {
-        var item = fx[code];
-        var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
-        if (!item || item.price == null) {
+      fetchMacroFxRates(!!forceRefresh).then(function (fx) {
+        if (!fx) return;
+        if (Object.keys(fx).length) markMarketMacroLive();
+        ['USD', 'EUR', 'CNY'].forEach(function (code) {
+          var item = fx[code];
+          var id = code === 'USD' ? 'usd' : (code === 'EUR' ? 'eur' : 'cny');
+          if (!item || item.price == null) {
+            patchMacroTile(row, id, '—', { changeText: 'нет данных', changeCls: 'muted', source: 'МосБиржа' });
+            return;
+          }
+          var src = String(item.source || 'МосБиржа').split(' · ')[0];
+          patchMacroTile(row, id, formatFxPrice(item.price),
+            macroMeta(item.changePct, src, 'валюта'));
+        });
+      }).catch(function () {
+        macroLiveFailed = true;
+        ['usd', 'eur', 'cny'].forEach(function (id) {
           patchMacroTile(row, id, '—', { changeText: 'нет данных', changeCls: 'muted', source: 'МосБиржа' });
-          return;
+        });
+      }).then(function () {
+        if (forceRefresh && macroLiveFailed && !_marketMacroDataLive) {
+          return applyMarketSnapshotFallback(row);
         }
-        var srcParts = String(item.source || 'МосБиржа').split(' · ');
-        patchMacroTile(row, id, formatFxPrice(item.price),
-          macroMeta(item.changePct, srcParts[0], 'валюта', srcParts.slice(1).join(' · ') || ''));
-      });
-    }).catch(function () {
-      macroLiveFailed = true;
-      ['usd', 'eur', 'cny'].forEach(function (id) {
-        patchMacroTile(row, id, '—', { changeText: 'нет данных', changeCls: 'muted', source: 'МосБиржа' });
-      });
-    }).then(function () {
-      if (forceRefresh && macroLiveFailed && !_marketMacroDataLive) {
-        applyMarketSnapshotFallback(row);
-      }
+      })
+    ];
+
+    Promise.all(macroJobs).finally(function () {
+      updateMarketMacroSource();
     });
 
     renderImoexMarketPanel(forceRefresh);
