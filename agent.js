@@ -19,8 +19,8 @@
   function agentMoexIss() {
     return (typeof MOEX_ISS !== 'undefined' && MOEX_ISS) ? MOEX_ISS : 'https://iss.moex.com/iss';
   }
-  var AGENT_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
-  var AGENT_STALE_AFTER_MS = 20 * 60 * 1000;
+  var AGENT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+  var AGENT_STALE_AFTER_MS = 5 * 60 * 1000;
   var _agentBriefingBound = false;
   var _agentSettingsBound = false;
   var _agentLogBound = false;
