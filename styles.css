@@ -1912,6 +1912,7 @@
       font-weight: 700;
     }
     .analytics-chart-wrap {
+      width: 100%;
       min-height: 11rem;
       height: 11rem;
     }
@@ -1924,9 +1925,20 @@
     .analytics-chart-wrap--div {
       min-height: 13.5rem;
       height: 13.5rem;
-      max-width: 36rem;
-      margin-left: auto;
-      margin-right: auto;
+    }
+    @media (min-width: 900px) {
+      .analytics-detail .analytics-chart-wrap {
+        min-height: 14rem;
+        height: 14rem;
+      }
+      .analytics-detail .analytics-chart-wrap--vol {
+        min-height: 16rem;
+        height: 16rem;
+      }
+      .analytics-detail .analytics-chart-wrap--div {
+        min-height: 15rem;
+        height: 15rem;
+      }
     }
     .analytics-chart-wrap canvas {
       display: block;

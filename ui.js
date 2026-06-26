@@ -444,9 +444,9 @@
   function drawPriceChart(canvas, series, options) {
     options = options || {};
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var rect = canvas.getBoundingClientRect();
-    var w = Math.max(rect.width, 280);
-    var h = Math.max(rect.height, 160);
+    var size = chartCanvasSize(canvas, 280, 160);
+    var w = size.w;
+    var h = size.h;
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     var ctx = canvas.getContext('2d');
@@ -585,6 +585,33 @@
   }
 
 
+
+  function chartCanvasSize(canvas, minW, minH) {
+    minW = minW || 200;
+    minH = minH || 100;
+    if (!canvas) return { w: minW, h: minH };
+    var rect = canvas.getBoundingClientRect();
+    var w = rect.width;
+    var h = rect.height;
+    if (w < 100) {
+      var section = canvas.closest('.analytics-detail, .security-analytics-charts, #securityAnalyticsSection');
+      if (section) {
+        var sw = section.getBoundingClientRect().width;
+        if (sw >= 100) w = Math.max(sw - 32, minW);
+      }
+    }
+    if (h < 40) {
+      var wrap = canvas.parentElement;
+      if (wrap) {
+        var wrapH = wrap.clientHeight || parseFloat(getComputedStyle(wrap).height);
+        if (wrapH >= 40) h = wrapH;
+      }
+    }
+    return {
+      w: Math.max(w > 0 ? w : minW, minW),
+      h: Math.max(h > 0 ? h : minH, minH)
+    };
+  }
 
   function drawMiniBarChart(canvas, series, options) {
     options = options || {};
@@ -974,8 +1001,9 @@
     var hoverIndex = options.hoverIndex != null ? options.hoverIndex : prevHover;
 
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var w = Math.max(canvas.clientWidth || 280, 200);
-    var h = Math.max(canvas.clientHeight || 140, 100);
+    var size = chartCanvasSize(canvas, 200, 100);
+    var w = size.w;
+    var h = size.h;
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     var ctx = canvas.getContext('2d');
@@ -1001,12 +1029,20 @@
     var pad = { l: 40, r: 16, t: padTop, b: 30 };
     var plotW = w - pad.l - pad.r;
     var plotH = h - pad.t - pad.b;
-    var barGap = compact ? 14 : (n > 20 ? 2 : (n > 14 ? 4 : 8));
-    var maxBarW = compact ? 48 : (n > 14 ? 28 : 40);
-    var minBarW = compact ? 32 : 4;
-    var barW = Math.max(minBarW, Math.min(maxBarW, (plotW - barGap * Math.max(n - 1, 0)) / Math.max(n, 1)));
-    var groupW = n * barW + barGap * Math.max(n - 1, 0);
-    var startX = pad.l + Math.max(0, (plotW - groupW) / 2);
+    var stretchBars = options.stretchBars !== false && n > 14;
+    var barGap = compact ? 14 : (stretchBars ? (n > 60 ? 1 : (n > 30 ? 2 : 3)) : (n > 20 ? 2 : (n > 14 ? 4 : 8)));
+    var barW;
+    var startX;
+    if (stretchBars) {
+      barW = Math.max(1, (plotW - barGap * Math.max(n - 1, 0)) / Math.max(n, 1));
+      startX = pad.l;
+    } else {
+      var maxBarW = compact ? 48 : (n > 14 ? 28 : 40);
+      var minBarW = compact ? 32 : 4;
+      barW = Math.max(minBarW, Math.min(maxBarW, (plotW - barGap * Math.max(n - 1, 0)) / Math.max(n, 1)));
+      var groupW = n * barW + barGap * Math.max(n - 1, 0);
+      startX = pad.l + Math.max(0, (plotW - groupW) / 2);
+    }
     var color = options.color || CHART_COLOR_AUTUMN;
     var forecastColor = options.forecastColor || CHART_COLOR_FORECAST;
     var barsMeta = [];
@@ -1153,6 +1189,31 @@
     });
     document.querySelectorAll('[data-security-chart-panel]').forEach(function (panel) {
       panel.classList.toggle('active', panel.getAttribute('data-security-chart-panel') === tab);
+    });
+    redrawSecurityChartTab(tab);
+  }
+
+  function redrawSecurityChartTab(tab) {
+    requestAnimationFrame(function () {
+      if (tab === 'price') {
+        var priceCanvas = document.getElementById('analyticsPriceChart');
+        var meta = priceCanvas && priceCanvas._chartMeta;
+        if (priceCanvas && meta) {
+          drawPriceChart(priceCanvas, meta.series, { ticker: meta.ticker, horizon: meta.horizon });
+        }
+      } else if (tab === 'dividends') {
+        var divCanvas = document.getElementById('analyticsDivChart');
+        var divSt = divCanvas && divCanvas._barChartState;
+        if (divCanvas && divSt) {
+          drawFullBarChart(divCanvas, divSt.series, Object.assign({}, divSt.baseOptions, { _redraw: true }));
+        }
+      } else if (tab === 'volume') {
+        var volCanvas = document.getElementById('analyticsVolChart');
+        var volSt = volCanvas && volCanvas._barChartState;
+        if (volCanvas && volSt) {
+          drawFullBarChart(volCanvas, volSt.series, Object.assign({}, volSt.baseOptions, { _redraw: true }));
+        }
+      }
     });
   }
 
@@ -1328,6 +1389,16 @@
         volNote.className = 'analytics-chart-note chart-info-readable' + (a.volumeStale ? ' data-stale-warning' : '');
       }
       renderSecurityProfile(ticker, a);
+      requestAnimationFrame(function () {
+        if (divCanvas && divCanvas._barChartState) {
+          drawFullBarChart(divCanvas, divCanvas._barChartState.series,
+            Object.assign({}, divCanvas._barChartState.baseOptions, { _redraw: true }));
+        }
+        if (volCanvas && volCanvas._barChartState) {
+          drawFullBarChart(volCanvas, volCanvas._barChartState.series,
+            Object.assign({}, volCanvas._barChartState.baseOptions, { _redraw: true }));
+        }
+      });
       return fetchMoexHistory(ticker, horizon);
     }).then(function (r) {
       if (priceCanvas && r && r.series) {
