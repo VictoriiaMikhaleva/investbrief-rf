@@ -49,6 +49,21 @@ function writeVersionFile(version) {
   return payload;
 }
 
+function readTextFileUtf8(filePath) {
+  var buf = fs.readFileSync(filePath);
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+    return buf.slice(2).toString('utf16le');
+  }
+  if (buf.length >= 4 && buf[0] === 0x3c && buf[1] === 0x00) {
+    return buf.toString('utf16le');
+  }
+  return buf.toString('utf8');
+}
+
+function writeTextFileUtf8(filePath, text) {
+  fs.writeFileSync(filePath, text, 'utf8');
+}
+
 function applyVersionToHtml(html, version) {
   var next = html.replace(/\?v=[^"'\s>]+/g, '?v=' + version);
   var marker = /<!--\s*ibrf-asset-version:\s*[^>]*-->/;
@@ -66,10 +81,10 @@ function syncHtmlFiles(version) {
   HTML_FILES.forEach(function (name) {
     var filePath = path.join(ROOT, name);
     if (!fs.existsSync(filePath)) return;
-    var before = fs.readFileSync(filePath, 'utf8');
+    var before = readTextFileUtf8(filePath);
     var after = applyVersionToHtml(before, version);
     if (after !== before) {
-      fs.writeFileSync(filePath, after, 'utf8');
+      writeTextFileUtf8(filePath, after);
       changed.push(name);
     }
   });
