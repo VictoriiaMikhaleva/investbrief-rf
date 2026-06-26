@@ -165,7 +165,7 @@
       return;
     }
     avgEl.textContent = fallback;
-    avgEl.className = 'quote-div-val muted';
+    avgEl.className = fallback === 'без дивидендов' ? 'quote-div-val quote-div-val--nodivs' : 'quote-div-val muted';
     if (fallback === 'без дивидендов') {
       avgEl.title = a && a.divDataSource === 'yahoo'
         ? 'По данным Yahoo дивидендная доходность TTM не определена'
