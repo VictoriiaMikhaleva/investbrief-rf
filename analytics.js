@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v9.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v10.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -51,8 +51,8 @@
 
   function invalidateAnalyticsTickerCache(ticker) {
     ticker = normalizeTicker(ticker);
-    analyticsCacheRemove('full.v6.' + ticker);
-    analyticsCacheRemove('hist.v4.' + ticker + '.' + YIELD_YEARS);
+    analyticsCacheRemove('full.v7.' + ticker);
+    analyticsCacheRemove('hist.v5.' + ticker + '.' + YIELD_YEARS);
   }
 
   function isIndexQuoteTicker(ticker) {
@@ -417,23 +417,25 @@
     return requireAnalyticsCore().isAnalyticsFullCacheStale(cached, todayMsk);
   }
 
-  function fetchMoexShareHistoryDaily(ticker, yearsBack) {
-    ticker = normalizeTicker(ticker);
-    yearsBack = yearsBack || YIELD_YEARS;
-    var cacheKey = 'hist.v4.' + ticker + '.' + yearsBack;
-    var cached = analyticsCacheGet(cacheKey);
-    if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
+  function isoNextDay(iso) {
+    var d = new Date(String(iso).slice(0, 10) + 'T12:00:00');
+    if (isNaN(d.getTime())) return iso;
+    d.setDate(d.getDate() + 1);
+    return typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(d) : d.toISOString().slice(0, 10);
+  }
 
-    var till = new Date();
-    var windowYears = requireAnalyticsCore().getYieldWindowYears();
-    var fromYear = windowYears[0] - 1;
-    var from = new Date(fromYear, 0, 1);
-    var fromStr = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(from) : moexFormatDate(from);
-    var tillStr = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(till) : moexFormatDate(till);
+  function mergeHistoryByDate(base, extra) {
+    var byDate = {};
+    (base || []).forEach(function (r) { byDate[r.date] = r; });
+    (extra || []).forEach(function (r) { byDate[r.date] = r; });
+    return Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
+  }
+
+  function fetchMoexShareHistoryRange(ticker, fromStr, tillStr) {
+    ticker = normalizeTicker(ticker);
     var baseUrl = MOEX_ISS + '/history/engines/stock/markets/shares/boards/TQBR/securities/' +
       encodeURIComponent(ticker) + '.json?from=' + fromStr + '&till=' + tillStr +
       '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE';
-
     var all = [];
     var start = 0;
     var iDate = -1;
@@ -474,9 +476,40 @@
     }
 
     return fetchPage().then(function (rows) {
-      var byDate = {};
-      rows.forEach(function (r) { byDate[r.date] = r; });
-      var out = Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
+      return mergeHistoryByDate([], rows);
+    });
+  }
+
+  function backfillHistoryVolumeTail(history, ticker, tillStr) {
+    var core = requireAnalyticsCore();
+    if (!history || !history.length || !core.isHistoryVolumeBehindQuotes(history)) {
+      return Promise.resolve(history);
+    }
+    var lastVol = core.moexHistoryLastVolumeDate(history);
+    if (!lastVol) return Promise.resolve(history);
+    return fetchMoexShareHistoryRange(ticker, isoNextDay(lastVol), tillStr).then(function (tail) {
+      if (!tail.length) return history;
+      return mergeHistoryByDate(history, tail);
+    });
+  }
+
+  function fetchMoexShareHistoryDaily(ticker, yearsBack) {
+    ticker = normalizeTicker(ticker);
+    yearsBack = yearsBack || YIELD_YEARS;
+    var cacheKey = 'hist.v5.' + ticker + '.' + yearsBack;
+    var cached = analyticsCacheGet(cacheKey);
+    if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
+
+    var till = new Date();
+    var windowYears = requireAnalyticsCore().getYieldWindowYears();
+    var fromYear = windowYears[0] - 1;
+    var from = new Date(fromYear, 0, 1);
+    var fromStr = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(from) : moexFormatDate(from);
+    var tillStr = typeof moexFormatDateMsk === 'function' ? moexFormatDateMsk(till) : moexFormatDate(till);
+
+    return fetchMoexShareHistoryRange(ticker, fromStr, tillStr).then(function (out) {
+      return backfillHistoryVolumeTail(out, ticker, tillStr);
+    }).then(function (out) {
       analyticsCacheSet(cacheKey, out, 6 * 60 * 60 * 1000);
       return out;
     });
@@ -613,7 +646,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v6.' + ticker;
+    var cacheKey = 'full.v7.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 

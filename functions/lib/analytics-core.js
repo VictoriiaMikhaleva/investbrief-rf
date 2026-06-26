@@ -11,7 +11,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.0.0';
+  var VERSION = '1.0.1';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var YIELD_YEARS = 5;
@@ -261,6 +261,33 @@
     return String(rows[rows.length - 1].date || '').slice(0, 10);
   }
 
+  function moexHistoryLastVolumeDate(rows) {
+    if (!rows || !rows.length) return '';
+    var i;
+    for (i = rows.length - 1; i >= 0; i--) {
+      var r = rows[i];
+      if (!r || !r.date) continue;
+      var raw = r.value != null ? r.value : null;
+      if ((raw == null || !isFinite(raw) || raw <= 0) && r.v != null && isFinite(r.v) && r.v > 0) {
+        raw = r.v * 1e9;
+      }
+      if (raw != null && isFinite(raw) && raw > 0) return String(r.date).slice(0, 10);
+    }
+    return '';
+  }
+
+  function isHistoryVolumeBehindQuotes(history) {
+    if (!history || !history.length) return true;
+    var lastTrade = moexHistoryLastTradeDate(history);
+    var lastVol = moexHistoryLastVolumeDate(history);
+    if (!lastTrade || !lastVol) return true;
+    if (lastVol >= lastTrade) return false;
+    var tradeMs = new Date(lastTrade + 'T20:00:00').getTime();
+    var volMs = new Date(lastVol + 'T20:00:00').getTime();
+    if (isNaN(tradeMs) || isNaN(volMs)) return true;
+    return tradeMs - volMs > STALE_TRADE_DAYS * 24 * 60 * 60 * 1000;
+  }
+
   function isMoexHistoryCacheStale(rows, todayIso) {
     var last = moexHistoryLastTradeDate(rows);
     if (!last || last.length < 10) return true;
@@ -268,12 +295,28 @@
     if (isNaN(lastMs)) return true;
     var todayMsk = todayIso || new Date().toISOString().slice(0, 10);
     var todayMs = new Date(todayMsk + 'T20:00:00').getTime();
-    return todayMs - lastMs > STALE_TRADE_DAYS * 24 * 60 * 60 * 1000;
+    if (todayMs - lastMs > STALE_TRADE_DAYS * 24 * 60 * 60 * 1000) return true;
+    if (rows[0] && rows[0].value !== undefined) {
+      var lastVol = moexHistoryLastVolumeDate(rows);
+      if (lastVol && lastVol < last) {
+        var volMs = new Date(lastVol + 'T20:00:00').getTime();
+        if (!isNaN(volMs) && lastMs - volMs > STALE_TRADE_DAYS * 24 * 60 * 60 * 1000) return true;
+      }
+    }
+    return false;
   }
 
   function isAnalyticsFullCacheStale(cached, todayIso) {
     if (!cached) return true;
     if (isMoexHistoryCacheStale(cached.volumeByDay, todayIso)) return true;
+    if (cached.dataAsOf && cached.volumeByDay && cached.volumeByDay.length) {
+      var volLast = moexHistoryLastTradeDate(cached.volumeByDay);
+      var dataAsOf = String(cached.dataAsOf).slice(0, 10);
+      if (volLast && dataAsOf > volLast) {
+        var gapMs = new Date(dataAsOf + 'T20:00:00').getTime() - new Date(volLast + 'T20:00:00').getTime();
+        if (gapMs > STALE_TRADE_DAYS * 24 * 60 * 60 * 1000) return true;
+      }
+    }
     return false;
   }
 
@@ -425,6 +468,8 @@
     var divMetrics = finalizeDividendMetrics(dividends, yearly, forecast);
     var volumeByDay = sliceVolumeSeries(history, VOLUME_YEAR_DAYS);
     var dataAsOf = moexHistoryLastTradeDate(history);
+    var volumeStale = isMoexHistoryCacheStale(volumeByDay, now ? now.toISOString().slice(0, 10) : undefined)
+      || isHistoryVolumeBehindQuotes(history);
     return {
       dividends: dividends,
       divYieldByYear: yearly,
@@ -435,7 +480,7 @@
       monthlyForecast: buildMonthlyDividendForecast12m(dividends, history, quotePrice, now),
       volumeByDay: volumeByDay,
       dataAsOf: dataAsOf,
-      volumeStale: isMoexHistoryCacheStale(volumeByDay, now ? now.toISOString().slice(0, 10) : undefined)
+      volumeStale: volumeStale
     };
   }
 
@@ -522,6 +567,8 @@
     assessDivYieldQuality: assessDivYieldQuality,
     finalizeDividendMetrics: finalizeDividendMetrics,
     moexHistoryLastTradeDate: moexHistoryLastTradeDate,
+    moexHistoryLastVolumeDate: moexHistoryLastVolumeDate,
+    isHistoryVolumeBehindQuotes: isHistoryVolumeBehindQuotes,
     isMoexHistoryCacheStale: isMoexHistoryCacheStale,
     isAnalyticsFullCacheStale: isAnalyticsFullCacheStale,
     tradeDateSeriesNeedsYear: tradeDateSeriesNeedsYear,

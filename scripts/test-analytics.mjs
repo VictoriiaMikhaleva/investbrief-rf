@@ -99,6 +99,12 @@ async function testTicker(ticker) {
 
   assert(history.length >= MIN_HISTORY_DAYS, ticker + ': мало истории (' + history.length + ' дней)', errors);
   assert(!metrics.volumeStale, ticker + ': устаревший оборот (last=' + metrics.dataAsOf + ')', errors);
+  const volLast = Core.moexHistoryLastVolumeDate(metrics.volumeByDay);
+  assert(
+    !Core.isHistoryVolumeBehindQuotes(history),
+    ticker + ': оборот отстаёт от котировок (vol=' + volLast + ', asOf=' + metrics.dataAsOf + ')',
+    errors
+  );
   assert(
     metrics.volumeByDay.length >= MIN_HISTORY_DAYS * 0.7,
     ticker + ': мало точек оборота (' + metrics.volumeByDay.length + ')',
