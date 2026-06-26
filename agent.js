@@ -1042,16 +1042,20 @@
     var main = count
       ? ('Сегодня: ' + count + ' ' + pluralZones(count))
       : 'Сегодня зон внимания нет';
-    var snapshotHm = (typeof formatInvestbriefDataUpdatedHm === 'function')
-      ? formatInvestbriefDataUpdatedHm(_agentSnapshotMeta)
-      : '';
-    if (snapshotHm) {
-      main += ' · Обновлено: ' + snapshotHm;
-    } else if (_agentLastRefreshAt) {
-      var refreshed = new Date(_agentLastRefreshAt).toLocaleString('ru-RU', {
-        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+    if (_agentLastRefreshAt) {
+      var checkedHm = new Date(_agentLastRefreshAt).toLocaleString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit'
       });
-      main += ' · данные ' + refreshed;
+      main += ' · Обновлено: ' + checkedHm;
+    }
+    if (_agentDataSourceMode === 'snapshot') {
+      var snapshotHm = (typeof formatInvestbriefDataUpdatedHm === 'function')
+        ? formatInvestbriefDataUpdatedHm(_agentSnapshotMeta)
+        : '';
+      if (snapshotHm) {
+        main += ' · котировки на ' + snapshotHm;
+      }
     }
     if (typeof isInvestbriefDataStale === 'function' && isInvestbriefDataStale(_agentSnapshotMeta)) {
       main += ' · Показываем последние доступные данные. Обновление задерживается.';
@@ -1059,8 +1063,8 @@
     zonesEl.textContent = main;
     if (sourceEl) {
       sourceEl.textContent = _agentDataSourceMode === 'snapshot'
-        ? 'Источник данных: сохраненный снимок'
-        : 'Источник данных: прямое обновление';
+        ? 'Источник: снимок с сервера (MOEX обновляется ~раз в 30 мин)'
+        : 'Источник: Московская биржа · автообновление каждые 5 мин';
     }
   }
 
@@ -1215,6 +1219,45 @@
     renderAgentBriefingMeta();
   }
 
+  function applyAgentCardsFromLive(cards, seq) {
+    if (seq !== _agentRefreshSeq) return;
+    _agentSnapshotMeta = null;
+    _agentDataSourceMode = 'live';
+    _agentCards = sortAgentCards(cards);
+    _agentLoading = false;
+    _agentLastRefreshAt = Date.now();
+    _agentLastError = null;
+    var okCount = cards.filter(function (c) { return !c.insufficient; }).length;
+    if (!okCount) {
+      _agentLastError = 'Нет котировок MOEX по выбранным бумагам. Попробуйте обновить позже.';
+    }
+    appendSignalHistory(cards);
+    maybeNotifyAgentAttention(cards);
+    renderAgentGrid();
+    renderAgentHistory();
+    renderAgentLogPanel();
+  }
+
+  function fetchAgentCardsLive(tickers, settings, seq) {
+    return Promise.all(tickers.map(function (ticker) {
+      return fetchAgentSecurityData(ticker).then(function (data) {
+        var events = findRelatedEventsForTicker(ticker);
+        var signals = analyzeAgentSignals(data, events, settings);
+        return {
+          ticker: ticker,
+          name: data.name || (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(ticker) : ticker),
+          currentPrice: data.currentPrice,
+          dayChangePct: data.dayChangePct,
+          insufficient: data.insufficient,
+          signals: signals,
+          status: deriveAgentStatus(signals)
+        };
+      });
+    })).then(function (cards) {
+      applyAgentCardsFromLive(cards, seq);
+    });
+  }
+
   function refreshAgentSignals(force) {
     var settings = getAgentSettings();
     if (!settings.enabled) {
@@ -1244,53 +1287,41 @@
         renderAgentGrid();
         return;
       }
+      var bootstrap = !_agentCards.length && !_agentLastRefreshAt;
+      function runLive() {
+        return fetchAgentCardsLive(tickers, settings, seq).catch(function () {
+          return loadAgentCardsFromSnapshot(tickers).then(function (snapshotResult) {
+            if (!snapshotResult || !snapshotResult.cards || !snapshotResult.cards.length) {
+              throw new Error('agent_live_and_snapshot_failed');
+            }
+            if (seq !== _agentRefreshSeq) return;
+            _agentDataSourceMode = 'snapshot';
+            _agentCards = sortAgentCards(snapshotResult.cards);
+            _agentLoading = false;
+            _agentLastRefreshAt = Date.now();
+            _agentLastError = null;
+            appendSignalHistory(snapshotResult.cards);
+            maybeNotifyAgentAttention(snapshotResult.cards);
+            renderAgentGrid();
+            renderAgentHistory();
+            renderAgentLogPanel();
+          });
+        });
+      }
+      if (!bootstrap) {
+        return runLive();
+      }
       return loadAgentCardsFromSnapshot(tickers).then(function (snapshotResult) {
         if (snapshotResult && snapshotResult.cards && snapshotResult.cards.length) {
           if (seq !== _agentRefreshSeq) return;
           _agentDataSourceMode = 'snapshot';
           _agentCards = sortAgentCards(snapshotResult.cards);
-          _agentLoading = false;
-          _agentLastRefreshAt = Date.now();
-          _agentLastError = null;
-          appendSignalHistory(snapshotResult.cards);
-          maybeNotifyAgentAttention(snapshotResult.cards);
           renderAgentGrid();
-          renderAgentHistory();
-          renderAgentLogPanel();
-          return;
+          renderAgentBriefingMeta();
         }
-        _agentSnapshotMeta = null;
-        _agentDataSourceMode = 'live';
-        return Promise.all(tickers.map(function (ticker) {
-        return fetchAgentSecurityData(ticker).then(function (data) {
-          var events = findRelatedEventsForTicker(ticker);
-          var signals = analyzeAgentSignals(data, events, settings);
-          return {
-            ticker: ticker,
-            name: data.name || (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(ticker) : ticker),
-            currentPrice: data.currentPrice,
-            dayChangePct: data.dayChangePct,
-            insufficient: data.insufficient,
-            signals: signals,
-            status: deriveAgentStatus(signals)
-          };
-        });
-        })).then(function (cards) {
-        if (seq !== _agentRefreshSeq) return;
-        _agentCards = sortAgentCards(cards);
-        _agentLoading = false;
-        _agentLastRefreshAt = Date.now();
-        _agentLastError = null;
-        var okCount = cards.filter(function (c) { return !c.insufficient; }).length;
-        if (!okCount) {
-          _agentLastError = 'Нет котировок MOEX по выбранным бумагам. Попробуйте обновить позже.';
-        }
-        appendSignalHistory(cards);
-        maybeNotifyAgentAttention(cards);
-        renderAgentGrid();
-        renderAgentHistory();
-        renderAgentLogPanel();
-        });
+        return runLive();
+      }).catch(function () {
+        return runLive();
       });
     }).catch(function (err) {
       if (seq !== _agentRefreshSeq) return;
