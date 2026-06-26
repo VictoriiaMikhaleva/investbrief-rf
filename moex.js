@@ -65,6 +65,8 @@
   var _dataFileCache = {};
   var DATA_FILE_TTL_MS = 60 * 1000;
   var _topTurnoverSnapshotMeta = null;
+  var _topTurnoverFetchedAt = 0;
+  var _topTurnoverDataLive = false;
   var _marketSnapshotMeta = null;
 
   function fetchInvestbriefDataFile(filename, force) {
@@ -1796,13 +1798,43 @@
 
 
 
-  function fetchImoexTurnoverWeek(skipCache) {
-    return fetchInvestbriefDataFile('top-turnover.json', !!skipCache).then(function (snapshot) {
+  function fetchImoexTurnoverWeekFromSnapshot() {
+    return fetchInvestbriefDataFile('top-turnover.json', false).then(function (snapshot) {
       if (snapshot && snapshot.data && Array.isArray(snapshot.data.turnoverWeek) && snapshot.data.turnoverWeek.length) {
-        _topTurnoverSnapshotMeta = snapshot;
-        return snapshot.data.turnoverWeek;
+        return { rows: snapshot.data.turnoverWeek, snapshot: snapshot };
       }
-      return fetchImoexTurnoverWeekDirect(skipCache);
+      return null;
+    });
+  }
+
+  function fetchImoexTurnoverWeek(skipCache) {
+    if (skipCache) {
+      return fetchImoexTurnoverWeekDirect(true).then(function (rows) {
+        _topTurnoverDataLive = true;
+        _topTurnoverSnapshotMeta = null;
+        _topTurnoverFetchedAt = Date.now();
+        return rows;
+      }).catch(function () {
+        return fetchImoexTurnoverWeekFromSnapshot().then(function (pack) {
+          if (!pack) throw new Error('no imoex turnover');
+          _topTurnoverSnapshotMeta = pack.snapshot;
+          _topTurnoverDataLive = false;
+          return pack.rows;
+        });
+      });
+    }
+    return fetchImoexTurnoverWeekFromSnapshot().then(function (pack) {
+      if (pack) {
+        _topTurnoverSnapshotMeta = pack.snapshot;
+        _topTurnoverDataLive = false;
+        return pack.rows;
+      }
+      return fetchImoexTurnoverWeekDirect(false).then(function (rows) {
+        _topTurnoverDataLive = true;
+        _topTurnoverSnapshotMeta = null;
+        _topTurnoverFetchedAt = Date.now();
+        return rows;
+      });
     });
   }
 
@@ -1861,13 +1893,44 @@
 
 
 
-  function fetchTopMoexSharesByVolume(limit, skipCache) {
-    return fetchInvestbriefDataFile('top-turnover.json', !!skipCache).then(function (snapshot) {
+  function fetchTopMoexSharesByVolumeFromSnapshot() {
+    return fetchInvestbriefDataFile('top-turnover.json', false).then(function (snapshot) {
       if (snapshot && snapshot.data && Array.isArray(snapshot.data.top) && snapshot.data.top.length) {
-        _topTurnoverSnapshotMeta = snapshot;
-        return (snapshot.data.top || []).slice(0, limit || 20);
+        return { top: snapshot.data.top, snapshot: snapshot };
       }
-      return fetchTopMoexSharesByVolumeDirect(limit, skipCache);
+      return null;
+    });
+  }
+
+  function fetchTopMoexSharesByVolume(limit, skipCache) {
+    limit = limit || 20;
+    if (skipCache) {
+      return fetchTopMoexSharesByVolumeDirect(limit, true).then(function (top) {
+        _topTurnoverDataLive = true;
+        _topTurnoverSnapshotMeta = null;
+        _topTurnoverFetchedAt = Date.now();
+        return top;
+      }).catch(function () {
+        return fetchTopMoexSharesByVolumeFromSnapshot().then(function (pack) {
+          if (!pack) throw new Error('no top volume');
+          _topTurnoverSnapshotMeta = pack.snapshot;
+          _topTurnoverDataLive = false;
+          return pack.top.slice(0, limit);
+        });
+      });
+    }
+    return fetchTopMoexSharesByVolumeFromSnapshot().then(function (pack) {
+      if (pack) {
+        _topTurnoverSnapshotMeta = pack.snapshot;
+        _topTurnoverDataLive = false;
+        return pack.top.slice(0, limit);
+      }
+      return fetchTopMoexSharesByVolumeDirect(limit, false).then(function (top) {
+        _topTurnoverDataLive = true;
+        _topTurnoverSnapshotMeta = null;
+        _topTurnoverFetchedAt = Date.now();
+        return top;
+      });
     });
   }
 
@@ -2127,19 +2190,33 @@
       fetchImoexTurnoverWeek(!!forceRefresh),
       fetchTopMoexSharesByVolume(20, !!forceRefresh)
     ]).then(function (results) {
-      renderImoexVolumeBars(results[0]);
-      renderImoexTopVolumeTable(results[1], 'RU');
-      if (src) {
-        var updatedHm = formatSnapshotUpdatedHm(_topTurnoverSnapshotMeta);
-        var base = _topTurnoverSnapshotMeta
-          ? ((_topTurnoverSnapshotMeta.source || 'MOEX ISS') + (updatedHm ? ' · Обновлено: ' + updatedHm : ''))
-          : ('МосБиржа · оборот IMOEX и топ TQBR · обновлено ' +
-            new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
-        if (isDataSnapshotStale(_topTurnoverSnapshotMeta)) {
+      function paintImoexData(rows) {
+        renderImoexVolumeBars(rows[0]);
+        renderImoexTopVolumeTable(rows[1], 'RU');
+        if (!src) return;
+        var updatedHm = '';
+        if (_topTurnoverDataLive && _topTurnoverFetchedAt) {
+          updatedHm = new Date(_topTurnoverFetchedAt).toLocaleString('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+        } else if (_topTurnoverSnapshotMeta) {
+          updatedHm = formatSnapshotUpdatedHm(_topTurnoverSnapshotMeta);
+        } else {
+          updatedHm = new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        }
+        var base = 'MOEX ISS · Обновлено: ' + updatedHm;
+        if (!_topTurnoverDataLive && isDataSnapshotStale(_topTurnoverSnapshotMeta)) {
           base += ' · Показываем последние доступные данные. Обновление задерживается.';
         }
         src.textContent = base;
       }
+      paintImoexData(results);
+      if (forceRefresh || _topTurnoverDataLive) return;
+      return Promise.all([
+        fetchImoexTurnoverWeek(true),
+        fetchTopMoexSharesByVolume(20, true)
+      ]).then(paintImoexData);
     }).catch(function () {
       if (bars) bars.innerHTML = '<p class="muted hint-frame">Объём торгов временно недоступен</p>';
       renderImoexTopVolumeTable([], 'RU');
@@ -2324,13 +2401,13 @@
       if (!state || state.tab !== 'briefing') return;
       if (typeof renderMarketMacro !== 'function') return;
       invalidateImoexVolumeCaches();
-      renderMarketMacro(false);
+      renderMarketMacro(true);
     }, MACRO_REFRESH_MS);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
       if (!state || state.tab !== 'briefing') return;
       invalidateImoexVolumeCaches();
-      if (typeof renderMarketMacro === 'function') renderMarketMacro(false);
+      if (typeof renderMarketMacro === 'function') renderMarketMacro(true);
     });
   }
 
@@ -2347,7 +2424,7 @@
       fetchTopMoexSharesByVolume(20, force).catch(function () { return null; })
     ]).then(function () {
       if (!state || state.tab !== 'briefing') return;
-      if (typeof renderMarketMacro === 'function') renderMarketMacro(false);
+      if (typeof renderMarketMacro === 'function') renderMarketMacro(true);
       if (typeof renderMarketTiles === 'function') renderMarketTiles();
     });
   }

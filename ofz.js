@@ -28,6 +28,10 @@
   var _tableView = { sortBy: 'vol', sortDir: 'desc', kind: 'all', search: '' };
   var _filterSearchTimer = null;
   var _ofzSnapshotMeta = null;
+  var _ofzLastFetchedAt = 0;
+  var _ofzDataLive = false;
+  var OFZ_REFRESH_MS = 5 * 60 * 1000;
+  var _ofzRefreshTimer = null;
 
   function formatOfzPrice(price) {
     if (price == null || !isFinite(price)) return '—';
@@ -255,14 +259,45 @@
     if (shortname && typeof saveTickerName === 'function') saveTickerName(ticker, shortname);
   }
 
-  function fetchOfzBondCatalog() {
+  function fetchOfzBondCatalogFromSnapshot() {
+    if (typeof getInvestbriefDataFile !== 'function') return Promise.resolve(null);
+    return getInvestbriefDataFile('ofz.json').then(function (snapshot) {
+      if (snapshot && snapshot.data && Array.isArray(snapshot.data.catalog) && snapshot.data.catalog.length) {
+        return { catalog: snapshot.data.catalog, snapshot: snapshot };
+      }
+      return null;
+    });
+  }
+
+  function fetchOfzBondCatalog(forceLive) {
+    if (forceLive) {
+      return fetchOfzBondCatalogDirect().then(function (catalog) {
+        _ofzSnapshotMeta = null;
+        _ofzDataLive = true;
+        _ofzLastFetchedAt = Date.now();
+        return catalog;
+      }).catch(function () {
+        return fetchOfzBondCatalogFromSnapshot().then(function (pack) {
+          if (!pack) return fetchOfzBondCatalogDirect();
+          _ofzSnapshotMeta = pack.snapshot;
+          _ofzDataLive = false;
+          return pack.catalog;
+        });
+      });
+    }
     if (typeof getInvestbriefDataFile === 'function') {
-      return getInvestbriefDataFile('ofz.json').then(function (snapshot) {
-        if (snapshot && snapshot.data && Array.isArray(snapshot.data.catalog) && snapshot.data.catalog.length) {
-          _ofzSnapshotMeta = snapshot;
-          return snapshot.data.catalog;
+      return fetchOfzBondCatalogFromSnapshot().then(function (pack) {
+        if (pack) {
+          _ofzSnapshotMeta = pack.snapshot;
+          _ofzDataLive = false;
+          return pack.catalog;
         }
-        return fetchOfzBondCatalogDirect();
+        return fetchOfzBondCatalogDirect().then(function (catalog) {
+          _ofzSnapshotMeta = null;
+          _ofzDataLive = true;
+          _ofzLastFetchedAt = Date.now();
+          return catalog;
+        });
       });
     }
     return fetchOfzBondCatalogDirect();
@@ -422,11 +457,21 @@
     el.textContent = count + ' выпуск' + ofzPluralRu(count) +
       ' на TQOB · котировки и параметры — МосБиржа ISS. Не аффилировано со Smart-Lab. Не является индивидуальной инвестиционной рекомендацией.';
     if (statusEl) {
-      var snapHm = (typeof formatInvestbriefDataUpdatedHm === 'function')
-        ? formatInvestbriefDataUpdatedHm(_ofzSnapshotMeta)
-        : '';
-      var base = note || (snapHm ? ('Обновлено: ' + snapHm) : ('Обновлено: ' + count + ' выпуск' + ofzPluralRu(count)));
-      if (typeof isInvestbriefDataStale === 'function' && isInvestbriefDataStale(_ofzSnapshotMeta)) {
+      var updatedHm = '';
+      if (_ofzDataLive && _ofzLastFetchedAt) {
+        updatedHm = new Date(_ofzLastFetchedAt).toLocaleString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } else {
+        updatedHm = (typeof formatInvestbriefDataUpdatedHm === 'function')
+          ? formatInvestbriefDataUpdatedHm(_ofzSnapshotMeta)
+          : '';
+      }
+      var base = note || (updatedHm
+        ? ('MOEX ISS · Обновлено: ' + updatedHm)
+        : ('Обновлено: ' + count + ' выпуск' + ofzPluralRu(count)));
+      if (!_ofzDataLive && typeof isInvestbriefDataStale === 'function' && isInvestbriefDataStale(_ofzSnapshotMeta)) {
         base += ' · Показываем последние доступные данные. Обновление задерживается.';
       }
       statusEl.textContent = base;
@@ -1140,8 +1185,14 @@
     updateOfzSectionLead(0);
     renderOfzTable();
 
-    return fetchOfzBondCatalog().then(function (catalog) {
-      return applyOfzCatalog(catalog);
+    return fetchOfzBondCatalog(!!force).then(function (catalog) {
+      return Promise.resolve(applyOfzCatalog(catalog)).then(function () {
+        if (!force && !_ofzDataLive) {
+          return fetchOfzBondCatalog(true).then(function (liveCatalog) {
+            return applyOfzCatalog(liveCatalog);
+          });
+        }
+      });
     }).catch(function () {
       _loading = false;
       _loadError = 'Ошибка загрузки данных МосБиржи.';
@@ -1207,6 +1258,20 @@
     });
   }
 
+  function scheduleOfzRefresh() {
+    if (_ofzRefreshTimer) return;
+    _ofzRefreshTimer = setInterval(function () {
+      if (document.hidden) return;
+      if (!state || state.tab !== 'watchlist') return;
+      loadOfzData(true);
+    }, OFZ_REFRESH_MS);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      if (!state || state.tab !== 'watchlist') return;
+      loadOfzData(true);
+    });
+  }
+
   function renderOfzSection() {
     var section = document.getElementById('ofzSection');
     if (!section) return;
@@ -1216,6 +1281,7 @@
     }
     section.hidden = false;
     bindOfzUI();
+    scheduleOfzRefresh();
     if (!_rows.length && !_loading) loadOfzData(false);
     else if (_rows.length) selectOfzTicker(_selectedTicker);
     else updateOfzSectionLead(0);
