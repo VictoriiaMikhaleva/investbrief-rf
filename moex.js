@@ -581,6 +581,12 @@
     var yld = col('YIELDATWAPRICE');
     if (yld == null || !isFinite(Number(yld))) yld = col('YIELD');
     if (yld == null || !isFinite(Number(yld))) yld = col('YIELDLASTCOUPON');
+    var sysTime = col('SYSTIME');
+    var tradeDate = '';
+    if (sysTime) {
+      var m = String(sysTime).match(/(\d{4}-\d{2}-\d{2})/);
+      if (m) tradeDate = m[1];
+    }
 
     return {
       price: price,
@@ -591,7 +597,8 @@
         if (v == null) v = col('VALTODAY_RUR');
         if (v == null) v = col('VALUE');
         return v != null && isFinite(Number(v)) ? Number(v) : null;
-      })()
+      })(),
+      tradeDate: tradeDate || undefined
     };
   }
 
@@ -1051,7 +1058,7 @@
         ? !window.isIndexQuoteTicker(ticker)
         : (ticker !== 'IMOEX' && ticker !== 'INDEX');
       var divHtml = showDiv && typeof window.quoteCardDivMetricsHtml === 'function'
-        ? window.quoteCardDivMetricsHtml()
+        ? window.quoteCardDivMetricsHtml({ ticker: ticker })
         : '';
       return (
         '<div class="' + wrapCls + '" data-ticker="' + escapeHtml(tile.ticker) + '">' +
@@ -1080,6 +1087,9 @@
       fetchMoexQuote(ticker).then(function (quote) {
         var btn = el.querySelector('.market-tile[data-ticker="' + ticker + '"]');
         updateMarketTileButton(btn, quote, ticker);
+        if (quote && quote.tradeDate && typeof setQuoteCardTurnoverLabel === 'function') {
+          setQuoteCardTurnoverLabel(wrap, { ticker: ticker, tradeDate: quote.tradeDate });
+        }
       }).catch(function () {
         var btn = el.querySelector('.market-tile[data-ticker="' + ticker + '"]');
         updateMarketTileButton(btn, null, ticker);
@@ -2064,7 +2074,7 @@
       grid.innerHTML = rows.map(function (r, i) {
         var ch = formatMacroChange(r.changePct);
         var divHtml = typeof window.quoteCardDivMetricsHtml === 'function'
-          ? window.quoteCardDivMetricsHtml({ compact: isUs, us: isUs })
+          ? window.quoteCardDivMetricsHtml({ compact: isUs, us: isUs, ticker: r.ticker })
           : '';
         return (
           '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '" data-market="' + market + '">' +

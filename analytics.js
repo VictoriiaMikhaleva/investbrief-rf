@@ -102,22 +102,57 @@
     return escapeHtml(formatDivYieldPct(yieldPct)) + ' ' + formatDivYieldSourceBadge('moex');
   }
 
+  /** Месяц.год последней выплаты, напр. 07.2024 */
+  function formatDivPaymentMonthYear(iso) {
+    var s = String(iso || '').slice(0, 10);
+    if (s.length < 10) return '';
+    return s.slice(5, 7) + '.' + s.slice(0, 4);
+  }
+
+  /** Подпись вместо «нет данных»: дата последней выплаты или «без дивидендов». null — ещё грузится. */
+  function formatDivAvg5yFallbackLabel(a) {
+    if (!a) return '—';
+    if (a.divDataSource === 'demo') return 'данные требуют проверки';
+    if (a.dividends === undefined && a.noMoexDividends !== true && a.divYieldQuality == null) return null;
+
+    var lastIso = requireAnalyticsCore().getLastDividendPaymentDate(a.dividends || []);
+    if (lastIso) {
+      var monthYear = formatDivPaymentMonthYear(lastIso);
+      if (monthYear) return monthYear;
+    }
+    if (a.noMoexDividends || a.divYieldQuality === 'none') return 'без дивидендов';
+    return 'без дивидендов';
+  }
+
   function setDivAvg5yElement(avgEl, a) {
     if (!avgEl) return;
     var html = formatDivAvg5yDisplayHtml(a);
-    if (!html) {
-      avgEl.textContent = 'нет данных';
-      avgEl.className = 'quote-div-val muted';
-      avgEl.title = a && a.divYieldQuality === 'partial'
-        ? 'Недостаточно надёжных данных MOEX для средней за 5 лет'
-        : '';
+    if (html) {
+      avgEl.innerHTML = html;
+      avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
+      avgEl.title = a.divYieldQuality === 'partial'
+        ? 'Частичные данные MOEX (сплит, неполная история или аномалия)'
+        : 'Средняя див. доходность за 5 завершённых лет · MOEX ISS';
       return;
     }
-    avgEl.innerHTML = html;
-    avgEl.className = 'quote-div-val' + (a.divAvg5y > 0 ? ' pnl-pos' : '');
-    avgEl.title = a.divYieldQuality === 'partial'
-      ? 'Частичные данные MOEX (сплит, неполная история или аномалия)'
-      : 'Средняя див. доходность за 5 завершённых лет · MOEX ISS';
+    var fallback = formatDivAvg5yFallbackLabel(a);
+    if (fallback === null) {
+      avgEl.textContent = '…';
+      avgEl.className = 'quote-div-val muted';
+      avgEl.title = '';
+      return;
+    }
+    avgEl.textContent = fallback;
+    avgEl.className = 'quote-div-val muted';
+    if (/^\d{2}\.\d{4}$/.test(fallback)) {
+      avgEl.title = 'Последняя выплата · средняя за 5 лет недоступна';
+    } else if (fallback === 'без дивидендов') {
+      avgEl.title = a && a.divDataSource === 'yahoo'
+        ? 'По данным Yahoo дивидендная доходность TTM не определена'
+        : 'По данным MOEX дивидендных выплат нет';
+    } else {
+      avgEl.title = '';
+    }
   }
 
   /** Последняя (самая свежая) дивидендная доходность по бумаге. */
@@ -544,6 +579,53 @@
     return (Number(v) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд ₽';
   }
 
+  function resolveQuoteTradeDate(source) {
+    if (!source) return '';
+    if (source.quote && source.quote.tradeDate) return String(source.quote.tradeDate).slice(0, 10);
+    if (source.tradeDate) return String(source.tradeDate).slice(0, 10);
+    if (source.dataAsOf) return String(source.dataAsOf).slice(0, 10);
+    if (source.volumeByDay && source.volumeByDay.length) {
+      var last = source.volumeByDay[source.volumeByDay.length - 1];
+      if (last && last.date) return String(last.date).slice(0, 10);
+    }
+    return '';
+  }
+
+  function quoteCardTurnoverLabel(opts) {
+    opts = opts || {};
+    var ticker = opts.ticker || '';
+    var tradeDate = opts.tradeDate ? String(opts.tradeDate).slice(0, 10) : '';
+    var compact = !!opts.compact;
+    var bond = !!opts.bond;
+    var us = !!opts.us || (typeof Markets !== 'undefined' && ticker && Markets.isUsTicker(ticker));
+    var isIndex = typeof isIndexQuoteTicker === 'function' && ticker && isIndexQuoteTicker(ticker);
+
+    if (isIndex) return compact ? 'Оборот' : 'Оборот торгов';
+    if (us) return compact ? 'Оборот' : 'Оборот за сессию';
+    if (tradeDate.length >= 10) {
+      var ddmm = tradeDate.slice(8, 10) + '.' + tradeDate.slice(5, 7);
+      return compact ? 'Оборот · ' + ddmm : 'Оборот торгов · ' + ddmm;
+    }
+    return compact ? 'Оборот' : 'Оборот торгов за текущий день';
+  }
+
+  function setQuoteCardTurnoverLabel(wrapEl, opts) {
+    if (!wrapEl) return;
+    var lblEl = wrapEl.querySelector('[data-turnover-lbl]');
+    if (!lblEl) return;
+    opts = opts || {};
+    var ticker = opts.ticker || (wrapEl.getAttribute && wrapEl.getAttribute('data-ticker')) || '';
+    var mk = opts.market || (wrapEl.getAttribute && wrapEl.getAttribute('data-market'));
+    var block = wrapEl.querySelector('[data-div-block]');
+    lblEl.textContent = quoteCardTurnoverLabel({
+      ticker: ticker,
+      tradeDate: opts.tradeDate,
+      compact: opts.compact != null ? opts.compact : !!(block && block.classList.contains('quote-card-div-block--compact')),
+      bond: opts.bond,
+      us: mk === 'US' || opts.us
+    });
+  }
+
   function tradeDateSeriesNeedsYear(rows) {
     return requireAnalyticsCore().tradeDateSeriesNeedsYear(rows);
   }
@@ -622,15 +704,33 @@
     out.ticker = ticker;
     out.name = out.name || getTickerSubtitle(ticker);
     out.eligible = out.eligible !== false;
+
+    function finish() {
+      out.divLatestYield = computeLatestDivYieldPct(out);
+      return out;
+    }
+
+    function mergeQuote(q) {
+      if (q && q.tradeDate) {
+        out.quote = Object.assign({}, out.quote || {}, { tradeDate: q.tradeDate });
+      }
+      if ((!out.quote || out.quote.price == null) && q) out.quote = q;
+      return finish();
+    }
+
     if (!out.quote || out.quote.price == null) {
       return fetchMoexQuote(ticker).then(function (q) {
-        out.quote = q || out.quote || {};
-        out.divLatestYield = computeLatestDivYieldPct(out);
-        return out;
+        return mergeQuote(q || null);
       });
     }
-    out.divLatestYield = computeLatestDivYieldPct(out);
-    return Promise.resolve(out);
+    if (!out.quote.tradeDate) {
+      return fetchMoexQuote(ticker).then(function (q) {
+        return mergeQuote(q || null);
+      }).catch(function () {
+        return finish();
+      });
+    }
+    return Promise.resolve(finish());
   }
 
   function buildSecurityAnalytics(ticker, opts) {
@@ -729,6 +829,11 @@
       }
       return;
     }
+    setQuoteCardTurnoverLabel(wrapEl, {
+      ticker: wrapEl.getAttribute && wrapEl.getAttribute('data-ticker'),
+      tradeDate: q.tradeDate,
+      bond: true
+    });
     if (avgEl) {
       if (q.yieldPct != null && isFinite(q.yieldPct)) {
         var bondHtml = formatBondYieldDisplayHtml(q.yieldPct);
@@ -769,11 +874,17 @@
     var bond = !!opts.bond;
     var blockCls = 'quote-card-div-block' + (compact ? ' quote-card-div-block--compact' : '');
     var avgLbl = bond ? 'Доходность' : (opts.us ? 'Див. TTM' : (compact ? 'Див. 5л' : 'Див. доходность 5 лет'));
-    var turnLbl = compact ? 'Оборот' : 'Оборот за день';
+    var turnLbl = quoteCardTurnoverLabel({
+      compact: compact,
+      us: opts.us,
+      bond: bond,
+      ticker: opts.ticker || '',
+      tradeDate: opts.tradeDate
+    });
     return (
       '<div class="' + blockCls + '" data-div-block>' +
         '<div class="quote-div-line"><span class="quote-div-lbl">' + avgLbl + '</span><span class="quote-div-val" data-div-avg>…</span></div>' +
-        '<div class="quote-div-line"><span class="quote-div-lbl">' + turnLbl + '</span><span class="quote-div-val" data-turnover>…</span></div>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl" data-turnover-lbl>' + turnLbl + '</span><span class="quote-div-val" data-turnover>…</span></div>' +
       '</div>'
     );
   }
@@ -790,7 +901,11 @@
     if (legacy) legacy.style.display = 'none';
 
     if (!a || !a.eligible) {
-      if (avgEl) avgEl.textContent = 'нет данных';
+      if (avgEl) {
+        avgEl.textContent = '—';
+        avgEl.className = 'quote-div-val muted';
+        avgEl.title = '';
+      }
       if (turnoverEl) turnoverEl.textContent = '—';
       return;
     }
@@ -815,6 +930,11 @@
       turnoverEl.textContent = isUsWrap ? formatUsdTurnoverShort(v) : formatTurnoverBln(v);
       if (turnoverEl.textContent === '—') turnoverEl.className = 'quote-div-val muted';
       else turnoverEl.className = 'quote-div-val';
+      setQuoteCardTurnoverLabel(wrapEl, {
+        ticker: wrapEl.getAttribute && wrapEl.getAttribute('data-ticker'),
+        tradeDate: resolveQuoteTradeDate(a),
+        market: mk
+      });
     }
   }
 
@@ -1020,6 +1140,9 @@
         if (typeof updateMarketTileButton === 'function') {
           updateMarketTileButton(btn, q, ticker);
         }
+        if (q && q.tradeDate && typeof setQuoteCardTurnoverLabel === 'function') {
+          setQuoteCardTurnoverLabel(wrap, { ticker: ticker, tradeDate: q.tradeDate });
+        }
       }).catch(function () {});
       queueEnrichQuoteCard(wrap, ticker);
     });
@@ -1112,6 +1235,10 @@
   window.selectAnalyticsTicker = selectAnalyticsTicker;
   window.openSecurityAnalyticsModal = openSecurityAnalyticsModal;
   window.quoteCardChartsHtml = quoteCardChartsHtml;
+  window.quoteCardDivMetricsHtml = quoteCardDivMetricsHtml;
+  window.quoteCardTurnoverLabel = quoteCardTurnoverLabel;
+  window.resolveQuoteTradeDate = resolveQuoteTradeDate;
+  window.setQuoteCardTurnoverLabel = setQuoteCardTurnoverLabel;
   window.queueEnrichQuoteCard = queueEnrichQuoteCard;
   window.fetchPortfolioDivForecastHtml = fetchPortfolioDivForecastHtml;
   window.computeDividendForecast12m = computeDividendForecast12m;

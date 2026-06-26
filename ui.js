@@ -1282,14 +1282,18 @@
     return rows.length ? rows[0] : null;
   }
 
-  function securityTurnoverPeriodLabel(ticker) {
+  function securityTurnoverPeriodLabel(ticker, tradeDate) {
     if (typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker)) {
       return 'Оборот торгов';
     }
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       return 'Оборот за сессию';
     }
-    return 'Оборот торгов за день';
+    var iso = tradeDate ? String(tradeDate).slice(0, 10) : '';
+    if (iso.length >= 10) {
+      return 'Оборот торгов · ' + iso.slice(8, 10) + '.' + iso.slice(5, 7);
+    }
+    return 'Оборот торгов за текущий день';
   }
 
   function formatSecurityProfileTurnover(ticker, analytics) {
@@ -1326,7 +1330,13 @@
       ? 'облигация'
       : (isIndex ? 'индекс' : 'акция');
     var turnover = formatSecurityProfileTurnover(ticker, analytics);
-    var turnoverLbl = securityTurnoverPeriodLabel(ticker);
+    var tradeDate = '';
+    if (analytics) {
+      if (typeof resolveQuoteTradeDate === 'function') tradeDate = resolveQuoteTradeDate(analytics);
+      else if (analytics.quote && analytics.quote.tradeDate) tradeDate = analytics.quote.tradeDate;
+      else if (analytics.dataAsOf) tradeDate = analytics.dataAsOf;
+    }
+    var turnoverLbl = securityTurnoverPeriodLabel(ticker, tradeDate);
     var latestPct = null;
     if (analytics) {
       if (typeof computeLatestDivYieldPct === 'function') {
