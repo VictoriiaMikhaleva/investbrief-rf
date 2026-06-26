@@ -1282,6 +1282,37 @@
     return rows.length ? rows[0] : null;
   }
 
+  function securityTurnoverPeriodLabel(ticker) {
+    if (typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker)) {
+      return 'Оборот торгов';
+    }
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      return 'Оборот за сессию';
+    }
+    return 'Оборот торгов за день';
+  }
+
+  function formatSecurityProfileTurnover(ticker, analytics) {
+    if (typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker)) {
+      return 'не применимо';
+    }
+    var v = analytics && analytics.quote && analytics.quote.valueToday != null
+      ? Number(analytics.quote.valueToday)
+      : null;
+    if ((v == null || !isFinite(v)) && analytics && analytics.volumeByDay && analytics.volumeByDay.length) {
+      var last = analytics.volumeByDay[analytics.volumeByDay.length - 1];
+      if (last && isFinite(Number(last.v))) v = Number(last.v) * 1e9;
+    }
+    if (v == null || !isFinite(v)) return '—';
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
+      if (typeof formatUsdTurnoverShort === 'function') return formatUsdTurnoverShort(v);
+      if (v >= 1e9) return (v / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд $';
+      if (v >= 1e6) return (v / 1e6).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млн $';
+      return v.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' $';
+    }
+    return (v / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд ₽';
+  }
+
   function renderSecurityProfile(ticker, analytics) {
     var card = document.getElementById('securityProfileCard');
     var badgeRow = document.getElementById('securityProfileBadgeRow');
@@ -1294,11 +1325,8 @@
     var type = (ticker.indexOf('OFZ') >= 0 || ticker.indexOf('SU') === 0)
       ? 'облигация'
       : (isIndex ? 'индекс' : 'акция');
-    var turnover = isIndex
-      ? 'не применимо'
-      : (analytics && analytics.quote && analytics.quote.valueToday != null
-        ? (Number(analytics.quote.valueToday) / 1e9).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' млрд ₽'
-        : '—');
+    var turnover = formatSecurityProfileTurnover(ticker, analytics);
+    var turnoverLbl = securityTurnoverPeriodLabel(ticker);
     var latestPct = null;
     if (analytics) {
       if (typeof computeLatestDivYieldPct === 'function') {
@@ -1316,7 +1344,7 @@
       '<article class="security-metric-card"><span class="lbl">Валюта</span><span class="val">' + escapeHtml(isUs ? '$' : '₽') + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Средняя дивдоходность 5 лет</span><span class="val">' + divAvgHtml + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Последняя дивидендная доходность</span><span class="val">' + escapeHtml(latestYield) + '</span></article>' +
-      '<article class="security-metric-card"><span class="lbl">Оборот торгов</span><span class="val">' + escapeHtml(turnover) + '</span></article>' +
+      '<article class="security-metric-card"><span class="lbl">' + escapeHtml(turnoverLbl) + '</span><span class="val">' + escapeHtml(turnover) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Последнее важное событие</span><span class="val">' + escapeHtml(lastBrief ? lastBrief.title : 'События пока не найдены') + '</span></article>';
     card.hidden = false;
   }
