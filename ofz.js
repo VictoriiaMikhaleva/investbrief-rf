@@ -851,12 +851,17 @@
     }
   }
 
+  function isOfzYieldChartCompact(width) {
+    return width < 640;
+  }
+
   function drawOfzYieldCurveChart(canvas, rows, selectedTicker) {
     if (!canvas) return;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var rect = canvas.getBoundingClientRect();
-    var w = Math.max(rect.width, 320);
-    var h = Math.max(rect.height, 260);
+    var w = Math.max(rect.width, 280);
+    var compact = isOfzYieldChartCompact(w);
+    var h = Math.max(rect.height, compact ? 280 : 260);
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     var ctx = canvas.getContext('2d');
@@ -873,7 +878,7 @@
     if (points.length < 2) {
       canvas._ofzYieldMeta = null;
       ctx.fillStyle = '#6B6B6B';
-      ctx.font = '14px Golos Text, IBM Plex Sans, sans-serif';
+      ctx.font = (compact ? '13px' : '14px') + ' Manrope, Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Недостаточно данных для кривой', w / 2, h / 2);
       return;
@@ -892,49 +897,59 @@
     minY -= padY;
     maxY += padY;
 
-    var pad = { top: 16, right: 14, bottom: 38, left: 46 };
+    var pad = compact
+      ? { top: 20, right: 10, bottom: 46, left: 42 }
+      : { top: 16, right: 14, bottom: 38, left: 46 };
     var plotW = w - pad.left - pad.right;
     var plotH = h - pad.top - pad.bottom;
+    var fontAxis = (compact ? 11 : 10) + 'px Manrope, Inter, sans-serif';
+    var fontTitle = (compact ? 10 : 11) + 'px Manrope, Inter, sans-serif';
+    var xTickCount = compact ? 3 : 5;
+    var yGridCount = compact ? 3 : 4;
+    var showBondLabels = !compact && points.length <= 14;
 
     function xAt(v) { return pad.left + ((v - minX) / (maxX - minX || 1)) * plotW; }
     function yAt(v) { return pad.top + plotH - ((v - minY) / (maxY - minY || 1)) * plotH; }
 
     ctx.strokeStyle = 'rgba(43, 43, 43, 0.08)';
     ctx.lineWidth = 1;
-    for (var g = 0; g <= 4; g++) {
-      var gy = pad.top + (plotH * g) / 4;
+    for (var g = 0; g <= yGridCount; g++) {
+      var gy = pad.top + (plotH * g) / yGridCount;
       ctx.beginPath();
       ctx.moveTo(pad.left, gy);
       ctx.lineTo(pad.left + plotW, gy);
       ctx.stroke();
-      var yVal = maxY - ((maxY - minY) * g) / 4;
+      var yVal = maxY - ((maxY - minY) * g) / yGridCount;
       ctx.fillStyle = '#6B6B6B';
-      ctx.font = '10px Inter, Manrope, sans-serif';
+      ctx.font = fontAxis;
       ctx.textAlign = 'right';
-      ctx.fillText(yVal.toFixed(1).replace('.', ',') + '%', pad.left - 6, gy + 3);
+      ctx.fillText(yVal.toFixed(1).replace('.', ',') + '%', pad.left - 6, gy + 4);
     }
 
-    for (var gx = 0; gx <= 5; gx++) {
-      var xVal = minX + ((maxX - minX) * gx) / 5;
+    for (var gx = 0; gx <= xTickCount; gx++) {
+      var xVal = minX + ((maxX - minX) * gx) / xTickCount;
       var gxPos = xAt(xVal);
       ctx.fillStyle = '#6B6B6B';
+      ctx.font = fontAxis;
       ctx.textAlign = 'center';
-      ctx.fillText(xVal.toFixed(1).replace('.', ','), gxPos, h - 12);
+      ctx.fillText(xVal.toFixed(1).replace('.', ','), gxPos, h - (compact ? 16 : 12));
     }
 
     ctx.fillStyle = '#6B6B6B';
-    ctx.font = '11px Inter, Manrope, sans-serif';
+    ctx.font = fontTitle;
     ctx.textAlign = 'center';
     ctx.fillText('Дюрация, лет', pad.left + plotW / 2, h - 2);
-    ctx.save();
-    ctx.translate(12, pad.top + plotH / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText('Доходность, %', 0, 0);
-    ctx.restore();
+    if (!compact) {
+      ctx.save();
+      ctx.translate(12, pad.top + plotH / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('Доходность, %', 0, 0);
+      ctx.restore();
+    }
 
     var sorted = points.slice().sort(function (a, b) { return a.x - b.x; });
     ctx.strokeStyle = 'rgba(61, 122, 153, 0.45)';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = compact ? 2 : 1.5;
     ctx.beginPath();
     sorted.forEach(function (p, i) {
       var px = xAt(p.x);
@@ -948,19 +963,22 @@
       var selected = p.row.ticker === selectedTicker;
       var px = xAt(p.x);
       var py = yAt(p.y);
+      var radius = selected ? (compact ? 7 : 5.5) : (compact ? 4.5 : 3.5);
       ctx.beginPath();
-      ctx.arc(px, py, selected ? 5.5 : 3.5, 0, Math.PI * 2);
+      ctx.arc(px, py, radius, 0, Math.PI * 2);
       ctx.fillStyle = selected ? '#3D5C47' : 'rgba(61, 122, 153, 0.9)';
       ctx.fill();
       if (selected) {
         ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = compact ? 2 : 1.5;
         ctx.stroke();
       }
-      ctx.fillStyle = selected ? '#2B2B2B' : '#555';
-      ctx.font = (selected ? '10px' : '8px') + ' Inter, Manrope, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(p.label, px, py - (selected ? 10 : 7));
+      if (selected || showBondLabels) {
+        ctx.fillStyle = selected ? '#2B2B2B' : '#555';
+        ctx.font = (selected ? (compact ? 12 : 10) : 8) + 'px Manrope, Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.label, px, py - (selected ? (compact ? 12 : 10) : 7));
+      }
     });
 
     canvas._ofzYieldMeta = {
@@ -973,7 +991,8 @@
       minX: minX,
       maxX: maxX,
       minY: minY,
-      maxY: maxY
+      maxY: maxY,
+      compact: compact
     };
   }
 
@@ -986,8 +1005,11 @@
       var n = (rows || []).filter(function (r) {
         return r.durationYears > 0 && r.yieldPct > 0;
       }).length;
+      var touchHint = window.matchMedia && window.matchMedia('(max-width: 639px)').matches
+        ? ' · коснитесь точки для деталей'
+        : '';
       note.textContent = n
-        ? n + ' выпусков на графике · дюрация и доходность к погашению по данным TQOB'
+        ? n + ' выпусков на графике · дюрация и доходность к погашению по данным TQOB' + touchHint
         : 'Дюрация и доходность к погашению · TQOB';
     }
   }
@@ -1000,18 +1022,16 @@
     canvas._ofzYieldHoverBound = true;
 
     function hideTip() {
-      if (tip) tip.classList.remove('is-visible');
+      if (!tip) return;
+      tip.classList.remove('is-visible', 'ofz-yield-tip--below');
     }
 
-    wrap.addEventListener('mousemove', function (e) {
+    function showTipAt(mx, my) {
       var meta = canvas._ofzYieldMeta;
       if (!meta || !meta.points || !meta.points.length) {
         hideTip();
         return;
       }
-      var rect = canvas.getBoundingClientRect();
-      var mx = e.clientX - rect.left;
-      var my = e.clientY - rect.top;
       var best = null;
       var bestDist = 999;
       meta.points.forEach(function (p) {
@@ -1023,17 +1043,43 @@
           best = { p: p, px: px, py: py };
         }
       });
-      if (!best || bestDist > 18 || !tip) {
+      var hitRadius = meta.compact ? 30 : 18;
+      if (!best || bestDist > hitRadius || !tip) {
         hideTip();
         return;
       }
       tip.textContent = (best.p.row.label || best.p.row.ticker) +
         ' · дюр. ' + formatOfzNum(best.p.x, 2) + ' лет · дох. ' + formatOfzYield(best.p.y);
-      tip.style.left = Math.min(Math.max(best.px, 40), meta.w - 40) + 'px';
-      tip.style.top = Math.max(best.py - 8, 8) + 'px';
+      tip.style.left = Math.min(Math.max(best.px, 48), meta.w - 48) + 'px';
+      if (meta.compact) {
+        tip.classList.add('ofz-yield-tip--below');
+        tip.style.top = Math.min(best.py + 14, meta.h - 12) + 'px';
+      } else {
+        tip.classList.remove('ofz-yield-tip--below');
+        tip.style.top = Math.max(best.py - 8, 8) + 'px';
+      }
       tip.classList.add('is-visible');
+    }
+
+    function onPointer(clientX, clientY) {
+      var rect = canvas.getBoundingClientRect();
+      showTipAt(clientX - rect.left, clientY - rect.top);
+    }
+
+    wrap.addEventListener('mousemove', function (e) {
+      onPointer(e.clientX, e.clientY);
     });
     wrap.addEventListener('mouseleave', hideTip);
+    wrap.addEventListener('touchstart', function (e) {
+      if (!e.touches.length) return;
+      onPointer(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+    wrap.addEventListener('touchmove', function (e) {
+      if (!e.touches.length) return;
+      onPointer(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+    wrap.addEventListener('touchend', hideTip);
+    wrap.addEventListener('touchcancel', hideTip);
   }
 
   function renderOfzTable() {
@@ -1252,6 +1298,18 @@
     bindOfzYieldCurveHover();
     bindOfzVisibilityRefresh();
     bindOfzTableFilters();
+
+    if (!window._ofzYieldResizeBound) {
+      window._ofzYieldResizeBound = true;
+      var ofzYieldResizeTimer;
+      window.addEventListener('resize', function () {
+        clearTimeout(ofzYieldResizeTimer);
+        ofzYieldResizeTimer = setTimeout(function () {
+          if (!state || state.tab !== 'watchlist' || state.analyticsSub !== 'ofz') return;
+          if (_rows.length) renderOfzYieldCurve(_rows);
+        }, 120);
+      });
+    }
 
     ['ofzPriceChart', 'ofzCouponChart', 'ofzProfitChart'].forEach(function (id) {
       var canvas = document.getElementById(id);

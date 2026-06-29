@@ -3107,9 +3107,27 @@
     .ofz-kpi-val { font-size: 0.92rem; font-weight: 600; color: var(--accent); }
     .ofz-charts-grid { margin-bottom: 0.85rem; }
     .ofz-yield-curve-panel { margin-bottom: 0.85rem; }
-    .ofz-yield-curve-wrap { height: 320px; position: relative; }
+    .ofz-yield-curve-wrap {
+      height: 320px;
+      position: relative;
+      overflow: visible;
+    }
+    .ofz-yield-curve-wrap .chart-hover-tip.ofz-yield-tip--below {
+      transform: translate(-50%, 0);
+      white-space: normal;
+      max-width: min(16rem, calc(100% - 1rem));
+      text-align: center;
+      line-height: 1.35;
+    }
     @media (max-width: 899px) {
-      .ofz-yield-curve-wrap { height: 220px; }
+      .ofz-yield-curve-wrap {
+        height: min(58vw, 22rem);
+        min-height: 17.5rem;
+      }
+      .ofz-yield-curve-wrap .chart-hover-tip {
+        font-size: 0.8rem;
+        padding: 0.45rem 0.65rem;
+      }
       .ofz-charts-grid .analytics-chart-wrap {
         min-height: 8.5rem;
         height: 8.5rem;
