@@ -406,6 +406,9 @@
     .analytics-subview[hidden] {
       display: none !important;
     }
+    .analytics-subview:not([hidden]) {
+      display: block;
+    }
     .brief-card {
       margin-bottom: var(--space-block);
       position: relative;
@@ -3643,15 +3646,19 @@
     .pif-section-controls { align-items: center; gap: 0.45rem; }
     .pif-type-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0.65rem;
       margin-bottom: 0.85rem;
     }
-    @media (max-width: 899px) {
-      .pif-type-grid { grid-template-columns: repeat(2, 1fr); }
+    @media (min-width: 900px) {
+      .pif-type-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     }
-    @media (max-width: 520px) {
-      .pif-type-grid { grid-template-columns: 1fr; }
+    @media (max-width: 899px) {
+      .pif-type-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+      }
     }
     .pif-type-card {
       padding: 0.65rem 0.75rem;
@@ -3666,6 +3673,14 @@
       box-shadow: 0 2px 8px rgba(31, 30, 28, 0.06);
     }
     .pif-type-card__title { margin: 0 0 0.35rem; font-size: 0.84rem; color: var(--accent); }
+    .pif-type-card__count {
+      display: inline-block;
+      margin-left: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
     .pif-type-card__text { margin: 0; font-size: 0.76rem; line-height: 1.4; }
     .pif-table-toolbar { margin-bottom: 0.65rem; }
     .pif-table-filters { flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; }

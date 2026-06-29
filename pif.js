@@ -177,12 +177,32 @@
     el.textContent = parts.join(' · ');
   }
 
+  function countPifsByKind(kind) {
+    var q = _view.search.trim().toLowerCase();
+    var activeStatuses = ['formed', 'forming', 'terminating', 'registered', 'approved', 'formation_expired'];
+    return _catalog.filter(function (r) {
+      if (r.kind !== kind) return false;
+      if (_view.status !== 'all') {
+        if (r.status !== _view.status) return false;
+      } else if (activeStatuses.indexOf(r.status) < 0 && !_view.includeArchive) {
+        return false;
+      }
+      if (!q) return true;
+      var hay = [r.id, r.name, r.shortName, r.ukName, r.ticker, r.isin, r.category].join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    }).length;
+  }
+
   function renderTypeCards() {
     var grid = document.getElementById('pifTypeGrid');
     if (!grid) return;
     grid.innerHTML = TYPE_CARDS.map(function (c) {
+      var count = _catalog.length ? countPifsByKind(c.kind) : null;
+      var countHtml = count != null
+        ? '<span class="pif-type-card__count">' + count + '</span>'
+        : '';
       return '<article class="pif-type-card" data-pif-kind-card="' + c.kind + '">' +
-        '<h4 class="pif-type-card__title">' + esc(c.title) + '</h4>' +
+        '<h4 class="pif-type-card__title">' + esc(c.title) + countHtml + '</h4>' +
         '<p class="muted pif-type-card__text">' + esc(c.text) + '</p>' +
         '</article>';
     }).join('');
@@ -483,6 +503,7 @@
   }
 
   function applyPifTableView() {
+    renderTypeCards();
     renderPifTable();
   }
 
