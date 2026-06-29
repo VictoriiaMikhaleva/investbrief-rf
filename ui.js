@@ -1946,6 +1946,36 @@
 
 
 
+  var ANALYTICS_SUBS = ['stocks', 'ofz', 'pifs'];
+
+  function switchAnalyticsSub(sub, opts) {
+    opts = opts || {};
+    if (ANALYTICS_SUBS.indexOf(sub) === -1) sub = 'stocks';
+    state.analyticsSub = sub;
+    document.querySelectorAll('[data-analytics-sub]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-analytics-sub') === sub);
+    });
+    document.querySelectorAll('[data-analytics-subview]').forEach(function (el) {
+      var isActive = el.getAttribute('data-analytics-subview') === sub;
+      el.classList.toggle('active', isActive);
+      el.hidden = !isActive;
+    });
+    if (!opts.skipHash) {
+      var targetHash = 'analytics/' + sub;
+      if (location.hash !== '#' + targetHash) {
+        history.replaceState(null, '', '#' + targetHash);
+      }
+    }
+    if (sub === 'stocks') {
+      if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
+      else if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
+    } else if (sub === 'ofz' && typeof renderOfzSection === 'function') {
+      renderOfzSection();
+    } else if (sub === 'pifs' && typeof renderPifSection === 'function') {
+      renderPifSection();
+    }
+  }
+
   function switchTab(tab) {
     state.tab = tab;
     document.querySelectorAll('.panel').forEach(function (p) {
@@ -1955,7 +1985,12 @@
       btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
     });
     if (typeof NavBooks !== 'undefined') NavBooks.onTabChange(tab);
-    if (location.hash !== '#' + tab) {
+    if (tab === 'watchlist') {
+      var analyticsHash = 'analytics/' + (state.analyticsSub || 'stocks');
+      if (location.hash !== '#' + analyticsHash) {
+        history.replaceState(null, '', '#' + analyticsHash);
+      }
+    } else if (location.hash !== '#' + tab) {
       history.replaceState(null, '', '#' + tab);
     }
     if (tab === 'briefing') {
@@ -1969,8 +2004,7 @@
     }
     if (tab === 'watchlist') {
       renderWatchlist();
-      if (typeof renderAnalyticsPage === 'function') renderAnalyticsPage();
-      else if (typeof renderAnalyticsGrid === 'function') renderAnalyticsGrid();
+      switchAnalyticsSub(state.analyticsSub || 'stocks', { skipHash: true });
     }
     if (tab === 'settings') {
       renderAlerts();
@@ -1978,7 +2012,6 @@
       if (typeof refreshWatchdogDevUI === 'function') refreshWatchdogDevUI();
     }
     if (tab === 'articles' && typeof renderArticlesBlock === 'function') renderArticlesBlock();
-    if (tab === 'pifs' && typeof renderPifSection === 'function') renderPifSection();
   }
 
 
@@ -2006,10 +2039,30 @@
 
 
   function initHash() {
-    var hash = (location.hash || '#briefing').replace('#', '');
-    var valid = ['briefing', 'watchlist', 'portfolio', 'pifs', 'articles', 'settings'];
+    var hash = (location.hash || '#briefing').replace(/^#/, '');
+    var analyticsMatch = /^analytics\/(stocks|ofz|pifs)$/.exec(hash);
+    if (analyticsMatch) {
+      state.analyticsSub = analyticsMatch[1];
+      switchTab('watchlist');
+      return;
+    }
+    if (hash === 'watchlist') {
+      state.analyticsSub = state.analyticsSub || 'stocks';
+      switchTab('watchlist');
+      history.replaceState(null, '', '#analytics/' + state.analyticsSub);
+      return;
+    }
+    if (hash === 'pifs') {
+      state.analyticsSub = 'pifs';
+      switchTab('watchlist');
+      history.replaceState(null, '', '#analytics/pifs');
+      return;
+    }
+    var valid = ['briefing', 'portfolio', 'articles', 'settings'];
     if (valid.indexOf(hash) !== -1) switchTab(hash);
     else switchTab('briefing');
   }
+
+  window.switchAnalyticsSub = switchAnalyticsSub;
 
 

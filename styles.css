@@ -400,6 +400,12 @@
       border-color: var(--accent);
       color: #fff;
     }
+    .analytics-subnav {
+      margin-bottom: 1.1rem;
+    }
+    .analytics-subview[hidden] {
+      display: none !important;
+    }
     .brief-card {
       margin-bottom: var(--space-block);
       position: relative;

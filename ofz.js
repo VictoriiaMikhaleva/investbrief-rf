@@ -1263,12 +1263,12 @@
     if (_ofzRefreshTimer) return;
     _ofzRefreshTimer = setInterval(function () {
       if (document.hidden) return;
-      if (!state || state.tab !== 'watchlist') return;
+      if (!state || state.tab !== 'watchlist' || state.analyticsSub !== 'ofz') return;
       loadOfzData(true);
     }, OFZ_REFRESH_MS);
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) return;
-      if (!state || state.tab !== 'watchlist') return;
+      if (!state || state.tab !== 'watchlist' || state.analyticsSub !== 'ofz') return;
       loadOfzData(true);
     });
   }

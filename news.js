@@ -919,6 +919,7 @@
 
   var state = {
     tab: 'briefing',
+    analyticsSub: 'stocks',
     horizon: 'today',
     newsMarketFilter: 'all',
     chartHorizon: 'week',

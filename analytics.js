@@ -1198,7 +1198,10 @@
     ticker = normalizeTicker(ticker);
     state.analyticsTicker = ticker;
     if (state.tab !== 'watchlist' && typeof switchTab === 'function') {
+      state.analyticsSub = 'stocks';
       switchTab('watchlist');
+    } else if (state.analyticsSub !== 'stocks' && typeof switchAnalyticsSub === 'function') {
+      switchAnalyticsSub('stocks');
     }
     document.querySelectorAll('#analyticsGrid .quote-card-wrap').forEach(function (w) {
       w.classList.toggle('analytics-selected', w.getAttribute('data-ticker') === ticker);
@@ -1221,7 +1224,6 @@
     }
     if (typeof renderMoexIndexBox === 'function') renderMoexIndexBox();
     renderAnalyticsGrid();
-    if (typeof renderOfzSection === 'function') renderOfzSection();
     if (state.analyticsTicker) selectAnalyticsTicker(state.analyticsTicker);
   }
 

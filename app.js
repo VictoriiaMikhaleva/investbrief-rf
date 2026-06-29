@@ -203,6 +203,18 @@
       });
     });
 
+    var analyticsSubnav = document.getElementById('analyticsSubnav');
+    if (analyticsSubnav) {
+      analyticsSubnav.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-analytics-sub]');
+        if (!btn) return;
+        if (state.tab !== 'watchlist' && typeof switchTab === 'function') switchTab('watchlist');
+        if (typeof switchAnalyticsSub === 'function') {
+          switchAnalyticsSub(btn.getAttribute('data-analytics-sub'));
+        }
+      });
+    }
+
     setupTickerAutocomplete('tickerInput');
     setupTickerAutocomplete('pfAddTicker');
     setupTickerAutocomplete('feedAsset', { onSelect: function () { syncFiltersFromUI(); } });
