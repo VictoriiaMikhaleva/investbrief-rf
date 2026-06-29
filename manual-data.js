@@ -206,7 +206,7 @@
       title: 'Какие бывают ПИФы: открытые, интервальные, закрытые и биржевые фонды',
       summary: 'Тип фонда, состав активов и способ выхода: ОПИФ, ИПИФ, ЗПИФ, БПИФ, глоссарий и сравнительная таблица.',
       badges: ['ПИФы', 'Фонды', 'Базовый уровень'],
-      readMinutesLabel: '12–15 минут',
+      readMinutesLabel: estimateArticleReadMinutesLabel(buildPifTypesArticleBodyHtml()),
       bodyHtml: buildPifTypesArticleBodyHtml()
     },
     {
@@ -214,7 +214,7 @@
       title: 'Что такое инвестиционный пай: права пайщика, классы паев и отличие от ETF, акций и доверительного управления',
       summary: 'Доля в имуществе фонда, права по ПДУ, виды паев и отличия от вклада, акции, ETF и доверительного управления.',
       badges: ['ПИФы', 'Паи', 'Базовый уровень'],
-      readMinutesLabel: '12–15 минут',
+      readMinutesLabel: estimateArticleReadMinutesLabel(buildPifShareArticleBodyHtml()),
       bodyHtml: buildPifShareArticleBodyHtml()
     },
     {
@@ -222,7 +222,7 @@
       title: 'Как выбрать ПИФ перед покупкой: чек-лист для начинающего инвестора',
       summary: 'Цель, горизонт, комиссии, ликвидность и ПДУ: практический порядок проверки фонда до покупки пая.',
       badges: ['ПИФы', 'Практика', 'Для новичков'],
-      readMinutes: 7,
+      readMinutesLabel: estimateArticleReadMinutesLabel(buildPifChooseArticleBodyHtml()),
       bodyHtml: buildPifChooseArticleBodyHtml()
     }
   ];

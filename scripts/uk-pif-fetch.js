@@ -103,30 +103,268 @@ async function fetchAlfaCapitalFunds() {
   return [...map.values()];
 }
 
+function parseRubAmount(raw) {
+  if (!raw || raw === '-') return null;
+  const cleaned = String(raw).replace(/\s/g, '').replace(',', '.').replace(/[^\d.]/g, '');
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function normalizeMatchKey(name) {
+  return trimStr(name)
+    .toLowerCase()
+    .replace(/[«»"'()]/g, ' ')
+    .replace(/ранее\s*[-–—]\s*[^,]+/g, ' ')
+    .replace(/опиф[^а-яё]*|бпиф[^а-яё]*|зпиф[^а-яё]*/gi, ' ')
+    .replace(/первая\s*[-–—]\s*/g, ' ')
+    .replace(/\bфонд\b/g, ' ')
+    .replace(/[-–—]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildUkCatalogRows(catalog) {
+  if (!Array.isArray(catalog)) return [];
+  return catalog;
+}
+
+function matchCatalogIsin(title, catalogRows, ukHint) {
+  if (!title || !catalogRows.length) return null;
+  const key = normalizeMatchKey(title);
+  if (!key) return null;
+  const hint = (ukHint || '').toLowerCase();
+  let best = null;
+  let bestScore = 0;
+  catalogRows.forEach((row) => {
+    const uk = trimStr(row.uk).toLowerCase();
+    const url = trimStr(row.url).toLowerCase();
+    if (hint && !uk.includes(hint) && !url.includes(hint)) return;
+    const variants = [row.n, row.sn, row.cat].filter(Boolean).map(normalizeMatchKey);
+    variants.forEach((variant) => {
+      if (!variant) return;
+      if (variant === key) {
+        if (variant.length > bestScore) { bestScore = variant.length; best = row.isin; }
+        return;
+      }
+      if (variant.includes(key) || key.includes(variant)) {
+        const score = Math.min(variant.length, key.length);
+        if (score > bestScore) { bestScore = score; best = row.isin; }
+      }
+    });
+  });
+  return best;
+}
+
+function parseFirstAmChart(html) {
+  const m = html.match(/chartData\s*=\s*(\[[\s\S]*?\])\s*;/);
+  if (!m) return null;
+  try {
+    const arr = JSON.parse(m[1]);
+    return arr.length ? arr[arr.length - 1] : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function extractFirstAmFundPaths(html) {
+  const paths = new Set();
+  const re = /href="(\/(?:individuals\/fund|etf)\/[^"#?]+)"/g;
+  let match;
+  while ((match = re.exec(html)) !== null) paths.add(match[1]);
+  return [...paths];
+}
+
+function normalizeFirstAmPage(html, fundUrl, catalogRows) {
+  const title = trimStr((html.match(/<h1[^>]*>([^<]+)/) || [])[1]);
+  if (!title) return null;
+  const chart = parseFirstAmChart(html);
+  const fundId = (html.match(/const fundId = (\d+)/) || [])[1];
+  const isin = matchCatalogIsin(title, catalogRows, 'первая') || matchCatalogIsin(title, catalogRows, 'first-am');
+  const tickerMatch = title.match(/\b([A-Z]{2,5})\b\s*[-–—]/);
+  return {
+    uk: 'first-am',
+    ukLabel: 'Первая',
+    ukUrl: 'https://www.first-am.ru',
+    fundName: title,
+    isin: isin || null,
+    ticker: tickerMatch ? tickerMatch[1] : null,
+    sharePrice: chart && chart.price != null ? Number(chart.price) : null,
+    shareCurrency: 'RUB',
+    shareDate: chart && (chart.dateFormat || chart.date) ? (chart.dateFormat || String(chart.date).slice(0, 10)) : null,
+    schaRub: chart && chart.net_assets != null ? Number(chart.net_assets) : null,
+    yield12m: null,
+    composition: [],
+    compositionNote: 'Состав на сайте УК «Первая» подгружается отдельно; доступны СЧА и стоимость пая',
+    fundUrl,
+    source: 'first-am.ru',
+    fundId: fundId || null
+  };
+}
+
+async function mapPool(items, worker, concurrency) {
+  const out = [];
+  const limit = concurrency || 4;
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const batch = await Promise.all(chunk.map(worker));
+    batch.forEach((row) => { if (row) out.push(row); });
+  }
+  return out;
+}
+
+async function fetchFirstAmFunds(catalogRows) {
+  const listUrls = ['https://first-am.ru/fund', 'https://first-am.ru/etf'];
+  const paths = new Set();
+  for (const url of listUrls) {
+    const html = await fetchText(url);
+    extractFirstAmFundPaths(html).forEach((p) => paths.add(p));
+  }
+  const catalog = buildUkCatalogRows(catalogRows).filter((row) => {
+    const uk = trimStr(row.uk).toLowerCase();
+    return uk.includes('первая') || trimStr(row.url).includes('first-am');
+  });
+  return mapPool([...paths], async (path) => {
+    const fundUrl = 'https://first-am.ru' + path;
+    const html = await fetchText(fundUrl);
+    return normalizeFirstAmPage(html, fundUrl, catalog);
+  }, 3);
+}
+
+function parseDohodAbout(html) {
+  const map = {};
+  const re = /about-header">([^<]+)<\/span>\s*<span class="about-info">([^<]+)/g;
+  let m;
+  while ((m = re.exec(html)) !== null) map[trimStr(m[1])] = trimStr(m[2]);
+  return map;
+}
+
+function extractDohodFundLinks(html) {
+  const links = new Set();
+  const re = /href="([^"]*mutual-funds\/(?:bpif|open-funds)\/[^"/#?]+)"/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const path = m[1].replace(/^\//, '');
+    if (path.endsWith('/bpif') || path.endsWith('/open-funds')) continue;
+    links.add(path);
+  }
+  return [...links];
+}
+
+function normalizeDohodPage(html, fundUrl) {
+  const about = parseDohodAbout(html);
+  const title = trimStr((html.match(/<h1[^>]*>([^<]+)/) || [])[1]);
+  const isin = trimStr(about.ISIN) || trimStr((html.match(/RU000A[A-Z0-9]{6,12}/) || [])[0]) || null;
+  if (!isin && !title) return null;
+  return {
+    uk: 'dohod',
+    ukLabel: 'ДОХОД',
+    ukUrl: 'https://www.dohod.ru',
+    fundName: title || isin,
+    isin,
+    ticker: trimStr(about['Тикер']) || null,
+    sharePrice: null,
+    shareCurrency: 'RUB',
+    shareDate: null,
+    schaRub: parseRubAmount(about['СЧА']),
+    yield12m: null,
+    composition: [],
+    compositionNote: about['Число ценных бумаг']
+      ? 'На странице фонда: ' + about['Число ценных бумаг'] + ' бумаг; детальный состав — в раскрытии УК'
+      : 'Состав не опубликован на странице продукта',
+    fundUrl,
+    source: 'dohod.ru'
+  };
+}
+
+async function fetchDohodFunds() {
+  const listUrls = [
+    'https://www.dohod.ru/individuals/mutual-funds/bpif/',
+    'https://www.dohod.ru/individuals/mutual-funds/'
+  ];
+  const paths = new Set();
+  for (const url of listUrls) {
+    const html = await fetchText(url);
+    extractDohodFundLinks(html).forEach((p) => paths.add(p));
+  }
+  return mapPool([...paths], async (path) => {
+    const fundUrl = path.startsWith('http') ? path : 'https://www.dohod.ru/' + path.replace(/^\//, '');
+    const html = await fetchText(fundUrl);
+    return normalizeDohodPage(html, fundUrl);
+  }, 4);
+}
+
+function fundKey(fund) {
+  return fund.isin || (fund.uk + ':' + (fund.fundId || fund.fundUrl || fund.fundName));
+}
+
+function mergeFundRecords(existing, incoming) {
+  if (!existing) return incoming;
+  const out = Object.assign({}, existing);
+  ['sharePrice', 'schaRub', 'yield12m', 'shareDate', 'ticker', 'isin', 'fundName'].forEach((field) => {
+    if (out[field] == null && incoming[field] != null) out[field] = incoming[field];
+  });
+  if ((!out.composition || !out.composition.length) && incoming.composition && incoming.composition.length) {
+    out.composition = incoming.composition;
+    out.compositionNote = incoming.compositionNote || null;
+  }
+  if (incoming.source && out.source && out.source.indexOf(incoming.source) < 0) {
+    out.source = out.source + ' · ' + incoming.source;
+  }
+  return out;
+}
+
+function upsertFunds(targetMap, rows) {
+  rows.forEach((row) => {
+    if (!row) return;
+    const key = fundKey(row);
+    targetMap.set(key, mergeFundRecords(targetMap.get(key), row));
+  });
+}
+
 /**
- * Источники УК: пока парсится SSR JSON с alfacapital.ru (стоимость пая, СЧА, состав).
- * НРД (nsddata.ru) требует договор и API-ключ — см. NSD_PIF_API_KEY.
+ * Источники УК: alfacapital.ru (SSR JSON), first-am.ru и dohod.ru (HTML),
+ * опционально НРД (nsddata.ru) по ключу NSD_PIF_API_KEY.
+ * bcs.ru с сервера недоступен (антибот servicepipe).
  */
-async function fetchUkPifFunds() {
-  const funds = [];
+async function fetchUkPifFunds(opts) {
+  const catalogRows = (opts && opts.catalog) || [];
+  const fundMap = new Map();
   const errors = [];
 
   try {
-    const alfa = await fetchAlfaCapitalFunds();
-    funds.push(...alfa);
+    upsertFunds(fundMap, await fetchAlfaCapitalFunds());
   } catch (err) {
     errors.push({ uk: 'alfacapital', message: err.message || String(err) });
+  }
+
+  try {
+    upsertFunds(fundMap, await fetchFirstAmFunds(catalogRows));
+  } catch (err) {
+    errors.push({ uk: 'first-am', message: err.message || String(err) });
+  }
+
+  try {
+    upsertFunds(fundMap, await fetchDohodFunds());
+  } catch (err) {
+    errors.push({ uk: 'dohod', message: err.message || String(err) });
   }
 
   if (process.env.NSD_PIF_API_KEY) {
     try {
       const nsd = await fetchNsdFunds(process.env.NSD_PIF_API_KEY);
-      mergeNsdFunds(funds, nsd);
+      nsd.forEach((n) => {
+        if (!n.isin) return;
+        const key = fundKey(n);
+        const merged = mergeFundRecords(fundMap.get(key), n);
+        merged.nsd = true;
+        fundMap.set(key, merged);
+      });
     } catch (err) {
       errors.push({ uk: 'nsd', message: err.message || String(err) });
     }
   }
 
+  const funds = [...fundMap.values()];
   const byIsin = {};
   const byName = {};
   funds.forEach((f) => {
@@ -186,11 +424,11 @@ function mergeNsdFunds(target, nsdFunds) {
     const existing = byIsin.get(n.isin);
     if (!existing) {
       target.push(n);
+      byIsin.set(n.isin, n);
       return;
     }
-    if (existing.sharePrice == null && n.sharePrice != null) existing.sharePrice = n.sharePrice;
-    if (existing.schaRub == null && n.schaRub != null) existing.schaRub = n.schaRub;
-    if (!existing.shareDate && n.shareDate) existing.shareDate = n.shareDate;
+    const merged = mergeFundRecords(existing, n);
+    Object.assign(existing, merged);
     existing.nsd = true;
   });
 }
@@ -211,7 +449,10 @@ function lookupUkFund(bundle, opts) {
 module.exports = {
   fetchUkPifFunds,
   fetchAlfaCapitalFunds,
+  fetchFirstAmFunds,
+  fetchDohodFunds,
   lookupUkFund,
   extractFundArrays,
-  normalizeAlfaItem
+  normalizeAlfaItem,
+  matchCatalogIsin
 };

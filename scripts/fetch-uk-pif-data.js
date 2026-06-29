@@ -7,13 +7,27 @@ const { fetchUkPifFunds } = require('./uk-pif-fetch');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 
+function loadPifCatalog() {
+  const indexPath = path.join(DATA_DIR, 'pif-index.json');
+  if (!fs.existsSync(indexPath)) return [];
+  try {
+    const json = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+    return (json.data && json.data.catalog) || [];
+  } catch (_) {
+    return [];
+  }
+}
+
 async function main() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  const bundle = await fetchUkPifFunds();
+  const catalog = loadPifCatalog();
+  const bundle = await fetchUkPifFunds({ catalog });
+  const sources = ['alfacapital.ru', 'first-am.ru', 'dohod.ru'];
+  if (process.env.NSD_PIF_API_KEY) sources.push('nsddata.ru');
   const payload = {
     status: bundle.funds.length ? 'ok' : 'empty',
     updatedAt: new Date().toISOString(),
-    source: 'Сайты УК (alfacapital.ru)' + (process.env.NSD_PIF_API_KEY ? ' · НРД' : ''),
+    source: 'Сайты УК (' + sources.join(', ') + ')',
     message: bundle.funds.length ? 'Данные обновлены' : 'Нет данных УК',
     data: {
       stats: bundle.stats,

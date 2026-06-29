@@ -1631,10 +1631,32 @@
 
   var ARTICLE_READ_LABEL = 'Читать →';
 
+  function estimateArticleReadMinutesLabel(bodyHtml) {
+    if (typeof window !== 'undefined' && typeof window.estimateArticleReadMinutesLabel === 'function') {
+      return window.estimateArticleReadMinutesLabel(bodyHtml);
+    }
+    var html = String(bodyHtml || '');
+    var text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    var wordCount = text.split(/\s+/).filter(Boolean).length;
+    var tables = (html.match(/<table/gi) || []).length;
+    var minutes = Math.max(1, Math.ceil(wordCount / 170 + tables * 1.25));
+    var low = Math.max(1, minutes - 1);
+    var high = minutes + (tables >= 4 ? 2 : 1);
+    if (low >= high) return high + ' минут';
+    return low + '–' + high + ' минут';
+  }
+
   function formatArticleReadTimeLabel(article) {
     if (!article) return '';
     if (article.readMinutesLabel) {
       return 'время прочтения/время ознакомления: ' + article.readMinutesLabel;
+    }
+    if (article.bodyHtml) {
+      var estimated = estimateArticleReadMinutesLabel(article.bodyHtml);
+      if (estimated) {
+        return 'время прочтения/время ознакомления: ' + estimated;
+      }
     }
     var m = Number(article.readMinutes);
     if (!m || m < 1) return '';

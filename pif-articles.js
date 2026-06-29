@@ -17,6 +17,20 @@
     return '<p class="muted">Материал носит информационный характер и не является индивидуальной инвестиционной рекомендацией.</p>';
   }
 
+  /** ~170 слов/мин + ~1,25 мин на таблицу (ориентир для длинных материалов с таблицами). */
+  function estimateArticleReadMinutesLabel(bodyHtml) {
+    var html = String(bodyHtml || '');
+    var text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    var wordCount = text.split(/\s+/).filter(Boolean).length;
+    var tables = (html.match(/<table/gi) || []).length;
+    var minutes = Math.max(1, Math.ceil(wordCount / 170 + tables * 1.25));
+    var low = Math.max(1, minutes - 1);
+    var high = minutes + (tables >= 4 ? 2 : 1);
+    if (low >= high) return high + ' минут';
+    return low + '–' + high + ' минут';
+  }
+
   var PIF_TYPES_TABLE_ROWS = [
     ['Тип фонда', 'ОПИФ — открытый ПИФ', 'Фонд, паи которого можно регулярно покупать и погашать.', 'Обычно заявки принимаются каждый рабочий день.', 'Ликвидные активы: акции, облигации, инструменты денежного рынка.', 'Комиссии, стратегию, динамику стоимости пая, условия покупки и погашения.'],
     ['Тип фонда', 'ИПИФ — интервальный ПИФ', 'Фонд, из которого можно выйти только в установленные периоды.', 'Погашение возможно в специальные окна по правилам фонда.', 'Ценные бумаги и другие активы, которые могут быть менее ликвидными, чем в ОПИФах.', 'Даты интервалов, сроки расчетов, состав активов, комиссии, скидки и надбавки.'],
@@ -308,5 +322,6 @@
     window.buildPifTypesArticleBodyHtml = buildPifTypesArticleBodyHtml;
     window.buildPifShareArticleBodyHtml = buildPifShareArticleBodyHtml;
     window.buildPifChooseArticleBodyHtml = buildPifChooseArticleBodyHtml;
+    window.estimateArticleReadMinutesLabel = estimateArticleReadMinutesLabel;
   }
 })();
