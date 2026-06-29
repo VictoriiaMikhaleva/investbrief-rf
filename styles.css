@@ -512,10 +512,18 @@
       outline-offset: 2px;
     }
     .modal.modal--article {
-      max-width: 640px;
-      max-height: min(90vh, 820px);
+      max-width: min(56rem, calc(100vw - 1.25rem));
+      width: 100%;
+      max-height: min(94vh, 920px);
       display: flex;
       flex-direction: column;
+      overflow: hidden;
+      padding: 1.25rem 1.1rem 1rem;
+    }
+    .modal.modal--article .brief-article-modal-head,
+    .modal.modal--article .brief-article-source-box,
+    .modal.modal--article .modal-actions {
+      flex-shrink: 0;
     }
     .brief-article-modal-head {
       margin-bottom: 1rem;
@@ -532,11 +540,14 @@
     }
     .brief-article-body {
       flex: 1;
+      min-height: 0;
+      overflow-x: hidden;
       overflow-y: auto;
       padding-right: 0.25rem;
       font-size: 0.95rem;
       line-height: 1.75;
       color: var(--text);
+      -webkit-overflow-scrolling: touch;
     }
     .brief-article-body p {
       margin: 0 0 1rem;
@@ -1809,13 +1820,61 @@
       font-variant-numeric: tabular-nums;
     }
     .brief-article-body .article-table-scroll {
-      overflow-x: auto;
+      display: block;
+      overflow: auto;
+      max-height: min(58vh, 32rem);
       margin: 0.65rem 0 1rem;
+      padding: 0.15rem 0.1rem 0.1rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.55);
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      touch-action: pan-x pan-y;
+      scrollbar-gutter: stable;
+    }
+    .brief-article-body .article-table-scroll .strategy-table {
+      margin: 0;
+    }
+    .brief-article-body .article-table-scroll .strategy-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--bg-panel);
+      box-shadow: 0 1px 0 var(--border);
     }
     .brief-article-body .pif-types-table { min-width: 52rem; font-size: 0.82rem; }
     .brief-article-body .pif-glossary-table,
     .brief-article-body .pif-name-table { min-width: 20rem; }
+    @media (max-width: 720px) {
+      #articleModal.modal-overlay,
+      #briefArticleModal.modal-overlay {
+        padding: 0;
+        align-items: stretch;
+      }
+      #articleModal .modal.modal--article,
+      #briefArticleModal .modal.modal--article {
+        max-width: none;
+        width: 100%;
+        max-height: none;
+        height: 100%;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        padding: 1rem 0.75rem 0.85rem;
+      }
+      .brief-article-modal-title {
+        font-size: 1.15rem;
+      }
+      .brief-article-body .article-table-scroll {
+        max-height: min(52vh, 26rem);
+        border-radius: 8px;
+      }
+      .brief-article-body .pif-types-table {
+        min-width: 44rem;
+        font-size: 0.78rem;
+      }
+    }
     .quote-div-src {
       display: inline-block;
       font-size: 0.58rem;
