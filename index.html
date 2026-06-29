@@ -1,11 +1,7 @@
 <!doctype html>
 <html lang="ru" class="us-market-unavailable">
 <head>
-<<<<<<< Updated upstream
-  <!-- ibrf-asset-version: 202606291035 -->
-=======
-  <!-- ibrf-asset-version: 202606291043 -->
->>>>>>> Stashed changes
+  <!-- ibrf-asset-version: 202606291305 -->
   <script>
     /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS и JS на мобильных. */
     (function () {
@@ -36,23 +32,14 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-<<<<<<< Updated upstream
-  <link rel="manifest" href="./site.webmanifest?v=202606291035" />
-=======
-  <link rel="manifest" href="./site.webmanifest?v=202606291043" />
->>>>>>> Stashed changes
+  <link rel="manifest" href="./site.webmanifest?v=202606291305" />
   <title>ИнвестБриф РФ — инвестиционная сводка</title>
   <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, агент наблюдения, ОФЗ, дивиденды и обороты торгов." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-<<<<<<< Updated upstream
-  <link rel="stylesheet" href="./styles.css?v=202606291035" />
-  <link rel="stylesheet" href="./theme-luxury.css?v=202606291035" />
-=======
-  <link rel="stylesheet" href="./styles.css?v=202606291043" />
-  <link rel="stylesheet" href="./theme-luxury.css?v=202606291043" />
->>>>>>> Stashed changes
+  <link rel="stylesheet" href="./styles.css?v=202606291305" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=202606291305" />
 </head>
 <body>
   <div class="app">
@@ -96,6 +83,18 @@
           </span>
           <span class="book-nav__text">
             <span class="book-nav__name">Мой портфель</span>
+          </span>
+        </button>
+        <button type="button" class="book-nav" data-tab="pifs" style="--book-color:#7A5C8A;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured">
+              <span class="book-nav__title book-nav__title--empty" aria-hidden="true"></span>
+            </span>
+          </span>
+          <span class="book-nav__text">
+            <span class="book-nav__name">ПИФы</span>
           </span>
         </button>
         <button type="button" class="book-nav" data-tab="articles" style="--book-color:#5A6C7E;--book-text:#F7F4EE">
@@ -593,7 +592,95 @@
           <button type="button" id="resetPortfolioBtn" class="danger" style="margin-top:0.5rem;">Очистить портфель</button>
         </section>
 
+        <section id="tab-pifs" class="panel" data-panel="pifs">
+          <h2>Паевые инвестиционные фонды</h2>
+          <div class="panel-intro hint-frame panel-intro--one-line">
+            <p>Реестр Банка России, раскрытие по правилам ДУ и котировки БПИФ с МосБиржи. Не является индивидуальной инвестиционной рекомендацией.</p>
+          </div>
+
+          <section class="home-block pif-section glass" id="pifSection" aria-labelledby="pifSectionTitle">
+            <div class="pif-section-head">
+              <div>
+                <h3 class="home-block-title" id="pifSectionTitle">ПИФы</h3>
+                <p class="muted pif-section-lead">ОПИФ, ИПИФ, ЗПИФ и БПИФ — в едином каталоге. Для ~650 фондов доступно расширенное раскрытие из витрины ЦБ; для биржевых фондов подгружаются котировки и iNAV с MOEX.</p>
+                <p class="muted pif-load-status" id="pifLoadStatus"></p>
+              </div>
+              <div class="pif-section-controls row">
+                <button type="button" id="pifArticleBtn" class="ghost small">Виды ПИФов — статья</button>
+                <button type="button" id="pifRefreshBtn" class="ghost" title="Обновить">↻</button>
+              </div>
+            </div>
+
+            <div class="pif-type-grid" id="pifTypeGrid" aria-label="Типы паевых фондов"></div>
+
+            <div class="pif-table-toolbar">
+              <div class="pif-table-filters row">
+                <label>
+                  <span class="muted">Тип</span>
+                  <select id="pifFilterKind" aria-label="Фильтр по типу ПИФ">
+                    <option value="all">Все</option>
+                    <option value="opif">ОПИФ</option>
+                    <option value="ipif">ИПИФ</option>
+                    <option value="zpif">ЗПИФ</option>
+                    <option value="bpif">БПИФ</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="muted">Статус</span>
+                  <select id="pifFilterStatus" aria-label="Фильтр по статусу">
+                    <option value="formed">Сформирован</option>
+                    <option value="all">Все активные</option>
+                    <option value="forming">Формируется</option>
+                    <option value="terminating">Прекращение</option>
+                  </select>
+                </label>
+                <label class="grow">
+                  <span class="muted">Поиск</span>
+                  <input id="pifFilterSearch" type="search" placeholder="название, УК, ISIN, тикер…" autocomplete="off" spellcheck="false" aria-label="Поиск фонда" />
+                </label>
+                <label class="pif-archive-toggle">
+                  <input type="checkbox" id="pifIncludeArchive" />
+                  <span class="muted">Архив (исключённые)</span>
+                </label>
+                <button type="button" id="pifFilterResetBtn" class="ghost small">Сброс</button>
+              </div>
+              <p class="muted pif-table-filter-note" id="pifTableNote"></p>
+            </div>
+
+            <div class="table-wrap pif-table-wrap">
+              <table class="strategy-table pif-market-table" id="pifTable">
+                <thead>
+                  <tr>
+                    <th>№</th>
+                    <th>Тип</th>
+                    <th>Статус</th>
+                    <th>Фонд</th>
+                    <th>Категория</th>
+                    <th>УК</th>
+                    <th>Тикер</th>
+                    <th>Раскр.</th>
+                    <th>Квал.</th>
+                  </tr>
+                </thead>
+                <tbody id="pifTableBody"></tbody>
+              </table>
+            </div>
+            <div class="pif-pagination row" id="pifPagination" aria-label="Страницы каталога"></div>
+
+            <section class="pif-detail-panel glass" id="pifDetailPanel" hidden aria-live="polite">
+              <h4 class="analytics-chart-lbl" id="pifDetailTitle">—</h4>
+              <div class="brief-meta" id="pifDetailMeta"></div>
+              <div class="pif-kpis" id="pifDetailKpis"></div>
+              <div class="pif-detail-body" id="pifDetailBody"></div>
+              <p class="muted pif-detail-links" id="pifDetailLinks"></p>
+            </section>
+
+            <p class="muted chart-source hint-frame">Реестр и витрина — <a href="https://www.cbr.ru/RSCI/data_showcase/" target="_blank" rel="noopener noreferrer">Банк России</a>. Котировки БПИФ — <a href="https://www.moex.com/" target="_blank" rel="noopener noreferrer">МосБиржа ISS</a>. Архивные фонды подгружаются отдельным файлом (~2 МБ).</p>
+          </section>
+        </section>
+
         <section id="tab-articles" class="panel" data-panel="articles">
+
           <h2>Статьи</h2>
           <p class="articles-lead">Короткие материалы, которые помогают разобраться в стратегиях, рисках, дивидендах и ежедневной сводке рынка.</p>
           <div class="panel-intro hint-frame panel-intro--one-line articles-disclaimer">
@@ -836,6 +923,16 @@
           </span>
           <span class="book-nav__name">Портфель</span>
         </button>
+        <button type="button" class="book-nav book-nav--bottom" data-tab="pifs" style="--book-color:#7A5C8A;--book-text:#F7F4EE">
+          <span class="book-nav__3d" aria-hidden="true">
+            <span class="book-nav__spine"></span>
+            <span class="book-nav__pages"></span>
+            <span class="book-nav__cover book-nav__cover--textured book-nav__cover--simple">
+              <span class="book-nav__title" data-typing-mobile="ПИФы">ПИФы</span>
+            </span>
+          </span>
+          <span class="book-nav__name">ПИФы</span>
+        </button>
         <button type="button" class="book-nav book-nav--bottom" data-tab="articles" style="--book-color:#5A6C7E;--book-text:#F7F4EE">
           <span class="book-nav__3d" aria-hidden="true">
             <span class="book-nav__spine"></span>
@@ -924,49 +1021,27 @@
     </div>
   </div>
 
-<<<<<<< Updated upstream
-  <script type="module" src="./firebase-init.mjs?v=202606291035"></script>
+  <script type="module" src="./firebase-init.mjs?v=202606291305"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="./nav-books.js?v=202606291035"></script>
-  <script src="./markets.js?v=202606291035"></script>
-  <script src="./storage.js?v=202606291035"></script>
-  <script src="./ui.js?v=202606291035"></script>
-  <script src="./news.js?v=202606291035"></script>
-  <script src="./moex.js?v=202606291035"></script>
-  <script src="./manual-data.js?v=202606291035"></script>
-=======
-  <script type="module" src="./firebase-init.mjs?v=202606291043"></script>
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="./nav-books.js?v=202606291043"></script>
-  <script src="./markets.js?v=202606291043"></script>
-  <script src="./storage.js?v=202606291043"></script>
-  <script src="./ui.js?v=202606291043"></script>
-  <script src="./news.js?v=202606291043"></script>
-  <script src="./moex.js?v=202606291043"></script>
-  <script src="./manual-data.js?v=202606291043"></script>
->>>>>>> Stashed changes
+  <script src="./nav-books.js?v=202606291305"></script>
+  <script src="./markets.js?v=202606291305"></script>
+  <script src="./storage.js?v=202606291305"></script>
+  <script src="./ui.js?v=202606291305"></script>
+  <script src="./news.js?v=202606291305"></script>
+  <script src="./moex.js?v=202606291305"></script>
+  <script src="./manual-data.js?v=202606291305"></script>
   <script>
     /** Серверная аналитика: Firebase Function (prod) или /api/analytics при npm start */
     window.INVESTBRIEF_ANALYTICS_API = 'https://europe-west1-investor-brief-rf.cloudfunctions.net/getAnalytics';
   </script>
-<<<<<<< Updated upstream
-  <script src="./analytics-core.js?v=202606291035"></script>
-  <script src="./analytics.js?v=202606291035"></script>
-  <script src="./ofz.js?v=202606291035"></script>
-  <script src="./portfolio.js?v=202606291035"></script>
-  <script src="./agent.js?v=202606291035"></script>
-  <script src="./watchdog.js?v=202606291035"></script>
-  <script src="./firebase-sync.js?v=202606291035"></script>
-  <script src="./app.js?v=202606291035"></script>
-=======
-  <script src="./analytics-core.js?v=202606291043"></script>
-  <script src="./analytics.js?v=202606291043"></script>
-  <script src="./ofz.js?v=202606291043"></script>
-  <script src="./portfolio.js?v=202606291043"></script>
-  <script src="./agent.js?v=202606291043"></script>
-  <script src="./watchdog.js?v=202606291043"></script>
-  <script src="./firebase-sync.js?v=202606291043"></script>
-  <script src="./app.js?v=202606291043"></script>
->>>>>>> Stashed changes
+  <script src="./analytics-core.js?v=202606291305"></script>
+  <script src="./analytics.js?v=202606291305"></script>
+  <script src="./ofz.js?v=202606291305"></script>
+  <script src="./pif.js?v=202606291305"></script>
+  <script src="./portfolio.js?v=202606291305"></script>
+  <script src="./agent.js?v=202606291305"></script>
+  <script src="./watchdog.js?v=202606291305"></script>
+  <script src="./firebase-sync.js?v=202606291305"></script>
+  <script src="./app.js?v=202606291305"></script>
 </body>
 </html>

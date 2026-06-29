@@ -1978,6 +1978,7 @@
       if (typeof refreshWatchdogDevUI === 'function') refreshWatchdogDevUI();
     }
     if (tab === 'articles' && typeof renderArticlesBlock === 'function') renderArticlesBlock();
+    if (tab === 'pifs' && typeof renderPifSection === 'function') renderPifSection();
   }
 
 
@@ -2006,7 +2007,7 @@
 
   function initHash() {
     var hash = (location.hash || '#briefing').replace('#', '');
-    var valid = ['briefing', 'watchlist', 'portfolio', 'articles', 'settings'];
+    var valid = ['briefing', 'watchlist', 'portfolio', 'pifs', 'articles', 'settings'];
     if (valid.indexOf(hash) !== -1) switchTab(hash);
     else switchTab('briefing');
   }

@@ -10,6 +10,8 @@
     "test:analytics-server": "node scripts/test-analytics-server.mjs",
     "test:agent": "node scripts/test-agent.mjs",
     "update:market-data": "node scripts/update-market-data.js",
+    "build:pif": "node scripts/build-pif-data.js",
+    "build:pif-uk": "node scripts/fetch-uk-pif-data.js",
     "sync:assets": "node scripts/sync-asset-version.js",
     "bump:assets": "node scripts/sync-asset-version.js --bump",
     "start": "npm run sync:core && node server/server.js",
@@ -34,5 +36,8 @@
     "express": "^4.21.2",
     "sharp": "^0.34.5",
     "to-ico": "^1.1.5"
+  },
+  "devDependencies": {
+    "xlsx": "^0.18.5"
   }
 }

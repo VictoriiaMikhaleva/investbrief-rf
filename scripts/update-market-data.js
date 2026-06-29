@@ -398,6 +398,20 @@ async function main() {
   await updateFile('market-snapshot.json', 'MOEX ISS + CBR', fetchMarketSnapshotData);
   await updateFile('agent-signals.json', 'MOEX ISS', fetchAgentSignalsData);
   await updateFile('ofz.json', 'MOEX ISS', fetchOfzData);
+  try {
+    const { buildCatalog, writePifSnapshots } = require('./build-pif-data');
+    const built = await buildCatalog();
+    await writePifSnapshots(built);
+    console.log('[ok] pif-index.json', built.stats);
+  } catch (err) {
+    console.error('[warn] pif registry:', err.message || err);
+  }
+  try {
+    const { main: fetchUk } = require('./fetch-uk-pif-data');
+    await fetchUk();
+  } catch (err) {
+    console.error('[warn] pif uk:', err.message || err);
+  }
 }
 
 main().catch((err) => {
