@@ -1808,6 +1808,14 @@
       font-weight: 600;
       font-variant-numeric: tabular-nums;
     }
+    .brief-article-body .article-table-scroll {
+      overflow-x: auto;
+      margin: 0.65rem 0 1rem;
+      -webkit-overflow-scrolling: touch;
+    }
+    .brief-article-body .pif-types-table { min-width: 52rem; font-size: 0.82rem; }
+    .brief-article-body .pif-glossary-table,
+    .brief-article-body .pif-name-table { min-width: 20rem; }
     .quote-div-src {
       display: inline-block;
       font-size: 0.58rem;
