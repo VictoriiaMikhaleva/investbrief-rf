@@ -906,7 +906,7 @@
       '<div class="' + blockCls + '" data-div-block>' +
         '<div class="quote-div-line"><span class="quote-div-lbl">' + avgLbl + '</span><span class="quote-div-val" data-div-avg>…</span></div>' +
         '<div class="quote-div-line"><span class="quote-div-lbl" data-turnover-lbl>' + turnLbl + '</span><span class="quote-div-val" data-turnover>…</span></div>' +
-        '<div class="quote-div-line"><span class="quote-div-lbl">Полн. доходн. 12м</span><span class="quote-div-val muted" data-total-return-indicator>—</span></div>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl">Полн. доходн. 12м <span class="quote-div-tip" title="Формула: (цена сейчас + дивиденды за 12 мес. - цена 12 мес. назад) / цена 12 мес. назад">?</span></span><span class="quote-div-val muted" data-total-return-indicator>—</span></div>' +
       '</div>'
     );
   }
