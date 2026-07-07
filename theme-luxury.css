@@ -645,7 +645,7 @@ input:focus, select:focus, textarea:focus {
   background: linear-gradient(90deg, var(--bronze) 0%, #9a7b4f 35%, #4a7356 68%, var(--accent) 100%);
   opacity: 0.92;
 }
-@media (min-width: 1100px) {
+@media (min-width: 992px) {
   .value-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
