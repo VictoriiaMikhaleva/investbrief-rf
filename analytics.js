@@ -10,6 +10,7 @@
   var VOLUME_YEAR_DAYS = 252;
   var YIELD_YEARS = 5;
   var ENRICH_CONCURRENCY = 4;
+  var ANALYTICS_API_TIMEOUT_MS = 6000;
   var enrichQueue = [];
   var enrichActive = 0;
   var C = typeof AnalyticsCore !== 'undefined' ? AnalyticsCore : null;
@@ -704,6 +705,31 @@
     return '/api/analytics';
   }
 
+  function shouldUseServerAnalytics() {
+    if (window.INVESTBRIEF_USE_SERVER_ANALYTICS === false) return false;
+    if (window.INVESTBRIEF_USE_SERVER_ANALYTICS === true) return true;
+    try {
+      var host = String(location.hostname || '').toLowerCase();
+      if (host.endsWith('github.io') || host.endsWith('githubpages.io')) return false;
+    } catch (e) { /* */ }
+    return true;
+  }
+
+  function fetchWithTimeout(url, opts, timeoutMs) {
+    opts = opts || {};
+    timeoutMs = timeoutMs || ANALYTICS_API_TIMEOUT_MS;
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs) : null;
+    var fetchOpts = {
+      credentials: opts.credentials != null ? opts.credentials : 'omit',
+      cache: opts.cache != null ? opts.cache : 'no-store'
+    };
+    if (ctrl) fetchOpts.signal = ctrl.signal;
+    return fetch(url, fetchOpts).finally(function () {
+      if (timer) clearTimeout(timer);
+    });
+  }
+
   function fetchSecurityAnalyticsFromApi(ticker, forceRefresh) {
     var base = getAnalyticsApiBase();
     var isCloudFn = base.indexOf('cloudfunctions.net') >= 0;
@@ -711,7 +737,7 @@
       ? base + '?ticker=' + encodeURIComponent(ticker)
       : base + '/' + encodeURIComponent(ticker);
     if (forceRefresh) url += (url.indexOf('?') >= 0 ? '&' : '?') + 'refresh=1';
-    return fetch(url, { credentials: 'omit', cache: 'no-store' }).then(function (res) {
+    return fetchWithTimeout(url, null, ANALYTICS_API_TIMEOUT_MS).then(function (res) {
       if (!res.ok) throw new Error('analytics_api_' + res.status);
       return res.json();
     }).then(function (data) {
@@ -771,7 +797,7 @@
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 
-    var useServer = window.INVESTBRIEF_USE_SERVER_ANALYTICS !== false;
+    var useServer = shouldUseServerAnalytics();
     if (useServer) {
       return fetchSecurityAnalyticsFromApi(ticker, opts.forceRefresh).then(function (api) {
         return enrichServerAnalytics(api, ticker).then(function (out) {
@@ -976,6 +1002,10 @@
     }
   }
 
+  function resetEnrichQueue() {
+    enrichQueue = [];
+  }
+
   function drainEnrichQueue() {
     while (enrichActive < ENRICH_CONCURRENCY && enrichQueue.length) {
       var job = enrichQueue.shift();
@@ -1050,6 +1080,11 @@
 
   function enrichQuoteCardImmediate(wrapEl, ticker, market) {
     return new Promise(function (resolve) {
+      if (!wrapEl || !wrapEl.isConnected) {
+        resolve();
+        return;
+      }
+      var expectedTicker = normalizeTicker(ticker);
       enrichQuoteCard(wrapEl, ticker);
       var mk = market || (wrapEl.getAttribute && wrapEl.getAttribute('data-market')) || 'RU';
       if (mk === 'US' || (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker))) {
@@ -1065,10 +1100,20 @@
         return;
       }
       buildSecurityAnalytics(ticker).then(function (a) {
+        if (!wrapEl.isConnected) {
+          resolve();
+          return;
+        }
+        if (normalizeTicker(wrapEl.getAttribute && wrapEl.getAttribute('data-ticker')) !== expectedTicker) {
+          resolve();
+          return;
+        }
         applyDivMetricsToWrap(wrapEl, a);
         resolve();
       }).catch(function () {
-        applyDivMetricsToWrap(wrapEl, { eligible: false });
+        if (wrapEl.isConnected) {
+          applyDivMetricsToWrap(wrapEl, { eligible: false });
+        }
         resolve();
       });
     });
@@ -1140,7 +1185,7 @@
     if (!grid) return;
     var tickers = getWatchlistTickersForAnalytics();
 
-    enrichQueue = [];
+    resetEnrichQueue();
     enrichActive = 0;
 
     if (!tickers.length) {
@@ -1280,6 +1325,7 @@
   window.resolveQuoteTradeDate = resolveQuoteTradeDate;
   window.setQuoteCardTurnoverLabel = setQuoteCardTurnoverLabel;
   window.queueEnrichQuoteCard = queueEnrichQuoteCard;
+  window.resetEnrichQueue = resetEnrichQueue;
   window.fetchPortfolioDivForecastHtml = fetchPortfolioDivForecastHtml;
   window.computeDividendForecast12m = computeDividendForecast12m;
   window.buildMonthlyDividendForecast12m = buildMonthlyDividendForecast12m;

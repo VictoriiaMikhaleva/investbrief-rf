@@ -1046,6 +1046,7 @@
   function renderMarketTiles() {
     var el = document.getElementById('marketTiles');
     if (!el) return;
+    if (typeof window.resetEnrichQueue === 'function') window.resetEnrichQueue();
     destroyMarketTilesBento();
     var tickers = getBriefingQuoteTickers();
     if (!tickers.length) {
@@ -2065,6 +2066,7 @@
   function renderImoexTopVolumeTable(rows, market) {
     market = market || 'RU';
     var isUs = market === 'US';
+    if (typeof window.resetEnrichQueue === 'function') window.resetEnrichQueue();
     var grid = document.getElementById('imoexTopVolumeCards');
     var tbody = document.getElementById('imoexTopVolumeBody');
     if (!rows || !rows.length) {
