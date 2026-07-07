@@ -11,7 +11,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.0.1';
+  var VERSION = '1.1.0';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var YIELD_YEARS = 5;
@@ -177,6 +177,54 @@
     }
 
     return { amount: null, paid12m: null, upcoming12m: null, source: '' };
+  }
+
+  function nearestCloseOnOrBefore(dailyHistory, isoDate) {
+    var target = String(isoDate || '').slice(0, 10);
+    if (target.length < 10) return null;
+    var picked = null;
+    (dailyHistory || []).forEach(function (h) {
+      var d = String(h && h.date || '').slice(0, 10);
+      if (d.length < 10 || d > target || !isFinite(h.close) || h.close <= 0) return;
+      if (!picked || d > picked.date) picked = { date: d, close: Number(h.close) };
+    });
+    return picked;
+  }
+
+  function computeTotalReturn12m(dividends, dailyHistory, now) {
+    now = now || new Date();
+    now.setHours(12, 0, 0, 0);
+    var endIso = now.toISOString().slice(0, 10);
+    var start = new Date(now);
+    start.setFullYear(start.getFullYear() - 1);
+    var startIso = start.toISOString().slice(0, 10);
+
+    var startPoint = nearestCloseOnOrBefore(dailyHistory, startIso);
+    var endPoint = nearestCloseOnOrBefore(dailyHistory, endIso);
+    if (!startPoint || !endPoint || !isFinite(startPoint.close) || startPoint.close <= 0) {
+      return { pct: null, priceReturnPct: null, divPaid12m: null, source: '' };
+    }
+
+    var paid12m = 0;
+    var startMs = new Date(startIso + 'T12:00:00').getTime();
+    var endMs = new Date(endIso + 'T12:00:00').getTime();
+    (dividends || []).forEach(function (d) {
+      var dt = new Date(String(d.date || '').slice(0, 10) + 'T12:00:00');
+      if (isNaN(dt.getTime()) || !isFinite(d.value) || d.value <= 0) return;
+      var ms = dt.getTime();
+      if (ms > startMs && ms <= endMs) paid12m += Number(d.value);
+    });
+
+    var startClose = Number(startPoint.close);
+    var endClose = Number(endPoint.close);
+    var priceReturnPct = ((endClose - startClose) / startClose) * 100;
+    var totalReturnPct = ((endClose + paid12m - startClose) / startClose) * 100;
+    return {
+      pct: isFinite(totalReturnPct) ? totalReturnPct : null,
+      priceReturnPct: isFinite(priceReturnPct) ? priceReturnPct : null,
+      divPaid12m: paid12m,
+      source: 'цена + дивиденды за 12 мес. (MOEX)'
+    };
   }
 
   function computeYearlyDividendYields(dividends, dailyHistory, windowYears) {
@@ -477,6 +525,7 @@
       divYieldQuality: divMetrics.divYieldQuality,
       divForecast: divMetrics.divForecast,
       noMoexDividends: divMetrics.noMoexDividends,
+      totalReturn12m: computeTotalReturn12m(dividends, history, now),
       monthlyForecast: buildMonthlyDividendForecast12m(dividends, history, quotePrice, now),
       volumeByDay: volumeByDay,
       dataAsOf: dataAsOf,
@@ -562,6 +611,7 @@
     getLastDividendPaymentDate: getLastDividendPaymentDate,
     monthsSinceIsoDate: monthsSinceIsoDate,
     computeDividendForecast12m: computeDividendForecast12m,
+    computeTotalReturn12m: computeTotalReturn12m,
     computeYearlyDividendYields: computeYearlyDividendYields,
     averageYield5y: averageYield5y,
     assessDivYieldQuality: assessDivYieldQuality,

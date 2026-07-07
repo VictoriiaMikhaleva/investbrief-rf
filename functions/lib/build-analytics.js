@@ -33,6 +33,7 @@ function buildAnalyticsPayload(ticker, quote, metrics) {
     divYieldQuality: metrics.divYieldQuality,
     divForecast: metrics.divForecast,
     noMoexDividends: metrics.noMoexDividends,
+    totalReturn12m: metrics.totalReturn12m,
     divYieldByYear: metrics.divYieldByYear,
     monthlyForecast: metrics.monthlyForecast,
     volumeByDay: metrics.volumeByDay,

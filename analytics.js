@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v10.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v11.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -51,8 +51,8 @@
 
   function invalidateAnalyticsTickerCache(ticker) {
     ticker = normalizeTicker(ticker);
-    analyticsCacheRemove('full.v7.' + ticker);
-    analyticsCacheRemove('hist.v5.' + ticker + '.' + YIELD_YEARS);
+    analyticsCacheRemove('full.v8.' + ticker);
+    analyticsCacheRemove('hist.v6.' + ticker + '.' + YIELD_YEARS);
   }
 
   function isIndexQuoteTicker(ticker) {
@@ -551,7 +551,7 @@
   function fetchMoexShareHistoryDaily(ticker, yearsBack) {
     ticker = normalizeTicker(ticker);
     yearsBack = yearsBack || YIELD_YEARS;
-    var cacheKey = 'hist.v5.' + ticker + '.' + yearsBack;
+    var cacheKey = 'hist.v6.' + ticker + '.' + yearsBack;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
 
@@ -682,6 +682,7 @@
         divYieldQuality: metrics.divYieldQuality,
         divForecast: metrics.divForecast,
         noMoexDividends: metrics.noMoexDividends,
+        totalReturn12m: metrics.totalReturn12m,
         divYieldByYear: metrics.divYieldByYear,
         monthlyForecast: metrics.monthlyForecast,
         volumeByDay: metrics.volumeByDay,
@@ -766,7 +767,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v7.' + ticker;
+    var cacheKey = 'full.v8.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 
@@ -905,6 +906,7 @@
       '<div class="' + blockCls + '" data-div-block>' +
         '<div class="quote-div-line"><span class="quote-div-lbl">' + avgLbl + '</span><span class="quote-div-val" data-div-avg>…</span></div>' +
         '<div class="quote-div-line"><span class="quote-div-lbl" data-turnover-lbl>' + turnLbl + '</span><span class="quote-div-val" data-turnover>…</span></div>' +
+        '<div class="quote-div-line"><span class="quote-div-lbl">Полн. доходн. 12м</span><span class="quote-div-val muted" data-total-return-indicator>—</span></div>' +
       '</div>'
     );
   }
@@ -917,6 +919,7 @@
     if (!wrapEl) return;
     var avgEl = wrapEl.querySelector('[data-div-avg]');
     var turnoverEl = wrapEl.querySelector('[data-turnover]');
+    var totalReturnEl = wrapEl.querySelector('[data-total-return-indicator]');
     var legacy = wrapEl.querySelector('[data-div-yield]');
     if (legacy) legacy.style.display = 'none';
 
@@ -927,6 +930,10 @@
         avgEl.title = '';
       }
       if (turnoverEl) turnoverEl.textContent = '—';
+      if (totalReturnEl) {
+        totalReturnEl.textContent = '—';
+        totalReturnEl.className = 'quote-div-val muted';
+      }
       return;
     }
     if (avgEl) {
@@ -955,6 +962,17 @@
         tradeDate: resolveQuoteTradeDate(a),
         market: mk
       });
+    }
+    if (totalReturnEl) {
+      var tr = a.totalReturn12m && isFinite(a.totalReturn12m.pct) ? Number(a.totalReturn12m.pct) : null;
+      if (tr == null) {
+        totalReturnEl.textContent = '—';
+        totalReturnEl.className = 'quote-div-val muted';
+      } else {
+        totalReturnEl.textContent = formatDivYieldPct(tr);
+        totalReturnEl.className = 'quote-div-val' + (tr >= 0 ? ' pnl-pos' : ' pnl-neg');
+        totalReturnEl.title = a.totalReturn12m.source || 'Цена + дивиденды за 12 месяцев';
+      }
     }
   }
 
