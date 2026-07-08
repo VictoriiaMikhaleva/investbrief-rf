@@ -217,6 +217,7 @@
 
     setupTickerAutocomplete('tickerInput');
     setupTickerAutocomplete('pfAddTicker');
+    if (typeof preloadOfzSearchCatalog === 'function') preloadOfzSearchCatalog();
     setupTickerAutocomplete('feedAsset', { onSelect: function () { syncFiltersFromUI(); } });
     setupTickerAutocomplete('alertRuleTicker');
 

@@ -207,6 +207,7 @@
       jobs.push(Promise.resolve([]));
     }
     var usLocal = markets.us ? searchUsSecurities(q) : [];
+    var ofzLocal = typeof searchOfzCatalog === 'function' ? searchOfzCatalog(q) : [];
     return Promise.all(jobs).then(function (results) {
       var moexItems = (results[0] || []).map(function (it) {
         return {
@@ -217,7 +218,7 @@
           currency: 'RUB'
         };
       });
-      return mergeSearchResults(usLocal, moexItems);
+      return mergeSearchResults(mergeSearchResults(usLocal, ofzLocal), moexItems);
     });
   }
 
@@ -276,6 +277,22 @@
         return item;
       });
     }
+    if (/офз|ofz/i.test(trimmed) || /^\d{5}$/.test(trimmed.replace(/\s/g, ''))) {
+      var ofzItems = typeof searchOfzCatalog === 'function' ? searchOfzCatalog(trimmed) : [];
+      if (ofzItems.length) {
+        var ofzPick = pickSearchItem(ofzItems, trimmed);
+        if (ofzPick) {
+          return Promise.resolve({
+            ticker: ofzPick.ticker,
+            name: ofzPick.name,
+            kind: 'bond',
+            market: 'RU',
+            currency: 'RUB',
+            type: 'bond'
+          });
+        }
+      }
+    }
     if (/^[A-Z0-9][A-Z0-9._-]*$/i.test(t) && t.length >= 2 && !/[А-Яа-яЁё]/.test(trimmed)) {
       return (typeof fetchMoexTickerName === 'function' ? fetchMoexTickerName(t) : Promise.resolve('')).then(function () {
         if (isUsTicker(t) && isMarketEnabled('US')) {
@@ -301,7 +318,23 @@
       });
     }
     return searchSecurities(trimmed).then(function (items) {
-      if (!items.length) return { ticker: normalizeTicker(trimmed), market: 'RU', currency: 'RUB', type: 'stock', kind: 'stock', name: '' };
+      if (!items.length) {
+        var ofzOnly = typeof searchOfzCatalog === 'function' ? searchOfzCatalog(trimmed) : [];
+        if (ofzOnly.length) {
+          var ofzPick2 = pickSearchItem(ofzOnly, trimmed);
+          if (ofzPick2) {
+            return {
+              ticker: ofzPick2.ticker,
+              name: ofzPick2.name,
+              kind: 'bond',
+              market: 'RU',
+              currency: 'RUB',
+              type: 'bond'
+            };
+          }
+        }
+        return { ticker: normalizeTicker(trimmed), market: 'RU', currency: 'RUB', type: 'stock', kind: 'stock', name: '' };
+      }
       var pick = pickSearchItem(items, trimmed);
       var item = {
         ticker: pick.ticker,

@@ -100,6 +100,9 @@
         if (typeof Markets !== 'undefined' && Markets.isMarketEnabled('US')) {
           shortItems = shortItems.concat(Markets.searchUsSecurities(v));
         }
+        if (typeof searchOfzCatalog === 'function') {
+          shortItems = shortItems.concat(searchOfzCatalog(v));
+        }
         acState.items = shortItems.slice(0, 12);
         acState.active = acState.items.length ? 0 : -1;
         renderList();

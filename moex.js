@@ -79,7 +79,13 @@
     if (!force && cache && now - cache.ts < DATA_FILE_TTL_MS) {
       return Promise.resolve(cache.payload);
     }
-    return fetch('./data/' + filename + '?ts=' + Math.floor(now / 10000), {
+    return fetch((function () {
+      try {
+        return new URL('data/' + filename, window.location.href).toString();
+      } catch (e) {
+        return './data/' + filename;
+      }
+    })() + '?ts=' + Math.floor(now / 10000), {
       method: 'GET',
       credentials: 'omit',
       cache: 'no-store'
