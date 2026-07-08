@@ -18,7 +18,7 @@
     { title: 'Прозрачность', text: 'Направления расходов бюджета публикует Минфин России. ОФЗ не привязаны к одному проекту — это займ государства в целом.' }
   ];
 
-  var _selectedTicker = 'OFZ_26238';
+  var _selectedTicker = '';
   var _rows = [];
   var _loading = false;
   var _bound = false;
@@ -303,6 +303,39 @@
     if (shortname && typeof saveTickerName === 'function') saveTickerName(ticker, shortname);
   }
 
+  function catalogHasMarketData(catalog) {
+    if (!Array.isArray(catalog) || !catalog.length) return false;
+    var quoted = catalog.filter(function (e) {
+      if (!e) return false;
+      var hasPrice = e.last != null && isFinite(Number(e.last));
+      var hasYield = e.yieldPct != null && isFinite(Number(e.yieldPct));
+      var hasDuration = e.durationDays != null && isFinite(Number(e.durationDays)) && Number(e.durationDays) > 0;
+      return hasPrice || hasYield || hasDuration;
+    });
+    return quoted.length >= 2;
+  }
+
+  function rowsHaveMarketData(rows) {
+    if (!Array.isArray(rows) || !rows.length) return false;
+    return rows.some(function (r) {
+      if (!r) return false;
+      return (r.price != null && isFinite(Number(r.price))) ||
+        (r.yieldPct != null && isFinite(Number(r.yieldPct))) ||
+        (r.durationYears != null && isFinite(Number(r.durationYears)) && Number(r.durationYears) > 0);
+    });
+  }
+
+  function resolveOfzCatalogWithSnapshotFallback(fallbackFn) {
+    return fetchOfzBondCatalogFromSnapshot().then(function (pack) {
+      if (pack && catalogHasMarketData(pack.catalog)) {
+        _ofzSnapshotMeta = pack.snapshot;
+        _ofzDataLive = false;
+        return pack.catalog;
+      }
+      return typeof fallbackFn === 'function' ? fallbackFn() : ofzFallbackCatalog();
+    });
+  }
+
   function fetchOfzBondCatalogFromSnapshot() {
     if (typeof getInvestbriefDataFile !== 'function') return Promise.resolve(null);
     return getInvestbriefDataFile('ofz.json').then(function (snapshot) {
@@ -316,27 +349,28 @@
   function fetchOfzBondCatalog(forceLive) {
     if (forceLive) {
       return fetchOfzBondCatalogDirect().then(function (catalog) {
+        if (!catalogHasMarketData(catalog)) {
+          return resolveOfzCatalogWithSnapshotFallback(ofzFallbackCatalog);
+        }
         _ofzSnapshotMeta = null;
         _ofzDataLive = true;
         _ofzLastFetchedAt = Date.now();
         return catalog;
       }).catch(function () {
-        return fetchOfzBondCatalogFromSnapshot().then(function (pack) {
-          if (!pack) return fetchOfzBondCatalogDirect();
-          _ofzSnapshotMeta = pack.snapshot;
-          _ofzDataLive = false;
-          return pack.catalog;
-        });
+        return resolveOfzCatalogWithSnapshotFallback(ofzFallbackCatalog);
       });
     }
     if (typeof getInvestbriefDataFile === 'function') {
       return fetchOfzBondCatalogFromSnapshot().then(function (pack) {
-        if (pack) {
+        if (pack && catalogHasMarketData(pack.catalog)) {
           _ofzSnapshotMeta = pack.snapshot;
           _ofzDataLive = false;
           return pack.catalog;
         }
         return fetchOfzBondCatalogDirect().then(function (catalog) {
+          if (!catalogHasMarketData(catalog)) {
+            return resolveOfzCatalogWithSnapshotFallback(ofzFallbackCatalog);
+          }
           _ofzSnapshotMeta = null;
           _ofzDataLive = true;
           _ofzLastFetchedAt = Date.now();
@@ -361,7 +395,7 @@
       var secBlock = json.securities;
       var mdBlock = json.marketdata;
       if (!secBlock || !secBlock.columns || !secBlock.data || !secBlock.data.length) {
-        return ofzFallbackCatalog();
+        return resolveOfzCatalogWithSnapshotFallback(ofzFallbackCatalog);
       }
       var sCols = secBlock.columns;
       var si = sCols.indexOf('SECID');
@@ -420,7 +454,7 @@
       }).sort(function (a, b) {
         return (b.vol || 0) - (a.vol || 0);
       });
-      if (!list.length) return ofzFallbackCatalog();
+      if (!list.length) return resolveOfzCatalogWithSnapshotFallback(ofzFallbackCatalog);
       if (typeof moexCacheSet === 'function') {
         moexCacheSet(OFZ_CATALOG_CACHE_KEY, list, 5 * 60 * 1000);
       }
@@ -429,9 +463,9 @@
       _loadError = 'МосБиржа недоступна — показан краткий список.';
       if (typeof moexCacheGet === 'function') {
         var stale = moexCacheGet(OFZ_CATALOG_CACHE_KEY);
-        if (stale && stale.length) return stale;
+        if (stale && stale.length && catalogHasMarketData(stale)) return stale;
       }
-      return ofzFallbackCatalog();
+      return resolveOfzCatalogWithSnapshotFallback(ofzFallbackCatalog);
     });
   }
 
@@ -1255,6 +1289,9 @@
   }
 
   function applyOfzCatalog(catalog) {
+    if (!catalogHasMarketData(catalog) && rowsHaveMarketData(_rows)) {
+      return selectOfzTicker(_selectedTicker || (_rows[0] && _rows[0].ticker));
+    }
     _rows = (catalog || []).map(rowFromCatalogEntry);
     _loading = false;
     _loadError = _rows.length ? '' : 'Пустой ответ МосБиржи.';
@@ -1277,11 +1314,12 @@
     renderOfzTable();
 
     return fetchOfzBondCatalog(!!force).then(function (catalog) {
-      return Promise.resolve(applyOfzCatalog(catalog)).then(function () {
+      return applyOfzCatalog(catalog).then(function () {
         if (!force && !_ofzDataLive) {
           return fetchOfzBondCatalog(true).then(function (liveCatalog) {
+            if (!catalogHasMarketData(liveCatalog)) return null;
             return applyOfzCatalog(liveCatalog);
-          });
+          }).catch(function () { return null; });
         }
       });
     }).catch(function () {
@@ -1385,8 +1423,8 @@
     section.hidden = false;
     bindOfzUI();
     scheduleOfzRefresh();
-    if (!_rows.length && !_loading) loadOfzData(false);
-    else if (_rows.length) selectOfzTicker(_selectedTicker);
+    if ((!_rows.length || !rowsHaveMarketData(_rows)) && !_loading) loadOfzData(false);
+    else if (_rows.length) selectOfzTicker(_selectedTicker || _rows[0].ticker);
     else updateOfzSectionLead(0);
   }
 
