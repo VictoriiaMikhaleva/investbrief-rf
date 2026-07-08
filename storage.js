@@ -128,8 +128,47 @@
 
 
 
+  function isQuotaError(err) {
+    if (!err) return false;
+    return err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014;
+  }
+
+  function freeStorageSpace(preserveKey) {
+    preserveKey = preserveKey || '';
+    [KEYS.agentSignalHistory, 'ibrf.liveBriefs'].forEach(function (k) {
+      if (k !== preserveKey) {
+        try { localStorage.removeItem(k); } catch (e) { /* noop */ }
+      }
+    });
+    var drop = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (!k || k === preserveKey) continue;
+      if (k.indexOf('ibrf.moex.') === 0 || k.indexOf('ibrf.analytics') === 0 || k.indexOf('ofz.catalog') === 0) {
+        drop.push(k);
+      }
+    }
+    drop.forEach(function (k) {
+      try { localStorage.removeItem(k); } catch (e) { /* noop */ }
+    });
+  }
+
   function saveJSON(key, data) {
-    localStorage.setItem(key, JSON.stringify(data));
+    var payload = JSON.stringify(data);
+    try {
+      localStorage.setItem(key, payload);
+      return true;
+    } catch (e) {
+      if (!isQuotaError(e)) throw e;
+      freeStorageSpace(key);
+      try {
+        localStorage.setItem(key, payload);
+        return true;
+      } catch (e2) {
+        if (!isQuotaError(e2)) throw e2;
+        return false;
+      }
+    }
   }
 
 
@@ -433,7 +472,11 @@
     if (p && Array.isArray(p.positions)) {
       p.positions = p.positions.map(normalizePosition).filter(Boolean);
     }
-    saveJSON(KEYS.portfolio, p);
+    if (!saveJSON(KEYS.portfolio, p)) {
+      var err = new Error('storage_quota');
+      err.code = 'storage_quota';
+      throw err;
+    }
     if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
   }
 

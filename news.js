@@ -507,6 +507,25 @@
     return hasLocalNewsApi() ? RSS_FEED_RETRY_COUNT : 0;
   }
 
+  var RSS_QUIET_LOG = true;
+  var _rssFailHosts = {};
+
+  function noteRssFeedFail(feedUrl) {
+    if (!RSS_QUIET_LOG) return;
+    var host = feedUrl;
+    try { host = new URL(feedUrl).hostname; } catch (e) { /* noop */ }
+    _rssFailHosts[host] = (_rssFailHosts[host] || 0) + 1;
+  }
+
+  function flushRssQuietLog() {
+    if (!RSS_QUIET_LOG) return;
+    var hosts = Object.keys(_rssFailHosts);
+    if (!hosts.length) return;
+    var parts = hosts.map(function (h) { return h + ' (' + _rssFailHosts[h] + ')'; });
+    console.info('[InvestBrief] Часть RSS-лент временно недоступна: ' + parts.join(', ') + '. Новости обновятся позже.');
+    _rssFailHosts = {};
+  }
+
 
 
   function fetchWithTimeout(promise, ms) {
@@ -650,9 +669,11 @@
         RSS_FETCH_TIMEOUT_MS
       );
     }
-    return fetchRssViaRss2Json(feedUrl)
-      .catch(function () { return fetchRssViaAllOrigins(feedUrl); })
-      .catch(function () { return []; });
+    // На GitHub Pages allorigins даёт CORS/52x и забивает консоль — только rss2json.
+    return fetchRssViaRss2Json(feedUrl).catch(function () {
+      noteRssFeedFail(feedUrl);
+      return [];
+    });
   }
 
 
@@ -766,6 +787,7 @@
     }
 
     return runBatch(0).then(function () {
+      flushRssQuietLog();
       return sortBriefsNewest(dedupeBriefs(collected)).slice(0, 180);
     });
   }

@@ -1328,7 +1328,9 @@
       _agentLoading = false;
       _agentCards = [];
       _agentLastError = 'Ошибка загрузки данных агента. Проверьте интернет и нажмите «Обновить».';
-      console.warn('agent refresh failed', err);
+      if (!err || (err.name !== 'QuotaExceededError' && err.code !== 'storage_quota')) {
+        console.warn('agent refresh failed', err);
+      }
       renderAgentGrid();
     });
   }

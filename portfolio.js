@@ -916,13 +916,17 @@
       if (!s) return '';
       var m = s.match(/(\d{5})/);
       if (m) return 'OFZ_' + m[1];
-      if (s.indexOf('OFZ_') === 0) return s;
-      if (s.indexOf('OFZ') === 0 && s.length >= 8) return s;
+      if (/^OFZ_\d{5}$/.test(s)) return s;
       if (s.indexOf('SU') === 0 && s.length > 8) {
         var m2 = s.match(/(\d{5})/);
         if (m2) return 'OFZ_' + m2[1];
       }
       return '';
+    }
+
+    if (/офз|ofz/i.test(rawTicker) && !normalizeBondTickerInput(rawTicker)) {
+      showToast('Укажите полный тикер ОФЗ, например OFZ_26247');
+      return;
     }
 
     var resolveFn = typeof Markets !== 'undefined' ? Markets.resolveSecurityFromInput : function (r) {
@@ -1084,8 +1088,12 @@
         state.folderOpen = true;
         renderPortfolio();
       });
-    }).catch(function () {
-      showToast('Не удалось добавить позицию — проверьте тикер');
+    }).catch(function (err) {
+      if (err && (err.code === 'storage_quota' || err.name === 'QuotaExceededError')) {
+        showToast('Не удалось сохранить: память браузера переполнена. Очистите данные сайта (F12 → Application → Local Storage).');
+      } else {
+        showToast('Не удалось добавить позицию — проверьте тикер');
+      }
     });
   }
 
