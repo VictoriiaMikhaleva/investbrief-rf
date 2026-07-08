@@ -952,6 +952,40 @@
       }
 
       var isUs = typeof Markets !== 'undefined' && sec.market === 'US';
+      var isBond = !isUs && (
+        sec.type === 'bond' || sec.kind === 'bond' ||
+        (typeof isRuBondTicker === 'function' && isRuBondTicker(t))
+      );
+
+      function finishRuAdd(cur) {
+        var finalCur = cur != null && isFinite(cur) ? cur : (avg != null && isFinite(avg) ? avg : 100);
+        var avgPrice = avg != null && isFinite(avg) ? avg : finalCur;
+
+        if (existing) {
+          mergePositionPurchase(existing, qty, avgPrice, buyDate, comment);
+          if (finalCur != null && isFinite(finalCur)) existing.currentPrice = finalCur;
+          setPortfolio(portfolio);
+          clearFormsAfterSave();
+          showToast('Докупка учтена, обновлена ср. цена: ' + t);
+        } else {
+          portfolio.positions.push(normalizePosition({
+            ticker: t,
+            qty: qty,
+            avgPrice: avgPrice,
+            currentPrice: finalCur,
+            buyDate: buyDate,
+            comment: comment,
+            market: 'RU',
+            currency: 'RUB'
+          }));
+          setPortfolio(portfolio);
+          clearFormsAfterSave();
+          showToast('Добавлено в портфель: ' + t);
+        }
+        state.chartTicker = t;
+        state.folderOpen = true;
+        renderPortfolio();
+      }
       function finishUsAdd(cur, dayPct) {
         if (existing) {
           mergePositionPurchase(existing, qty, avg, buyDate, comment);
@@ -989,6 +1023,20 @@
         return;
       }
 
+      if (isBond) {
+        finishRuAdd(avg != null && isFinite(avg) ? avg : null);
+        fetchMoexLastPrice(t).catch(function () { return null; }).then(function (live) {
+          if (live == null || !isFinite(live)) return;
+          var p = getPortfolio();
+          var pos = findPortfolioPosition(t);
+          if (!pos) return;
+          pos.currentPrice = live;
+          setPortfolio(p);
+          renderPortfolio();
+        });
+        return;
+      }
+
       fetchMoexLastPrice(t).catch(function () { return null; }).then(function (price) {
         var cur = price != null && isFinite(price) ? price : (avg != null ? avg : 100);
         var avgPrice = avg != null ? avg : cur;
@@ -1018,6 +1066,8 @@
         state.folderOpen = true;
         renderPortfolio();
       });
+    }).catch(function () {
+      showToast('Не удалось добавить позицию — проверьте тикер');
     });
   }
 

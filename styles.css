@@ -1731,6 +1731,18 @@
       border-radius: 10px;
       box-shadow: 0 8px 28px rgba(43, 43, 43, 0.12);
     }
+    .ticker-ac-list[hidden] {
+      display: none !important;
+      pointer-events: none !important;
+    }
+    .pf-form-actions {
+      position: relative;
+      z-index: 5;
+    }
+    .pf-form-actions .primary,
+    .pf-form-actions .ghost {
+      pointer-events: auto;
+    }
     .ticker-ac-item {
       display: grid;
       grid-template-columns: auto 1fr auto;
@@ -2977,6 +2989,10 @@
       overflow: visible;
     }
     .portfolio-add-form .ticker-ac-list { z-index: 400; }
+    .portfolio-add-form .pf-form-actions {
+      position: relative;
+      z-index: 450;
+    }
     .portfolio-charts { position: relative; z-index: 2; }
     .pf-form-hint { font-size: 0.85rem; margin: 0 0 0.65rem; line-height: 1.45; }
     .pf-form-actions {

@@ -350,7 +350,16 @@
       }
     });
     var pfAddBtn = document.getElementById('pfAddBtn');
-    if (pfAddBtn) pfAddBtn.addEventListener('click', function () { addPortfolioPosition(null, { prefix: '' }); });
+    var pfFormActions = document.querySelector('.portfolio-add-form .pf-form-actions');
+    if (pfFormActions) {
+      pfFormActions.addEventListener('mousedown', function () {
+        if (acControllers.pfAddTicker) acControllers.pfAddTicker.close();
+      });
+    }
+    if (pfAddBtn) pfAddBtn.addEventListener('click', function () {
+      if (acControllers.pfAddTicker) acControllers.pfAddTicker.close();
+      addPortfolioPosition(null, { prefix: '' });
+    });
     var pfCancelEditBtn = document.getElementById('pfCancelEditBtn');
     if (pfCancelEditBtn) pfCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
     bindPortfolioFormEnter('pfAddTicker', '');

@@ -760,7 +760,7 @@
         moexCacheSet(cacheKey, price, 5 * 60 * 1000);
         return price;
       });
-    });
+    }).catch(function () { return null; });
   }
 
 

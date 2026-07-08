@@ -232,6 +232,43 @@
     return exact || items[0];
   }
 
+  function isBondTickerSymbol(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!ticker) return false;
+    if (ticker.indexOf('OFZ') >= 0) return true;
+    return ticker.indexOf('SU') === 0 && ticker.length > 8;
+  }
+
+  function resolveRuBondFromInput(trimmed, ticker) {
+    ticker = normalizeTicker(ticker || trimmed);
+    if (!ticker) return null;
+    var items = [];
+    if (typeof searchOfzCatalog === 'function') {
+      items = searchOfzCatalog(trimmed);
+      if (!items.length) items = searchOfzCatalog(ticker);
+    }
+    var pick = items.length ? pickSearchItem(items, trimmed) : null;
+    var bondTicker = pick ? pick.ticker : ticker;
+    var bondLike = !!pick || isBondTickerSymbol(ticker) || /офз|ofz/i.test(String(trimmed || ''));
+    if (!bondLike) return null;
+    if (pick && pick.secid && typeof BOND_SECID_MAP !== 'undefined') {
+      BOND_SECID_MAP[bondTicker] = pick.secid;
+    } else if (typeof BOND_SECID_MAP !== 'undefined' && BOND_SECID_MAP[bondTicker]) {
+      /* mapped */
+    }
+    if (pick && pick.name && typeof saveTickerName === 'function') {
+      saveTickerName(bondTicker, pick.name);
+    }
+    return {
+      ticker: bondTicker,
+      name: pick ? pick.name : (getTickerNamesMap()[bondTicker] || TICKER_SUBTITLES[bondTicker] || ''),
+      kind: 'bond',
+      market: 'RU',
+      currency: 'RUB',
+      type: 'bond'
+    };
+  }
+
   function resolveSecurityFromInput(raw) {
     var trimmed = String(raw || '').trim();
     if (!trimmed) return Promise.resolve(null);
@@ -278,22 +315,18 @@
       });
     }
     if (/офз|ofz/i.test(trimmed) || /^\d{5}$/.test(trimmed.replace(/\s/g, ''))) {
-      var ofzItems = typeof searchOfzCatalog === 'function' ? searchOfzCatalog(trimmed) : [];
-      if (ofzItems.length) {
-        var ofzPick = pickSearchItem(ofzItems, trimmed);
-        if (ofzPick) {
-          return Promise.resolve({
-            ticker: ofzPick.ticker,
-            name: ofzPick.name,
-            kind: 'bond',
-            market: 'RU',
-            currency: 'RUB',
-            type: 'bond'
-          });
-        }
-      }
+      var ofzBond = resolveRuBondFromInput(trimmed, t);
+      if (ofzBond) return Promise.resolve(ofzBond);
+    }
+    if (isBondTickerSymbol(t)) {
+      var bondFast = resolveRuBondFromInput(trimmed, t);
+      if (bondFast) return Promise.resolve(bondFast);
     }
     if (/^[A-Z0-9][A-Z0-9._-]*$/i.test(t) && t.length >= 2 && !/[А-Яа-яЁё]/.test(trimmed)) {
+      if (isBondTickerSymbol(t)) {
+        var bondDirect = resolveRuBondFromInput(trimmed, t);
+        if (bondDirect) return Promise.resolve(bondDirect);
+      }
       return (typeof fetchMoexTickerName === 'function' ? fetchMoexTickerName(t) : Promise.resolve('')).then(function () {
         if (isUsTicker(t) && isMarketEnabled('US')) {
           var info = getUsTickerInfo(t);
@@ -307,6 +340,10 @@
           };
         }
         var isBond = t.indexOf('OFZ') >= 0 || (t.indexOf('SU') === 0 && t.length > 8);
+        if (isBond) {
+          var bondResolved = resolveRuBondFromInput(trimmed, t);
+          if (bondResolved) return bondResolved;
+        }
         return {
           ticker: t,
           name: getTickerNamesMap()[t] || TICKER_SUBTITLES[t] || '',
