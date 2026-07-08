@@ -778,8 +778,194 @@
       var el = document.getElementById(pfFieldId(prefix, field));
       if (el) el.value = '';
     });
-    var ac = acControllers[pfFieldId(prefix, 'Ticker')];
-    if (ac) ac.close();
+    if (typeof acControllers !== 'undefined') {
+      var ac = acControllers[pfFieldId(prefix, 'Ticker')];
+      if (ac) ac.close();
+    }
+  }
+
+  function safeClearPortfolioForms(prefix) {
+    try {
+      clearPortfolioForm(prefix);
+      clearPortfolioForm(prefix === 'Watch' ? '' : 'Watch');
+    } catch (e) { /* не блокируем сохранение */ }
+  }
+
+  function handlePortfolioAddError(err) {
+    if (err && (err.code === 'storage_quota' || err.name === 'QuotaExceededError')) {
+      showToast('Не удалось сохранить: память браузера переполнена. Очистите данные сайта (F12 → Application → Local Storage).');
+      return;
+    }
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[InvestBrief] portfolio add failed:', err);
+    }
+    showToast('Не удалось добавить позицию — проверьте тикер');
+  }
+
+  function normalizeBondTickerInput(input) {
+    var s = String(input || '').trim().toUpperCase();
+    if (!s) return '';
+    var m = s.match(/(\d{5})/);
+    if (m) return 'OFZ_' + m[1];
+    if (/^OFZ_\d{5}$/.test(s)) return s;
+    if (s.indexOf('SU') === 0 && s.length > 8) {
+      var m2 = s.match(/(\d{5})/);
+      if (m2) return 'OFZ_' + m2[1];
+    }
+    return '';
+  }
+
+  function commitPortfolioPosition(sec, captured, prefix) {
+    if (!sec || !sec.ticker) {
+      showToast('Укажите тикер');
+      return;
+    }
+    var t = sec.ticker;
+    var qty = captured.qty;
+    var avg = captured.avg;
+    var buyDate = captured.buyDate;
+    var comment = captured.comment;
+    var portfolio = getPortfolio();
+    var existing = findPortfolioPosition(t);
+    var editing = state.pfEditTicker && normalizeTicker(state.pfEditTicker) === t;
+
+    if (editing) {
+      if (!existing) {
+        cancelPortfolioEdit();
+        return;
+      }
+      if (qty != null) existing.qty = qty;
+      if (avg != null) existing.avgPrice = avg;
+      if (buyDate) existing.buyDate = buyDate;
+      existing.comment = comment;
+      setPortfolio(portfolio);
+      cancelPortfolioEdit();
+      showToast('Позиция обновлена: ' + t);
+      try { renderPortfolio(); } catch (e) { /* noop */ }
+      return;
+    }
+
+    var isUs = typeof Markets !== 'undefined' && sec.market === 'US';
+    var isBond = !isUs && (
+      sec.type === 'bond' || sec.kind === 'bond' ||
+      (typeof isRuBondTicker === 'function' && isRuBondTicker(t))
+    );
+
+    function finishRuAdd(cur) {
+      var finalCur = cur != null && isFinite(cur) ? cur : (avg != null && isFinite(avg) ? avg : 100);
+      var avgPrice = avg != null && isFinite(avg) ? avg : finalCur;
+
+      if (existing) {
+        mergePositionPurchase(existing, qty, avgPrice, buyDate, comment);
+        if (finalCur != null && isFinite(finalCur)) existing.currentPrice = finalCur;
+        setPortfolio(portfolio);
+        safeClearPortfolioForms(prefix);
+        showToast('Докупка учтена, обновлена ср. цена: ' + t);
+      } else {
+        var pos = normalizePosition({
+          ticker: t,
+          qty: qty,
+          avgPrice: avgPrice,
+          currentPrice: finalCur,
+          buyDate: buyDate,
+          comment: comment,
+          market: 'RU',
+          currency: 'RUB'
+        });
+        if (!pos) throw new Error('invalid_position');
+        portfolio.positions.push(pos);
+        setPortfolio(portfolio);
+        safeClearPortfolioForms(prefix);
+        showToast('Добавлено в портфель: ' + t);
+      }
+      state.chartTicker = t;
+      state.folderOpen = true;
+      try { renderPortfolio(); } catch (e) { /* noop */ }
+    }
+
+    function finishUsAdd(cur, dayPct) {
+      if (existing) {
+        mergePositionPurchase(existing, qty, avg, buyDate, comment);
+        existing.market = 'US';
+        existing.currency = 'USD';
+        if (cur != null && isFinite(cur)) existing.currentPrice = cur;
+        if (dayPct != null && isFinite(dayPct)) existing.dayChangePct = dayPct;
+      } else {
+        var usPos = normalizePosition({
+          ticker: t,
+          qty: qty,
+          avgPrice: avg != null ? avg : (cur != null && isFinite(cur) ? cur : null),
+          currentPrice: cur != null && isFinite(cur) ? cur : null,
+          buyDate: buyDate,
+          comment: comment,
+          market: 'US',
+          currency: 'USD'
+        });
+        if (!usPos) throw new Error('invalid_position');
+        portfolio.positions.push(usPos);
+      }
+      setPortfolio(portfolio);
+      safeClearPortfolioForms(prefix);
+      showToast(existing ? 'Докупка учтена, обновлена ср. цена: ' + t : 'Добавлено в портфель: ' + t);
+      state.chartTicker = t;
+      state.folderOpen = true;
+      try { renderPortfolio(); } catch (e) { /* noop */ }
+    }
+
+    if (isUs) {
+      return Markets.fetchUsQuote(t).then(function (q) {
+        var cur = q && q.price != null ? q.price : null;
+        finishUsAdd(cur, q && q.changePct != null ? q.changePct : null);
+      }).catch(function () {
+        finishUsAdd(null, null);
+      });
+    }
+
+    if (isBond) {
+      finishRuAdd(avg != null && isFinite(avg) ? avg : null);
+      fetchMoexLastPrice(t).catch(function () { return null; }).then(function (live) {
+        if (live == null || !isFinite(live)) return;
+        var p = getPortfolio();
+        var pos = findPortfolioPosition(t);
+        if (!pos) return;
+        pos.currentPrice = live;
+        try { setPortfolio(p); } catch (e) { /* noop */ }
+        try { renderPortfolio(); } catch (e2) { /* noop */ }
+      });
+      return Promise.resolve();
+    }
+
+    return fetchMoexLastPrice(t).catch(function () { return null; }).then(function (price) {
+      var cur = price != null && isFinite(price) ? price : (avg != null ? avg : 100);
+      var avgPrice = avg != null ? avg : cur;
+
+      if (existing) {
+        mergePositionPurchase(existing, qty, avgPrice, buyDate, comment);
+        if (cur != null && isFinite(cur)) existing.currentPrice = cur;
+        setPortfolio(portfolio);
+        safeClearPortfolioForms(prefix);
+        showToast('Докупка учтена, обновлена ср. цена: ' + t);
+      } else {
+        var ruPos = normalizePosition({
+          ticker: t,
+          qty: qty,
+          avgPrice: avgPrice,
+          currentPrice: cur,
+          buyDate: buyDate,
+          comment: comment,
+          market: 'RU',
+          currency: 'RUB'
+        });
+        if (!ruPos) throw new Error('invalid_position');
+        portfolio.positions.push(ruPos);
+        setPortfolio(portfolio);
+        safeClearPortfolioForms(prefix);
+        showToast('Добавлено в портфель: ' + t);
+      }
+      state.chartTicker = t;
+      state.folderOpen = true;
+      try { renderPortfolio(); } catch (e) { /* noop */ }
+    });
   }
 
 
@@ -911,21 +1097,25 @@
       showToast('Укажите тикер');
       return;
     }
-    function normalizeBondTickerInput(input) {
-      var s = String(input || '').trim().toUpperCase();
-      if (!s) return '';
-      var m = s.match(/(\d{5})/);
-      if (m) return 'OFZ_' + m[1];
-      if (/^OFZ_\d{5}$/.test(s)) return s;
-      if (s.indexOf('SU') === 0 && s.length > 8) {
-        var m2 = s.match(/(\d{5})/);
-        if (m2) return 'OFZ_' + m2[1];
-      }
-      return '';
-    }
 
     if (/офз|ofz/i.test(rawTicker) && !normalizeBondTickerInput(rawTicker)) {
       showToast('Укажите полный тикер ОФЗ, например OFZ_26247');
+      return;
+    }
+
+    var bondTickerQuick = normalizeBondTickerInput(rawTicker);
+    if (bondTickerQuick) {
+      try {
+        commitPortfolioPosition({
+          ticker: bondTickerQuick,
+          market: 'RU',
+          currency: 'RUB',
+          type: 'bond',
+          kind: 'bond'
+        }, captured, prefix);
+      } catch (err) {
+        handlePortfolioAddError(err);
+      }
       return;
     }
 
@@ -934,166 +1124,10 @@
         return tk ? { ticker: tk, market: 'RU', currency: 'RUB', type: 'stock' } : null;
       });
     };
-    var bondTickerQuick = normalizeBondTickerInput(rawTicker);
-    var resolvePromise = bondTickerQuick
-      ? Promise.resolve({ ticker: bondTickerQuick, market: 'RU', currency: 'RUB', type: 'bond', kind: 'bond' })
-      : resolveFn(rawTicker);
-    resolvePromise.then(function (sec) {
-      if (!sec || !sec.ticker) {
-        showToast('Укажите тикер');
-        return;
-      }
-      var t = sec.ticker;
-      var qty = captured.qty;
-      var avg = captured.avg;
-      var buyDate = captured.buyDate;
-      var comment = captured.comment;
-      var portfolio = getPortfolio();
-      var existing = findPortfolioPosition(t);
-      var editing = state.pfEditTicker && normalizeTicker(state.pfEditTicker) === t;
-
-      function clearFormsAfterSave() {
-        clearPortfolioForm(prefix);
-        clearPortfolioForm(prefix === 'Watch' ? '' : 'Watch');
-      }
-
-      if (editing) {
-        if (!existing) {
-          cancelPortfolioEdit();
-          return;
-        }
-        if (qty != null) existing.qty = qty;
-        if (avg != null) existing.avgPrice = avg;
-        if (buyDate) existing.buyDate = buyDate;
-        existing.comment = comment;
-        setPortfolio(portfolio);
-        cancelPortfolioEdit();
-        showToast('Позиция обновлена: ' + t);
-        renderPortfolio();
-        return;
-      }
-
-      var isUs = typeof Markets !== 'undefined' && sec.market === 'US';
-      var isBond = !isUs && (
-        sec.type === 'bond' || sec.kind === 'bond' ||
-        (typeof isRuBondTicker === 'function' && isRuBondTicker(t))
-      );
-
-      function finishRuAdd(cur) {
-        var finalCur = cur != null && isFinite(cur) ? cur : (avg != null && isFinite(avg) ? avg : 100);
-        var avgPrice = avg != null && isFinite(avg) ? avg : finalCur;
-
-        if (existing) {
-          mergePositionPurchase(existing, qty, avgPrice, buyDate, comment);
-          if (finalCur != null && isFinite(finalCur)) existing.currentPrice = finalCur;
-          setPortfolio(portfolio);
-          clearFormsAfterSave();
-          showToast('Докупка учтена, обновлена ср. цена: ' + t);
-        } else {
-          portfolio.positions.push(normalizePosition({
-            ticker: t,
-            qty: qty,
-            avgPrice: avgPrice,
-            currentPrice: finalCur,
-            buyDate: buyDate,
-            comment: comment,
-            market: 'RU',
-            currency: 'RUB'
-          }));
-          setPortfolio(portfolio);
-          clearFormsAfterSave();
-          showToast('Добавлено в портфель: ' + t);
-        }
-        state.chartTicker = t;
-        state.folderOpen = true;
-        renderPortfolio();
-      }
-      function finishUsAdd(cur, dayPct) {
-        if (existing) {
-          mergePositionPurchase(existing, qty, avg, buyDate, comment);
-          existing.market = 'US';
-          existing.currency = 'USD';
-          if (cur != null && isFinite(cur)) existing.currentPrice = cur;
-          if (dayPct != null && isFinite(dayPct)) existing.dayChangePct = dayPct;
-        } else {
-          portfolio.positions.push(normalizePosition({
-            ticker: t,
-            qty: qty,
-            avgPrice: avg != null ? avg : (cur != null && isFinite(cur) ? cur : null),
-            currentPrice: cur != null && isFinite(cur) ? cur : null,
-            buyDate: buyDate,
-            comment: comment,
-            market: 'US',
-            currency: 'USD'
-          }));
-        }
-        setPortfolio(portfolio);
-        clearFormsAfterSave();
-        showToast(existing ? 'Докупка учтена, обновлена ср. цена: ' + t : 'Добавлено в портфель: ' + t);
-        state.chartTicker = t;
-        state.folderOpen = true;
-        renderPortfolio();
-      }
-
-      if (isUs) {
-        Markets.fetchUsQuote(t).then(function (q) {
-          var cur = q && q.price != null ? q.price : null;
-          finishUsAdd(cur, q && q.changePct != null ? q.changePct : null);
-        }).catch(function () {
-          finishUsAdd(null, null);
-        });
-        return;
-      }
-
-      if (isBond) {
-        finishRuAdd(avg != null && isFinite(avg) ? avg : null);
-        fetchMoexLastPrice(t).catch(function () { return null; }).then(function (live) {
-          if (live == null || !isFinite(live)) return;
-          var p = getPortfolio();
-          var pos = findPortfolioPosition(t);
-          if (!pos) return;
-          pos.currentPrice = live;
-          setPortfolio(p);
-          renderPortfolio();
-        });
-        return;
-      }
-
-      fetchMoexLastPrice(t).catch(function () { return null; }).then(function (price) {
-        var cur = price != null && isFinite(price) ? price : (avg != null ? avg : 100);
-        var avgPrice = avg != null ? avg : cur;
-
-        if (existing) {
-          mergePositionPurchase(existing, qty, avgPrice, buyDate, comment);
-          if (cur != null && isFinite(cur)) existing.currentPrice = cur;
-          setPortfolio(portfolio);
-          clearFormsAfterSave();
-          showToast('Докупка учтена, обновлена ср. цена: ' + t);
-        } else {
-          portfolio.positions.push(normalizePosition({
-            ticker: t,
-            qty: qty,
-            avgPrice: avgPrice,
-            currentPrice: cur,
-            buyDate: buyDate,
-            comment: comment,
-            market: 'RU',
-            currency: 'RUB'
-          }));
-          setPortfolio(portfolio);
-          clearFormsAfterSave();
-          showToast('Добавлено в портфель: ' + t);
-        }
-        state.chartTicker = t;
-        state.folderOpen = true;
-        renderPortfolio();
-      });
+    resolveFn(rawTicker).then(function (sec) {
+      return commitPortfolioPosition(sec, captured, prefix);
     }).catch(function (err) {
-      if (err && (err.code === 'storage_quota' || err.name === 'QuotaExceededError')) {
-        showToast('Не удалось сохранить: память браузера переполнена. Очистите данные сайта (F12 → Application → Local Storage).');
-      } else {
-        showToast('Не удалось добавить позицию — проверьте тикер');
-      }
+      handlePortfolioAddError(err);
     });
   }
 

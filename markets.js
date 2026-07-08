@@ -259,9 +259,11 @@
     if (pick && pick.name && typeof saveTickerName === 'function') {
       saveTickerName(bondTicker, pick.name);
     }
+    var nameMap = typeof getTickerNamesMap === 'function' ? getTickerNamesMap() : {};
+    var subName = (typeof TICKER_SUBTITLES !== 'undefined' ? TICKER_SUBTITLES[bondTicker] : '');
     return {
       ticker: bondTicker,
-      name: pick ? pick.name : (getTickerNamesMap()[bondTicker] || TICKER_SUBTITLES[bondTicker] || ''),
+      name: pick ? pick.name : ((nameMap && nameMap[bondTicker]) || subName || ''),
       kind: 'bond',
       market: 'RU',
       currency: 'RUB',
@@ -344,9 +346,11 @@
           var bondResolved = resolveRuBondFromInput(trimmed, t);
           if (bondResolved) return bondResolved;
         }
+        var names = typeof getTickerNamesMap === 'function' ? getTickerNamesMap() : {};
+        var subtitle = (typeof TICKER_SUBTITLES !== 'undefined' ? TICKER_SUBTITLES[t] : '');
         return {
           ticker: t,
-          name: getTickerNamesMap()[t] || TICKER_SUBTITLES[t] || '',
+          name: (names && names[t]) || subtitle || '',
           market: 'RU',
           currency: 'RUB',
           type: isBond ? 'bond' : 'stock',

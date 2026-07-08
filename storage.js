@@ -477,7 +477,9 @@
       err.code = 'storage_quota';
       throw err;
     }
-    if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
+    try {
+      if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
+    } catch (e) { /* не блокируем сохранение портфеля */ }
   }
 
 
