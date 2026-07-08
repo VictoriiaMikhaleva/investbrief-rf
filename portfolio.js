@@ -10,22 +10,189 @@
     return ((cur - avg) / avg) * 100;
   }
 
-  function formatPositionPrice(pos) {
+  function formatPositionPrice(pos, opts) {
+    opts = opts || {};
     var cur = Number(pos.currentPrice);
     var currency = pos.currency || (typeof Markets !== 'undefined' && Markets.isUsPosition(pos) ? 'USD' : 'RUB');
+    if (opts.bond || (typeof isRuBondTicker === 'function' && isRuBondTicker(pos.ticker))) {
+      if (!isFinite(cur)) return '—';
+      return cur.toFixed(2).replace('.', ',') + '%';
+    }
     if (typeof Markets !== 'undefined') {
       return Markets.formatMoneyValue(isFinite(cur) ? cur : null, currency);
     }
     return isFinite(cur) ? cur.toFixed(2) : '—';
   }
 
-  function formatPositionAvg(pos) {
+  function formatPositionAvg(pos, opts) {
+    opts = opts || {};
     var avg = Number(pos.avgPrice);
     var currency = pos.currency || 'RUB';
+    if (opts.bond || (typeof isRuBondTicker === 'function' && isRuBondTicker(pos.ticker))) {
+      if (!isFinite(avg)) return '—';
+      return avg.toFixed(2).replace('.', ',') + '%';
+    }
     if (typeof Markets !== 'undefined') {
       return Markets.formatMoneyValue(isFinite(avg) ? avg : null, currency);
     }
     return isFinite(avg) ? avg.toFixed(2) : '—';
+  }
+
+  function isPortfolioBondPosition(pos) {
+    return typeof isRuBondTicker === 'function' && isRuBondTicker(pos.ticker);
+  }
+
+  function getPortfolioBondFaceValue(bondMeta) {
+    return bondMeta && bondMeta.faceValue != null && isFinite(Number(bondMeta.faceValue))
+      ? Number(bondMeta.faceValue)
+      : 1000;
+  }
+
+  function getPositionMarketValue(pos, bondMeta) {
+    var qty = isFinite(Number(pos.qty)) && Number(pos.qty) > 0 ? Number(pos.qty) : 0;
+    if (!qty) return 0;
+    var price = Number(pos.currentPrice);
+    if (!isFinite(price)) return 0;
+    if (isPortfolioBondPosition(pos)) {
+      var face = getPortfolioBondFaceValue(bondMeta);
+      return qty * (price / 100) * face;
+    }
+    return qty * price;
+  }
+
+  function formatPortfolioWeightPct(part, total) {
+    if (!total || !isFinite(total) || total <= 0 || part == null || !isFinite(part)) return '—';
+    return (part / total * 100).toFixed(1).replace('.', ',') + '%';
+  }
+
+  function formatPortfolioRubAmount(val) {
+    if (val == null || !isFinite(val)) return '—';
+    return val.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+  }
+
+  function formatBondMaturityCell(bondMeta) {
+    if (!bondMeta || !bondMeta.matDate) return '—';
+    var date = typeof formatOfzDate === 'function'
+      ? formatOfzDate(bondMeta.matDate)
+      : String(bondMeta.matDate).slice(0, 10);
+    var years = typeof yearsToMaturity === 'function' ? yearsToMaturity(bondMeta.matDate) : null;
+    var term = typeof classifyOfzMaturityTerm === 'function' ? classifyOfzMaturityTerm(years) : null;
+    var termLbl = typeof formatOfzMaturityTermLabel === 'function'
+      ? formatOfzMaturityTermLabel(term)
+      : '';
+    if (termLbl && termLbl !== '—') {
+      return escapeHtml(date) + '<span class="pf-bond-term muted"> · ' + escapeHtml(termLbl) + '</span>';
+    }
+    return escapeHtml(date);
+  }
+
+  function formatBondReturnCell(pos, bondMeta) {
+    if (bondMeta && bondMeta.yieldPct != null && isFinite(bondMeta.yieldPct)) {
+      var ytm = typeof formatDivYieldPct === 'function'
+        ? formatDivYieldPct(bondMeta.yieldPct)
+        : bondMeta.yieldPct.toFixed(1) + '%';
+      return '<span class="pf-bond-ytm" title="Доходность к погашению · MOEX">' + escapeHtml(ytm) + '</span>';
+    }
+    var pnl = getPositionReturnPct(pos);
+    if (pnl == null) return '<span class="muted">—</span>';
+    var cls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+    return '<span class="' + cls + '" title="Изменение цены от средней покупки">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>';
+  }
+
+  function loadPortfolioBondMetaMap(positions) {
+    var bonds = (positions || []).filter(isPortfolioBondPosition);
+    var map = {};
+    if (!bonds.length || typeof fetchOfzBondSnapshot !== 'function') {
+      return Promise.resolve(map);
+    }
+    return Promise.all(bonds.map(function (p) {
+      return fetchOfzBondSnapshot({ ticker: p.ticker }).then(function (bond) {
+        map[p.ticker] = bond || {};
+      }).catch(function () {
+        map[p.ticker] = {};
+      });
+    })).then(function () { return map; });
+  }
+
+  function loadPortfolioIncomeTotals(positions) {
+    var paid = 0;
+    var forecast = 0;
+    var jobs = (positions || []).map(function (p) {
+      if (isPortfolioBondPosition(p)) {
+        if (typeof fetchOfzBondSnapshot !== 'function') return Promise.resolve();
+        return fetchOfzBondSnapshot({ ticker: p.ticker }).then(function (bond) {
+          if (!bond || typeof computeBondCoupons12m !== 'function') return;
+          var sums = computeBondCoupons12m(bond.coupons, p.qty, bond.faceValue || 1000);
+          if (sums.paid12m != null && isFinite(sums.paid12m)) paid += sums.paid12m;
+          if (sums.upcoming12m != null && isFinite(sums.upcoming12m)) forecast += sums.upcoming12m;
+        }).catch(function () {});
+      }
+      if (typeof isRuStockForAnalytics === 'function' && !isRuStockForAnalytics(p.ticker)) {
+        return Promise.resolve();
+      }
+      if (typeof buildSecurityAnalytics !== 'function') return Promise.resolve();
+      return buildSecurityAnalytics(p.ticker).then(function (a) {
+        var fc = a && a.divForecast;
+        var q = isFinite(Number(p.qty)) && Number(p.qty) > 0 ? Number(p.qty) : 0;
+        if (!q || !fc) return;
+        if (fc.paid12m != null && isFinite(fc.paid12m)) paid += fc.paid12m * q;
+        var upcoming = fc.upcoming12m != null && isFinite(fc.upcoming12m) ? fc.upcoming12m : fc.amount;
+        if (upcoming != null && isFinite(upcoming)) forecast += upcoming * q;
+      }).catch(function () {});
+    });
+    return Promise.all(jobs).then(function () {
+      return { paid12m: paid, forecast12m: forecast };
+    });
+  }
+
+  function renderPortfolioSummary(positions, bondMetaMap, incomeTotals) {
+    var el = document.getElementById('portfolioTotals');
+    if (!el) return;
+    bondMetaMap = bondMetaMap || {};
+    incomeTotals = incomeTotals || { paid12m: 0, forecast12m: 0 };
+    if (!positions || !positions.length) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    var stockValue = 0;
+    var bondValue = 0;
+    positions.forEach(function (p) {
+      var val = getPositionMarketValue(p, bondMetaMap[p.ticker]);
+      if (isPortfolioBondPosition(p)) bondValue += val;
+      else stockValue += val;
+    });
+    var totalValue = stockValue + bondValue;
+    var stockShare = totalValue > 0 ? stockValue / totalValue * 100 : 0;
+    var bondShare = totalValue > 0 ? bondValue / totalValue * 100 : 0;
+    el.hidden = false;
+    el.innerHTML =
+      '<div class="portfolio-totals-grid">' +
+        '<div class="portfolio-total-card">' +
+          '<span class="portfolio-total-lbl">Стоимость портфеля</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(totalValue)) + '</span>' +
+        '</div>' +
+        '<div class="portfolio-total-card">' +
+          '<span class="portfolio-total-lbl">Акции</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(stockValue)) + '</span>' +
+          '<span class="portfolio-total-sub muted">' + escapeHtml(stockShare.toFixed(1).replace('.', ',') + '% портфеля') + '</span>' +
+        '</div>' +
+        '<div class="portfolio-total-card">' +
+          '<span class="portfolio-total-lbl">Облигации</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(bondValue)) + '</span>' +
+          '<span class="portfolio-total-sub muted">' + escapeHtml(bondShare.toFixed(1).replace('.', ',') + '% портфеля') + '</span>' +
+        '</div>' +
+        '<div class="portfolio-total-card">' +
+          '<span class="portfolio-total-lbl">Выплачено за 12 мес.</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.paid12m)) + '</span>' +
+          '<span class="portfolio-total-sub muted">дивиденды и купоны</span>' +
+        '</div>' +
+        '<div class="portfolio-total-card">' +
+          '<span class="portfolio-total-lbl">Прогноз на 12 мес.</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.forecast12m)) + '</span>' +
+          '<span class="portfolio-total-sub muted">дивиденды и купоны</span>' +
+        '</div>' +
+      '</div>';
   }
 
 
@@ -901,28 +1068,46 @@
 
 
 
-  function buildPortfolioTableRows(positions) {
-    if (!positions || !positions.length) {
-      return '<tr><td colspan="9" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
+  function buildPortfolioSectionRows(positions, sectionKind, bondMetaMap) {
+    bondMetaMap = bondMetaMap || {};
+    var filtered = (positions || []).filter(function (p) {
+      var isBond = isPortfolioBondPosition(p);
+      return sectionKind === 'bonds' ? isBond : !isBond;
+    });
+    if (!filtered.length) {
+      return '<tr class="pf-section-empty"><td colspan="11" class="muted">Нет позиций</td></tr>';
     }
-    return positions.map(function (p) {
-      var pnl = getPositionReturnPct(p);
-      var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-      var avg = formatPositionAvg(p);
-      var cur = formatPositionPrice(p);
+    var sleeveTotal = filtered.reduce(function (sum, p) {
+      return sum + getPositionMarketValue(p, bondMetaMap[p.ticker]);
+    }, 0);
+    return filtered.map(function (p) {
+      var isBond = sectionKind === 'bonds';
+      var bondMeta = bondMetaMap[p.ticker] || null;
+      var marketVal = getPositionMarketValue(p, bondMeta);
+      var weight = formatPortfolioWeightPct(marketVal, sleeveTotal);
+      var pnl = isBond ? null : getPositionReturnPct(p);
+      var pnlCls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+      var avg = formatPositionAvg(p, { bond: isBond });
+      var cur = formatPositionPrice(p, { bond: isBond });
       var mBadge = typeof Markets !== 'undefined'
         ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
         : '';
       var editActive = state.pfEditTicker === p.ticker ? ' pf-row-editing' : '';
+      var returnCell = isBond
+        ? formatBondReturnCell(p, bondMeta)
+        : '<span class="' + pnlCls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>';
+      var bondCols = '<td class="pf-bond-mat">' + (isBond ? formatBondMaturityCell(bondMeta) : '<span class="muted">—</span>') + '</td>';
       return '<tr class="pf-table-row' + editActive + '" data-chart-ticker="' + escapeHtml(p.ticker) + '" data-pf-ticker="' + escapeHtml(p.ticker) + '">' +
         '<td class="ticker">' + escapeHtml(p.ticker) + mBadge + '</td>' +
+        '<td class="pf-weight">' + escapeHtml(weight) + '</td>' +
         '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
         '<td>' + escapeHtml(avg) + '</td>' +
         '<td>' + escapeHtml(formatPortfolioDate(p)) + '</td>' +
-        '<td>' + escapeHtml(p.comment || '—') + '</td>' +
         '<td>' + escapeHtml(cur) + '</td>' +
-        '<td class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</td>' +
+        '<td>' + returnCell + '</td>' +
+        bondCols +
         '<td class="pf-div-cell" data-pf-div-cell="' + escapeHtml(p.ticker) + '"><span class="muted">…</span></td>' +
+        '<td class="pf-comment">' + escapeHtml(p.comment || '—') + '</td>' +
         '<td class="pf-row-actions">' +
           '<button type="button" class="ghost small" data-pf-edit="' + escapeHtml(p.ticker) + '">Изменить</button> ' +
           '<button type="button" class="danger small" data-pf-remove="' + escapeHtml(p.ticker) + '">Удалить</button>' +
@@ -930,39 +1115,108 @@
     }).join('');
   }
 
+  function buildPortfolioTableHtml(positions, bondMetaMap) {
+    if (!positions || !positions.length) {
+      return '<tr><td colspan="11" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
+    }
+    var stocks = positions.filter(function (p) { return !isPortfolioBondPosition(p); });
+    var bonds = positions.filter(isPortfolioBondPosition);
+    var html = '';
+    if (stocks.length) {
+      html += '<tr class="pf-section-head"><th colspan="11">Акции · доля внутри класса</th></tr>';
+      html += buildPortfolioSectionRows(positions, 'stocks', bondMetaMap);
+    }
+    if (bonds.length) {
+      html += '<tr class="pf-section-head"><th colspan="11">Облигации (ОФЗ) · доля внутри класса</th></tr>';
+      html += buildPortfolioSectionRows(positions, 'bonds', bondMetaMap);
+    }
+    if (!stocks.length && !bonds.length) {
+      html = '<tr><td colspan="11" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
+    }
+    return html;
+  }
+
+  function buildPortfolioTableRows(positions) {
+    return buildPortfolioTableHtml(positions, {});
+  }
+
 
 
   function renderPortfolioTableBody() {
     var positions = getFilteredPortfolioPositions();
-    var html = buildPortfolioTableRows(positions);
+    var placeholderHtml = buildPortfolioTableHtml(positions, {});
     ['portfolioTableBody', 'portfolioWatchTableBody'].forEach(function (id) {
       var tbody = document.getElementById(id);
-      if (tbody) tbody.innerHTML = html;
-    });
-    positions.forEach(function (p) {
-      if (typeof fetchPortfolioDivForecastHtml !== 'function') return;
-      fetchPortfolioDivForecastHtml(p.ticker, p.qty).then(function (html) {
-        document.querySelectorAll('[data-pf-div-cell="' + p.ticker + '"]').forEach(function (cell) {
-          cell.innerHTML = html;
-        });
-      });
+      if (tbody) tbody.innerHTML = placeholderHtml;
     });
 
-    var cards = document.getElementById('portfolioCards');
-    if (!cards) return;
-    cards.innerHTML = positions.map(function (p) {
-      var pnl = getPositionReturnPct(p);
-      var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-      var avg = formatPositionAvg(p);
-      var cur = formatPositionPrice(p);
-      var mBadge = typeof Markets !== 'undefined'
-        ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
-        : '';
-      return '<div class="portfolio-card"><div class="ticker">' + escapeHtml(p.ticker) + mBadge + '</div>' +
-        '<div class="grid"><span>Ср. цена</span><span>' + escapeHtml(avg) + '</span>' +
-        '<span>Текущая</span><span>' + escapeHtml(cur) + '</span>' +
-        '<span>Доходность</span><span class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span></div></div>';
-    }).join('');
+    if (!positions.length) {
+      renderPortfolioSummary([], {}, { paid12m: 0, forecast12m: 0 });
+      var cardsEmpty = document.getElementById('portfolioCards');
+      if (cardsEmpty) cardsEmpty.innerHTML = '';
+      return;
+    }
+
+    Promise.all([
+      loadPortfolioBondMetaMap(positions),
+      loadPortfolioIncomeTotals(positions)
+    ]).then(function (parts) {
+      var bondMetaMap = parts[0] || {};
+      var incomeTotals = parts[1] || { paid12m: 0, forecast12m: 0 };
+      var html = buildPortfolioTableHtml(positions, bondMetaMap);
+      ['portfolioTableBody', 'portfolioWatchTableBody'].forEach(function (id) {
+        var tbody = document.getElementById(id);
+        if (tbody) tbody.innerHTML = html;
+      });
+      renderPortfolioSummary(positions, bondMetaMap, incomeTotals);
+
+      var stockTotal = 0;
+      var bondTotal = 0;
+      positions.forEach(function (p) {
+        var val = getPositionMarketValue(p, bondMetaMap[p.ticker]);
+        if (isPortfolioBondPosition(p)) bondTotal += val;
+        else stockTotal += val;
+      });
+
+      positions.forEach(function (p) {
+        var fetchFn = typeof fetchPortfolioIncomeCell === 'function'
+          ? fetchPortfolioIncomeCell
+          : fetchPortfolioDivForecastHtml;
+        if (typeof fetchFn !== 'function') return;
+        fetchFn(p.ticker, p.qty).then(function (cellHtml) {
+          document.querySelectorAll('[data-pf-div-cell="' + p.ticker + '"]').forEach(function (cell) {
+            cell.innerHTML = cellHtml;
+          });
+        });
+      });
+
+      var cards = document.getElementById('portfolioCards');
+      if (!cards) return;
+      cards.innerHTML = positions.map(function (p) {
+        var isBond = isPortfolioBondPosition(p);
+        var bondMeta = bondMetaMap[p.ticker] || null;
+        var sleeveTotal = isBond ? bondTotal : stockTotal;
+        var marketVal = getPositionMarketValue(p, bondMeta);
+        var weight = formatPortfolioWeightPct(marketVal, sleeveTotal);
+        var pnl = isBond ? null : getPositionReturnPct(p);
+        var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+        var avg = formatPositionAvg(p, { bond: isBond });
+        var cur = formatPositionPrice(p, { bond: isBond });
+        var mBadge = typeof Markets !== 'undefined'
+          ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
+          : '';
+        var extra = isBond
+          ? '<span>Погашение</span><span>' + (bondMeta && bondMeta.matDate
+            ? escapeHtml(typeof formatOfzDate === 'function' ? formatOfzDate(bondMeta.matDate) : bondMeta.matDate)
+            : '—') + '</span>'
+          : '<span>Доходность</span><span class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>';
+        return '<div class="portfolio-card" data-chart-ticker="' + escapeHtml(p.ticker) + '"><div class="ticker">' + escapeHtml(p.ticker) + mBadge + '</div>' +
+          '<div class="grid"><span>Доля</span><span>' + escapeHtml(weight) + '</span>' +
+          '<span>Ср. цена</span><span>' + escapeHtml(avg) + '</span>' +
+          '<span>Текущая</span><span>' + escapeHtml(cur) + '</span>' +
+          extra + '</div></div>';
+      }).join('');
+    });
   }
 
 

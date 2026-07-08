@@ -417,19 +417,81 @@
     var perShare = formatDivRubPerShare(forecast.amount);
     var total = q != null ? (forecast.amount * q) : null;
     var paid = forecast.paid12m != null && isFinite(forecast.paid12m)
-      ? 'выплачено ' + (q != null ? (forecast.paid12m * q).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : forecast.paid12m.toFixed(2)) + ' ₽'
+      ? 'выплачено ' + formatPortfolioRubTotal(forecast.paid12m, q)
       : '';
     var upcoming = forecast.upcoming12m != null && isFinite(forecast.upcoming12m)
-      ? 'прогноз ' + (q != null ? (forecast.upcoming12m * q).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) : forecast.upcoming12m.toFixed(2)) + ' ₽'
-      : '';
+      ? 'прогноз ' + formatPortfolioRubTotal(forecast.upcoming12m, q)
+      : (forecast.amount != null && isFinite(forecast.amount)
+        ? 'прогноз ' + formatPortfolioRubTotal(forecast.amount, q)
+        : '');
     var lines = ['<span class="pf-div-forecast">' + escapeHtml(perShare) + '</span>'];
     if (paid || upcoming) {
       lines.push('<span class="pf-div-sub muted">' + escapeHtml([paid, upcoming].filter(Boolean).join(' · ')) + '</span>');
     }
     if (total != null) {
-      lines.push('<span class="pf-div-sub muted">на позицию ~' + escapeHtml(total.toLocaleString('ru-RU', { maximumFractionDigits: 0 })) + ' ₽</span>');
+      lines.push('<span class="pf-div-sub muted">на позицию ~' + escapeHtml(formatPortfolioRubTotal(total, null)) + '</span>');
     }
     return lines.join('');
+  }
+
+  function formatPortfolioRubTotal(perUnitOrTotal, qty) {
+    var val = perUnitOrTotal;
+    if (qty != null && isFinite(Number(qty)) && Number(qty) > 0) {
+      val = perUnitOrTotal * Number(qty);
+    }
+    if (val == null || !isFinite(val)) return '—';
+    return val.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+  }
+
+  function formatPortfolioBondIncomeCell(bond, qty) {
+    if (!bond || bond.error) return '<span class="muted">—</span>';
+    var sums = typeof computeBondCoupons12m === 'function'
+      ? computeBondCoupons12m(bond.coupons, qty, bond.faceValue || 1000)
+      : null;
+    if (!sums) return '<span class="muted">—</span>';
+    var q = isFinite(Number(qty)) && Number(qty) > 0 ? Number(qty) : null;
+    var perBond = q != null && q > 0 ? sums.upcoming12m / q : sums.amount;
+    var lines = [];
+    if (perBond != null && isFinite(perBond) && perBond > 0) {
+      lines.push('<span class="pf-div-forecast">' + escapeHtml(perBond.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽/шт.') + '</span>');
+    } else {
+      lines.push('<span class="pf-div-forecast muted">—</span>');
+    }
+    var paid = sums.paid12m != null && isFinite(sums.paid12m) && sums.paid12m > 0
+      ? 'выплачено ' + formatPortfolioRubTotal(sums.paid12m, null)
+      : '';
+    var upcoming = sums.upcoming12m != null && isFinite(sums.upcoming12m) && sums.upcoming12m > 0
+      ? 'прогноз ' + formatPortfolioRubTotal(sums.upcoming12m, null)
+      : '';
+    if (paid || upcoming) {
+      lines.push('<span class="pf-div-sub muted">' + escapeHtml([paid, upcoming].filter(Boolean).join(' · ')) + '</span>');
+    }
+    if (q != null && sums.upcoming12m > 0) {
+      lines.push('<span class="pf-div-sub muted">на позицию ~' + escapeHtml(formatPortfolioRubTotal(sums.upcoming12m, null)) + '</span>');
+    }
+    return lines.join('');
+  }
+
+  function fetchPortfolioIncomeCell(ticker, qty) {
+    ticker = normalizeTicker(ticker);
+    if (typeof isRuBondTicker === 'function' && isRuBondTicker(ticker)) {
+      if (typeof fetchOfzBondSnapshot !== 'function') {
+        return Promise.resolve('<span class="muted">—</span>');
+      }
+      return fetchOfzBondSnapshot({ ticker: ticker }).then(function (bond) {
+        return formatPortfolioBondIncomeCell(bond, qty);
+      }).catch(function () {
+        return '<span class="muted">—</span>';
+      });
+    }
+    if (!isRuStockForAnalytics(ticker)) {
+      return Promise.resolve('<span class="muted">н/д</span>');
+    }
+    return buildSecurityAnalytics(ticker).then(function (a) {
+      return formatPortfolioDivCell(a.divForecast, qty);
+    }).catch(function () {
+      return '<span class="muted">—</span>';
+    });
   }
 
   function fetchMoexDividends(ticker) {
@@ -865,6 +927,11 @@
     if (!wrapEl) return;
     var avgEl = wrapEl.querySelector('[data-div-avg]');
     var turnoverEl = wrapEl.querySelector('[data-turnover]');
+    var totalReturnLine = wrapEl.querySelector('[data-total-return-indicator]');
+    if (totalReturnLine && totalReturnLine.closest) {
+      var line = totalReturnLine.closest('.quote-div-line');
+      if (line) line.remove();
+    }
     if (!q || q.price == null) {
       if (avgEl) {
         avgEl.textContent = 'нет данных';
@@ -928,11 +995,14 @@
       ticker: opts.ticker || '',
       tradeDate: opts.tradeDate
     });
+    var totalReturnLine = bond ? '' : (
+      '<div class="quote-div-line"><span class="quote-div-lbl">Полн. доходн. 12м <span class="quote-div-tip" title="Формула: (цена сейчас + дивиденды за 12 мес. - цена 12 мес. назад) / цена 12 мес. назад">?</span></span><span class="quote-div-val muted" data-total-return-indicator>—</span></div>'
+    );
     return (
       '<div class="' + blockCls + '" data-div-block>' +
         '<div class="quote-div-line"><span class="quote-div-lbl">' + avgLbl + '</span><span class="quote-div-val" data-div-avg>…</span></div>' +
         '<div class="quote-div-line"><span class="quote-div-lbl" data-turnover-lbl>' + turnLbl + '</span><span class="quote-div-val" data-turnover>…</span></div>' +
-        '<div class="quote-div-line"><span class="quote-div-lbl">Полн. доходн. 12м <span class="quote-div-tip" title="Формула: (цена сейчас + дивиденды за 12 мес. - цена 12 мес. назад) / цена 12 мес. назад">?</span></span><span class="quote-div-val muted" data-total-return-indicator>—</span></div>' +
+        totalReturnLine +
       '</div>'
     );
   }
@@ -1147,6 +1217,11 @@
     } else if (isBond) {
       var lbl = block.querySelector('.quote-div-lbl');
       if (lbl) lbl.textContent = 'Доходность';
+      var totalReturnEl = wrapEl.querySelector('[data-total-return-indicator]');
+      if (totalReturnEl && totalReturnEl.closest) {
+        var trLine = totalReturnEl.closest('.quote-div-line');
+        if (trLine) trLine.remove();
+      }
     }
 
     wrapEl.querySelectorAll('.quote-card-charts').forEach(function (el) { el.remove(); });
@@ -1295,15 +1370,7 @@
   }
 
   function fetchPortfolioDivForecastHtml(ticker, qty) {
-    ticker = normalizeTicker(ticker);
-    if (!isRuStockForAnalytics(ticker)) {
-      return Promise.resolve('<span class="muted">н/д</span>');
-    }
-    return buildSecurityAnalytics(ticker).then(function (a) {
-      return formatPortfolioDivCell(a.divForecast, qty);
-    }).catch(function () {
-      return '<span class="muted">—</span>';
-    });
+    return fetchPortfolioIncomeCell(ticker, qty);
   }
 
   window.isIndexQuoteTicker = isIndexQuoteTicker;
@@ -1327,6 +1394,8 @@
   window.queueEnrichQuoteCard = queueEnrichQuoteCard;
   window.resetEnrichQueue = resetEnrichQueue;
   window.fetchPortfolioDivForecastHtml = fetchPortfolioDivForecastHtml;
+  window.fetchPortfolioIncomeCell = fetchPortfolioIncomeCell;
+  window.formatPortfolioBondIncomeCell = formatPortfolioBondIncomeCell;
   window.computeDividendForecast12m = computeDividendForecast12m;
   window.buildMonthlyDividendForecast12m = buildMonthlyDividendForecast12m;
   window.buildPassiveIncome5y = buildPassiveIncome5y;

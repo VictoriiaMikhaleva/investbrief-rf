@@ -345,11 +345,15 @@
     if (value == null || !isFinite(Number(value))) return '—';
     var n = Number(value);
     if (currency === 'USD') {
-      if (n >= 1000) return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      if (Math.abs(n) >= 1000) return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      if (Math.abs(n) > 0 && Math.abs(n) < 0.1) return '$' + n.toFixed(4);
+      if (Math.abs(n) < 10) return '$' + n.toFixed(3);
       return '$' + n.toFixed(2);
     }
-    if (n >= 1000) return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
-    return n.toFixed(2) + ' ₽';
+    if (Math.abs(n) >= 1000) return n.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+    if (Math.abs(n) > 0 && Math.abs(n) < 0.1) return n.toFixed(4).replace('.', ',') + ' ₽';
+    if (Math.abs(n) < 10) return n.toFixed(3).replace('.', ',') + ' ₽';
+    return n.toFixed(2).replace('.', ',') + ' ₽';
   }
 
   function getAppState() {

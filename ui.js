@@ -714,6 +714,39 @@
       return;
     }
 
+    if (securityChartIsBond(ticker)) {
+      loadBondAnalyticsSnapshot(ticker).then(function (bond) {
+        if (metaEl) metaEl.textContent = bond.error ? 'Не удалось загрузить данные по ОФЗ' : bondAnalyticsMetaText(ticker, bond);
+        renderSecurityProfile(ticker, { bond: bond, eligible: true, quote: bond.quote || { price: bond.price, valueToday: bond.quote && bond.quote.valueToday, yieldPct: bond.yieldPct } });
+        if (divCanvas) {
+          if (bond.coupons && bond.coupons.length) renderBondCouponChart(divCanvas, bond);
+          else {
+            var dctx = divCanvas.getContext('2d');
+            if (dctx) dctx.clearRect(0, 0, divCanvas.width, divCanvas.height);
+          }
+        }
+        if (divNote) {
+          divNote.textContent = bond.coupons && bond.coupons.length
+            ? bondAnalyticsDivNote()
+            : 'Расписание купонов по этому выпуску пока недоступно.';
+          divNote.className = 'analytics-chart-note chart-info-readable';
+        }
+        if (volCanvas) {
+          var vctx = volCanvas.getContext('2d');
+          if (vctx) vctx.clearRect(0, 0, volCanvas.width, volCanvas.height);
+        }
+        if (volNote) volNote.textContent = bondAnalyticsVolNote();
+        return fetchMoexHistory(ticker, 'month');
+      }).then(function (r) {
+        if (priceCanvas && r && r.series) {
+          drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: 'month' });
+        }
+      }).catch(function () {
+        if (metaEl) metaEl.textContent = 'Не удалось загрузить аналитику по ОФЗ';
+      });
+      return;
+    }
+
     if (typeof buildSecurityAnalytics !== 'function') return;
     buildSecurityAnalytics(ticker).then(function (a) {
       if (metaEl) {
@@ -1205,25 +1238,45 @@
     ticker = normalizeTicker(ticker);
     if (typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker)) return false;
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) return false;
+    if (typeof isRuBondTicker === 'function' && isRuBondTicker(ticker)) return false;
     return true;
+  }
+
+  function securityChartIsBond(ticker) {
+    return typeof isRuBondTicker === 'function' && isRuBondTicker(normalizeTicker(ticker));
   }
 
   function syncSecurityChartTabsForTicker(ticker) {
     var tabs = document.getElementById('securityChartTabs');
     if (!tabs) return;
     var stockAnalytics = securityChartSupportsStockAnalytics(ticker);
+    var isBond = securityChartIsBond(ticker);
     tabs.querySelectorAll('[data-security-chart-tab]').forEach(function (btn) {
       var id = btn.getAttribute('data-security-chart-tab');
-      var disabled = (id === 'dividends' || id === 'volume') && !stockAnalytics;
-      btn.disabled = disabled;
-      btn.classList.toggle('security-chart-tab--disabled', disabled);
-      btn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-      if (disabled) btn.title = id === 'dividends'
-        ? 'Дивиденды доступны только для акций'
-        : 'Оборот TQBR доступен только для акций';
-      else btn.removeAttribute('title');
+      if (id === 'dividends') {
+        btn.textContent = isBond ? 'Купоны' : 'Дивиденды';
+        var divDisabled = !stockAnalytics && !isBond;
+        btn.disabled = divDisabled;
+        btn.classList.toggle('security-chart-tab--disabled', divDisabled);
+        btn.setAttribute('aria-disabled', divDisabled ? 'true' : 'false');
+        if (divDisabled) btn.title = 'Дивиденды доступны только для акций';
+        else if (isBond) btn.title = 'Купонные выплаты по выпуску ОФЗ';
+        else btn.removeAttribute('title');
+        return;
+      }
+      if (id === 'volume') {
+        var volDisabled = !stockAnalytics;
+        btn.disabled = volDisabled;
+        btn.classList.toggle('security-chart-tab--disabled', volDisabled);
+        btn.setAttribute('aria-disabled', volDisabled ? 'true' : 'false');
+        if (volDisabled) {
+          btn.title = isBond
+            ? 'Оборот TQBR считается по акциям, не по ОФЗ'
+            : 'Оборот TQBR доступен только для акций';
+        } else btn.removeAttribute('title');
+      }
     });
-    if (!stockAnalytics) setSecurityChartTab('price');
+    if (!stockAnalytics && !isBond) setSecurityChartTab('price');
   }
 
   function setSecurityChartTab(tab) {
@@ -1270,6 +1323,70 @@
 
   function indexAnalyticsVolNote() {
     return 'Оборот TQBR считается по акциям, не по индексу. Для динамики рынка используйте график цены IMOEX выше.';
+  }
+
+  function bondAnalyticsDivNote() {
+    return 'Для ОФЗ показан график купонных выплат по выпуску. Доходность к погашению и цена — в карточке профиля и на графике цены.';
+  }
+
+  function bondAnalyticsVolNote() {
+    return 'Оборот TQBR считается по акциям. Для сравнения выпусков ОФЗ используйте вкладку «ОФЗ» в разделе аналитики.';
+  }
+
+  function formatBondProfileDate(iso) {
+    var s = String(iso || '').slice(0, 10);
+    if (s.length < 10) return '—';
+    return s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4);
+  }
+
+  function formatBondCouponPct(v) {
+    if (v == null || !isFinite(Number(v))) return '—';
+    return Number(v).toFixed(2).replace('.', ',') + '%';
+  }
+
+  function loadBondAnalyticsSnapshot(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (typeof fetchOfzBondSnapshot === 'function') {
+      return fetchOfzBondSnapshot({ ticker: ticker });
+    }
+    if (typeof fetchMoexQuote !== 'function') {
+      return Promise.resolve({ ticker: ticker, error: true });
+    }
+    return fetchMoexQuote(ticker).then(function (q) {
+      return {
+        ticker: ticker,
+        label: getTickerSubtitle(ticker) || ticker,
+        price: q && q.price,
+        changePct: q && q.changePct,
+        yieldPct: q && q.yieldPct,
+        quote: q || {}
+      };
+    });
+  }
+
+  function renderBondCouponChart(canvas, bond) {
+    if (!canvas || !bond || !bond.coupons || !bond.coupons.length) return;
+    if (typeof buildOfzCouponBarSeries !== 'function') return;
+    drawFullBarChart(canvas, buildOfzCouponBarSeries(bond.coupons, bond.faceValue || 1000), {
+      color: CHART_COLOR_AUTUMN,
+      forecastColor: CHART_COLOR_FORECAST,
+      ySuffix: '₽',
+      showValues: true,
+      compactBars: true
+    });
+  }
+
+  function bondAnalyticsMetaText(ticker, bond) {
+    var parts = [bond.label || getTickerSubtitle(ticker) || ticker];
+    if (bond.kindLabel) parts.push(bond.kindLabel);
+    if (bond.yieldPct != null && isFinite(bond.yieldPct)) {
+      parts.push('Доходность: ' + formatDivYieldPct(bond.yieldPct));
+    }
+    if (bond.couponPct != null && isFinite(bond.couponPct)) {
+      parts.push('Купон: ' + formatBondCouponPct(bond.couponPct));
+    }
+    if (bond.matDate) parts.push('Погашение: ' + formatBondProfileDate(bond.matDate));
+    return parts.join(' · ');
   }
 
   function getLatestBriefForTicker(ticker) {
@@ -1326,9 +1443,8 @@
     var lastBrief = getLatestBriefForTicker(ticker);
     var isUs = typeof Markets !== 'undefined' && Markets.isUsTicker(ticker);
     var isIndex = typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker);
-    var type = (ticker.indexOf('OFZ') >= 0 || ticker.indexOf('SU') === 0)
-      ? 'облигация'
-      : (isIndex ? 'индекс' : 'акция');
+    var isBond = typeof isRuBondTicker === 'function' && isRuBondTicker(ticker);
+    var type = isBond ? 'облигация' : (isIndex ? 'индекс' : 'акция');
     var turnover = formatSecurityProfileTurnover(ticker, analytics);
     var tradeDate = '';
     if (analytics) {
@@ -1348,6 +1464,24 @@
     var latestYield = isIndex ? 'не применимо' : formatDivYieldPct(latestPct);
     var divAvgHtml = isIndex ? '<span class="muted">не применимо</span>' : divAvg5yValHtml(analytics);
     badgeRow.innerHTML = '<span class="tag tag-importance">' + (inPortfolio ? 'Есть в портфеле' : 'В наблюдении') + '</span>';
+    if (isBond) {
+      var bond = analytics && analytics.bond;
+      var ytm = bond && bond.yieldPct != null && isFinite(bond.yieldPct)
+        ? formatDivYieldPct(bond.yieldPct)
+        : (analytics && analytics.quote && analytics.quote.yieldPct != null
+          ? formatDivYieldPct(analytics.quote.yieldPct)
+          : '—');
+      metrics.innerHTML =
+        '<article class="security-metric-card"><span class="lbl">Тип</span><span class="val">' + escapeHtml(type) + (bond && bond.kindLabel ? ' · ' + escapeHtml(bond.kindLabel) : '') + '</span></article>' +
+        '<article class="security-metric-card"><span class="lbl">Рынок</span><span class="val">Россия</span></article>' +
+        '<article class="security-metric-card"><span class="lbl">Доходность к погашению</span><span class="val">' + escapeHtml(ytm) + '</span></article>' +
+        '<article class="security-metric-card"><span class="lbl">Купон</span><span class="val">' + escapeHtml(formatBondCouponPct(bond && bond.couponPct)) + '</span></article>' +
+        '<article class="security-metric-card"><span class="lbl">Погашение</span><span class="val">' + escapeHtml(formatBondProfileDate(bond && bond.matDate)) + '</span></article>' +
+        '<article class="security-metric-card"><span class="lbl">' + escapeHtml(turnoverLbl) + '</span><span class="val">' + escapeHtml(turnover) + '</span></article>' +
+        '<article class="security-metric-card"><span class="lbl">Последнее важное событие</span><span class="val">' + escapeHtml(lastBrief ? lastBrief.title : 'События пока не найдены') + '</span></article>';
+      card.hidden = false;
+      return;
+    }
     metrics.innerHTML =
       '<article class="security-metric-card"><span class="lbl">Тип</span><span class="val">' + escapeHtml(type) + '</span></article>' +
       '<article class="security-metric-card"><span class="lbl">Рынок</span><span class="val">' + escapeHtml(isUs ? 'США' : 'Россия') + '</span></article>' +
@@ -1392,6 +1526,45 @@
       }
       fetchMoexHistory(ticker, horizon).then(function (r) {
         if (priceCanvas) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
+      });
+      return;
+    }
+
+    if (securityChartIsBond(ticker)) {
+      loadBondAnalyticsSnapshot(ticker).then(function (bond) {
+        if (metaEl) metaEl.textContent = bond.error ? 'Не удалось загрузить данные по ОФЗ' : bondAnalyticsMetaText(ticker, bond);
+        renderSecurityProfile(ticker, { bond: bond, eligible: true, quote: bond.quote || { price: bond.price, valueToday: bond.quote && bond.quote.valueToday, yieldPct: bond.yieldPct } });
+        if (divCanvas) {
+          if (bond.coupons && bond.coupons.length) renderBondCouponChart(divCanvas, bond);
+          else {
+            var dctx = divCanvas.getContext('2d');
+            if (dctx) dctx.clearRect(0, 0, divCanvas.width, divCanvas.height);
+          }
+        }
+        if (divNote) {
+          divNote.textContent = bond.coupons && bond.coupons.length
+            ? bondAnalyticsDivNote()
+            : 'Расписание купонов по этому выпуску пока недоступно.';
+          divNote.className = 'analytics-chart-note chart-info-readable';
+        }
+        if (volCanvas) {
+          var vctx = volCanvas.getContext('2d');
+          if (vctx) vctx.clearRect(0, 0, volCanvas.width, volCanvas.height);
+        }
+        if (volNote) volNote.textContent = bondAnalyticsVolNote();
+        return fetchMoexHistory(ticker, horizon);
+      }).then(function (r) {
+        if (priceCanvas && r && r.series) {
+          drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
+        }
+        requestAnimationFrame(function () {
+          var activeTab = document.querySelector('[data-security-chart-tab].active');
+          if (activeTab) redrawSecurityChartTab(activeTab.getAttribute('data-security-chart-tab'));
+        });
+      }).catch(function () {
+        if (metaEl) metaEl.textContent = 'Не удалось загрузить аналитику по ОФЗ';
+        if (divNote) divNote.textContent = 'Данные по купонам пока недоступны.';
+        if (volNote) volNote.textContent = bondAnalyticsVolNote();
       });
       return;
     }
@@ -1506,6 +1679,7 @@
     var volCanvas = document.getElementById('portfolioInsightVolChart');
     var divNote = document.getElementById('portfolioInsightDivNote');
     var volNote = document.getElementById('portfolioInsightVolNote');
+    var divTitle = document.getElementById('portfolioInsightDivTitle');
     if (titleEl) titleEl.textContent = ticker;
     if (metaEl) metaEl.textContent = 'Загрузка…';
 
@@ -1517,11 +1691,36 @@
     });
 
     if (!isRuStockForAnalytics(ticker)) {
+      if (securityChartIsBond(ticker)) {
+        if (divTitle) divTitle.textContent = 'Купоны · выплаты по выпуску';
+        loadBondAnalyticsSnapshot(ticker).then(function (bond) {
+          if (metaEl) {
+            metaEl.textContent = [
+              bond.label || getTickerSubtitle(ticker),
+              'Кол-во: ' + qty,
+              ret != null ? 'Доходность позиции: ' + formatSignedPct(ret, 2) : ''
+            ].filter(Boolean).join(' · ');
+          }
+          if (kpisEl) {
+            kpisEl.innerHTML =
+              '<div class="insight-kpi"><span class="insight-kpi-lbl">Доходность</span><span class="insight-kpi-val">' + escapeHtml(bond.yieldPct != null ? formatDivYieldPct(bond.yieldPct) : '—') + '</span></div>' +
+              '<div class="insight-kpi"><span class="insight-kpi-lbl">Купон</span><span class="insight-kpi-val">' + escapeHtml(formatBondCouponPct(bond.couponPct)) + '</span></div>' +
+              '<div class="insight-kpi"><span class="insight-kpi-lbl">Погашение</span><span class="insight-kpi-val">' + escapeHtml(formatBondProfileDate(bond.matDate)) + '</span></div>' +
+              '<div class="insight-kpi"><span class="insight-kpi-lbl">Выплат в год</span><span class="insight-kpi-val">' + escapeHtml(bond.payCount != null ? String(bond.payCount) : '—') + '</span></div>';
+          }
+          if (divCanvas) renderBondCouponChart(divCanvas, bond);
+          if (divNote) divNote.textContent = bond.coupons && bond.coupons.length ? bondAnalyticsDivNote() : 'Купоны по выпуску пока недоступны.';
+          if (volNote) volNote.textContent = bondAnalyticsVolNote();
+        });
+        sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
       if (metaEl) metaEl.textContent = 'US позиция · дивидендная аналитика МосБиржи недоступна';
       if (kpisEl) kpisEl.innerHTML = '';
       return;
     }
 
+    if (divTitle) divTitle.textContent = 'Дивиденды · 5 лет и прогноз 12 мес.';
     buildSecurityAnalytics(ticker).then(function (a) {
       var fc = a.divForecast;
       var forecastTotal = fc && fc.amount != null && qty > 0 ? fc.amount * qty : null;

@@ -79,6 +79,50 @@
     return (end - Date.now()) / (365.25 * 86400000);
   }
 
+  /** До 3 лет включительно — короткосрочный, иначе долгосрочный. */
+  function classifyOfzMaturityTerm(yearsToMat) {
+    if (yearsToMat == null || !isFinite(yearsToMat)) return null;
+    return yearsToMat <= 3 ? 'short' : 'long';
+  }
+
+  function formatOfzMaturityTermLabel(term) {
+    if (term === 'short') return 'короткосрочный';
+    if (term === 'long') return 'долгосрочный';
+    return '—';
+  }
+
+  function couponRubValue(coupon, faceValue) {
+    if (!coupon) return null;
+    if (coupon.value != null && isFinite(Number(coupon.value))) return Number(coupon.value);
+    if (coupon.valuePct != null && isFinite(Number(coupon.valuePct))) {
+      return Number(faceValue || 1000) * Number(coupon.valuePct) / 100;
+    }
+    return null;
+  }
+
+  function computeBondCoupons12m(coupons, qty, faceValue) {
+    qty = isFinite(Number(qty)) && Number(qty) > 0 ? Number(qty) : 0;
+    faceValue = faceValue || 1000;
+    var now = Date.now();
+    var pastCutoff = now - 365.25 * 86400000;
+    var futureCutoff = now + 365.25 * 86400000;
+    var paidPerBond = 0;
+    var upcomingPerBond = 0;
+    (coupons || []).forEach(function (c) {
+      var t = new Date(c.date).getTime();
+      if (!isFinite(t)) return;
+      var val = couponRubValue(c, faceValue);
+      if (val == null || !isFinite(val) || val <= 0) return;
+      if (t <= now && t >= pastCutoff) paidPerBond += val;
+      else if (t > now && t <= futureCutoff) upcomingPerBond += val;
+    });
+    return {
+      paid12m: qty > 0 ? paidPerBond * qty : paidPerBond,
+      upcoming12m: qty > 0 ? upcomingPerBond * qty : upcomingPerBond,
+      amount: qty > 0 ? upcomingPerBond * qty : upcomingPerBond
+    };
+  }
+
   function couponYieldOnPrice(couponValue, pricePct, faceValue, payCount) {
     if (couponValue == null || pricePct == null || !faceValue || !payCount) return null;
     var priceRub = Number(pricePct) / 100 * Number(faceValue);
@@ -1348,4 +1392,12 @@
 
   window.renderOfzSection = renderOfzSection;
   window.loadOfzData = loadOfzData;
+  window.fetchOfzBondSnapshot = fetchOfzBondSnapshot;
+  window.buildOfzCouponBarSeries = buildCouponBarSeries;
+  window.selectOfzTicker = selectOfzTicker;
+  window.classifyOfzMaturityTerm = classifyOfzMaturityTerm;
+  window.formatOfzMaturityTermLabel = formatOfzMaturityTermLabel;
+  window.computeBondCoupons12m = computeBondCoupons12m;
+  window.yearsToMaturity = yearsToMaturity;
+  window.formatOfzDate = formatOfzDate;
 })();
