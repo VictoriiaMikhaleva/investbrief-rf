@@ -911,12 +911,30 @@
       showToast('Укажите тикер');
       return;
     }
+    function normalizeBondTickerInput(input) {
+      var s = String(input || '').trim().toUpperCase();
+      if (!s) return '';
+      var m = s.match(/(\d{5})/);
+      if (m) return 'OFZ_' + m[1];
+      if (s.indexOf('OFZ_') === 0) return s;
+      if (s.indexOf('OFZ') === 0 && s.length >= 8) return s;
+      if (s.indexOf('SU') === 0 && s.length > 8) {
+        var m2 = s.match(/(\d{5})/);
+        if (m2) return 'OFZ_' + m2[1];
+      }
+      return '';
+    }
+
     var resolveFn = typeof Markets !== 'undefined' ? Markets.resolveSecurityFromInput : function (r) {
       return resolveTickerFromInput(r).then(function (tk) {
         return tk ? { ticker: tk, market: 'RU', currency: 'RUB', type: 'stock' } : null;
       });
     };
-    resolveFn(rawTicker).then(function (sec) {
+    var bondTickerQuick = normalizeBondTickerInput(rawTicker);
+    var resolvePromise = bondTickerQuick
+      ? Promise.resolve({ ticker: bondTickerQuick, market: 'RU', currency: 'RUB', type: 'bond', kind: 'bond' })
+      : resolveFn(rawTicker);
+    resolvePromise.then(function (sec) {
       if (!sec || !sec.ticker) {
         showToast('Укажите тикер');
         return;
