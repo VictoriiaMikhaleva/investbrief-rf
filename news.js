@@ -502,6 +502,11 @@
     return host === 'localhost' || host === '127.0.0.1';
   }
 
+  function getRssRetryCount() {
+    // На GitHub Pages внешний прокси часто даёт CORS/52x, лишние ретраи только шумят консоль.
+    return hasLocalNewsApi() ? RSS_FEED_RETRY_COUNT : 0;
+  }
+
 
 
   function fetchWithTimeout(promise, ms) {
@@ -645,8 +650,8 @@
         RSS_FETCH_TIMEOUT_MS
       );
     }
-    return fetchRssViaAllOrigins(feedUrl)
-      .catch(function () { return fetchRssViaRss2Json(feedUrl); })
+    return fetchRssViaRss2Json(feedUrl)
+      .catch(function () { return fetchRssViaAllOrigins(feedUrl); })
       .catch(function () { return []; });
   }
 
@@ -655,7 +660,7 @@
   function fetchRssFeedItemsWithRetry(feedUrl) {
     return fetchWithRetry(function () {
       return fetchRssFeedItems(feedUrl);
-    }, RSS_FEED_RETRY_COUNT);
+    }, getRssRetryCount());
   }
 
 

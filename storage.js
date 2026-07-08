@@ -378,7 +378,7 @@
     };
   }
 
-  var AGENT_LOG_MAX = 200;
+  var AGENT_LOG_MAX = 80;
 
   function getAgentActionLog() {
     var list = loadJSON(KEYS.agentSignalHistory, []);
@@ -388,7 +388,16 @@
 
   function setAgentActionLog(list) {
     var normalized = (Array.isArray(list) ? list : []).map(normalizeAgentLogEntry).filter(Boolean).slice(0, AGENT_LOG_MAX);
-    saveJSON(KEYS.agentSignalHistory, normalized);
+    try {
+      saveJSON(KEYS.agentSignalHistory, normalized);
+    } catch (e) {
+      try {
+        // Если localStorage переполнен, сохраняем короткий "хвост" журнала.
+        saveJSON(KEYS.agentSignalHistory, normalized.slice(0, 25));
+      } catch (e2) {
+        try { localStorage.removeItem(KEYS.agentSignalHistory); } catch (e3) { /* noop */ }
+      }
+    }
     if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
   }
 
