@@ -513,9 +513,11 @@
 
 
   function findPortfolioPosition(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!ticker) return null;
     var positions = getPortfolio().positions;
     for (var i = 0; i < positions.length; i++) {
-      if (positions[i].ticker === ticker) return positions[i];
+      if (normalizeTicker(positions[i].ticker) === ticker) return positions[i];
     }
     return null;
   }
@@ -815,19 +817,33 @@
     return '';
   }
 
+  function isLikelyRuStockTicker(raw) {
+    var t = normalizeTicker(raw);
+    if (!t || normalizeBondTickerInput(t)) return false;
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(t)) return false;
+    return /^[A-Z0-9._-]{1,12}$/.test(t) && !/[А-Яа-яЁё]/.test(String(raw || ''));
+  }
+
   function commitPortfolioPosition(sec, captured, prefix) {
     if (!sec || !sec.ticker) {
       showToast('Укажите тикер');
       return;
     }
-    var t = sec.ticker;
+    var t = normalizeTicker(sec.ticker);
     var qty = captured.qty;
     var avg = captured.avg;
     var buyDate = captured.buyDate;
     var comment = captured.comment;
+    var hasQty = qty != null && isFinite(qty) && qty > 0;
+    var hasAvg = avg != null && isFinite(avg) && avg > 0;
     var portfolio = getPortfolio();
     var existing = findPortfolioPosition(t);
     var editing = state.pfEditTicker && normalizeTicker(state.pfEditTicker) === t;
+
+    if (existing && !editing && !hasQty && !hasAvg) {
+      showToast('Для докупки укажите количество и цену покупки');
+      return;
+    }
 
     if (editing) {
       if (!existing) {
@@ -852,11 +868,11 @@
     );
 
     function finishRuAdd(cur) {
-      var finalCur = cur != null && isFinite(cur) ? cur : (avg != null && isFinite(avg) ? avg : 100);
-      var avgPrice = avg != null && isFinite(avg) ? avg : finalCur;
+      var finalCur = cur != null && isFinite(cur) ? cur : (hasAvg ? avg : (existing && isFinite(Number(existing.currentPrice)) ? Number(existing.currentPrice) : 100));
+      var avgPrice = hasAvg ? avg : finalCur;
 
       if (existing) {
-        mergePositionPurchase(existing, qty, avgPrice, buyDate, comment);
+        mergePositionPurchase(existing, qty, hasAvg ? avg : null, buyDate, comment);
         if (finalCur != null && isFinite(finalCur)) existing.currentPrice = finalCur;
         setPortfolio(portfolio);
         safeClearPortfolioForms(prefix);
@@ -935,37 +951,17 @@
       return Promise.resolve();
     }
 
-    return fetchMoexLastPrice(t).catch(function () { return null; }).then(function (price) {
-      var cur = price != null && isFinite(price) ? price : (avg != null ? avg : 100);
-      var avgPrice = avg != null ? avg : cur;
-
-      if (existing) {
-        mergePositionPurchase(existing, qty, avgPrice, buyDate, comment);
-        if (cur != null && isFinite(cur)) existing.currentPrice = cur;
-        setPortfolio(portfolio);
-        safeClearPortfolioForms(prefix);
-        showToast('Докупка учтена, обновлена ср. цена: ' + t);
-      } else {
-        var ruPos = normalizePosition({
-          ticker: t,
-          qty: qty,
-          avgPrice: avgPrice,
-          currentPrice: cur,
-          buyDate: buyDate,
-          comment: comment,
-          market: 'RU',
-          currency: 'RUB'
-        });
-        if (!ruPos) throw new Error('invalid_position');
-        portfolio.positions.push(ruPos);
-        setPortfolio(portfolio);
-        safeClearPortfolioForms(prefix);
-        showToast('Добавлено в портфель: ' + t);
-      }
-      state.chartTicker = t;
-      state.folderOpen = true;
-      try { renderPortfolio(); } catch (e) { /* noop */ }
+    finishRuAdd(avg != null && isFinite(avg) ? avg : null);
+    fetchMoexLastPrice(t).catch(function () { return null; }).then(function (live) {
+      if (live == null || !isFinite(live)) return;
+      var p = getPortfolio();
+      var pos = findPortfolioPosition(t);
+      if (!pos) return;
+      pos.currentPrice = live;
+      try { setPortfolio(p); } catch (e) { /* noop */ }
+      try { renderPortfolio(); } catch (e2) { /* noop */ }
     });
+    return Promise.resolve();
   }
 
 
@@ -1036,11 +1032,11 @@
 
 
   function mergePositionPurchase(existing, qty, avg, buyDate, comment) {
-    var oldQty = existing.qty;
+    var oldQty = Number(existing.qty);
     var oldAvg = Number(existing.avgPrice);
     var hasQty = qty != null && isFinite(qty) && qty > 0;
-    var hasAvg = avg != null && isFinite(avg);
-    if (hasQty && hasAvg && isFinite(oldQty) && oldQty > 0 && isFinite(oldAvg)) {
+    var hasAvg = avg != null && isFinite(avg) && avg > 0;
+    if (hasQty && hasAvg && isFinite(oldQty) && oldQty > 0 && isFinite(oldAvg) && oldAvg > 0) {
       var totalQty = oldQty + qty;
       existing.avgPrice = (oldQty * oldAvg + qty * avg) / totalQty;
       existing.qty = totalQty;
@@ -1112,6 +1108,21 @@
           currency: 'RUB',
           type: 'bond',
           kind: 'bond'
+        }, captured, prefix);
+      } catch (err) {
+        handlePortfolioAddError(err);
+      }
+      return;
+    }
+
+    if (isLikelyRuStockTicker(rawTicker)) {
+      try {
+        commitPortfolioPosition({
+          ticker: normalizeTicker(rawTicker),
+          market: 'RU',
+          currency: 'RUB',
+          type: 'stock',
+          kind: 'stock'
         }, captured, prefix);
       } catch (err) {
         handlePortfolioAddError(err);
