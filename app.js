@@ -364,7 +364,7 @@
     if (pfCancelEditBtn) pfCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
     var pfSaleBtn = document.getElementById('pfSaleBtn');
     if (pfSaleBtn) pfSaleBtn.addEventListener('click', function () {
-      commitPortfolioSale(state.pfSaleLotId);
+      commitPortfolioSale(state.pfSaleTicker);
     });
     var pfCancelSaleBtn = document.getElementById('pfCancelSaleBtn');
     if (pfCancelSaleBtn) pfCancelSaleBtn.addEventListener('click', cancelPortfolioSale);

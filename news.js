@@ -962,7 +962,7 @@
     pfEditTicker: '',
     pfEditLotId: '',
     pfEditPrefix: '',
-    pfSaleLotId: '',
+    pfSaleTicker: '',
     pfExpandedTickers: {}
   };
   if (typeof globalThis !== 'undefined') globalThis.state = state;

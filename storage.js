@@ -220,7 +220,22 @@
     var mk = typeof Markets !== 'undefined'
       ? Markets.normalizePositionMarket(raw, t)
       : { market: 'RU', currency: 'RUB' };
-    return {
+    var allocations = [];
+    if (Array.isArray(raw.allocations)) {
+      raw.allocations.forEach(function (a) {
+        if (!a) return;
+        var aq = parseFloat(a.qty);
+        if (!isFinite(aq) || aq <= 0) return;
+        var ab = parseFloat(a.buyPrice);
+        allocations.push({
+          lotId: a.lotId ? String(a.lotId) : '',
+          qty: aq,
+          buyPrice: isFinite(ab) ? ab : null,
+          buyDate: a.buyDate ? String(a.buyDate).slice(0, 10) : ''
+        });
+      });
+    }
+    var out = {
       saleId: raw.saleId ? String(raw.saleId) : newPortfolioSaleId(t),
       lotId: raw.lotId ? String(raw.lotId) : '',
       ticker: t,
@@ -233,6 +248,8 @@
       market: mk.market,
       currency: mk.currency
     };
+    if (allocations.length) out.allocations = allocations;
+    return out;
   }
 
 

@@ -1272,36 +1272,78 @@
     setPortfolio(portfolio);
     if (state.chartTicker === ticker) state.chartTicker = '';
     if (state.pfEditTicker === ticker) cancelPortfolioEdit();
-    if (state.pfSaleLotId) cancelPortfolioSale();
+    if (state.pfSaleTicker) cancelPortfolioSale();
     showToast('Удалено из портфеля: ' + ticker);
     renderPortfolio();
   }
 
 
 
-  function startSalePortfolioLot(lotId) {
-    lotId = String(lotId || '').trim();
-    if (!lotId) {
-      showToast('Не удалось определить покупку — обновите страницу (Ctrl+F5)');
+  function allocateSaleAcrossLots(portfolio, ticker, sellQty) {
+    ticker = normalizeTicker(ticker);
+    var lots = findPortfolioLots(ticker, portfolio.positions).filter(function (l) {
+      var q = Number(l.qty);
+      return isFinite(q) && q > 0;
+    });
+    if (!lots.length) return null;
+    var totalQty = lots.reduce(function (s, l) { return s + Number(l.qty); }, 0);
+    if (!isFinite(sellQty) || sellQty <= 0 || sellQty > totalQty + 1e-6) return null;
+
+    var weightedAvgBefore = computeLotsWeightedAvg(lots);
+    var allocations = [];
+    var left = sellQty;
+
+    lots.forEach(function (lot, idx) {
+      var lotQty = Number(lot.qty);
+      var take = idx === lots.length - 1
+        ? left
+        : Math.round((sellQty * lotQty / totalQty) * 10000) / 10000;
+      take = Math.min(take, lotQty, left);
+      if (take <= 1e-9) return;
+      lot.qty = lotQty - take;
+      left -= take;
+      allocations.push({
+        lotId: lot.lotId,
+        qty: take,
+        buyPrice: isFinite(Number(lot.avgPrice)) ? Number(lot.avgPrice) : null,
+        buyDate: lot.buyDate || ''
+      });
+    });
+
+    portfolio.positions = portfolio.positions.filter(function (p) {
+      var q = Number(p.qty);
+      return isFinite(q) && q > 1e-9;
+    });
+
+    return { allocations: allocations, weightedAvgBefore: weightedAvgBefore };
+  }
+
+
+
+  function startSalePortfolioTicker(ticker) {
+    ticker = normalizeTicker(ticker || '');
+    if (!ticker) {
+      showToast('Не удалось определить тикер');
       return;
     }
-    var lot = findPortfolioLot(lotId);
-    if (!lot) {
-      showToast('Покупка не найдена — обновите страницу (Ctrl+F5)');
-      return;
-    }
-    var q = Number(lot.qty);
-    if (!isFinite(q) || q <= 0) {
-      showToast('В этой покупке нечего продавать');
+    var lots = findPortfolioLots(ticker);
+    var totalQty = lots.reduce(function (s, l) {
+      var q = Number(l.qty);
+      return s + (isFinite(q) && q > 0 ? q : 0);
+    }, 0);
+    if (totalQty <= 0) {
+      showToast('По ' + ticker + ' нечего продавать');
       return;
     }
     cancelPortfolioEdit();
-    state.pfSaleLotId = lot.lotId;
+    state.pfSaleTicker = ticker;
+    var agg = aggregatePortfolioLots(lots);
     var form = document.getElementById('portfolioSaleForm');
     var hint = document.getElementById('pfSaleLotHint');
     if (hint) {
-      hint.textContent = lot.ticker + ' · покупка от ' + formatPortfolioDate(lot) +
-        ' · остаток ' + formatPortfolioQty(lot) + ' шт. по ' + formatPositionAvg(lot);
+      hint.textContent = ticker + ' · остаток ' + totalQty + ' шт. · ср. цена ' +
+        formatPositionAvg(agg || { ticker: ticker, avgPrice: computeLotsWeightedAvg(lots), currency: 'RUB' }) +
+        ' · списание пропорционально по всем покупкам';
     }
     var qtyEl = document.getElementById('pfSaleQty');
     var priceEl = document.getElementById('pfSalePrice');
@@ -1309,7 +1351,7 @@
     var commentEl = document.getElementById('pfSaleComment');
     if (qtyEl) qtyEl.value = '';
     if (priceEl) {
-      priceEl.value = isFinite(Number(lot.currentPrice)) ? String(Number(lot.currentPrice)) : '';
+      priceEl.value = agg && isFinite(Number(agg.currentPrice)) ? String(Number(agg.currentPrice)) : '';
     }
     if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
     if (commentEl) commentEl.value = '';
@@ -1323,8 +1365,19 @@
 
 
 
+  function startSalePortfolioLot(lotId) {
+    var lot = findPortfolioLot(lotId);
+    if (!lot) {
+      showToast('Покупка не найдена — обновите страницу (Ctrl+F5)');
+      return;
+    }
+    startSalePortfolioTicker(lot.ticker);
+  }
+
+
+
   function cancelPortfolioSale() {
-    state.pfSaleLotId = '';
+    state.pfSaleTicker = '';
     var form = document.getElementById('portfolioSaleForm');
     if (form) form.hidden = true;
     var qtyEl = document.getElementById('pfSaleQty');
@@ -1352,13 +1405,20 @@
 
 
 
-  function commitPortfolioSale(lotId, captured) {
-    lotId = String(lotId || state.pfSaleLotId || '');
+  function commitPortfolioSale(ticker, captured) {
+    ticker = normalizeTicker(ticker || state.pfSaleTicker || '');
     captured = captured || capturePortfolioSaleInput();
+    if (!ticker) {
+      showToast('Укажите тикер для продажи');
+      return;
+    }
     var portfolio = getPortfolio();
-    var lot = findPortfolioLot(lotId, portfolio.positions);
-    if (!lot) {
-      showToast('Покупка не найдена');
+    var lots = findPortfolioLots(ticker, portfolio.positions).filter(function (l) {
+      var q = Number(l.qty);
+      return isFinite(q) && q > 0;
+    });
+    if (!lots.length) {
+      showToast('По ' + ticker + ' нечего продавать');
       cancelPortfolioSale();
       return;
     }
@@ -1373,27 +1433,27 @@
       showToast('Укажите цену продажи');
       return;
     }
-    var lotQty = Number(lot.qty);
-    if (!isFinite(lotQty) || lotQty <= 0) {
-      showToast('В этой покупке нечего продавать');
+    var totalQty = lots.reduce(function (s, l) { return s + Number(l.qty); }, 0);
+    if (qty > totalQty + 1e-6) {
+      showToast('Нельзя продать больше остатка по ' + ticker + ': ' + formatPortfolioQty({ qty: totalQty }) + ' шт.');
       return;
     }
-    if (qty > lotQty + 1e-9) {
-      showToast('Нельзя продать больше остатка: ' + formatPortfolioQty(lot) + ' шт.');
+    var allocResult = allocateSaleAcrossLots(portfolio, ticker, qty);
+    if (!allocResult || !allocResult.allocations.length) {
+      showToast('Не удалось распределить продажу по покупкам');
       return;
     }
-    var buyPrice = Number(lot.avgPrice);
+    var refLot = lots[0];
     var sale = normalizeSale({
-      lotId: lot.lotId,
-      ticker: lot.ticker,
+      ticker: ticker,
       qty: qty,
-      buyPrice: isFinite(buyPrice) ? buyPrice : null,
-      buyDate: lot.buyDate || '',
+      buyPrice: allocResult.weightedAvgBefore,
       salePrice: salePrice,
       saleDate: saleDate,
       comment: captured.comment,
-      market: lot.market,
-      currency: lot.currency
+      market: refLot.market,
+      currency: refLot.currency,
+      allocations: allocResult.allocations
     });
     if (!sale) {
       showToast('Не удалось зафиксировать продажу');
@@ -1401,14 +1461,10 @@
     }
     if (!portfolio.sales) portfolio.sales = [];
     portfolio.sales.push(sale);
-    lot.qty = lotQty - qty;
-    if (lot.qty <= 1e-9) {
-      portfolio.positions = portfolio.positions.filter(function (p) { return p.lotId !== lot.lotId; });
-    }
     setPortfolio(portfolio);
     var pnl = getSaleRealizedPnl(sale);
     cancelPortfolioSale();
-    var msg = 'Продажа зафиксирована: ' + lot.ticker;
+    var msg = 'Продажа зафиксирована: ' + ticker;
     if (pnl.amount != null) msg += ' · ' + formatSignedRubAmount(pnl.amount);
     showToast(msg);
     try { renderPortfolio(); } catch (e) { /* noop */ }
@@ -1422,22 +1478,36 @@
     var sale = findPortfolioSale(saleId, portfolio.sales);
     if (!sale) return;
     portfolio.sales = (portfolio.sales || []).filter(function (s) { return s.saleId !== saleId; });
-    var lot = findPortfolioLot(sale.lotId, portfolio.positions);
-    if (lot) {
-      var q = Number(lot.qty);
-      lot.qty = (isFinite(q) && q > 0 ? q : 0) + sale.qty;
-    } else {
-      portfolio.positions.push(normalizePosition({
+
+    function restoreAlloc(alloc) {
+      var lot = findPortfolioLot(alloc.lotId, portfolio.positions);
+      if (lot) {
+        var q = Number(lot.qty);
+        lot.qty = (isFinite(q) && q > 0 ? q : 0) + alloc.qty;
+      } else {
+        portfolio.positions.push(normalizePosition({
+          lotId: alloc.lotId,
+          ticker: sale.ticker,
+          qty: alloc.qty,
+          avgPrice: alloc.buyPrice,
+          currentPrice: sale.salePrice,
+          buyDate: alloc.buyDate || '',
+          comment: '',
+          market: sale.market,
+          currency: sale.currency
+        }));
+      }
+    }
+
+    if (sale.allocations && sale.allocations.length) {
+      sale.allocations.forEach(restoreAlloc);
+    } else if (sale.lotId) {
+      restoreAlloc({
         lotId: sale.lotId,
-        ticker: sale.ticker,
         qty: sale.qty,
-        avgPrice: sale.buyPrice,
-        currentPrice: sale.salePrice,
-        buyDate: sale.buyDate || '',
-        comment: sale.comment ? 'восст. из продажи' : '',
-        market: sale.market,
-        currency: sale.currency
-      }));
+        buyPrice: sale.buyPrice,
+        buyDate: sale.buyDate || ''
+      });
     }
     setPortfolio(portfolio);
     showToast('Продажа отменена: ' + sale.ticker);
@@ -1555,11 +1625,18 @@
       renderPortfolioTableBody();
       return;
     }
-    var sellBtn = e.target.closest('[data-pf-sell-lot]');
+    var sellBtn = e.target.closest('[data-pf-sell-ticker]');
     if (sellBtn) {
       e.preventDefault();
       e.stopPropagation();
-      startSalePortfolioLot(sellBtn.getAttribute('data-pf-sell-lot'));
+      startSalePortfolioTicker(sellBtn.getAttribute('data-pf-sell-ticker'));
+      return;
+    }
+    var sellLotBtn = e.target.closest('[data-pf-sell-lot]');
+    if (sellLotBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      startSalePortfolioLot(sellLotBtn.getAttribute('data-pf-sell-lot'));
       return;
     }
     var undoSaleBtn = e.target.closest('[data-pf-undo-sale]');
@@ -1668,6 +1745,9 @@
     var incomeCell = showIncome
       ? '<td class="pf-div-cell" rowspan="' + (opts.incomeRowSpan || 1) + '" data-pf-div-cell="' + escapeHtml(group.ticker) + '"><span class="muted">…</span></td>'
       : '';
+    var sellActions = lotIndex === 0
+      ? '<button type="button" class="ghost small" data-pf-sell-ticker="' + escapeHtml(group.ticker) + '">Продать</button> '
+      : '';
     return '<tr class="pf-table-row pf-lot-row' + editActive + '" data-chart-ticker="' + escapeHtml(group.ticker) + '" data-pf-lot="' + escapeHtml(p.lotId || '') + '">' +
       tickerCell +
       '<td class="pf-weight">' + escapeHtml(weight) + '</td>' +
@@ -1681,7 +1761,7 @@
       incomeCell +
       '<td class="pf-comment">' + escapeHtml(p.comment || '—') + '</td>' +
       '<td class="pf-row-actions">' +
-        '<button type="button" class="ghost small" data-pf-sell-lot="' + escapeHtml(p.lotId || '') + '">Продать</button> ' +
+        sellActions +
         '<button type="button" class="ghost small" data-pf-edit-lot="' + escapeHtml(p.lotId || '') + '">Изменить</button> ' +
         '<button type="button" class="danger small" data-pf-remove-lot="' + escapeHtml(p.lotId || '') + '">Удалить</button>' +
       '</td></tr>';
@@ -1710,7 +1790,7 @@
       : '—';
     var sellLbl = formatPositionAvg({ avgPrice: sale.salePrice, currency: sale.currency, ticker: sale.ticker }, { bond: isBond });
     var retCell = pnl.amount != null
-      ? '<span class="' + pnlCls + '" title="Реализованный результат">' +
+      ? '<span class="' + pnlCls + '" title="Реализованный результат от ср. цены">' +
           escapeHtml(formatSignedRubAmount(pnl.amount)) +
           (pnl.pct != null ? ' · ' + escapeHtml(formatSignedPct(pnl.pct, 2)) : '') +
         '</span>'
@@ -1719,8 +1799,8 @@
       '<td class="ticker pf-sale-lbl"><span class="pf-lot-marker">↳</span> продажа</td>' +
       '<td class="pf-weight muted">—</td>' +
       '<td class="pf-sale-qty">−' + escapeHtml(String(sale.qty)) + '</td>' +
-      '<td class="pf-buy-price">' + escapeHtml(buyLbl) + '</td>' +
-      '<td class="pf-weighted-avg muted">—</td>' +
+      '<td class="pf-buy-price muted">—</td>' +
+      '<td class="pf-weighted-avg" title="Ср. цена покупки на момент продажи">' + escapeHtml(buyLbl) + '</td>' +
       '<td>' + escapeHtml(formatPortfolioSaleDate(sale)) + '</td>' +
       '<td class="pf-sale-price">' + escapeHtml(sellLbl) + '</td>' +
       '<td>' + retCell + '</td>' +
