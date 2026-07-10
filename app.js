@@ -368,6 +368,16 @@
     });
     var pfCancelSaleBtn = document.getElementById('pfCancelSaleBtn');
     if (pfCancelSaleBtn) pfCancelSaleBtn.addEventListener('click', cancelPortfolioSale);
+    ['pfSaleQty', 'pfSalePrice'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', function () {
+        if (typeof updatePortfolioSalePreview === 'function') updatePortfolioSalePreview();
+      });
+      el.addEventListener('change', function () {
+        if (typeof updatePortfolioSalePreview === 'function') updatePortfolioSalePreview();
+      });
+    });
     bindPortfolioFormEnter('pfAddTicker', '');
     document.querySelectorAll('[data-preset]').forEach(function (btn) {
       btn.addEventListener('click', function () {

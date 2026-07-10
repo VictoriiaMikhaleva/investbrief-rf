@@ -566,14 +566,32 @@
 
 
   function getSaleRealizedPnl(sale) {
+    var sell = Number(sale && sale.salePrice);
+    if (!isFinite(sell) || sell <= 0) return { amount: null, pct: null };
+
+    if (sale.allocations && sale.allocations.length) {
+      var amount = 0;
+      var cost = 0;
+      sale.allocations.forEach(function (a) {
+        var q = Number(a.qty);
+        var buy = Number(a.buyPrice);
+        var sp = isFinite(Number(a.salePrice)) && Number(a.salePrice) > 0
+          ? Number(a.salePrice) : sell;
+        if (!isFinite(q) || q <= 0 || !isFinite(buy) || buy <= 0) return;
+        amount += (sp - buy) * q;
+        cost += buy * q;
+      });
+      if (cost <= 0) return { amount: null, pct: null };
+      return { amount: amount, pct: (amount / cost) * 100 };
+    }
+
     var q = Number(sale && sale.qty);
     var buy = Number(sale && sale.buyPrice);
-    var sell = Number(sale && sale.salePrice);
-    if (!isFinite(q) || q <= 0 || !isFinite(buy) || buy <= 0 || !isFinite(sell)) {
+    if (!isFinite(q) || q <= 0 || !isFinite(buy) || buy <= 0) {
       return { amount: null, pct: null };
     }
-    var amount = (sell - buy) * q;
-    return { amount: amount, pct: ((sell - buy) / buy) * 100 };
+    var pnlAmount = (sell - buy) * q;
+    return { amount: pnlAmount, pct: ((sell - buy) / buy) * 100 };
   }
 
 
@@ -1332,7 +1350,7 @@
 
 
 
-  function allocateSaleAcrossLots(portfolio, ticker, sellQty) {
+  function allocateSaleAcrossLots(portfolio, ticker, sellQty, salePricePerShare) {
     ticker = normalizeTicker(ticker);
     var lots = findPortfolioLots(ticker, portfolio.positions).filter(function (l) {
       var q = Number(l.qty);
@@ -1342,17 +1360,35 @@
     var totalQty = lots.reduce(function (s, l) { return s + Number(l.qty); }, 0);
     if (!isFinite(sellQty) || sellQty <= 0 || sellQty > totalQty + 1e-6) return null;
 
-    var weightedAvgBefore = computeLotsWeightedAvg(lots);
+    var totalCostBefore = lots.reduce(function (s, l) {
+      var q = Number(l.qty);
+      var a = Number(l.avgPrice);
+      return s + (isFinite(q) && q > 0 && isFinite(a) && a > 0 ? q * a : 0);
+    }, 0);
+    var weightedAvgBefore = totalQty > 0 ? totalCostBefore / totalQty : computeLotsWeightedAvg(lots);
+    var salePx = isFinite(Number(salePricePerShare)) && Number(salePricePerShare) > 0
+      ? Number(salePricePerShare) : null;
     var takes = computeProportionalSaleTakes(lots, sellQty, totalQty);
     var allocations = [];
     var remaining = [];
 
     lots.forEach(function (lot, idx) {
       var take = takes[idx] || 0;
+      var lotQtyOnly = Number(lot.qty);
       if (take <= 1e-9) {
-        var lotQtyOnly = Number(lot.qty);
         if (isFinite(lotQtyOnly) && lotQtyOnly > 1e-9) {
-          remaining.push(lot);
+          remaining.push(normalizePosition({
+            lotId: lot.lotId,
+            ticker: lot.ticker,
+            qty: lotQtyOnly,
+            avgPrice: lot.avgPrice,
+            currentPrice: lot.currentPrice,
+            buyDate: lot.buyDate,
+            comment: lot.comment,
+            market: lot.market,
+            currency: lot.currency,
+            dayChangePct: lot.dayChangePct
+          }));
         }
         return;
       }
@@ -1360,9 +1396,10 @@
         lotId: lot.lotId,
         qty: take,
         buyPrice: isFinite(Number(lot.avgPrice)) ? Number(lot.avgPrice) : null,
+        salePrice: salePx,
         buyDate: lot.buyDate || ''
       });
-      var remainQty = Number(lot.qty) - take;
+      var remainQty = lotQtyOnly - take;
       if (isFinite(remainQty) && remainQty > 1e-9) {
         remaining.push(normalizePosition({
           lotId: lot.lotId,
@@ -1379,18 +1416,50 @@
       }
     });
 
+    remaining = remaining.filter(Boolean);
+    var rawRemainCost = remaining.reduce(function (s, l) {
+      var q = Number(l.qty);
+      var a = Number(l.avgPrice);
+      return s + (isFinite(q) && q > 0 && isFinite(a) && a > 0 ? q * a : 0);
+    }, 0);
+    var remainQtyTotal = totalQty - sellQty;
+    if (remainQtyTotal > 1e-9 && rawRemainCost > 1e-9 && salePx != null) {
+      var targetRemainCost = Math.max(0, totalCostBefore - salePx * sellQty);
+      var factor = targetRemainCost / rawRemainCost;
+      remaining = remaining.map(function (l) {
+        var ap = Number(l.avgPrice);
+        return normalizePosition({
+          lotId: l.lotId,
+          ticker: l.ticker,
+          qty: l.qty,
+          avgPrice: isFinite(ap) && ap > 0 ? ap * factor : l.avgPrice,
+          currentPrice: l.currentPrice,
+          buyDate: l.buyDate,
+          comment: l.comment,
+          market: l.market,
+          currency: l.currency,
+          dayChangePct: l.dayChangePct
+        });
+      }).filter(Boolean);
+    }
+
     portfolio.positions = portfolio.positions.filter(function (p) {
       return normalizeTicker(p.ticker) !== ticker;
-    }).concat(remaining.filter(Boolean));
+    }).concat(remaining);
 
     var weightedAvgAfter = computeLotsWeightedAvg(
       findPortfolioLots(ticker, portfolio.positions)
     );
+    var realizedPnl = salePx != null && weightedAvgBefore != null
+      ? (salePx - weightedAvgBefore) * sellQty
+      : null;
 
     return {
       allocations: allocations,
       weightedAvgBefore: weightedAvgBefore,
-      weightedAvgAfter: weightedAvgAfter
+      weightedAvgAfter: weightedAvgAfter,
+      realizedPnl: realizedPnl,
+      salePricePerShare: salePx
     };
   }
 
@@ -1415,12 +1484,6 @@
     state.pfSaleTicker = ticker;
     var agg = aggregatePortfolioLots(lots);
     var form = document.getElementById('portfolioSaleForm');
-    var hint = document.getElementById('pfSaleLotHint');
-    if (hint) {
-      hint.textContent = ticker + ' · остаток ' + totalQty + ' шт. · ср. цена ' +
-        formatPositionAvg(agg || { ticker: ticker, avgPrice: computeLotsWeightedAvg(lots), currency: 'RUB' }) +
-        ' · списание пропорционально по всем покупкам';
-    }
     var qtyEl = document.getElementById('pfSaleQty');
     var priceEl = document.getElementById('pfSalePrice');
     var dateEl = document.getElementById('pfSaleDate');
@@ -1437,6 +1500,50 @@
     } else {
       showToast('Форма продажи не загружена — обновите страницу (Ctrl+F5)');
     }
+    updatePortfolioSalePreview();
+  }
+
+
+
+  function updatePortfolioSalePreview() {
+    var hint = document.getElementById('pfSaleLotHint');
+    if (!hint || !state.pfSaleTicker) return;
+    var ticker = normalizeTicker(state.pfSaleTicker);
+    var lots = findPortfolioLots(ticker).filter(function (l) {
+      var q = Number(l.qty);
+      return isFinite(q) && q > 0;
+    });
+    if (!lots.length) return;
+    var totalQty = lots.reduce(function (s, l) { return s + Number(l.qty); }, 0);
+    var agg = aggregatePortfolioLots(lots);
+    var avgBefore = computeLotsWeightedAvg(lots);
+    var captured = capturePortfolioSaleInput();
+    var sellQty = captured.qty;
+    var salePx = captured.price;
+    var parts = [
+      ticker + ' · остаток ' + totalQty + ' шт.',
+      'ср. цена покупки ' + formatPositionAvg(agg || { ticker: ticker, avgPrice: avgBefore, currency: 'RUB' })
+    ];
+    if (salePx != null && isFinite(salePx) && salePx > 0) {
+      parts.push('продажа ' + formatPositionAvg({ avgPrice: salePx, currency: agg && agg.currency, ticker: ticker }) + '/шт');
+    }
+    if (sellQty != null && isFinite(sellQty) && sellQty > 0 && salePx != null && isFinite(salePx) && salePx > 0) {
+      if (sellQty > totalQty + 1e-6) {
+        parts.push('кол-во больше остатка');
+      } else if (avgBefore != null && isFinite(avgBefore)) {
+        var pnl = (salePx - avgBefore) * sellQty;
+        parts.push('результат ' + formatSignedRubAmount(pnl));
+        var remainQty = totalQty - sellQty;
+        if (remainQty > 1e-9) {
+          var totalCost = avgBefore * totalQty;
+          var remainCost = Math.max(0, totalCost - salePx * sellQty);
+          var avgAfter = remainCost / remainQty;
+          parts.push('ср. цена остатка после продажи ' +
+            formatPositionAvg({ avgPrice: avgAfter, currency: agg && agg.currency, ticker: ticker }));
+        }
+      }
+    }
+    hint.textContent = parts.join(' · ');
   }
 
 
@@ -1514,7 +1621,7 @@
       showToast('Нельзя продать больше остатка по ' + ticker + ': ' + formatPortfolioQty({ qty: totalQty }) + ' шт.');
       return;
     }
-    var allocResult = allocateSaleAcrossLots(portfolio, ticker, qty);
+    var allocResult = allocateSaleAcrossLots(portfolio, ticker, qty, salePrice);
     if (!allocResult || !allocResult.allocations.length) {
       showToast('Не удалось распределить продажу по покупкам');
       return;
@@ -1541,6 +1648,9 @@
     var pnl = getSaleRealizedPnl(sale);
     cancelPortfolioSale();
     var msg = 'Продажа зафиксирована: ' + ticker;
+    if (salePrice != null && isFinite(salePrice)) {
+      msg += ' · ' + formatPositionAvg({ avgPrice: salePrice, currency: refLot.currency, ticker: ticker }) + '/шт';
+    }
     if (allocResult.weightedAvgAfter != null && isFinite(allocResult.weightedAvgAfter)) {
       msg += ' · ср. цена остатка ' +
         formatPositionAvg({ avgPrice: allocResult.weightedAvgAfter, currency: refLot.currency, ticker: ticker });
@@ -1873,7 +1983,7 @@
       : '—';
     var sellLbl = formatPositionAvg({ avgPrice: sale.salePrice, currency: sale.currency, ticker: sale.ticker }, { bond: isBond });
     var retCell = pnl.amount != null
-      ? '<span class="' + pnlCls + '" title="Реализованный результат от ср. цены">' +
+      ? '<span class="' + pnlCls + '" title="(цена продажи − ср. цена покупки) × кол-во">' +
           escapeHtml(formatSignedRubAmount(pnl.amount)) +
           (pnl.pct != null ? ' · ' + escapeHtml(formatSignedPct(pnl.pct, 2)) : '') +
         '</span>'
@@ -1885,7 +1995,7 @@
       '<td class="pf-buy-price muted">—</td>' +
       '<td class="pf-weighted-avg" title="Ср. цена покупки на момент продажи">' + escapeHtml(buyLbl) + '</td>' +
       '<td>' + escapeHtml(formatPortfolioSaleDate(sale)) + '</td>' +
-      '<td class="pf-sale-price">' + escapeHtml(sellLbl) + '</td>' +
+      '<td class="pf-sale-price" title="Цена продажи за акцию">' + escapeHtml(sellLbl) + '</td>' +
       '<td>' + retCell + '</td>' +
       '<td class="pf-bond-mat"><span class="muted">—</span></td>' +
       '<td class="muted">—</td>' +

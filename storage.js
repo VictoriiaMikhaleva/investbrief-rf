@@ -231,6 +231,7 @@
           lotId: a.lotId ? String(a.lotId) : '',
           qty: aq,
           buyPrice: isFinite(ab) ? ab : null,
+          salePrice: isFinite(parseFloat(a.salePrice)) ? parseFloat(a.salePrice) : null,
           buyDate: a.buyDate ? String(a.buyDate).slice(0, 10) : ''
         });
       });
