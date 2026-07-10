@@ -288,7 +288,7 @@
     ticker = normalizeTicker(ticker);
     return fetchMoexQuote(ticker).then(function (q) {
       var portfolio = getPortfolio();
-      var p = findPortfolioPosition(ticker);
+      var p = findPortfolioPosition(ticker, portfolio.positions);
       if (!p) return;
       if (q && q.price != null && isFinite(q.price)) p.currentPrice = q.price;
       if (q && q.changePct != null && isFinite(q.changePct)) {
@@ -512,12 +512,12 @@
 
 
 
-  function findPortfolioPosition(ticker) {
+  function findPortfolioPosition(ticker, positions) {
     ticker = normalizeTicker(ticker);
     if (!ticker) return null;
-    var positions = getPortfolio().positions;
-    for (var i = 0; i < positions.length; i++) {
-      if (normalizeTicker(positions[i].ticker) === ticker) return positions[i];
+    var list = positions || getPortfolio().positions;
+    for (var i = 0; i < list.length; i++) {
+      if (normalizeTicker(list[i].ticker) === ticker) return list[i];
     }
     return null;
   }
@@ -657,7 +657,7 @@
       setChartSourceLabel(srcLabel, false);
       if (result.series.length) {
         var portfolio = getPortfolio();
-        var live = findPortfolioPosition(pos.ticker);
+        var live = findPortfolioPosition(pos.ticker, portfolio.positions);
         if (live) live.currentPrice = result.series[result.series.length - 1].price;
         setPortfolio(portfolio);
       }
@@ -837,7 +837,7 @@
     var hasQty = qty != null && isFinite(qty) && qty > 0;
     var hasAvg = avg != null && isFinite(avg) && avg > 0;
     var portfolio = getPortfolio();
-    var existing = findPortfolioPosition(t);
+    var existing = findPortfolioPosition(t, portfolio.positions);
     var editing = state.pfEditTicker && normalizeTicker(state.pfEditTicker) === t;
 
     if (existing && !editing && !hasQty && !hasAvg) {
@@ -942,7 +942,7 @@
       fetchMoexLastPrice(t).catch(function () { return null; }).then(function (live) {
         if (live == null || !isFinite(live)) return;
         var p = getPortfolio();
-        var pos = findPortfolioPosition(t);
+        var pos = findPortfolioPosition(t, p.positions);
         if (!pos) return;
         pos.currentPrice = live;
         try { setPortfolio(p); } catch (e) { /* noop */ }
@@ -955,7 +955,7 @@
     fetchMoexLastPrice(t).catch(function () { return null; }).then(function (live) {
       if (live == null || !isFinite(live)) return;
       var p = getPortfolio();
-      var pos = findPortfolioPosition(t);
+      var pos = findPortfolioPosition(t, p.positions);
       if (!pos) return;
       pos.currentPrice = live;
       try { setPortfolio(p); } catch (e) { /* noop */ }
