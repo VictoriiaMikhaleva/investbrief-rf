@@ -507,8 +507,15 @@
     if (!p || !Array.isArray(p.positions)) {
       return { positions: [], sales: [] };
     }
-    p.positions = p.positions.map(normalizePosition).filter(Boolean);
+    var needsPersist = false;
+    p.positions = p.positions.map(function (raw) {
+      if (raw && !raw.lotId) needsPersist = true;
+      return normalizePosition(raw);
+    }).filter(Boolean);
     p.sales = (p.sales || []).map(normalizeSale).filter(Boolean);
+    if (needsPersist) {
+      saveJSON(KEYS.portfolio, p);
+    }
     return p;
   }
 

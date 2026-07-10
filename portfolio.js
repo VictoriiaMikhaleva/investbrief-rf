@@ -1280,8 +1280,16 @@
 
 
   function startSalePortfolioLot(lotId) {
+    lotId = String(lotId || '').trim();
+    if (!lotId) {
+      showToast('Не удалось определить покупку — обновите страницу (Ctrl+F5)');
+      return;
+    }
     var lot = findPortfolioLot(lotId);
-    if (!lot) return;
+    if (!lot) {
+      showToast('Покупка не найдена — обновите страницу (Ctrl+F5)');
+      return;
+    }
     var q = Number(lot.qty);
     if (!isFinite(q) || q <= 0) {
       showToast('В этой покупке нечего продавать');
@@ -1308,6 +1316,8 @@
     if (form) {
       form.hidden = false;
       form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      showToast('Форма продажи не загружена — обновите страницу (Ctrl+F5)');
     }
   }
 
