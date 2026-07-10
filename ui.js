@@ -1660,18 +1660,164 @@
     });
   }
 
+  function portfolioInsightsMetaLine(ticker, pos, qty, ret, subtitle, opts) {
+    opts = opts || {};
+    var parts = [subtitle || getTickerSubtitle(ticker), 'Кол-во: ' + qty];
+    var avg = Number(pos && pos.avgPrice);
+    if (isFinite(avg) && avg > 0) {
+      parts.push('Ср. цена покупки: ' + formatChartPrice(avg, ticker));
+    }
+    if (ret != null && typeof formatSignedPct === 'function') {
+      parts.push((opts.returnLabel || 'Доходность') + ': ' + formatSignedPct(ret, 2));
+    }
+    return parts.filter(Boolean).join(' · ');
+  }
+
+
+
+  function purchaseCandleIndexAtPoint(canvas, clientX, clientY) {
+    var meta = canvas._purchaseChartMeta;
+    if (!meta || !meta.candles || !meta.candles.length) return -1;
+    var rect = canvas.getBoundingClientRect();
+    var x = clientX - rect.left;
+    var y = clientY - rect.top;
+    var best = -1;
+    var bestDist = Infinity;
+    meta.candles.forEach(function (c, idx) {
+      if (x < c.hitLeft || x > c.hitRight || y < c.hitTop || y > c.hitBottom) return;
+      var dx = x - c.x;
+      var dy = y - c.y;
+      var dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = idx;
+      }
+    });
+    return best;
+  }
+
+
+
+  function formatPurchaseCandleHoverLabel(item, ticker) {
+    if (!item) return '';
+    var price = Number(item.avgPrice);
+    var qty = isFinite(Number(item.qty)) && Number(item.qty) > 0 ? Number(item.qty) : null;
+    var dateLbl = item.buyDate || '';
+    try {
+      if (item.buyDate) {
+        dateLbl = new Date(item.buyDate + 'T12:00:00').toLocaleDateString('ru-RU');
+      }
+    } catch (e) { /* noop */ }
+    var parts = [dateLbl, isFinite(price) ? formatChartPrice(price, ticker) : ''];
+    if (qty != null) parts.push(qty + ' шт.');
+    return parts.filter(Boolean).join(' · ');
+  }
+
+
+
+  function redrawPurchaseCandleChartWithHover(canvas, hoverIndex) {
+    var meta = canvas._purchaseChartMeta;
+    if (!meta) return;
+    drawPurchaseCandleChart(canvas, meta.lots, {
+      ticker: meta.ticker,
+      currentPrice: meta.currentPrice,
+      hoverIndex: hoverIndex
+    });
+  }
+
+
+
+  function bindPurchaseCandleHover(canvas) {
+    if (!canvas || canvas._purchaseCandleHoverBound) return;
+    var wrap = canvas.parentElement;
+    if (!wrap || !wrap.classList.contains('chart-canvas-wrap')) return;
+    canvas._purchaseCandleHoverBound = true;
+
+    var tip = wrap.querySelector('.chart-hover-tip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.className = 'chart-hover-tip';
+      tip.setAttribute('aria-hidden', 'true');
+      wrap.appendChild(tip);
+    }
+
+    function hideHover() {
+      canvas._purchaseHoverIndex = null;
+      tip.classList.remove('is-visible');
+      tip.setAttribute('aria-hidden', 'true');
+      redrawPurchaseCandleChartWithHover(canvas, null);
+    }
+
+    function showHover(clientX, clientY) {
+      var meta = canvas._purchaseChartMeta;
+      if (!meta || !meta.candles || !meta.candles.length) {
+        hideHover();
+        return;
+      }
+      var idx = purchaseCandleIndexAtPoint(canvas, clientX, clientY);
+      if (idx < 0) {
+        hideHover();
+        return;
+      }
+      if (canvas._purchaseHoverIndex !== idx) {
+        canvas._purchaseHoverIndex = idx;
+        redrawPurchaseCandleChartWithHover(canvas, idx);
+      }
+      tip.textContent = formatPurchaseCandleHoverLabel(meta.candles[idx].item, meta.ticker);
+      tip.classList.add('is-visible');
+      tip.setAttribute('aria-hidden', 'false');
+      var wrapRect = wrap.getBoundingClientRect();
+      var tipX = Math.min(Math.max(clientX - wrapRect.left, 56), wrapRect.width - 56);
+      var tipY = Math.max(clientY - wrapRect.top - 12, 14);
+      tip.style.left = tipX + 'px';
+      tip.style.top = tipY + 'px';
+    }
+
+    wrap.addEventListener('mousemove', function (e) {
+      showHover(e.clientX, e.clientY);
+    });
+    wrap.addEventListener('mouseleave', hideHover);
+    wrap.addEventListener('touchstart', function (e) {
+      if (e.touches.length) showHover(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+    wrap.addEventListener('touchmove', function (e) {
+      if (e.touches.length) {
+        e.preventDefault();
+        showHover(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: false });
+    wrap.addEventListener('touchend', hideHover);
+    wrap.addEventListener('touchcancel', hideHover);
+  }
+
+
+
   function drawPurchaseCandleChart(canvas, lots, options) {
     options = options || {};
     var ticker = options.ticker || '';
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var size = chartCanvasSize(canvas, 280, 180);
+    var hoverIndex = options.hoverIndex;
+    var size = chartCanvasSize(canvas, 320, 200);
+    var wrap = canvas.parentElement;
+    if (wrap) {
+      var wrapRect = wrap.getBoundingClientRect();
+      if (wrapRect.width >= 100 && wrapRect.height >= 40) {
+        size.w = wrapRect.width;
+        size.h = wrapRect.height;
+      }
+    }
     var w = size.w;
     var h = size.h;
+    var dpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.style.width = Math.round(w) + 'px';
+    canvas.style.height = Math.round(h) + 'px';
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     var ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+
+    function snapX(v) { return Math.round(v) + 0.5; }
+    function snapY(v) { return Math.round(v) + 0.5; }
 
     var items = (lots || []).filter(function (l) {
       var price = Number(l.avgPrice);
@@ -1681,7 +1827,7 @@
     });
 
     if (items.length < 2) {
-      canvas._chartMeta = null;
+      canvas._purchaseChartMeta = null;
       ctx.fillStyle = '#6B6B6B';
       ctx.font = '14px Golos Text, IBM Plex Sans, sans-serif';
       ctx.textAlign = 'center';
@@ -1695,78 +1841,126 @@
     var minP = Math.min.apply(null, prices);
     var maxP = Math.max.apply(null, prices);
     var range = maxP - minP || maxP * 0.02 || 1;
-    minP -= range * 0.12;
-    maxP += range * 0.12;
+    minP -= range * 0.1;
+    maxP += range * 0.1;
 
-    var pad = { top: 14, right: 12, bottom: 40, left: getChartYAxisPad(ctx, minP, maxP, ticker) };
+    var pad = { top: 16, right: 14, bottom: 42, left: getChartYAxisPad(ctx, minP, maxP, ticker) };
     var plotW = w - pad.left - pad.right;
     var plotH = h - pad.top - pad.bottom;
     var slotW = plotW / items.length;
+    var bodyW = Math.max(12, Math.min(22, slotW * 0.42));
+    var bodyH = 16;
 
     function yAt(price) {
       return pad.top + plotH - ((price - minP) / (maxP - minP)) * plotH;
     }
 
-    canvas._chartMeta = { items: items, ticker: ticker, pad: pad, plotW: plotW, w: w, h: h, minP: minP, maxP: maxP };
-
-    ctx.strokeStyle = 'rgba(43, 43, 43, 0.08)';
-    ctx.lineWidth = 1;
-    for (var g = 0; g <= 4; g++) {
-      var gy = pad.top + (plotH * g) / 4;
-      ctx.beginPath();
-      ctx.moveTo(pad.left, gy);
-      ctx.lineTo(pad.left + plotW, gy);
-      ctx.stroke();
-      var labelVal = maxP - ((maxP - minP) * g) / 4;
-      ctx.fillStyle = '#6B6B6B';
-      ctx.font = '10px Inter, Manrope, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(formatChartPrice(labelVal, ticker), pad.left - 8, gy + 3);
-    }
-
-    if (isFinite(cur)) {
-      var curY = yAt(cur);
-      ctx.strokeStyle = 'rgba(61, 92, 71, 0.45)';
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(pad.left, curY);
-      ctx.lineTo(pad.left + plotW, curY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#3D5C47';
-      ctx.font = '10px Inter, Manrope, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText('текущая', pad.left + 4, curY - 4);
-    }
-
-    items.forEach(function (item, i) {
+    var candles = items.map(function (item, i) {
       var price = Number(item.avgPrice);
       var x = pad.left + slotW * i + slotW / 2;
       var y = yAt(price);
-      var qty = isFinite(Number(item.qty)) && Number(item.qty) > 0 ? Number(item.qty) : 1;
-      var bodyH = Math.max(8, Math.min(28, 6 + Math.log10(qty + 1) * 10));
-      var bodyW = Math.max(8, Math.min(24, slotW * 0.45));
-      var up = isFinite(cur) ? price <= cur : true;
-      ctx.fillStyle = up ? '#3D5C47' : '#A84848';
-      ctx.strokeStyle = up ? '#2E4A38' : '#7A3333';
-      ctx.lineWidth = 1;
-      ctx.fillRect(x - bodyW / 2, y - bodyH / 2, bodyW, bodyH);
-      ctx.strokeRect(x - bodyW / 2, y - bodyH / 2, bodyW, bodyH);
+      return {
+        item: item,
+        index: i,
+        x: x,
+        y: y,
+        price: price,
+        bodyW: bodyW,
+        bodyH: bodyH,
+        hitLeft: x - bodyW / 2 - 8,
+        hitRight: x + bodyW / 2 + 8,
+        hitTop: pad.top,
+        hitBottom: pad.top + plotH + 24
+      };
+    });
+
+    canvas._purchaseChartMeta = {
+      lots: lots,
+      ticker: ticker,
+      currentPrice: options.currentPrice,
+      candles: candles,
+      pad: pad,
+      plotW: plotW,
+      plotH: plotH,
+      w: w,
+      h: h,
+      minP: minP,
+      maxP: maxP
+    };
+
+    ctx.strokeStyle = 'rgba(43, 43, 43, 0.1)';
+    ctx.lineWidth = 1;
+    for (var g = 0; g <= 4; g++) {
+      var gy = snapY(pad.top + (plotH * g) / 4);
       ctx.beginPath();
-      ctx.moveTo(x, y - bodyH / 2);
-      ctx.lineTo(x, pad.top);
-      ctx.moveTo(x, y + bodyH / 2);
-      ctx.lineTo(x, pad.top + plotH);
+      ctx.moveTo(snapX(pad.left), gy);
+      ctx.lineTo(snapX(pad.left + plotW), gy);
       ctx.stroke();
+      var labelVal = maxP - ((maxP - minP) * g) / 4;
+      ctx.fillStyle = '#5A5A5A';
+      ctx.font = '11px Inter, Manrope, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(formatChartPrice(labelVal, ticker), pad.left - 8, gy);
+    }
+
+    if (isFinite(cur)) {
+      var curY = snapY(yAt(cur));
+      ctx.strokeStyle = 'rgba(61, 92, 71, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(snapX(pad.left), curY);
+      ctx.lineTo(snapX(pad.left + plotW), curY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#3D5C47';
+      ctx.font = '11px Inter, Manrope, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('текущая ' + formatChartPrice(cur, ticker), pad.left + 4, curY - 4);
+    }
+
+    candles.forEach(function (c, i) {
+      var price = c.price;
+      var x = c.x;
+      var y = c.y;
+      var up = isFinite(cur) ? price <= cur : true;
+      var isHover = hoverIndex === i;
+      var fill = up ? (isHover ? '#4A7358' : '#3D5C47') : (isHover ? '#C45454' : '#A84848');
+      var stroke = up ? '#2A4534' : '#7A3333';
+      var bx = Math.round(x - bodyW / 2);
+      var by = Math.round(y - bodyH / 2);
+
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = isHover ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(snapX(x), snapY(pad.top));
+      ctx.lineTo(snapX(x), snapY(pad.top + plotH));
+      ctx.stroke();
+
+      ctx.fillStyle = fill;
+      ctx.fillRect(bx, by, Math.round(bodyW), Math.round(bodyH));
+      ctx.strokeRect(bx + 0.5, by + 0.5, Math.round(bodyW) - 1, Math.round(bodyH) - 1);
+
+      if (isHover) {
+        ctx.strokeStyle = '#faf8f4';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bx, by, Math.round(bodyW), Math.round(bodyH));
+      }
+
       try {
-        var d = new Date(item.buyDate + 'T12:00:00');
+        var d = new Date(c.item.buyDate + 'T12:00:00');
         var lbl = d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
-        ctx.fillStyle = '#6B6B6B';
-        ctx.font = '9px Inter, Manrope, sans-serif';
+        ctx.fillStyle = isHover ? '#2B2B2B' : '#6B6B6B';
+        ctx.font = (isHover ? 'bold ' : '') + '11px Inter, Manrope, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(lbl, x, pad.top + plotH + 14);
+        ctx.textBaseline = 'top';
+        ctx.fillText(lbl, Math.round(x), pad.top + plotH + 10);
       } catch (e) { /* noop */ }
     });
+
+    bindPurchaseCandleHover(canvas);
   }
 
 
@@ -1801,6 +1995,10 @@
     var candlePanel = document.getElementById('portfolioPurchaseCandlesPanel');
     var candleCanvas = document.getElementById('portfolioPurchaseCandleChart');
     var candleNote = document.getElementById('portfolioPurchaseCandleNote');
+    var ret = typeof getPositionReturnPct === 'function' ? getPositionReturnPct(pos) : null;
+    var qty = isFinite(Number(pos.qty)) ? Number(pos.qty) : 0;
+    var avgBuy = isFinite(Number(pos.avgPrice)) && Number(pos.avgPrice) > 0 ? Number(pos.avgPrice) : null;
+
     if (candlePanel && candleCanvas) {
       var datedLots = purchaseLots.filter(function (l) {
         return l.buyDate && isFinite(Number(l.avgPrice)) && Number(l.avgPrice) > 0;
@@ -1812,15 +2010,20 @@
           currentPrice: pos.currentPrice
         });
         if (candleNote) {
-          candleNote.textContent = datedLots.length + ' покупки · зелёная свеча — цена ниже текущей, красная — выше';
+          var noteParts = [];
+          if (avgBuy != null) noteParts.push('Ср. цена покупки: ' + formatChartPrice(avgBuy, ticker));
+          noteParts.push(datedLots.length + ' покупки');
+          noteParts.push('наведите на свечу — точная цена');
+          candleNote.textContent = noteParts.join(' · ');
         }
       } else {
         candlePanel.hidden = true;
       }
     }
 
-    var ret = typeof getPositionReturnPct === 'function' ? getPositionReturnPct(pos) : null;
-    var qty = isFinite(Number(pos.qty)) ? Number(pos.qty) : 0;
+    if (metaEl) {
+      metaEl.textContent = portfolioInsightsMetaLine(ticker, pos, qty, ret);
+    }
 
     fetchMoexHistory(ticker, '5y').then(function (r) {
       if (priceCanvas && r.series) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: '5y' });
@@ -1831,11 +2034,10 @@
         if (divTitle) divTitle.textContent = 'Купоны · выплаты по выпуску';
         loadBondAnalyticsSnapshot(ticker).then(function (bond) {
           if (metaEl) {
-            metaEl.textContent = [
-              bond.label || getTickerSubtitle(ticker),
-              'Кол-во: ' + qty,
-              ret != null ? 'Доходность позиции: ' + formatSignedPct(ret, 2) : ''
-            ].filter(Boolean).join(' · ');
+            metaEl.textContent = portfolioInsightsMetaLine(
+              ticker, pos, qty, ret, bond.label || getTickerSubtitle(ticker),
+              { returnLabel: 'Доходность позиции' }
+            );
           }
           if (kpisEl) {
             kpisEl.innerHTML =
@@ -1862,11 +2064,7 @@
       var forecastTotal = fc && fc.amount != null && qty > 0 ? fc.amount * qty : null;
       var paidTotal = fc && fc.paid12m != null && qty > 0 ? fc.paid12m * qty : null;
       if (metaEl) {
-        metaEl.textContent = [
-          getTickerSubtitle(ticker),
-          'Кол-во: ' + qty,
-          ret != null ? 'Доходность: ' + formatSignedPct(ret, 2) : ''
-        ].filter(Boolean).join(' · ');
+        metaEl.textContent = portfolioInsightsMetaLine(ticker, pos, qty, ret);
       }
       if (kpisEl) {
         kpisEl.innerHTML =

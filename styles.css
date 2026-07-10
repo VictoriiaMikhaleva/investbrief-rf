@@ -2110,10 +2110,21 @@
       min-height: 13.5rem;
       height: 13.5rem;
     }
+    .analytics-chart-wrap--purchase canvas {
+      cursor: crosshair;
+    }
     .analytics-chart-wrap canvas {
       display: block;
       width: 100% !important;
       height: 100% !important;
+    }
+    #portfolioPurchaseCandlesPanel .chart-canvas-wrap {
+      min-height: 13rem;
+      height: 13rem;
+    }
+    #portfolioPurchaseCandlesPanel .chart-canvas-wrap canvas {
+      display: block;
+      max-width: 100%;
     }
     .bar-chart-wrap {
       position: relative;

@@ -442,6 +442,17 @@
       clearTimeout(chartResizeTimer);
       chartResizeTimer = setTimeout(function () {
         if (state.tab === 'portfolio' && state.chartTicker) renderPortfolioChart();
+        if (state.tab === 'portfolio' && state.chartTicker) {
+          var pc = document.getElementById('portfolioPurchaseCandleChart');
+          if (pc && pc._purchaseChartMeta && typeof drawPurchaseCandleChart === 'function') {
+            var pm = pc._purchaseChartMeta;
+            drawPurchaseCandleChart(pc, pm.lots, {
+              ticker: pm.ticker,
+              currentPrice: pm.currentPrice,
+              hoverIndex: pc._purchaseHoverIndex
+            });
+          }
+        }
         if (state.tab === 'watchlist' && state.analyticsTicker && typeof renderAnalyticsDetail === 'function') {
           renderAnalyticsDetail(state.analyticsTicker);
         }
