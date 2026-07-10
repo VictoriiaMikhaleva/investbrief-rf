@@ -540,7 +540,11 @@
 
   function setPortfolio(p) {
     if (p && Array.isArray(p.positions)) {
-      p.positions = p.positions.map(normalizePosition).filter(Boolean);
+      p.positions = p.positions.map(normalizePosition).filter(function (pos) {
+        if (!pos) return false;
+        var q = Number(pos.qty);
+        return isFinite(q) && q > 1e-9;
+      });
     }
     if (p) {
       p.sales = (p.sales || []).map(normalizeSale).filter(Boolean);

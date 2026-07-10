@@ -844,17 +844,35 @@
 
 
   function refreshPortfolioQuotes() {
-    var portfolio = getPortfolio();
-    if (!portfolio.positions.length) return Promise.resolve();
-    var jobs = portfolio.positions.map(function (p) {
-      return fetchMoexQuote(p.ticker).then(function (q) {
-        if (q && q.price != null && isFinite(q.price)) p.currentPrice = q.price;
-        if (q && q.changePct != null && isFinite(q.changePct)) p.dayChangePct = q.changePct;
-        else delete p.dayChangePct;
-      }).catch(function () { /* keep stored */ });
+    var snapshot = getPortfolio();
+    if (!snapshot.positions.length) return Promise.resolve();
+    var tickers = [];
+    snapshot.positions.forEach(function (p) {
+      var t = normalizeTicker(p.ticker);
+      if (t && tickers.indexOf(t) === -1) tickers.push(t);
+    });
+    var quotes = {};
+    var jobs = tickers.map(function (t) {
+      return fetchMoexQuote(t).then(function (q) {
+        quotes[t] = q;
+      }).catch(function () {
+        quotes[t] = null;
+      });
     });
     return Promise.all(jobs).then(function () {
-      setPortfolio(portfolio);
+      var portfolio = getPortfolio();
+      var touched = false;
+      portfolio.positions.forEach(function (p) {
+        var q = quotes[normalizeTicker(p.ticker)];
+        if (!q) return;
+        if (q.price != null && isFinite(q.price)) {
+          p.currentPrice = q.price;
+          touched = true;
+        }
+        if (q.changePct != null && isFinite(q.changePct)) p.dayChangePct = q.changePct;
+        else delete p.dayChangePct;
+      });
+      if (touched) setPortfolio(portfolio);
     });
   }
 

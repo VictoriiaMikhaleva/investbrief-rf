@@ -1279,6 +1279,59 @@
 
 
 
+  function computeProportionalSaleTakes(lots, sellQty, totalQty) {
+    if (!lots.length || totalQty <= 0) return [];
+    var allInt = Math.abs(sellQty - Math.round(sellQty)) < 1e-9 &&
+      lots.every(function (l) {
+        var q = Number(l.qty);
+        return isFinite(q) && Math.abs(q - Math.round(q)) < 1e-9;
+      });
+    if (!allInt) {
+      var left = sellQty;
+      return lots.map(function (lot, idx) {
+        var lotQty = Number(lot.qty);
+        var take = idx === lots.length - 1
+          ? left
+          : Math.round((sellQty * lotQty / totalQty) * 10000) / 10000;
+        take = Math.min(take, lotQty, left);
+        left -= take;
+        return take;
+      });
+    }
+    var sellInt = Math.round(sellQty);
+    var exact = lots.map(function (l) {
+      return sellInt * Number(l.qty) / totalQty;
+    });
+    var takes = exact.map(function (x) { return Math.floor(x + 1e-9); });
+    var rem = sellInt - takes.reduce(function (s, n) { return s + n; }, 0);
+    var order = exact.map(function (x, i) {
+      return { i: i, f: x - Math.floor(x + 1e-9) };
+    }).sort(function (a, b) { return b.f - a.f; });
+    var k = 0;
+    while (rem > 0 && k < order.length) {
+      takes[order[k].i] += 1;
+      rem -= 1;
+      k += 1;
+    }
+    var leftInt = sellInt;
+    takes = takes.map(function (take, idx) {
+      take = Math.min(take, Number(lots[idx].qty), leftInt);
+      leftInt -= take;
+      return take;
+    });
+    var i = 0;
+    while (leftInt > 0 && i < lots.length) {
+      var cap = Number(lots[i].qty) - takes[i];
+      var add = Math.min(cap, leftInt);
+      takes[i] += add;
+      leftInt -= add;
+      i += 1;
+    }
+    return takes;
+  }
+
+
+
   function allocateSaleAcrossLots(portfolio, ticker, sellQty) {
     ticker = normalizeTicker(ticker);
     var lots = findPortfolioLots(ticker, portfolio.positions).filter(function (l) {
@@ -1290,32 +1343,55 @@
     if (!isFinite(sellQty) || sellQty <= 0 || sellQty > totalQty + 1e-6) return null;
 
     var weightedAvgBefore = computeLotsWeightedAvg(lots);
+    var takes = computeProportionalSaleTakes(lots, sellQty, totalQty);
     var allocations = [];
-    var left = sellQty;
+    var remaining = [];
 
     lots.forEach(function (lot, idx) {
-      var lotQty = Number(lot.qty);
-      var take = idx === lots.length - 1
-        ? left
-        : Math.round((sellQty * lotQty / totalQty) * 10000) / 10000;
-      take = Math.min(take, lotQty, left);
-      if (take <= 1e-9) return;
-      lot.qty = lotQty - take;
-      left -= take;
+      var take = takes[idx] || 0;
+      if (take <= 1e-9) {
+        var lotQtyOnly = Number(lot.qty);
+        if (isFinite(lotQtyOnly) && lotQtyOnly > 1e-9) {
+          remaining.push(lot);
+        }
+        return;
+      }
       allocations.push({
         lotId: lot.lotId,
         qty: take,
         buyPrice: isFinite(Number(lot.avgPrice)) ? Number(lot.avgPrice) : null,
         buyDate: lot.buyDate || ''
       });
+      var remainQty = Number(lot.qty) - take;
+      if (isFinite(remainQty) && remainQty > 1e-9) {
+        remaining.push(normalizePosition({
+          lotId: lot.lotId,
+          ticker: lot.ticker,
+          qty: remainQty,
+          avgPrice: lot.avgPrice,
+          currentPrice: lot.currentPrice,
+          buyDate: lot.buyDate,
+          comment: lot.comment,
+          market: lot.market,
+          currency: lot.currency,
+          dayChangePct: lot.dayChangePct
+        }));
+      }
     });
 
     portfolio.positions = portfolio.positions.filter(function (p) {
-      var q = Number(p.qty);
-      return isFinite(q) && q > 1e-9;
-    });
+      return normalizeTicker(p.ticker) !== ticker;
+    }).concat(remaining.filter(Boolean));
 
-    return { allocations: allocations, weightedAvgBefore: weightedAvgBefore };
+    var weightedAvgAfter = computeLotsWeightedAvg(
+      findPortfolioLots(ticker, portfolio.positions)
+    );
+
+    return {
+      allocations: allocations,
+      weightedAvgBefore: weightedAvgBefore,
+      weightedAvgAfter: weightedAvgAfter
+    };
   }
 
 
@@ -1465,6 +1541,10 @@
     var pnl = getSaleRealizedPnl(sale);
     cancelPortfolioSale();
     var msg = 'Продажа зафиксирована: ' + ticker;
+    if (allocResult.weightedAvgAfter != null && isFinite(allocResult.weightedAvgAfter)) {
+      msg += ' · ср. цена остатка ' +
+        formatPositionAvg({ avgPrice: allocResult.weightedAvgAfter, currency: refLot.currency, ticker: ticker });
+    }
     if (pnl.amount != null) msg += ' · ' + formatSignedRubAmount(pnl.amount);
     showToast(msg);
     try { renderPortfolio(); } catch (e) { /* noop */ }
@@ -1748,12 +1828,15 @@
     var sellActions = lotIndex === 0
       ? '<button type="button" class="ghost small" data-pf-sell-ticker="' + escapeHtml(group.ticker) + '">Продать</button> '
       : '';
+    var weightedAvgCell = lotIndex === 0
+      ? '<td class="pf-weighted-avg" rowspan="' + (opts.rowSpan || 1) + '">' + escapeHtml(weightedAvg) + '</td>'
+      : '';
     return '<tr class="pf-table-row pf-lot-row' + editActive + '" data-chart-ticker="' + escapeHtml(group.ticker) + '" data-pf-lot="' + escapeHtml(p.lotId || '') + '">' +
       tickerCell +
       '<td class="pf-weight">' + escapeHtml(weight) + '</td>' +
       '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
       '<td class="pf-buy-price">' + escapeHtml(purchasePrice) + '</td>' +
-      '<td class="pf-weighted-avg">' + escapeHtml(weightedAvg) + '</td>' +
+      weightedAvgCell +
       '<td>' + escapeHtml(formatPortfolioDate(p)) + '</td>' +
       '<td>' + escapeHtml(cur) + '</td>' +
       '<td>' + returnCell + '</td>' +
@@ -1921,6 +2004,7 @@
 
 
   function renderPortfolioTableBody() {
+    var renderId = ++state.pfTableRenderId;
     var positions = getFilteredPortfolioPositions();
     var sales = getPortfolio().sales || [];
     var placeholderHtml = buildPortfolioTableHtml(positions, {}, sales);
@@ -1940,6 +2024,9 @@
       loadPortfolioBondMetaMap(positions),
       loadPortfolioIncomeTotals(positions)
     ]).then(function (parts) {
+      if (renderId !== state.pfTableRenderId) return;
+      positions = getFilteredPortfolioPositions();
+      sales = getPortfolio().sales || [];
       var bondMetaMap = parts[0] || {};
       var incomeTotals = parts[1] || { paid12m: 0, forecast12m: 0 };
       var html = buildPortfolioTableHtml(positions, bondMetaMap, sales);

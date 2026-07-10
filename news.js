@@ -963,6 +963,7 @@
     pfEditLotId: '',
     pfEditPrefix: '',
     pfSaleTicker: '',
+    pfTableRenderId: 0,
     pfExpandedTickers: {}
   };
   if (typeof globalThis !== 'undefined') globalThis.state = state;
