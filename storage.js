@@ -193,6 +193,13 @@
 
 
 
+  function newPortfolioLotId(ticker) {
+    var t = normalizeTicker(ticker) || 'LOT';
+    return t + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+
+
   function normalizePosition(raw) {
     if (!raw || !raw.ticker) return null;
     var t = normalizeTicker(raw.ticker);
@@ -211,6 +218,7 @@
       cur = avg;
     }
     var out = {
+      lotId: raw.lotId ? String(raw.lotId) : newPortfolioLotId(t),
       ticker: t,
       qty: qty,
       avgPrice: avg,

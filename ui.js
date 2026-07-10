@@ -1660,6 +1660,117 @@
     });
   }
 
+  function drawPurchaseCandleChart(canvas, lots, options) {
+    options = options || {};
+    var ticker = options.ticker || '';
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var size = chartCanvasSize(canvas, 280, 180);
+    var w = size.w;
+    var h = size.h;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var items = (lots || []).filter(function (l) {
+      var price = Number(l.avgPrice);
+      return l.buyDate && isFinite(price) && price > 0;
+    }).sort(function (a, b) {
+      return a.buyDate < b.buyDate ? -1 : (a.buyDate > b.buyDate ? 1 : 0);
+    });
+
+    if (items.length < 2) {
+      canvas._chartMeta = null;
+      ctx.fillStyle = '#6B6B6B';
+      ctx.font = '14px Golos Text, IBM Plex Sans, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Нужно 2+ покупки с датой и ценой', w / 2, h / 2);
+      return;
+    }
+
+    var prices = items.map(function (it) { return Number(it.avgPrice); });
+    var cur = Number(options.currentPrice);
+    if (isFinite(cur)) prices.push(cur);
+    var minP = Math.min.apply(null, prices);
+    var maxP = Math.max.apply(null, prices);
+    var range = maxP - minP || maxP * 0.02 || 1;
+    minP -= range * 0.12;
+    maxP += range * 0.12;
+
+    var pad = { top: 14, right: 12, bottom: 40, left: getChartYAxisPad(ctx, minP, maxP, ticker) };
+    var plotW = w - pad.left - pad.right;
+    var plotH = h - pad.top - pad.bottom;
+    var slotW = plotW / items.length;
+
+    function yAt(price) {
+      return pad.top + plotH - ((price - minP) / (maxP - minP)) * plotH;
+    }
+
+    canvas._chartMeta = { items: items, ticker: ticker, pad: pad, plotW: plotW, w: w, h: h, minP: minP, maxP: maxP };
+
+    ctx.strokeStyle = 'rgba(43, 43, 43, 0.08)';
+    ctx.lineWidth = 1;
+    for (var g = 0; g <= 4; g++) {
+      var gy = pad.top + (plotH * g) / 4;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, gy);
+      ctx.lineTo(pad.left + plotW, gy);
+      ctx.stroke();
+      var labelVal = maxP - ((maxP - minP) * g) / 4;
+      ctx.fillStyle = '#6B6B6B';
+      ctx.font = '10px Inter, Manrope, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(formatChartPrice(labelVal, ticker), pad.left - 8, gy + 3);
+    }
+
+    if (isFinite(cur)) {
+      var curY = yAt(cur);
+      ctx.strokeStyle = 'rgba(61, 92, 71, 0.45)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pad.left, curY);
+      ctx.lineTo(pad.left + plotW, curY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#3D5C47';
+      ctx.font = '10px Inter, Manrope, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('текущая', pad.left + 4, curY - 4);
+    }
+
+    items.forEach(function (item, i) {
+      var price = Number(item.avgPrice);
+      var x = pad.left + slotW * i + slotW / 2;
+      var y = yAt(price);
+      var qty = isFinite(Number(item.qty)) && Number(item.qty) > 0 ? Number(item.qty) : 1;
+      var bodyH = Math.max(8, Math.min(28, 6 + Math.log10(qty + 1) * 10));
+      var bodyW = Math.max(8, Math.min(24, slotW * 0.45));
+      var up = isFinite(cur) ? price <= cur : true;
+      ctx.fillStyle = up ? '#3D5C47' : '#A84848';
+      ctx.strokeStyle = up ? '#2E4A38' : '#7A3333';
+      ctx.lineWidth = 1;
+      ctx.fillRect(x - bodyW / 2, y - bodyH / 2, bodyW, bodyH);
+      ctx.strokeRect(x - bodyW / 2, y - bodyH / 2, bodyW, bodyH);
+      ctx.beginPath();
+      ctx.moveTo(x, y - bodyH / 2);
+      ctx.lineTo(x, pad.top);
+      ctx.moveTo(x, y + bodyH / 2);
+      ctx.lineTo(x, pad.top + plotH);
+      ctx.stroke();
+      try {
+        var d = new Date(item.buyDate + 'T12:00:00');
+        var lbl = d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+        ctx.fillStyle = '#6B6B6B';
+        ctx.font = '9px Inter, Manrope, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(lbl, x, pad.top + plotH + 14);
+      } catch (e) { /* noop */ }
+    });
+  }
+
+
+
   function renderPortfolioInsights(ticker) {
     var sec = document.getElementById('portfolioInsightsSection');
     if (!sec) return;
@@ -1685,6 +1796,28 @@
     var divTitle = document.getElementById('portfolioInsightDivTitle');
     if (titleEl) titleEl.textContent = ticker;
     if (metaEl) metaEl.textContent = 'Загрузка…';
+
+    var purchaseLots = typeof findPortfolioLots === 'function' ? findPortfolioLots(ticker) : [];
+    var candlePanel = document.getElementById('portfolioPurchaseCandlesPanel');
+    var candleCanvas = document.getElementById('portfolioPurchaseCandleChart');
+    var candleNote = document.getElementById('portfolioPurchaseCandleNote');
+    if (candlePanel && candleCanvas) {
+      var datedLots = purchaseLots.filter(function (l) {
+        return l.buyDate && isFinite(Number(l.avgPrice)) && Number(l.avgPrice) > 0;
+      });
+      if (datedLots.length >= 2) {
+        candlePanel.hidden = false;
+        drawPurchaseCandleChart(candleCanvas, purchaseLots, {
+          ticker: ticker,
+          currentPrice: pos.currentPrice
+        });
+        if (candleNote) {
+          candleNote.textContent = datedLots.length + ' покупки · зелёная свеча — цена ниже текущей, красная — выше';
+        }
+      } else {
+        candlePanel.hidden = true;
+      }
+    }
 
     var ret = typeof getPositionReturnPct === 'function' ? getPositionReturnPct(pos) : null;
     var qty = isFinite(Number(pos.qty)) ? Number(pos.qty) : 0;
@@ -1783,6 +1916,7 @@
   window.drawFullBarChart = drawFullBarChart;
   window.renderAnalyticsDetail = renderAnalyticsDetail;
   window.renderPortfolioInsights = renderPortfolioInsights;
+  window.drawPurchaseCandleChart = drawPurchaseCandleChart;
   window.setSecurityChartTab = setSecurityChartTab;
 
 

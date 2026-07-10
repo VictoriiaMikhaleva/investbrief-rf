@@ -288,22 +288,26 @@
     ticker = normalizeTicker(ticker);
     return fetchMoexQuote(ticker).then(function (q) {
       var portfolio = getPortfolio();
-      var p = findPortfolioPosition(ticker, portfolio.positions);
-      if (!p) return;
-      if (q && q.price != null && isFinite(q.price)) p.currentPrice = q.price;
-      if (q && q.changePct != null && isFinite(q.changePct)) {
-        p.dayChangePct = q.changePct;
-      } else if (
-        histResult && histResult.series && histResult.series.length >= 2 &&
-        state.chartHorizon === 'day'
-      ) {
-        var s = histResult.series;
-        var first = s[0].price;
-        var last = s[s.length - 1].price;
-        if (first && isFinite(first) && first !== 0) {
-          p.dayChangePct = ((last - first) / first) * 100;
+      var lots = findPortfolioLots(ticker, portfolio.positions);
+      if (!lots.length) return;
+      lots.forEach(function (p) {
+        if (q && q.price != null && isFinite(q.price)) p.currentPrice = q.price;
+        if (q && q.changePct != null && isFinite(q.changePct)) {
+          p.dayChangePct = q.changePct;
+        } else if (
+          histResult && histResult.series && histResult.series.length >= 2 &&
+          state.chartHorizon === 'day'
+        ) {
+          var s = histResult.series;
+          var first = s[0].price;
+          var last = s[s.length - 1].price;
+          if (first && isFinite(first) && first !== 0) {
+            p.dayChangePct = ((last - first) / first) * 100;
+          }
+        } else {
+          delete p.dayChangePct;
         }
-      }
+      });
       setPortfolio(portfolio);
     }).catch(function () { /* keep chart price */ });
   }
@@ -311,10 +315,20 @@
 
 
   function getPortfolioPaperPositions() {
-    return getPortfolio().positions.filter(function (p) {
+    var positions = getPortfolio().positions.filter(function (p) {
       var t = normalizeTicker(p.ticker);
       return t !== 'IMOEX' && t !== 'MOEX' && t !== 'INDEX';
     });
+    var seen = {};
+    var out = [];
+    positions.forEach(function (p) {
+      var t = normalizeTicker(p.ticker);
+      if (seen[t]) return;
+      seen[t] = true;
+      var agg = aggregatePortfolioLots(findPortfolioLots(t, positions));
+      if (agg) out.push(agg);
+    });
+    return out;
   }
 
 
@@ -512,14 +526,86 @@
 
 
 
-  function findPortfolioPosition(ticker, positions) {
+  function getLotReturnPct(lot) {
+    var avg = Number(lot && lot.avgPrice);
+    var cur = Number(lot && lot.currentPrice);
+    if (!isFinite(avg) || avg <= 0 || !isFinite(cur)) return null;
+    return ((cur - avg) / avg) * 100;
+  }
+
+
+
+  function findPortfolioLots(ticker, positions) {
     ticker = normalizeTicker(ticker);
-    if (!ticker) return null;
+    if (!ticker) return [];
+    var list = positions || getPortfolio().positions;
+    return list.filter(function (p) {
+      return normalizeTicker(p.ticker) === ticker;
+    });
+  }
+
+
+
+  function findPortfolioLot(lotId, positions) {
+    lotId = String(lotId || '');
+    if (!lotId) return null;
     var list = positions || getPortfolio().positions;
     for (var i = 0; i < list.length; i++) {
-      if (normalizeTicker(list[i].ticker) === ticker) return list[i];
+      if (list[i].lotId === lotId) return list[i];
     }
     return null;
+  }
+
+
+
+  function computeLotsWeightedAvg(lots) {
+    var totalQty = 0;
+    var totalCost = 0;
+    (lots || []).forEach(function (l) {
+      var q = Number(l.qty);
+      var a = Number(l.avgPrice);
+      if (isFinite(q) && q > 0 && isFinite(a) && a > 0) {
+        totalQty += q;
+        totalCost += q * a;
+      }
+    });
+    return totalQty > 0 ? totalCost / totalQty : null;
+  }
+
+
+
+  function aggregatePortfolioLots(lots) {
+    if (!lots || !lots.length) return null;
+    var base = lots[0];
+    var totalQty = 0;
+    var cur = null;
+    var dayChg = null;
+    lots.forEach(function (l) {
+      var q = Number(l.qty);
+      if (isFinite(q) && q > 0) totalQty += q;
+      if (isFinite(Number(l.currentPrice))) cur = Number(l.currentPrice);
+      if (l.dayChangePct != null && isFinite(Number(l.dayChangePct))) dayChg = Number(l.dayChangePct);
+    });
+    var weightedAvg = computeLotsWeightedAvg(lots);
+    var dates = lots.map(function (l) { return l.buyDate; }).filter(Boolean).sort();
+    return {
+      lotId: base.lotId,
+      ticker: normalizeTicker(base.ticker),
+      qty: totalQty > 0 ? totalQty : base.qty,
+      avgPrice: weightedAvg != null ? weightedAvg : base.avgPrice,
+      currentPrice: cur != null ? cur : base.currentPrice,
+      buyDate: dates.length ? dates[dates.length - 1] : base.buyDate,
+      comment: lots.map(function (l) { return l.comment; }).filter(Boolean).join(' · '),
+      market: base.market,
+      currency: base.currency,
+      dayChangePct: dayChg
+    };
+  }
+
+
+
+  function findPortfolioPosition(ticker, positions) {
+    return aggregatePortfolioLots(findPortfolioLots(ticker, positions));
   }
 
 
@@ -657,8 +743,9 @@
       setChartSourceLabel(srcLabel, false);
       if (result.series.length) {
         var portfolio = getPortfolio();
-        var live = findPortfolioPosition(pos.ticker, portfolio.positions);
-        if (live) live.currentPrice = result.series[result.series.length - 1].price;
+        findPortfolioLots(pos.ticker, portfolio.positions).forEach(function (live) {
+          live.currentPrice = result.series[result.series.length - 1].price;
+        });
         setPortfolio(portfolio);
       }
       return syncPositionQuoteFromMarket(pos.ticker, result);
@@ -837,26 +924,29 @@
     var hasQty = qty != null && isFinite(qty) && qty > 0;
     var hasAvg = avg != null && isFinite(avg) && avg > 0;
     var portfolio = getPortfolio();
-    var existing = findPortfolioPosition(t, portfolio.positions);
-    var editing = state.pfEditTicker && normalizeTicker(state.pfEditTicker) === t;
+    var existingLots = findPortfolioLots(t, portfolio.positions);
+    var editingLot = state.pfEditLotId
+      ? findPortfolioLot(state.pfEditLotId, portfolio.positions)
+      : null;
+    var editing = !!editingLot;
 
-    if (existing && !editing && !hasQty && !hasAvg) {
+    if (existingLots.length && !editing && !hasQty && !hasAvg) {
       showToast('Для докупки укажите количество и цену покупки');
       return;
     }
 
     if (editing) {
-      if (!existing) {
+      if (!editingLot) {
         cancelPortfolioEdit();
         return;
       }
-      if (qty != null) existing.qty = qty;
-      if (avg != null) existing.avgPrice = avg;
-      if (buyDate) existing.buyDate = buyDate;
-      existing.comment = comment;
+      if (qty != null) editingLot.qty = qty;
+      if (avg != null) editingLot.avgPrice = avg;
+      if (buyDate) editingLot.buyDate = buyDate;
+      editingLot.comment = comment;
       setPortfolio(portfolio);
       cancelPortfolioEdit();
-      showToast('Позиция обновлена: ' + t);
+      showToast('Покупка обновлена: ' + t);
       try { renderPortfolio(); } catch (e) { /* noop */ }
       return;
     }
@@ -868,22 +958,34 @@
     );
 
     function finishRuAdd(cur) {
-      var finalCur = cur != null && isFinite(cur) ? cur : (hasAvg ? avg : (existing && isFinite(Number(existing.currentPrice)) ? Number(existing.currentPrice) : 100));
+      var refLot = existingLots.length ? existingLots[existingLots.length - 1] : null;
+      var finalCur = cur != null && isFinite(cur) ? cur : (hasAvg ? avg : (refLot && isFinite(Number(refLot.currentPrice)) ? Number(refLot.currentPrice) : 100));
       var avgPrice = hasAvg ? avg : finalCur;
+      var lotDate = buyDate || new Date().toISOString().slice(0, 10);
 
-      if (existing) {
-        mergePositionPurchase(existing, qty, hasAvg ? avg : null, buyDate, comment);
-        if (finalCur != null && isFinite(finalCur)) existing.currentPrice = finalCur;
+      if (existingLots.length) {
+        var newLot = normalizePosition({
+          ticker: t,
+          qty: qty,
+          avgPrice: avgPrice,
+          currentPrice: finalCur,
+          buyDate: lotDate,
+          comment: comment,
+          market: 'RU',
+          currency: 'RUB'
+        });
+        if (!newLot) throw new Error('invalid_position');
+        portfolio.positions.push(newLot);
         setPortfolio(portfolio);
         safeClearPortfolioForms(prefix);
-        showToast('Докупка учтена, обновлена ср. цена: ' + t);
+        showToast('Докупка добавлена: ' + t);
       } else {
         var pos = normalizePosition({
           ticker: t,
           qty: qty,
           avgPrice: avgPrice,
           currentPrice: finalCur,
-          buyDate: buyDate,
+          buyDate: lotDate,
           comment: comment,
           market: 'RU',
           currency: 'RUB'
@@ -900,29 +1002,40 @@
     }
 
     function finishUsAdd(cur, dayPct) {
-      if (existing) {
-        mergePositionPurchase(existing, qty, avg, buyDate, comment);
-        existing.market = 'US';
-        existing.currency = 'USD';
-        if (cur != null && isFinite(cur)) existing.currentPrice = cur;
-        if (dayPct != null && isFinite(dayPct)) existing.dayChangePct = dayPct;
+      var refLot = existingLots.length ? existingLots[existingLots.length - 1] : null;
+      var lotDate = buyDate || new Date().toISOString().slice(0, 10);
+      if (existingLots.length) {
+        var usLot = normalizePosition({
+          ticker: t,
+          qty: qty,
+          avgPrice: avg != null ? avg : (cur != null && isFinite(cur) ? cur : null),
+          currentPrice: cur != null && isFinite(cur) ? cur : null,
+          buyDate: lotDate,
+          comment: comment,
+          market: 'US',
+          currency: 'USD'
+        });
+        if (!usLot) throw new Error('invalid_position');
+        if (dayPct != null && isFinite(dayPct)) usLot.dayChangePct = dayPct;
+        portfolio.positions.push(usLot);
       } else {
         var usPos = normalizePosition({
           ticker: t,
           qty: qty,
           avgPrice: avg != null ? avg : (cur != null && isFinite(cur) ? cur : null),
           currentPrice: cur != null && isFinite(cur) ? cur : null,
-          buyDate: buyDate,
+          buyDate: lotDate,
           comment: comment,
           market: 'US',
           currency: 'USD'
         });
         if (!usPos) throw new Error('invalid_position');
+        if (dayPct != null && isFinite(dayPct)) usPos.dayChangePct = dayPct;
         portfolio.positions.push(usPos);
       }
       setPortfolio(portfolio);
       safeClearPortfolioForms(prefix);
-      showToast(existing ? 'Докупка учтена, обновлена ср. цена: ' + t : 'Добавлено в портфель: ' + t);
+      showToast(existingLots.length ? 'Докупка добавлена: ' + t : 'Добавлено в портфель: ' + t);
       state.chartTicker = t;
       state.folderOpen = true;
       try { renderPortfolio(); } catch (e) { /* noop */ }
@@ -942,9 +1055,9 @@
       fetchMoexLastPrice(t).catch(function () { return null; }).then(function (live) {
         if (live == null || !isFinite(live)) return;
         var p = getPortfolio();
-        var pos = findPortfolioPosition(t, p.positions);
-        if (!pos) return;
-        pos.currentPrice = live;
+        findPortfolioLots(t, p.positions).forEach(function (pos) {
+          pos.currentPrice = live;
+        });
         try { setPortfolio(p); } catch (e) { /* noop */ }
         try { renderPortfolio(); } catch (e2) { /* noop */ }
       });
@@ -955,9 +1068,9 @@
     fetchMoexLastPrice(t).catch(function () { return null; }).then(function (live) {
       if (live == null || !isFinite(live)) return;
       var p = getPortfolio();
-      var pos = findPortfolioPosition(t, p.positions);
-      if (!pos) return;
-      pos.currentPrice = live;
+      findPortfolioLots(t, p.positions).forEach(function (pos) {
+        pos.currentPrice = live;
+      });
       try { setPortfolio(p); } catch (e) { /* noop */ }
       try { renderPortfolio(); } catch (e2) { /* noop */ }
     });
@@ -996,12 +1109,12 @@
 
 
   function updatePortfolioFormChrome() {
-    var editing = !!state.pfEditTicker;
+    var editing = !!state.pfEditLotId;
     PF_FORM_PREFIXES.forEach(function (prefix) {
       var title = document.getElementById(pfFieldId(prefix, 'FormTitle'));
       var btn = document.getElementById(pfFieldId(prefix, 'Btn'));
       var cancel = document.getElementById(pfFieldId(prefix, 'CancelEditBtn'));
-      if (title) title.textContent = editing ? 'Редактировать позицию' : 'Новая позиция';
+      if (title) title.textContent = editing ? 'Редактировать покупку' : 'Новая позиция';
       if (btn) btn.textContent = editing ? 'Сохранить изменения' : 'Добавить позицию в портфель';
       if (cancel) cancel.hidden = !editing;
     });
@@ -1009,21 +1122,22 @@
 
 
 
-  function startEditPortfolioPosition(ticker, formPrefix) {
-    ticker = normalizeTicker(ticker);
-    var pos = findPortfolioPosition(ticker);
+  function startEditPortfolioPosition(lotId, formPrefix) {
+    var pos = findPortfolioLot(lotId) || findPortfolioPosition(lotId);
     if (!pos) return;
-    state.pfEditTicker = ticker;
+    state.pfEditLotId = pos.lotId || '';
+    state.pfEditTicker = normalizeTicker(pos.ticker);
     state.pfEditPrefix = formPrefix || '';
     fillAllPortfolioForms(pos);
     updatePortfolioFormChrome();
-    showToast('Редактирование: ' + ticker);
+    showToast('Редактирование покупки: ' + pos.ticker);
   }
 
 
 
   function cancelPortfolioEdit() {
     state.pfEditTicker = '';
+    state.pfEditLotId = '';
     state.pfEditPrefix = '';
     clearAllPortfolioForms();
     updatePortfolioFormChrome();
@@ -1031,28 +1145,19 @@
 
 
 
-  function mergePositionPurchase(existing, qty, avg, buyDate, comment) {
-    var oldQty = Number(existing.qty);
-    var oldAvg = Number(existing.avgPrice);
-    var hasQty = qty != null && isFinite(qty) && qty > 0;
-    var hasAvg = avg != null && isFinite(avg) && avg > 0;
-    if (hasQty && hasAvg && isFinite(oldQty) && oldQty > 0 && isFinite(oldAvg) && oldAvg > 0) {
-      var totalQty = oldQty + qty;
-      existing.avgPrice = (oldQty * oldAvg + qty * avg) / totalQty;
-      existing.qty = totalQty;
-    } else if (hasQty) {
-      existing.qty = isFinite(oldQty) && oldQty > 0 ? oldQty + qty : qty;
-      if (hasAvg) existing.avgPrice = avg;
-    } else if (hasAvg) {
-      existing.avgPrice = avg;
-    }
-    if (buyDate) existing.buyDate = buyDate;
-    if (comment) {
-      existing.comment = existing.comment
-        ? existing.comment + ' · ' + comment
-        : comment;
-    }
-    return existing;
+  function removePortfolioLot(lotId) {
+    lotId = String(lotId || '');
+    if (!lotId) return;
+    var portfolio = getPortfolio();
+    var removed = findPortfolioLot(lotId, portfolio.positions);
+    if (!removed) return;
+    var ticker = normalizeTicker(removed.ticker);
+    portfolio.positions = portfolio.positions.filter(function (p) { return p.lotId !== lotId; });
+    setPortfolio(portfolio);
+    if (state.chartTicker === ticker && !findPortfolioPosition(ticker)) state.chartTicker = '';
+    if (state.pfEditLotId === lotId) cancelPortfolioEdit();
+    showToast('Покупка удалена: ' + ticker);
+    renderPortfolio();
   }
 
 
@@ -1060,7 +1165,7 @@
   function removePortfolioPosition(ticker) {
     ticker = normalizeTicker(ticker);
     var portfolio = getPortfolio();
-    var next = portfolio.positions.filter(function (p) { return p.ticker !== ticker; });
+    var next = portfolio.positions.filter(function (p) { return normalizeTicker(p.ticker) !== ticker; });
     if (next.length === portfolio.positions.length) return;
     portfolio.positions = next;
     setPortfolio(portfolio);
@@ -1161,25 +1266,45 @@
 
 
   function handlePortfolioTableClick(e) {
-    var editBtn = e.target.closest('[data-pf-edit]');
+    var expandBtn = e.target.closest('[data-pf-expand-lots]');
+    if (expandBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var tExpand = expandBtn.getAttribute('data-pf-expand-lots');
+      if (!state.pfExpandedTickers) state.pfExpandedTickers = {};
+      state.pfExpandedTickers[tExpand] = true;
+      renderPortfolioTableBody();
+      return;
+    }
+    var collapseBtn = e.target.closest('[data-pf-collapse-lots]');
+    if (collapseBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var tCollapse = collapseBtn.getAttribute('data-pf-collapse-lots');
+      if (state.pfExpandedTickers) state.pfExpandedTickers[tCollapse] = false;
+      renderPortfolioTableBody();
+      return;
+    }
+    var editBtn = e.target.closest('[data-pf-edit-lot]');
     if (editBtn) {
       e.preventDefault();
       e.stopPropagation();
       var wrap = editBtn.closest('[data-pf-form]');
       var formPrefix = wrap ? wrap.getAttribute('data-pf-form') || '' : '';
-      startEditPortfolioPosition(editBtn.getAttribute('data-pf-edit'), formPrefix);
+      startEditPortfolioPosition(editBtn.getAttribute('data-pf-edit-lot'), formPrefix);
       return;
     }
-    var removeBtn = e.target.closest('[data-pf-remove]');
+    var removeBtn = e.target.closest('[data-pf-remove-lot]');
     if (removeBtn) {
       e.preventDefault();
       e.stopPropagation();
-      var ticker = removeBtn.getAttribute('data-pf-remove');
-      if (confirm('Удалить позицию ' + ticker + ' из портфеля?')) {
-        removePortfolioPosition(ticker);
+      var lotId = removeBtn.getAttribute('data-pf-remove-lot');
+      if (confirm('Удалить эту покупку из портфеля?')) {
+        removePortfolioLot(lotId);
       }
       return;
     }
+    if (e.target.closest('.pf-lot-toggle-row')) return;
     var row = e.target.closest('tr[data-chart-ticker]');
     if (row && !e.target.closest('.pf-row-actions')) {
       if (state.tab === 'watchlist') switchTab('portfolio');
@@ -1189,70 +1314,158 @@
 
 
 
-  function buildPortfolioSectionRows(positions, sectionKind, bondMetaMap) {
-    bondMetaMap = bondMetaMap || {};
+  var PF_TABLE_COLS = 12;
+  var PF_LOT_COLLAPSE_THRESHOLD = 3;
+
+
+
+  function groupPortfolioLotsForTable(positions, sectionKind) {
     var filtered = (positions || []).filter(function (p) {
       var isBond = isPortfolioBondPosition(p);
       return sectionKind === 'bonds' ? isBond : !isBond;
     });
-    if (!filtered.length) {
-      return '<tr class="pf-section-empty"><td colspan="11" class="muted">Нет позиций</td></tr>';
+    var groups = [];
+    var map = {};
+    filtered.forEach(function (p) {
+      var t = normalizeTicker(p.ticker);
+      if (!map[t]) {
+        map[t] = { ticker: t, lots: [] };
+        groups.push(map[t]);
+      }
+      map[t].lots.push(p);
+    });
+    groups.forEach(function (g) {
+      g.lots.sort(function (a, b) {
+        var da = a.buyDate || '';
+        var db = b.buyDate || '';
+        if (da !== db) return da < db ? -1 : 1;
+        return String(a.lotId || '').localeCompare(String(b.lotId || ''));
+      });
+      g.weightedAvg = computeLotsWeightedAvg(g.lots);
+    });
+    return groups;
+  }
+
+
+
+  function buildPortfolioLotRow(p, group, opts) {
+    opts = opts || {};
+    var isBond = opts.isBond;
+    var bondMetaMap = opts.bondMetaMap || {};
+    var sleeveTotal = opts.sleeveTotal || 0;
+    var lotIndex = opts.lotIndex || 0;
+    var showIncome = !!opts.showIncome;
+    var bondMeta = bondMetaMap[group.ticker] || null;
+    var marketVal = getPositionMarketValue(p, bondMeta);
+    var weight = formatPortfolioWeightPct(marketVal, sleeveTotal);
+    var purchasePrice = formatPositionAvg(p, { bond: isBond });
+    var weightedAvg = group.weightedAvg != null
+      ? formatPositionAvg({ avgPrice: group.weightedAvg, currency: p.currency, ticker: p.ticker }, { bond: isBond })
+      : '—';
+    var cur = formatPositionPrice(p, { bond: isBond });
+    var lotRet = isBond ? null : getLotReturnPct(p);
+    var pnlCls = lotRet != null && lotRet >= 0 ? 'pnl-pos' : 'pnl-neg';
+    var mBadge = typeof Markets !== 'undefined'
+      ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
+      : '';
+    var editActive = state.pfEditLotId === p.lotId ? ' pf-row-editing' : '';
+    var returnCell = isBond
+      ? formatBondReturnCell(p, bondMeta)
+      : '<span class="' + pnlCls + '">' + escapeHtml(formatSignedPct(lotRet, 2)) + '</span>';
+    var bondCols = '<td class="pf-bond-mat">' + (isBond ? formatBondMaturityCell(bondMeta) : '<span class="muted">—</span>') + '</td>';
+    var tickerCell = lotIndex === 0
+      ? '<td class="ticker" rowspan="' + (opts.rowSpan || 1) + '">' + escapeHtml(group.ticker) + mBadge + '</td>'
+      : '';
+    var incomeCell = showIncome
+      ? '<td class="pf-div-cell" rowspan="' + (opts.incomeRowSpan || 1) + '" data-pf-div-cell="' + escapeHtml(group.ticker) + '"><span class="muted">…</span></td>'
+      : '';
+    return '<tr class="pf-table-row pf-lot-row' + editActive + '" data-chart-ticker="' + escapeHtml(group.ticker) + '" data-pf-lot="' + escapeHtml(p.lotId || '') + '">' +
+      tickerCell +
+      '<td class="pf-weight">' + escapeHtml(weight) + '</td>' +
+      '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
+      '<td class="pf-buy-price">' + escapeHtml(purchasePrice) + '</td>' +
+      '<td class="pf-weighted-avg">' + escapeHtml(weightedAvg) + '</td>' +
+      '<td>' + escapeHtml(formatPortfolioDate(p)) + '</td>' +
+      '<td>' + escapeHtml(cur) + '</td>' +
+      '<td>' + returnCell + '</td>' +
+      bondCols +
+      incomeCell +
+      '<td class="pf-comment">' + escapeHtml(p.comment || '—') + '</td>' +
+      '<td class="pf-row-actions">' +
+        '<button type="button" class="ghost small" data-pf-edit-lot="' + escapeHtml(p.lotId || '') + '">Изменить</button> ' +
+        '<button type="button" class="danger small" data-pf-remove-lot="' + escapeHtml(p.lotId || '') + '">Удалить</button>' +
+      '</td></tr>';
+  }
+
+
+
+  function buildPortfolioSectionRows(positions, sectionKind, bondMetaMap) {
+    bondMetaMap = bondMetaMap || {};
+    var groups = groupPortfolioLotsForTable(positions, sectionKind);
+    if (!groups.length) {
+      return '<tr class="pf-section-empty"><td colspan="' + PF_TABLE_COLS + '" class="muted">Нет позиций</td></tr>';
     }
-    var sleeveTotal = filtered.reduce(function (sum, p) {
-      return sum + getPositionMarketValue(p, bondMetaMap[p.ticker]);
-    }, 0);
-    return filtered.map(function (p) {
-      var isBond = sectionKind === 'bonds';
-      var bondMeta = bondMetaMap[p.ticker] || null;
-      var marketVal = getPositionMarketValue(p, bondMeta);
-      var weight = formatPortfolioWeightPct(marketVal, sleeveTotal);
-      var pnl = isBond ? null : getPositionReturnPct(p);
-      var pnlCls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-      var avg = formatPositionAvg(p, { bond: isBond });
-      var cur = formatPositionPrice(p, { bond: isBond });
-      var mBadge = typeof Markets !== 'undefined'
-        ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
-        : '';
-      var editActive = state.pfEditTicker === p.ticker ? ' pf-row-editing' : '';
-      var returnCell = isBond
-        ? formatBondReturnCell(p, bondMeta)
-        : '<span class="' + pnlCls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>';
-      var bondCols = '<td class="pf-bond-mat">' + (isBond ? formatBondMaturityCell(bondMeta) : '<span class="muted">—</span>') + '</td>';
-      return '<tr class="pf-table-row' + editActive + '" data-chart-ticker="' + escapeHtml(p.ticker) + '" data-pf-ticker="' + escapeHtml(p.ticker) + '">' +
-        '<td class="ticker">' + escapeHtml(p.ticker) + mBadge + '</td>' +
-        '<td class="pf-weight">' + escapeHtml(weight) + '</td>' +
-        '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
-        '<td>' + escapeHtml(avg) + '</td>' +
-        '<td>' + escapeHtml(formatPortfolioDate(p)) + '</td>' +
-        '<td>' + escapeHtml(cur) + '</td>' +
-        '<td>' + returnCell + '</td>' +
-        bondCols +
-        '<td class="pf-div-cell" data-pf-div-cell="' + escapeHtml(p.ticker) + '"><span class="muted">…</span></td>' +
-        '<td class="pf-comment">' + escapeHtml(p.comment || '—') + '</td>' +
-        '<td class="pf-row-actions">' +
-          '<button type="button" class="ghost small" data-pf-edit="' + escapeHtml(p.ticker) + '">Изменить</button> ' +
-          '<button type="button" class="danger small" data-pf-remove="' + escapeHtml(p.ticker) + '">Удалить</button>' +
-        '</td></tr>';
-    }).join('');
+    var isBond = sectionKind === 'bonds';
+    var sleeveTotal = 0;
+    groups.forEach(function (g) {
+      g.lots.forEach(function (p) {
+        sleeveTotal += getPositionMarketValue(p, bondMetaMap[g.ticker]);
+      });
+    });
+
+    var html = '';
+    groups.forEach(function (group) {
+      var lots = group.lots;
+      var expanded = state.pfExpandedTickers && state.pfExpandedTickers[group.ticker];
+      var collapsible = lots.length > PF_LOT_COLLAPSE_THRESHOLD;
+      var visibleLots = collapsible && !expanded ? lots.slice(0, PF_LOT_COLLAPSE_THRESHOLD) : lots;
+      var hiddenCount = collapsible && !expanded ? lots.length - visibleLots.length : 0;
+      var visibleRowSpan = visibleLots.length;
+
+      visibleLots.forEach(function (p, idx) {
+        html += buildPortfolioLotRow(p, group, {
+          isBond: isBond,
+          bondMetaMap: bondMetaMap,
+          sleeveTotal: sleeveTotal,
+          lotIndex: idx,
+          rowSpan: visibleRowSpan,
+          incomeRowSpan: visibleRowSpan,
+          showIncome: idx === 0
+        });
+      });
+
+      if (hiddenCount > 0) {
+        html += '<tr class="pf-lot-toggle-row"><td colspan="' + PF_TABLE_COLS + '">' +
+          '<button type="button" class="ghost small pf-lot-toggle" data-pf-expand-lots="' + escapeHtml(group.ticker) + '">' +
+          'Показать ещё ' + hiddenCount + ' ' + (hiddenCount === 1 ? 'покупку' : (hiddenCount < 5 ? 'покупки' : 'покупок')) +
+          '</button></td></tr>';
+      } else if (collapsible && expanded) {
+        html += '<tr class="pf-lot-toggle-row"><td colspan="' + PF_TABLE_COLS + '">' +
+          '<button type="button" class="ghost small pf-lot-toggle" data-pf-collapse-lots="' + escapeHtml(group.ticker) + '">' +
+          'Свернуть покупки ' + escapeHtml(group.ticker) +
+          '</button></td></tr>';
+      }
+    });
+    return html;
   }
 
   function buildPortfolioTableHtml(positions, bondMetaMap) {
     if (!positions || !positions.length) {
-      return '<tr><td colspan="11" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
+      return '<tr><td colspan="' + PF_TABLE_COLS + '" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
     }
     var stocks = positions.filter(function (p) { return !isPortfolioBondPosition(p); });
     var bonds = positions.filter(isPortfolioBondPosition);
     var html = '';
     if (stocks.length) {
-      html += '<tr class="pf-section-head"><th colspan="11">Акции · доля внутри класса</th></tr>';
+      html += '<tr class="pf-section-head"><th colspan="' + PF_TABLE_COLS + '">Акции · доля внутри класса</th></tr>';
       html += buildPortfolioSectionRows(positions, 'stocks', bondMetaMap);
     }
     if (bonds.length) {
-      html += '<tr class="pf-section-head"><th colspan="11">Облигации (ОФЗ) · доля внутри класса</th></tr>';
+      html += '<tr class="pf-section-head"><th colspan="' + PF_TABLE_COLS + '">Облигации (ОФЗ) · доля внутри класса</th></tr>';
       html += buildPortfolioSectionRows(positions, 'bonds', bondMetaMap);
     }
     if (!stocks.length && !bonds.length) {
-      html = '<tr><td colspan="11" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
+      html = '<tr><td colspan="' + PF_TABLE_COLS + '" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
     }
     return html;
   }
@@ -1299,21 +1512,31 @@
         else stockTotal += val;
       });
 
-      positions.forEach(function (p) {
-        var fetchFn = typeof fetchPortfolioIncomeCell === 'function'
-          ? fetchPortfolioIncomeCell
-          : fetchPortfolioDivForecastHtml;
-        if (typeof fetchFn !== 'function') return;
-        fetchFn(p.ticker, p.qty).then(function (cellHtml) {
-          document.querySelectorAll('[data-pf-div-cell="' + p.ticker + '"]').forEach(function (cell) {
-            cell.innerHTML = cellHtml;
+      var fetchFn = typeof fetchPortfolioIncomeCell === 'function'
+        ? fetchPortfolioIncomeCell
+        : fetchPortfolioDivForecastHtml;
+      var incomeTickersSeen = {};
+      if (typeof fetchFn === 'function') {
+        positions.forEach(function (p) {
+          var t = normalizeTicker(p.ticker);
+          if (incomeTickersSeen[t]) return;
+          incomeTickersSeen[t] = true;
+          var aggQty = findPortfolioLots(t, positions).reduce(function (sum, lot) {
+            var q = Number(lot.qty);
+            return sum + (isFinite(q) && q > 0 ? q : 0);
+          }, 0);
+          fetchFn(t, aggQty).then(function (cellHtml) {
+            document.querySelectorAll('[data-pf-div-cell="' + t + '"]').forEach(function (cell) {
+              cell.innerHTML = cellHtml;
+            });
           });
         });
-      });
+      }
 
       var cards = document.getElementById('portfolioCards');
       if (!cards) return;
-      cards.innerHTML = positions.map(function (p) {
+      var paperPositions = getPortfolioPaperPositions();
+      cards.innerHTML = paperPositions.map(function (p) {
         var isBond = isPortfolioBondPosition(p);
         var bondMeta = bondMetaMap[p.ticker] || null;
         var sleeveTotal = isBond ? bondTotal : stockTotal;

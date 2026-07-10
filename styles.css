@@ -810,6 +810,13 @@
     }
     table.portfolio-table tr[data-chart-ticker] { cursor: pointer; }
     table.portfolio-table tr.chart-row-active td { background: var(--accent-soft); }
+    table.portfolio-table tr.pf-lot-row td.pf-weighted-avg { color: var(--accent); font-weight: 600; }
+    table.portfolio-table tr.pf-lot-toggle-row td {
+      padding: 0.35rem 0.75rem;
+      background: rgba(61, 92, 71, 0.04);
+      border-top: none;
+    }
+    table.portfolio-table .pf-lot-toggle { font-size: 0.85rem; }
     .alert-rule {
       display: flex;
       flex-wrap: wrap;

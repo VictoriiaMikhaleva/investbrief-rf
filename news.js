@@ -960,7 +960,9 @@
     briefsLoading: true,
     toastTimer: null,
     pfEditTicker: '',
-    pfEditPrefix: ''
+    pfEditLotId: '',
+    pfEditPrefix: '',
+    pfExpandedTickers: {}
   };
   if (typeof globalThis !== 'undefined') globalThis.state = state;
   else if (typeof window !== 'undefined') window.state = state;
