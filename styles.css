@@ -817,6 +817,18 @@
       border-top: none;
     }
     table.portfolio-table .pf-lot-toggle { font-size: 0.85rem; }
+    .portfolio-sale-form { margin-top: 0.75rem; border: 1px solid rgba(168, 72, 72, 0.25); }
+    .portfolio-sale-form .pf-form-title { color: #8B3A3A; }
+  table.portfolio-table tr.pf-sale-row td {
+      background: rgba(168, 72, 72, 0.04);
+      font-size: 0.92em;
+    }
+    table.portfolio-table tr.pf-sale-row .pf-sale-lbl { color: #8B3A3A; font-weight: 600; }
+    table.portfolio-table tr.pf-sale-row .pf-sale-qty { color: #8B3A3A; font-weight: 600; }
+    table.portfolio-table tr.pf-sale-row .pf-sale-price { font-weight: 600; }
+    table.portfolio-table tr.pf-sales-only-head td { background: rgba(61, 92, 71, 0.05); }
+    .portfolio-totals-grid .pnl-pos { color: #3D5C47; }
+    .portfolio-totals-grid .pnl-neg { color: #A84848; }
     .alert-rule {
       display: flex;
       flex-wrap: wrap;

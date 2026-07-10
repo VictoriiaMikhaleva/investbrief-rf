@@ -1670,6 +1670,9 @@
     if (ret != null && typeof formatSignedPct === 'function') {
       parts.push((opts.returnLabel || 'Доходность') + ': ' + formatSignedPct(ret, 2));
     }
+    if (opts.realized != null && isFinite(opts.realized) && typeof formatSignedRubAmount === 'function') {
+      parts.push('Зафиксировано: ' + formatSignedRubAmount(opts.realized));
+    }
     return parts.filter(Boolean).join(' · ');
   }
 
@@ -1998,6 +2001,8 @@
     var ret = typeof getPositionReturnPct === 'function' ? getPositionReturnPct(pos) : null;
     var qty = isFinite(Number(pos.qty)) ? Number(pos.qty) : 0;
     var avgBuy = isFinite(Number(pos.avgPrice)) && Number(pos.avgPrice) > 0 ? Number(pos.avgPrice) : null;
+    var tickerSales = typeof getPortfolioSales === 'function' ? getPortfolioSales(ticker) : [];
+    var realizedTicker = typeof getTotalRealizedPnl === 'function' ? getTotalRealizedPnl(tickerSales) : null;
 
     if (candlePanel && candleCanvas) {
       var datedLots = purchaseLots.filter(function (l) {
@@ -2022,7 +2027,7 @@
     }
 
     if (metaEl) {
-      metaEl.textContent = portfolioInsightsMetaLine(ticker, pos, qty, ret);
+      metaEl.textContent = portfolioInsightsMetaLine(ticker, pos, qty, ret, null, { realized: realizedTicker });
     }
 
     fetchMoexHistory(ticker, '5y').then(function (r) {
@@ -2036,7 +2041,7 @@
           if (metaEl) {
             metaEl.textContent = portfolioInsightsMetaLine(
               ticker, pos, qty, ret, bond.label || getTickerSubtitle(ticker),
-              { returnLabel: 'Доходность позиции' }
+              { returnLabel: 'Доходность позиции', realized: realizedTicker }
             );
           }
           if (kpisEl) {
@@ -2064,7 +2069,7 @@
       var forecastTotal = fc && fc.amount != null && qty > 0 ? fc.amount * qty : null;
       var paidTotal = fc && fc.paid12m != null && qty > 0 ? fc.paid12m * qty : null;
       if (metaEl) {
-        metaEl.textContent = portfolioInsightsMetaLine(ticker, pos, qty, ret);
+        metaEl.textContent = portfolioInsightsMetaLine(ticker, pos, qty, ret, null, { realized: realizedTicker });
       }
       if (kpisEl) {
         kpisEl.innerHTML =

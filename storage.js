@@ -200,6 +200,43 @@
 
 
 
+  function newPortfolioSaleId(ticker) {
+    var t = normalizeTicker(ticker) || 'SALE';
+    return 'SALE_' + t + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+  }
+
+
+
+  function normalizeSale(raw) {
+    if (!raw || !raw.ticker) return null;
+    var t = normalizeTicker(raw.ticker);
+    if (!t) return null;
+    var qty = parseFloat(raw.qty);
+    if (!isFinite(qty) || qty <= 0) return null;
+    var buyPrice = parseFloat(raw.buyPrice);
+    if (!isFinite(buyPrice)) buyPrice = null;
+    var salePrice = parseFloat(raw.salePrice);
+    if (!isFinite(salePrice) || salePrice <= 0) return null;
+    var mk = typeof Markets !== 'undefined'
+      ? Markets.normalizePositionMarket(raw, t)
+      : { market: 'RU', currency: 'RUB' };
+    return {
+      saleId: raw.saleId ? String(raw.saleId) : newPortfolioSaleId(t),
+      lotId: raw.lotId ? String(raw.lotId) : '',
+      ticker: t,
+      qty: qty,
+      buyPrice: buyPrice,
+      buyDate: raw.buyDate ? String(raw.buyDate).slice(0, 10) : '',
+      salePrice: salePrice,
+      saleDate: raw.saleDate ? String(raw.saleDate).slice(0, 10) : '',
+      comment: String(raw.comment || '').trim(),
+      market: mk.market,
+      currency: mk.currency
+    };
+  }
+
+
+
   function normalizePosition(raw) {
     if (!raw || !raw.ticker) return null;
     var t = normalizeTicker(raw.ticker);
@@ -468,9 +505,10 @@
   function getPortfolio() {
     var p = loadJSON(KEYS.portfolio, null);
     if (!p || !Array.isArray(p.positions)) {
-      return { positions: [] };
+      return { positions: [], sales: [] };
     }
     p.positions = p.positions.map(normalizePosition).filter(Boolean);
+    p.sales = (p.sales || []).map(normalizeSale).filter(Boolean);
     return p;
   }
 
@@ -479,6 +517,9 @@
   function setPortfolio(p) {
     if (p && Array.isArray(p.positions)) {
       p.positions = p.positions.map(normalizePosition).filter(Boolean);
+    }
+    if (p) {
+      p.sales = (p.sales || []).map(normalizeSale).filter(Boolean);
     }
     if (!saveJSON(KEYS.portfolio, p)) {
       var err = new Error('storage_quota');

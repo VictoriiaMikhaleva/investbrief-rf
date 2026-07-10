@@ -362,6 +362,12 @@
     });
     var pfCancelEditBtn = document.getElementById('pfCancelEditBtn');
     if (pfCancelEditBtn) pfCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
+    var pfSaleBtn = document.getElementById('pfSaleBtn');
+    if (pfSaleBtn) pfSaleBtn.addEventListener('click', function () {
+      commitPortfolioSale(state.pfSaleLotId);
+    });
+    var pfCancelSaleBtn = document.getElementById('pfCancelSaleBtn');
+    if (pfCancelSaleBtn) pfCancelSaleBtn.addEventListener('click', cancelPortfolioSale);
     bindPortfolioFormEnter('pfAddTicker', '');
     document.querySelectorAll('[data-preset]').forEach(function (btn) {
       btn.addEventListener('click', function () {
