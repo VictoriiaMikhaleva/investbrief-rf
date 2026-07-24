@@ -129,7 +129,7 @@ async function fetchTopTurnoverData() {
 
   const till = new Date();
   const from = new Date(till);
-  from.setDate(from.getDate() - 21);
+  from.setDate(from.getDate() - 45);
   const histUrl = `${MOEX}/history/engines/stock/markets/index/securities/IMOEX.json` +
     `?from=${toYmd(from)}&till=${toYmd(till)}&iss.meta=off&history.columns=TRADEDATE,VALUE`;
   const histJson = await fetchJson(histUrl);
@@ -137,10 +137,36 @@ async function fetchTopTurnoverData() {
   if (!hist || !hist.columns || !hist.data) throw new Error('IMOEX turnover unavailable');
   const iDate = hist.columns.indexOf('TRADEDATE');
   const iValue = hist.columns.indexOf('VALUE');
-  const turnoverWeek = hist.data
+  let turnoverWeek = hist.data
     .map((row) => ({ date: String(row[iDate] || '').slice(0, 10), value: safeNumber(row[iValue]) }))
     .filter((r) => r.date && r.value != null)
-    .slice(-7);
+    .slice(-14);
+
+  try {
+    const liveUrl = `${MOEX}/engines/stock/markets/index/securities/IMOEX.json` +
+      '?iss.only=marketdata&iss.meta=off&marketdata.columns=SECID,VALTODAY,TRADEDATE,TRADE_SESSION_DATE';
+    const liveJson = await fetchJson(liveUrl);
+    const md = liveJson.marketdata;
+    if (md && md.columns && md.data && md.data[0]) {
+      const iVal = md.columns.indexOf('VALTODAY');
+      let iLiveDate = md.columns.indexOf('TRADE_SESSION_DATE');
+      if (iLiveDate < 0) iLiveDate = md.columns.indexOf('TRADEDATE');
+      const liveVal = safeNumber(md.data[0][iVal]);
+      const liveDate = iLiveDate >= 0 ? String(md.data[0][iLiveDate] || '').slice(0, 10) : '';
+      if (liveVal != null && liveVal > 0 && liveDate) {
+        const idx = turnoverWeek.findIndex((r) => r.date === liveDate);
+        const point = { date: liveDate, value: liveVal, live: true };
+        if (idx >= 0) turnoverWeek[idx] = point;
+        else turnoverWeek.push(point);
+        turnoverWeek = turnoverWeek
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .slice(-14);
+      }
+    }
+  } catch (e) {
+    /* history-only fallback */
+  }
+
   if (!turnoverWeek.length) throw new Error('No IMOEX turnover week');
 
   return { top, turnoverWeek };

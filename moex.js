@@ -16,11 +16,12 @@
 
 
   var IMOEX_TURNOVER_CACHE_MS = 5 * 60 * 1000;
+  var IMOEX_VOLUME_DAYS = 14;
 
 
 
   function invalidateImoexVolumeCaches() {
-    ['imoex.turnover.week', 'moex.topvol.20'].forEach(function (key) {
+    ['imoex.turnover.week', 'imoex.turnover.v14', 'moex.topvol.20', 'imoex.valtoday'].forEach(function (key) {
       try { localStorage.removeItem(MOEX_CACHE_PREFIX + key); } catch (e) { /* */ }
     });
   }
@@ -1507,9 +1508,10 @@
 
 
   function invalidateMacroLiveCaches(hard) {
-    var keys = ['macro.fx', 'imoex.turnover.week', 'moex.topvol.20',
-      'moex.fx.USD', 'moex.fx.EUR', 'moex.fx.CNY', 'forts.rows', 'macro.commodities'];
-    if (hard) keys.push('cbr.fx', 'cbr.keyrate');
+    var keys = ['macro.fx', 'imoex.turnover.week', 'imoex.turnover.v14', 'imoex.valtoday', 'moex.topvol.20',
+      'moex.fx.USD', 'moex.fx.EUR', 'moex.fx.CNY', 'forts.rows', 'macro.commodities',
+      'last.IMOEX', 'cbr.keyrate'];
+    if (hard) keys.push('cbr.fx');
     keys.forEach(function (key) {
       try { localStorage.removeItem(MOEX_CACHE_PREFIX + key); } catch (e) { /* */ }
     });
@@ -1785,7 +1787,7 @@
     keyRateInflight = fetchExternalTextFast(url).then(function (html) {
       var parsed = parseCbrKeyRateFromHtml(html);
       if (!parsed || !isFinite(parsed.rate)) throw new Error('cbr keyrate parse');
-      moexCacheSet(cacheKey, parsed, 6 * 60 * 60 * 1000);
+      moexCacheSet(cacheKey, parsed, MACRO_REFRESH_MS);
       return parsed;
     }).then(function (r) {
       keyRateInflight = null;
@@ -1871,18 +1873,25 @@
   }
 
   function fetchImoexTurnoverWeek(skipCache) {
+    function withLiveDay(rows) {
+      return fetchImoexValTodayLive(!!skipCache).then(function (live) {
+        return mergeImoexTurnoverWithLive(rows, live);
+      }).catch(function () {
+        return (rows || []).slice(-IMOEX_VOLUME_DAYS);
+      });
+    }
     if (skipCache) {
       return fetchImoexTurnoverWeekDirect(true).then(function (rows) {
         _topTurnoverDataLive = true;
         _topTurnoverSnapshotMeta = null;
         _topTurnoverFetchedAt = Date.now();
-        return rows;
+        return withLiveDay(rows);
       }).catch(function () {
         return fetchImoexTurnoverWeekFromSnapshot().then(function (pack) {
           if (!pack) throw new Error('no imoex turnover');
           _topTurnoverSnapshotMeta = pack.snapshot;
           _topTurnoverDataLive = false;
-          return pack.rows;
+          return withLiveDay(pack.rows);
         });
       });
     }
@@ -1890,26 +1899,74 @@
       if (pack) {
         _topTurnoverSnapshotMeta = pack.snapshot;
         _topTurnoverDataLive = false;
-        return pack.rows;
+        return withLiveDay(pack.rows);
       }
       return fetchImoexTurnoverWeekDirect(false).then(function (rows) {
         _topTurnoverDataLive = true;
         _topTurnoverSnapshotMeta = null;
         _topTurnoverFetchedAt = Date.now();
-        return rows;
+        return withLiveDay(rows);
       });
     });
   }
 
+  function fetchImoexValTodayLive(skipCache) {
+    var cacheKey = 'imoex.valtoday';
+    if (!skipCache) {
+      var cached = moexCacheGet(cacheKey);
+      if (cached) return Promise.resolve(cached);
+    }
+    var url = MOEX_ISS + '/engines/stock/markets/index/securities/' + encodeURIComponent(IMOEX_SECID) +
+      '.json?iss.only=marketdata&iss.meta=off' +
+      '&marketdata.columns=SECID,VALTODAY,TRADEDATE,TRADE_SESSION_DATE,UPDATETIME';
+    return moexFetchJson(url).then(function (json) {
+      var md = json && json.marketdata;
+      if (!md || !md.columns || !md.data || !md.data[0]) throw new Error('no imoex valtoday');
+      var cols = md.columns;
+      var row = md.data[0];
+      var iVal = cols.indexOf('VALTODAY');
+      var iDate = cols.indexOf('TRADE_SESSION_DATE');
+      if (iDate < 0) iDate = cols.indexOf('TRADEDATE');
+      var value = iVal >= 0 ? Number(row[iVal]) : null;
+      var date = iDate >= 0 && row[iDate] ? String(row[iDate]).slice(0, 10) : moexFormatDateMsk(new Date());
+      if (value == null || !isFinite(value) || value <= 0) throw new Error('empty imoex valtoday');
+      var out = { date: date, value: value, live: true };
+      moexCacheSet(cacheKey, out, IMOEX_TURNOVER_CACHE_MS);
+      return out;
+    });
+  }
+
+
+
+  function mergeImoexTurnoverWithLive(days, live) {
+    var out = (days || []).slice();
+    if (!live || !live.date || live.value == null || !isFinite(live.value) || live.value <= 0) {
+      return out.slice(-IMOEX_VOLUME_DAYS);
+    }
+    var idx = -1;
+    for (var i = 0; i < out.length; i++) {
+      if (out[i].date === live.date) { idx = i; break; }
+    }
+    var point = { date: live.date, value: live.value, live: true };
+    if (idx >= 0) out[idx] = point;
+    else out.push(point);
+    out.sort(function (a, b) {
+      return String(a.date).localeCompare(String(b.date));
+    });
+    return out.slice(-IMOEX_VOLUME_DAYS);
+  }
+
+
+
   function fetchImoexTurnoverWeekDirect(skipCache) {
-    var cacheKey = 'imoex.turnover.week';
+    var cacheKey = 'imoex.turnover.v14';
     if (!skipCache) {
       var cached = moexCacheGet(cacheKey);
       if (cached) return Promise.resolve(cached);
     }
     var till = new Date();
     var from = new Date(till);
-    from.setDate(from.getDate() - 21);
+    from.setDate(from.getDate() - 45);
     var baseUrl = 'https://iss.moex.com/iss/history/engines/stock/markets/index/securities/IMOEX.json' +
       '?from=' + moexFormatDateMsk(from) + '&till=' + moexFormatDateMsk(till) +
       '&iss.meta=off&history.columns=TRADEDATE,VALUE';
@@ -1947,7 +2004,7 @@
           value: row[idxVal] != null ? Number(row[idxVal]) : null
         };
       }).filter(function (d) { return d.value != null && isFinite(d.value); });
-      days = days.slice(-7);
+      days = days.slice(-IMOEX_VOLUME_DAYS);
       if (!days.length) throw new Error('no turnover days');
       moexCacheSet(cacheKey, days, IMOEX_TURNOVER_CACHE_MS);
       return days;
@@ -2067,19 +2124,21 @@
     var max = Math.max.apply(null, days.map(function (d) { return d.value; }));
     el.className = 'imoex-volume-bars imoex-volume-bars--vertical';
     el.setAttribute('role', 'img');
-    el.setAttribute('aria-label', 'Оборот IMOEX за 7 торговых дней, млрд ₽');
+    el.setAttribute('aria-label', 'Оборот IMOEX за ' + days.length + ' торговых дней, млрд ₽');
     var withYear = typeof tradeDateSeriesNeedsYear === 'function' && tradeDateSeriesNeedsYear(days);
     el.innerHTML = days.map(function (d) {
       var dt = formatVolTradeDate(d.date, withYear);
       var bln = formatBlnRub(d.value);
       var pct = max > 0 ? Math.max(6, (d.value / max) * 100) : 0;
+      var liveCls = d.live ? ' imoex-vol-col--live' : '';
+      var liveTip = d.live ? ' · текущая сессия' : '';
       return (
-        '<div class="imoex-vol-col">' +
+        '<div class="imoex-vol-col' + liveCls + '" title="' + escapeHtml(dt + ' · ' + bln + ' млрд ₽' + liveTip) + '">' +
           '<span class="imoex-vol-val">' + escapeHtml(bln) + '</span>' +
           '<div class="imoex-vol-track" aria-hidden="true">' +
             '<div class="imoex-vol-bar" style="height:' + pct.toFixed(1) + '%"></div>' +
           '</div>' +
-          '<span class="imoex-vol-date">' + escapeHtml(dt) + '</span>' +
+          '<span class="imoex-vol-date">' + escapeHtml(dt) + (d.live ? '*' : '') + '</span>' +
         '</div>'
       );
     }).join('');
@@ -2189,7 +2248,7 @@
     } else {
       if (title) title.textContent = 'Объём торгов · оборот и лидеры';
       if (hintVol) {
-        hintVol.textContent = 'Оборот бумаг индекса IMOEX за 7 торговых дней (млрд ₽/день, МосБиржа)';
+        hintVol.textContent = 'Оборот бумаг индекса IMOEX за 14 торговых дней (млрд ₽/день, МосБиржа). * — оборот текущей сессии (VALTODAY).';
         hintVol.style.display = '';
       }
       if (subTitle) subTitle.textContent = 'Топ‑20 по обороту за сутки';
@@ -2571,13 +2630,21 @@
     if (macroRefreshTimer) clearInterval(macroRefreshTimer);
     macroRefreshTimer = setInterval(function () {
       if (document.visibilityState !== 'visible') return;
-      if (!state || state.tab !== 'briefing') return;
-      refreshBriefingMarketData(true);
+      if (state && state.tab === 'briefing') {
+        refreshBriefingMarketData(true);
+      }
+      if (state && state.tab === 'watchlist' && typeof renderMoexIndexBox === 'function') {
+        renderMoexIndexBox();
+      }
     }, MACRO_REFRESH_MS);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
-      if (!state || state.tab !== 'briefing') return;
-      refreshBriefingMarketData(true);
+      if (state && state.tab === 'briefing') {
+        refreshBriefingMarketData(true);
+      }
+      if (state && state.tab === 'watchlist' && typeof renderMoexIndexBox === 'function') {
+        renderMoexIndexBox();
+      }
     });
   }
 
