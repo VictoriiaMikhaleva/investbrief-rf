@@ -201,18 +201,90 @@ async function fetchMarketSnapshotData() {
     });
   }
 
-  const keyRateHtml = await fetch('https://www.cbr.ru/hd_base/KeyRate/');
-  if (keyRateHtml.ok) {
-    const html = await keyRateHtml.text();
+  const keyRatePress = await fetch('https://www.cbr.ru/press/keypr/');
+  const keyRateTable = await fetch('https://www.cbr.ru/hd_base/KeyRate/');
+  let press = null;
+  let table = null;
+  if (keyRatePress.ok) {
+    const html = await keyRatePress.text();
+    const norm = html
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&#160;/gi, ' ')
+      .replace(/\u00a0/g, ' ')
+      .replace(/&thinsp;|&#8201;/gi, '')
+      .replace(/<\/?em>/gi, '')
+      .replace(/\s+/g, ' ');
+    // \w в JS не матчит кириллицу — только [а-яё]
+    const cut = norm.match(/снизить\s+ключев[а-яё]*\s+ставк[а-яё]*\s+на\s+(\d+(?:[.,]\d+)?)\s*б\.?\s*п\.?\s*,?\s*до\s+(\d+[.,]\d+)/i);
+    const hike = norm.match(/повысить\s+ключев[а-яё]*\s+ставк[а-яё]*\s+на\s+(\d+(?:[.,]\d+)?)\s*б\.?\s*п\.?\s*,?\s*до\s+(\d+[.,]\d+)/i);
+    const keep = norm.match(/сохранить\s+ключев[а-яё]*\s+ставк[а-яё]*[^\d]{0,40}(\d+[.,]\d+)/i);
+    const months = {
+      января: '01', февраля: '02', марта: '03', апреля: '04', мая: '05', июня: '06',
+      июля: '07', августа: '08', сентября: '09', октября: '10', ноября: '11', декабря: '12'
+    };
+    const dm = norm.match(/(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})/i);
+    const date = dm && months[dm[2].toLowerCase()]
+      ? `${String(dm[1]).padStart(2, '0')}.${months[dm[2].toLowerCase()]}.${dm[3]}`
+      : '';
+    if (cut) {
+      const rate = safeNumber(String(cut[2]).replace(',', '.'));
+      const deltaPp = -safeNumber(String(cut[1]).replace(',', '.')) / 100;
+      const prev = rate != null && deltaPp != null ? rate - deltaPp : null;
+      press = {
+        rate,
+        deltaPp,
+        changePct: prev && prev > 0 ? (deltaPp / prev) * 100 : null,
+        date,
+        fromPress: true,
+        source: 'ЦБ РФ · решение'
+      };
+    } else if (hike) {
+      const rate = safeNumber(String(hike[2]).replace(',', '.'));
+      const deltaPp = safeNumber(String(hike[1]).replace(',', '.')) / 100;
+      const prev = rate != null && deltaPp != null ? rate - deltaPp : null;
+      press = {
+        rate,
+        deltaPp,
+        changePct: prev && prev > 0 ? (deltaPp / prev) * 100 : null,
+        date,
+        fromPress: true,
+        source: 'ЦБ РФ · решение'
+      };
+    } else if (keep) {
+      press = {
+        rate: safeNumber(String(keep[1]).replace(',', '.')),
+        deltaPp: 0,
+        changePct: 0,
+        date,
+        fromPress: true,
+        source: 'ЦБ РФ · решение'
+      };
+    }
+  }
+  if (keyRateTable.ok) {
+    const html = await keyRateTable.text();
     const rows = [...html.matchAll(/<td[^>]*>\s*(\d{2}\.\d{2}\.\d{4})\s*<\/td>\s*<td[^>]*>\s*([\d]+[,.][\d]+)\s*<\/td>/gi)];
     if (rows.length) {
       const latest = rows[0];
       const prev = rows[1];
       const rate = safeNumber(String(latest[2]).replace(',', '.'));
       const prevRate = prev ? safeNumber(String(prev[2]).replace(',', '.')) : null;
-      const changePct = prevRate && prevRate > 0 && rate != null ? ((rate - prevRate) / prevRate) * 100 : null;
-      out.keyRate = { rate, changePct, date: latest[1] };
+      const deltaPp = prevRate != null && rate != null ? rate - prevRate : null;
+      const changePct = prevRate && prevRate > 0 && deltaPp != null ? (deltaPp / prevRate) * 100 : null;
+      table = {
+        rate,
+        changePct,
+        deltaPp,
+        date: latest[1],
+        fromPress: false,
+        source: 'ЦБ РФ'
+      };
     }
+  }
+  if (press && table && press.rate != null && table.rate != null && Math.abs(press.rate - table.rate) > 1e-6) {
+    out.keyRate = press;
+  } else {
+    out.keyRate = press || table;
   }
 
   if (!out.imoex && !out.keyRate && !out.fx.USD && !out.fx.EUR && !out.fx.CNY) {

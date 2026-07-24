@@ -1538,8 +1538,7 @@
     if (!row) return;
     var kr = moexCacheGet('cbr.keyrate');
     if (kr && isFinite(kr.rate)) {
-      patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
-        macroMeta(kr.changePct, 'ЦБ РФ', 'ключевая ставка'));
+      patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate), buildKeyRateMeta(kr));
     }
     var fx = moexCacheGet('macro.fx');
     if (!fx) {
@@ -1771,6 +1770,71 @@
 
 
 
+  function parseRuPressDateToIsoParts(text) {
+    if (!text) return null;
+    var m = String(text).match(/(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})/i);
+    if (!m) return null;
+    var months = {
+      января: '01', февраля: '02', марта: '03', апреля: '04', мая: '05', июня: '06',
+      июля: '07', августа: '08', сентября: '09', октября: '10', ноября: '11', декабря: '12'
+    };
+    var dd = String(m[1]).padStart(2, '0');
+    var mm = months[m[2].toLowerCase()];
+    if (!mm) return null;
+    return { date: dd + '.' + mm + '.' + m[3], iso: m[3] + '-' + mm + '-' + dd };
+  }
+
+
+
+  function parseCbrKeyRateFromPressHtml(html) {
+    if (!html) return null;
+    var t = String(html)
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&#160;/gi, ' ')
+      .replace(/\u00a0/g, ' ')
+      .replace(/&thinsp;|&#8201;/gi, '')
+      .replace(/<\/?em>/gi, '')
+      .replace(/\s+/g, ' ');
+
+    var dateInfo = parseRuPressDateToIsoParts(t);
+    // \w в JS не матчит кириллицу — только [а-яё]
+    var cut = t.match(/снизить\s+ключев[а-яё]*\s+ставк[а-яё]*\s+на\s+(\d+(?:[.,]\d+)?)\s*б\.?\s*п\.?\s*,?\s*до\s+(\d+[.,]\d+)/i);
+    var hike = t.match(/повысить\s+ключев[а-яё]*\s+ставк[а-яё]*\s+на\s+(\d+(?:[.,]\d+)?)\s*б\.?\s*п\.?\s*,?\s*до\s+(\d+[.,]\d+)/i);
+    var keep = t.match(/сохранить\s+ключев[а-яё]*\s+ставк[а-яё]*[^\d]{0,40}(\d+[.,]\d+)/i);
+    var rate = null;
+    var deltaPp = null;
+
+    if (cut) {
+      rate = parseFloat(String(cut[2]).replace(',', '.'));
+      deltaPp = -parseFloat(String(cut[1]).replace(',', '.')) / 100;
+    } else if (hike) {
+      rate = parseFloat(String(hike[2]).replace(',', '.'));
+      deltaPp = parseFloat(String(hike[1]).replace(',', '.')) / 100;
+    } else if (keep) {
+      rate = parseFloat(String(keep[1]).replace(',', '.'));
+      deltaPp = 0;
+    } else {
+      var loose = t.match(/ключев[а-яё]*\s+ставк[а-яё]*[^\d]{0,80}до\s+(\d+[.,]\d+)\s*%/i);
+      if (loose) rate = parseFloat(String(loose[1]).replace(',', '.'));
+    }
+
+    if (rate == null || !isFinite(rate) || rate < 1 || rate > 40) return null;
+    var changePct = null;
+    if (deltaPp != null && isFinite(deltaPp) && rate - deltaPp > 0) {
+      changePct = (deltaPp / (rate - deltaPp)) * 100;
+    }
+    return {
+      rate: rate,
+      changePct: changePct,
+      deltaPp: deltaPp,
+      date: dateInfo ? dateInfo.date : '',
+      fromPress: true,
+      source: 'ЦБ РФ · решение'
+    };
+  }
+
+
+
   function parseCbrKeyRateFromHtml(html) {
     if (!html) return null;
     var re = /<td[^>]*>\s*(\d{2}\.\d{2}\.\d{4})\s*<\/td>\s*<td[^>]*>\s*([\d]+[,.][\d]+)\s*<\/td>/gi;
@@ -1783,10 +1847,61 @@
     var latest = rows[0];
     var prev = rows.length > 1 ? rows[1] : null;
     var changePct = null;
-    if (prev && isFinite(prev.rate) && prev.rate > 0 && isFinite(latest.rate)) {
-      changePct = ((latest.rate - prev.rate) / prev.rate) * 100;
+    var deltaPp = null;
+    if (prev && isFinite(prev.rate) && isFinite(latest.rate)) {
+      deltaPp = latest.rate - prev.rate;
+      if (prev.rate > 0) changePct = (deltaPp / prev.rate) * 100;
     }
-    return { rate: latest.rate, changePct: changePct, date: latest.date };
+    return {
+      rate: latest.rate,
+      changePct: changePct,
+      deltaPp: deltaPp,
+      date: latest.date,
+      fromPress: false,
+      source: 'ЦБ РФ'
+    };
+  }
+
+
+
+  function buildKeyRateMeta(kr) {
+    if (!kr || kr.rate == null || !isFinite(kr.rate)) {
+      return { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ', tag: 'ключевая' };
+    }
+    var changeText = '—';
+    var changeCls = 'muted';
+    if (kr.deltaPp != null && isFinite(kr.deltaPp)) {
+      var sign = kr.deltaPp > 0 ? '+' : '';
+      changeText = sign + Number(kr.deltaPp).toFixed(2).replace('.', ',') + ' п.п.';
+      changeCls = kr.deltaPp > 0 ? 'pnl-pos' : (kr.deltaPp < 0 ? 'pnl-neg' : 'muted');
+    } else if (kr.changePct != null && isFinite(kr.changePct)) {
+      var ch = formatMacroChange(kr.changePct);
+      changeText = ch.text;
+      changeCls = ch.cls;
+    }
+    return {
+      changeText: changeText,
+      changeCls: changeCls,
+      source: kr.source || 'ЦБ РФ',
+      tag: kr.fromPress ? 'решение' : 'ключевая',
+      note: kr.date || ''
+    };
+  }
+
+
+
+  function pickPreferredKeyRate(press, table) {
+    if (press && isFinite(press.rate) && table && isFinite(table.rate)) {
+      // После решения ЦБ таблица KeyRate запаздывает до даты вступления — берём пресс-релиз.
+      if (Math.abs(press.rate - table.rate) > 1e-6) return press;
+      return Object.assign({}, table, {
+        deltaPp: press.deltaPp != null ? press.deltaPp : table.deltaPp,
+        changePct: press.changePct != null ? press.changePct : table.changePct,
+        fromPress: !!press.fromPress,
+        source: press.source || table.source
+      });
+    }
+    return press || table || null;
   }
 
 
@@ -1796,11 +1911,14 @@
   function fetchCbrKeyRate() {
     var cacheKey = 'cbr.keyrate';
     var cached = moexCacheGet(cacheKey);
-    if (cached) return Promise.resolve(cached);
+    if (cached && isFinite(cached.rate)) return Promise.resolve(cached);
     if (keyRateInflight) return keyRateInflight;
-    var url = 'https://www.cbr.ru/hd_base/KeyRate/';
-    keyRateInflight = fetchExternalTextFast(url).then(function (html) {
-      var parsed = parseCbrKeyRateFromHtml(html);
+
+    keyRateInflight = Promise.all([
+      fetchExternalTextFast('https://www.cbr.ru/press/keypr/').then(parseCbrKeyRateFromPressHtml).catch(function () { return null; }),
+      fetchExternalTextFast('https://www.cbr.ru/hd_base/KeyRate/').then(parseCbrKeyRateFromHtml).catch(function () { return null; })
+    ]).then(function (parts) {
+      var parsed = pickPreferredKeyRate(parts[0], parts[1]);
       if (!parsed || !isFinite(parsed.rate)) throw new Error('cbr keyrate parse');
       moexCacheSet(cacheKey, parsed, MACRO_REFRESH_MS);
       return parsed;
@@ -2417,8 +2535,7 @@
     _marketMacroDataLive = false;
     var d = snapshot.data || {};
     if (d.keyRate && d.keyRate.rate != null) {
-      patchMacroTile(row, 'rate', formatKeyRateLabel(d.keyRate.rate),
-        macroMeta(d.keyRate.changePct, 'snapshot', 'ключевая'));
+      patchMacroTile(row, 'rate', formatKeyRateLabel(d.keyRate.rate), buildKeyRateMeta(d.keyRate));
     }
     if (d.imoex && d.imoex.price != null) {
       patchMacroTile(row, 'imoex', formatChartPrice(d.imoex.price, 'IMOEX'),
@@ -2539,10 +2656,9 @@
     var macroJobs = [
       patchMacroCommodityTiles(row, !!forceRefresh),
       fetchCbrKeyRate().then(function (kr) {
-        patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate),
-          macroMeta(kr.changePct, 'ЦБ РФ', 'ключевая'));
+        patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate), buildKeyRateMeta(kr));
       }).catch(function () {
-        patchMacroTile(row, 'rate', '—', { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ' });
+        patchMacroTile(row, 'rate', '—', { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ', tag: 'ключевая' });
       }),
 
       fetchMoexQuote('IMOEX').then(function (q) {
