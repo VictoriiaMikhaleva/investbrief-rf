@@ -1864,6 +1864,11 @@
 
 
 
+  var KEY_RATE_HINT =
+    'После решения ЦБ новая ключевая ставка обычно применяется со следующего рабочего дня. До этой даты в карточке может быть показано объявленное решение.';
+
+
+
   function buildKeyRateMeta(kr) {
     if (!kr || kr.rate == null || !isFinite(kr.rate)) {
       return { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ', tag: 'ключевая' };
@@ -1886,6 +1891,13 @@
       tag: kr.fromPress ? 'решение' : 'ключевая',
       note: kr.date || ''
     };
+  }
+
+
+
+  function setMarketKeyRateHintVisible(visible) {
+    var hint = document.getElementById('marketKeyRateHint');
+    if (hint) hint.hidden = !visible;
   }
 
 
@@ -2500,6 +2512,7 @@
     if (!row || typeof Markets === 'undefined') return;
     var macroSrcShow = document.getElementById('marketMacroSource');
     if (macroSrcShow) macroSrcShow.hidden = false;
+    setMarketKeyRateHintVisible(false);
     updateMarketMacroSource('loading');
     row.hidden = false;
     row.innerHTML =
@@ -2632,11 +2645,13 @@
       row.hidden = true;
       var macroSrcHide = document.getElementById('marketMacroSource');
       if (macroSrcHide) macroSrcHide.hidden = true;
+      setMarketKeyRateHintVisible(false);
       renderImoexMarketPanel(forceRefresh);
       return;
     }
     var macroSrcShow = document.getElementById('marketMacroSource');
     if (macroSrcShow) macroSrcShow.hidden = false;
+    setMarketKeyRateHintVisible(true);
     if (forceRefresh) invalidateMacroLiveCaches(false);
     row.hidden = false;
     var keepDom = !!(forceRefresh && row.querySelector('[data-macro-id="imoex"]'));
@@ -2724,6 +2739,10 @@
   function patchMacroTile(row, id, value, meta, valNote) {
     var tile = row.querySelector('[data-macro-id="' + id + '"]');
     if (!tile) return;
+    if (id === 'rate') {
+      tile.title = KEY_RATE_HINT;
+      tile.setAttribute('aria-description', KEY_RATE_HINT);
+    }
     var valEl = tile.querySelector('.macro-tile-val');
     if (valEl) valEl.textContent = value;
     var noteEl = tile.querySelector('.macro-tile-val-note');
