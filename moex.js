@@ -574,7 +574,7 @@
     }
     var priceKeys = isBond
       ? ['LAST', 'WAPRICE', 'LCURRENTPRICE', 'MARKETPRICE', 'LEGALCLOSEPRICE', 'CURRENTVALUE']
-      : ['LAST', 'LCURRENTPRICE', 'LEGALCLOSEPRICE', 'CURRENTVALUE', 'MARKETPRICE'];
+      : ['LAST', 'LCURRENTPRICE', 'LEGALCLOSEPRICE', 'CURRENTVALUE', 'MARKETPRICETODAY', 'MARKETPRICE', 'WAPRICE', 'CLOSEPRICE'];
     var price = null;
     for (var i = 0; i < priceKeys.length; i++) {
       var v = col(priceKeys[i]);
@@ -1402,20 +1402,22 @@
 
 
   var MOEX_FX_SPOT = {
-    USD: { secid: 'USD000UTSTOM', min: 50, max: 150 },
-    EUR: { secid: 'EUR000UTSTOM', min: 50, max: 150 },
-    CNY: { secid: 'CNYRUB_TOM', min: 5, max: 20 }
+    USD: { secid: 'USD000UTSTOM', alt: ['USD000UTSTOD'], min: 50, max: 150 },
+    EUR: { secid: 'EUR_RUB__TOM', alt: ['EUR_RUB__TOD', 'EUR000UTSTOM'], min: 50, max: 150 },
+    CNY: { secid: 'CNYRUB_TOM', alt: ['CNYRUB_TOD'], min: 5, max: 20 }
   };
 
   var MACRO_REFRESH_MS = 5 * 60 * 1000;
   var macroRefreshTimer = null;
+  var macroVisibilityBound = false;
 
 
 
   function moexSeltSpotUrl(secid) {
     return MOEX_ISS + '/engines/currency/markets/selt/boards/CETS/securities/' +
-      encodeURIComponent(secid) + '.json?iss.only=marketdata&iss.meta=off' +
-      '&marketdata.columns=SECID,LAST,LASTTOPREVPRICE,PREVPRICE,OPEN';
+      encodeURIComponent(secid) + '.json?iss.only=marketdata,securities&iss.meta=off' +
+      '&marketdata.columns=SECID,LAST,LASTTOPREVPRICE,PREVPRICE,OPEN,MARKETPRICE,MARKETPRICETODAY,WAPRICE,CLOSEPRICE' +
+      '&securities.columns=SECID,PREVPRICE,PREVWAPRICE';
   }
 
 
@@ -1434,13 +1436,26 @@
     var cacheKey = 'moex.fx.' + code;
     var cached = moexCacheGet(cacheKey);
     if (cached) return Promise.resolve(cached);
-    return moexFetchJson(moexSeltSpotUrl(cfg.secid)).then(function (json) {
-      var quote = parseMoexQuoteFromMd(json);
-      if (!quote || quote.price == null || !isFxPriceSane(code, quote.price)) return null;
-      var out = { price: quote.price, changePct: quote.changePct, source: 'МосБиржа' };
-      moexCacheSet(cacheKey, out, 2 * 60 * 1000);
-      return out;
-    }).catch(function () { return null; });
+    var ids = [cfg.secid].concat(cfg.alt || []);
+    var i = 0;
+
+    function tryNext() {
+      if (i >= ids.length) return Promise.resolve(null);
+      var secid = ids[i++];
+      return moexFetchJson(moexSeltSpotUrl(secid)).then(function (json) {
+        var quote = parseMoexQuoteFromMd(json);
+        if (!quote || quote.price == null || !isFxPriceSane(code, quote.price)) {
+          return tryNext();
+        }
+        var out = { price: quote.price, changePct: quote.changePct, source: 'МосБиржа' };
+        moexCacheSet(cacheKey, out, 2 * 60 * 1000);
+        return out;
+      }).catch(function () {
+        return tryNext();
+      });
+    }
+
+    return tryNext();
   }
 
 
@@ -1880,13 +1895,31 @@
         return (rows || []).slice(-IMOEX_VOLUME_DAYS);
       });
     }
-    if (skipCache) {
-      return fetchImoexTurnoverWeekDirect(true).then(function (rows) {
+    function fromDirect() {
+      return fetchImoexTurnoverWeekDirect(!!skipCache).then(function (rows) {
         _topTurnoverDataLive = true;
         _topTurnoverSnapshotMeta = null;
         _topTurnoverFetchedAt = Date.now();
         return withLiveDay(rows);
-      }).catch(function () {
+      });
+    }
+    function fromSnapshotOrDirect() {
+      return fetchImoexTurnoverWeekFromSnapshot().then(function (pack) {
+        if (pack && pack.rows && pack.rows.length >= IMOEX_VOLUME_DAYS) {
+          _topTurnoverSnapshotMeta = pack.snapshot;
+          _topTurnoverDataLive = false;
+          return withLiveDay(pack.rows);
+        }
+        return fromDirect().catch(function () {
+          if (!pack) throw new Error('no imoex turnover');
+          _topTurnoverSnapshotMeta = pack.snapshot;
+          _topTurnoverDataLive = false;
+          return withLiveDay(pack.rows);
+        });
+      });
+    }
+    if (skipCache) {
+      return fromDirect().catch(function () {
         return fetchImoexTurnoverWeekFromSnapshot().then(function (pack) {
           if (!pack) throw new Error('no imoex turnover');
           _topTurnoverSnapshotMeta = pack.snapshot;
@@ -1895,19 +1928,7 @@
         });
       });
     }
-    return fetchImoexTurnoverWeekFromSnapshot().then(function (pack) {
-      if (pack) {
-        _topTurnoverSnapshotMeta = pack.snapshot;
-        _topTurnoverDataLive = false;
-        return withLiveDay(pack.rows);
-      }
-      return fetchImoexTurnoverWeekDirect(false).then(function (rows) {
-        _topTurnoverDataLive = true;
-        _topTurnoverSnapshotMeta = null;
-        _topTurnoverFetchedAt = Date.now();
-        return withLiveDay(rows);
-      });
-    });
+    return fromSnapshotOrDirect();
   }
 
   function fetchImoexValTodayLive(skipCache) {
@@ -2164,7 +2185,8 @@
           ? window.quoteCardDivMetricsHtml({ compact: isUs, us: isUs, ticker: r.ticker })
           : '';
         return (
-          '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '" data-market="' + market + '">' +
+          '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '" data-market="' + market + '"' +
+            (r.valToday != null && isFinite(Number(r.valToday)) ? ' data-val-today="' + Number(r.valToday) + '"' : '') + '>' +
             '<button type="button" class="quote-card" data-ticker="' + escapeHtml(r.ticker) + '">' +
               '<div class="quote-card-top">' +
                 '<span class="quote-card-ticker">#' + (i + 1) + ' ' + escapeHtml(r.ticker) + '</span>' +
@@ -2183,18 +2205,21 @@
         var wrap = grid.querySelector('.quote-card-wrap[data-ticker="' + r.ticker + '"]');
         if (wrap && !isUs && r.valToday != null) {
           var turnoverEl = wrap.querySelector('[data-turnover]');
-          if (turnoverEl) turnoverEl.textContent = formatBlnRub(r.valToday) + ' млрд ₽';
+          if (turnoverEl) {
+            turnoverEl.textContent = formatBlnRub(r.valToday) + ' млрд ₽';
+            turnoverEl.className = 'quote-div-val';
+          }
         }
         if (wrap && typeof queueEnrichQuoteCard === 'function') queueEnrichQuoteCard(wrap, r.ticker, market);
         else if (wrap && typeof enrichQuoteCard === 'function') enrichQuoteCard(wrap, r.ticker);
         if (wrap && isUs && r.divYieldPct != null) {
           var avgEl = wrap.querySelector('[data-div-avg]');
-          var turnoverEl = wrap.querySelector('[data-turnover]');
+          var turnoverElUs = wrap.querySelector('[data-turnover]');
           if (avgEl) {
             avgEl.textContent = (r.divYieldPct).toFixed(1).replace('.', ',') + '%';
             avgEl.className = 'quote-div-val' + (r.divYieldPct > 0 ? ' pnl-pos' : '');
           }
-          if (turnoverEl) turnoverEl.textContent = formatUsdVolume(r.valToday);
+          if (turnoverElUs) turnoverElUs.textContent = formatUsdVolume(r.valToday);
         }
       });
       grid.querySelectorAll('.quote-card').forEach(function (btn) {
@@ -2503,7 +2528,7 @@
         renderMacroTile('imoex', 'Индекс', '…', macroMeta(null, 'МосБиржа', 'IMOEX')) +
         renderMacroTile('rate', 'Ставка', '…', macroMeta(null, 'ЦБ РФ', 'ключевая')) +
         renderMacroTile('usd', 'USD', '…', macroMeta(null, 'МосБиржа', 'валюта')) +
-        renderMacroTile('eur', 'EUR', '…', macroMeta(null, 'ЦБ РФ', 'валюта')) +
+        renderMacroTile('eur', 'EUR', '…', macroMeta(null, 'МосБиржа', 'валюта')) +
         renderMacroTile('cny', 'CNY', '…', macroMeta(null, 'МосБиржа', 'валюта')) +
         renderMacroCommodityTilesHtml();
       applyMacroBootstrap(row);
@@ -2637,15 +2662,18 @@
         renderMoexIndexBox();
       }
     }, MACRO_REFRESH_MS);
-    document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState !== 'visible') return;
-      if (state && state.tab === 'briefing') {
-        refreshBriefingMarketData(true);
-      }
-      if (state && state.tab === 'watchlist' && typeof renderMoexIndexBox === 'function') {
-        renderMoexIndexBox();
-      }
-    });
+    if (!macroVisibilityBound) {
+      macroVisibilityBound = true;
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') return;
+        if (state && state.tab === 'briefing') {
+          refreshBriefingMarketData(true);
+        }
+        if (state && state.tab === 'watchlist' && typeof renderMoexIndexBox === 'function') {
+          renderMoexIndexBox();
+        }
+      });
+    }
   }
 
 

@@ -1041,7 +1041,10 @@
       }
     }
     if (turnoverEl) {
+      var pinned = wrapEl.getAttribute && wrapEl.getAttribute('data-val-today');
+      var pinnedNum = pinned != null ? Number(pinned) : null;
       var v = a.quote && a.quote.valueToday != null ? a.quote.valueToday : null;
+      if ((v == null || !isFinite(Number(v))) && isFinite(pinnedNum) && pinnedNum > 0) v = pinnedNum;
       if ((v == null || !isFinite(Number(v))) && a.volumeByDay && a.volumeByDay.length) {
         var last = a.volumeByDay[a.volumeByDay.length - 1];
         if (last && isFinite(Number(last.v))) v = Number(last.v) * 1e9;
