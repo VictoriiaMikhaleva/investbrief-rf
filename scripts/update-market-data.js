@@ -140,7 +140,7 @@ async function fetchTopTurnoverData() {
   let turnoverWeek = hist.data
     .map((row) => ({ date: String(row[iDate] || '').slice(0, 10), value: safeNumber(row[iValue]) }))
     .filter((r) => r.date && r.value != null)
-    .slice(-14);
+    .slice(-10);
 
   try {
     const liveUrl = `${MOEX}/engines/stock/markets/index/securities/IMOEX.json` +
@@ -160,7 +160,7 @@ async function fetchTopTurnoverData() {
         else turnoverWeek.push(point);
         turnoverWeek = turnoverWeek
           .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-          .slice(-14);
+          .slice(-10);
       }
     }
   } catch (e) {

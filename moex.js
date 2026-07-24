@@ -16,12 +16,12 @@
 
 
   var IMOEX_TURNOVER_CACHE_MS = 5 * 60 * 1000;
-  var IMOEX_VOLUME_DAYS = 14;
+  var IMOEX_VOLUME_DAYS = 10;
 
 
 
   function invalidateImoexVolumeCaches() {
-    ['imoex.turnover.week', 'imoex.turnover.v14', 'moex.topvol.20', 'imoex.valtoday'].forEach(function (key) {
+    ['imoex.turnover.week', 'imoex.turnover.v14', 'imoex.turnover.v10', 'moex.topvol.20', 'imoex.valtoday'].forEach(function (key) {
       try { localStorage.removeItem(MOEX_CACHE_PREFIX + key); } catch (e) { /* */ }
     });
   }
@@ -1523,7 +1523,7 @@
 
 
   function invalidateMacroLiveCaches(hard) {
-    var keys = ['macro.fx', 'imoex.turnover.week', 'imoex.turnover.v14', 'imoex.valtoday', 'moex.topvol.20',
+    var keys = ['macro.fx', 'imoex.turnover.week', 'imoex.turnover.v14', 'imoex.turnover.v10', 'imoex.valtoday', 'moex.topvol.20',
       'moex.fx.USD', 'moex.fx.EUR', 'moex.fx.CNY', 'forts.rows', 'macro.commodities',
       'last.IMOEX', 'cbr.keyrate'];
     if (hard) keys.push('cbr.fx');
@@ -2098,7 +2098,7 @@
 
 
   function fetchImoexTurnoverWeekDirect(skipCache) {
-    var cacheKey = 'imoex.turnover.v14';
+    var cacheKey = 'imoex.turnover.v10';
     if (!skipCache) {
       var cached = moexCacheGet(cacheKey);
       if (cached) return Promise.resolve(cached);
@@ -2391,7 +2391,7 @@
     } else {
       if (title) title.textContent = 'Объём торгов · оборот и лидеры';
       if (hintVol) {
-        hintVol.textContent = 'Оборот бумаг индекса IMOEX за 14 торговых дней (млрд ₽/день, МосБиржа). * — оборот текущей сессии (VALTODAY).';
+        hintVol.textContent = 'Оборот бумаг индекса IMOEX за 10 торговых дней (млрд ₽/день, МосБиржа). * — оборот текущей сессии (VALTODAY).';
         hintVol.style.display = '';
       }
       if (subTitle) subTitle.textContent = 'Топ‑20 по обороту за сутки';
