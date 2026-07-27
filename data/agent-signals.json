@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-07-26T23:37:34.228Z",
+  "updatedAt": "2026-07-27T01:16:18.798Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -216,8 +216,15 @@
         "insufficient": false,
         "currentPrice": 1001.7,
         "dayChangePct": -1.7,
-        "signals": [],
-        "status": "Спокойно"
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
       },
       {
         "ticker": "YDEX",
