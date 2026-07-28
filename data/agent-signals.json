@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-07-27T23:29:30.431Z",
+  "updatedAt": "2026-07-28T00:57:23.931Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -224,8 +224,15 @@
         "insufficient": false,
         "currentPrice": 3859.5,
         "dayChangePct": -0.82,
-        "signals": [],
-        "status": "Спокойно"
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
       },
       {
         "ticker": "LQDT",
