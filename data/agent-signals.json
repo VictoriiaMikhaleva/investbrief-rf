@@ -1,30 +1,30 @@
 {
   "status": "ok",
-  "updatedAt": "2026-07-31T07:30:20.250Z",
+  "updatedAt": "2026-07-31T10:08:50.429Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
     "tickers": [
       "OZON",
       "SMLT",
-      "AKMM",
       "SBER",
       "GAZP",
+      "AKMM",
       "MTLR",
       "LKOH",
-      "T",
-      "AMNR",
       "ROSN",
-      "VTBR",
+      "T",
       "PLZL",
-      "MAGN",
+      "VTBR",
       "NVTK",
       "YDEX",
-      "SGZH",
-      "ALRS",
+      "MAGN",
+      "AMNR",
+      "SBMM",
       "GMKN",
+      "LQDT",
       "AFKS",
-      "TATN"
+      "ALRS"
     ],
     "thresholds": {
       "dayMoveThreshold": 3,
@@ -37,8 +37,8 @@
         "ticker": "OZON",
         "name": "Озон",
         "insufficient": false,
-        "currentPrice": 2850.5,
-        "dayChangePct": -3.47,
+        "currentPrice": 2860.5,
+        "dayChangePct": -3.13,
         "signals": [
           {
             "id": "day-down",
@@ -53,8 +53,182 @@
         "ticker": "SMLT",
         "name": "Самолет ао",
         "insufficient": false,
-        "currentPrice": 339.4,
-        "dayChangePct": -1.79,
+        "currentPrice": 356.8,
+        "dayChangePct": 3.24,
+        "signals": [
+          {
+            "id": "day-up",
+            "title": "Заметный рост за день",
+            "reasons": [],
+            "checklist": []
+          },
+          {
+            "id": "week-up",
+            "title": "Рост за неделю",
+            "reasons": [],
+            "checklist": []
+          },
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Сильное движение"
+      },
+      {
+        "ticker": "SBER",
+        "name": "Сбербанк",
+        "insufficient": false,
+        "currentPrice": 275.4,
+        "dayChangePct": 0.73,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
+        "ticker": "GAZP",
+        "name": "ГАЗПРОМ ао",
+        "insufficient": false,
+        "currentPrice": 92.01,
+        "dayChangePct": 0.22,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
+        "ticker": "AKMM",
+        "name": "AKMM ETF",
+        "insufficient": false,
+        "currentPrice": 174.69,
+        "dayChangePct": 0.09,
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
+      },
+      {
+        "ticker": "MTLR",
+        "name": "Мечел ао",
+        "insufficient": false,
+        "currentPrice": 40.77,
+        "dayChangePct": 4.27,
+        "signals": [
+          {
+            "id": "day-up",
+            "title": "Заметный рост за день",
+            "reasons": [],
+            "checklist": []
+          },
+          {
+            "id": "week-up",
+            "title": "Рост за неделю",
+            "reasons": [],
+            "checklist": []
+          },
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Сильное движение"
+      },
+      {
+        "ticker": "LKOH",
+        "name": "ЛУКОЙЛ",
+        "insufficient": false,
+        "currentPrice": 4613.5,
+        "dayChangePct": 0.35,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
+        "ticker": "ROSN",
+        "name": "Роснефть",
+        "insufficient": false,
+        "currentPrice": 345,
+        "dayChangePct": 0.83,
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
+      },
+      {
+        "ticker": "T",
+        "name": "Т-Техно ао",
+        "insufficient": false,
+        "currentPrice": 266.78,
+        "dayChangePct": 0.74,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
+        "ticker": "PLZL",
+        "name": "Полюс",
+        "insufficient": false,
+        "currentPrice": 1272.2,
+        "dayChangePct": -1.58,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
+        "ticker": "VTBR",
+        "name": "ВТБ ао",
+        "insufficient": false,
+        "currentPrice": 56.5,
+        "dayChangePct": 0.29,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
+        "ticker": "NVTK",
+        "name": "Новатэк ао",
+        "insufficient": false,
+        "currentPrice": 1004.4,
+        "dayChangePct": 0.43,
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
+      },
+      {
+        "ticker": "YDEX",
+        "name": "ЯНДЕКС",
+        "insufficient": false,
+        "currentPrice": 3914,
+        "dayChangePct": 0.81,
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
+      },
+      {
+        "ticker": "MAGN",
+        "name": "ММК",
+        "insufficient": false,
+        "currentPrice": 20.755,
+        "dayChangePct": 1.52,
         "signals": [
           {
             "id": "week-up",
@@ -72,78 +246,10 @@
         "status": "Зона внимания"
       },
       {
-        "ticker": "AKMM",
-        "name": "AKMM ETF",
-        "insufficient": false,
-        "currentPrice": 174.68,
-        "dayChangePct": 0.09,
-        "signals": [
-          {
-            "id": "month-high",
-            "title": "Близко к верхней границе месяца",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Зона внимания"
-      },
-      {
-        "ticker": "SBER",
-        "name": "Сбербанк",
-        "insufficient": false,
-        "currentPrice": 273.64,
-        "dayChangePct": 0.09,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "GAZP",
-        "name": "ГАЗПРОМ ао",
-        "insufficient": false,
-        "currentPrice": 90.74,
-        "dayChangePct": -1.17,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "MTLR",
-        "name": "Мечел ао",
-        "insufficient": false,
-        "currentPrice": 39.45,
-        "dayChangePct": 0.9,
-        "signals": [
-          {
-            "id": "week-up",
-            "title": "Рост за неделю",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Зона внимания"
-      },
-      {
-        "ticker": "LKOH",
-        "name": "ЛУКОЙЛ",
-        "insufficient": false,
-        "currentPrice": 4514.5,
-        "dayChangePct": -1.81,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "T",
-        "name": "Т-Техно ао",
-        "insufficient": false,
-        "currentPrice": 263.7,
-        "dayChangePct": -0.42,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
         "ticker": "AMNR",
         "name": "AMNR ETF",
         "insufficient": false,
-        "currentPrice": 154.248,
+        "currentPrice": 154.247,
         "dayChangePct": 0.11,
         "signals": [
           {
@@ -156,45 +262,12 @@
         "status": "Зона внимания"
       },
       {
-        "ticker": "ROSN",
-        "name": "Роснефть",
+        "ticker": "SBMM",
+        "name": "SBMM ETF",
         "insufficient": false,
-        "currentPrice": 337.65,
-        "dayChangePct": -1.32,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "VTBR",
-        "name": "ВТБ ао",
-        "insufficient": false,
-        "currentPrice": 56.1,
-        "dayChangePct": -0.42,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "PLZL",
-        "name": "Полюс",
-        "insufficient": false,
-        "currentPrice": 1271.6,
-        "dayChangePct": -1.62,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "MAGN",
-        "name": "ММК",
-        "insufficient": false,
-        "currentPrice": 20.375,
-        "dayChangePct": -0.34,
+        "currentPrice": 19.079,
+        "dayChangePct": 0.11,
         "signals": [
-          {
-            "id": "week-up",
-            "title": "Рост за неделю",
-            "reasons": [],
-            "checklist": []
-          },
           {
             "id": "month-high",
             "title": "Близко к верхней границе месяца",
@@ -203,80 +276,22 @@
           }
         ],
         "status": "Зона внимания"
-      },
-      {
-        "ticker": "NVTK",
-        "name": "Новатэк ао",
-        "insufficient": false,
-        "currentPrice": 988.2,
-        "dayChangePct": -1.19,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "YDEX",
-        "name": "ЯНДЕКС",
-        "insufficient": false,
-        "currentPrice": 3848,
-        "dayChangePct": -0.89,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "SGZH",
-        "name": "Сегежа",
-        "insufficient": false,
-        "currentPrice": 0.638,
-        "dayChangePct": -7.4,
-        "signals": [
-          {
-            "id": "day-down",
-            "title": "Заметное снижение за день",
-            "reasons": [],
-            "checklist": []
-          },
-          {
-            "id": "week-up",
-            "title": "Рост за неделю",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Сильное движение"
-      },
-      {
-        "ticker": "ALRS",
-        "name": "АЛРОСА ао",
-        "insufficient": false,
-        "currentPrice": 20.4,
-        "dayChangePct": -1.92,
-        "signals": [],
-        "status": "Спокойно"
       },
       {
         "ticker": "GMKN",
         "name": "ГМКНорНик",
         "insufficient": false,
-        "currentPrice": 113.92,
-        "dayChangePct": -0.45,
+        "currentPrice": 114.88,
+        "dayChangePct": 0.38,
         "signals": [],
         "status": "Спокойно"
       },
       {
-        "ticker": "AFKS",
-        "name": "Система ао",
+        "ticker": "LQDT",
+        "name": "LQDT ETF",
         "insufficient": false,
-        "currentPrice": 8.65,
-        "dayChangePct": -1.55,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "TATN",
-        "name": "Татнфт 3ао",
-        "insufficient": false,
-        "currentPrice": 507.4,
-        "dayChangePct": -2.12,
+        "currentPrice": 2.0519,
+        "dayChangePct": 0.11,
         "signals": [
           {
             "id": "month-high",
@@ -286,6 +301,24 @@
           }
         ],
         "status": "Зона внимания"
+      },
+      {
+        "ticker": "AFKS",
+        "name": "Система ао",
+        "insufficient": false,
+        "currentPrice": 8.92,
+        "dayChangePct": 1.53,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
+        "ticker": "ALRS",
+        "name": "АЛРОСА ао",
+        "insufficient": false,
+        "currentPrice": 20.65,
+        "dayChangePct": -0.72,
+        "signals": [],
+        "status": "Спокойно"
       }
     ]
   }
