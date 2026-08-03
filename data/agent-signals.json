@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-08-02T23:03:41.280Z",
+  "updatedAt": "2026-08-03T00:07:48.467Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -170,6 +170,12 @@
             "title": "Рост за неделю",
             "reasons": [],
             "checklist": []
+          },
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
           }
         ],
         "status": "Сильное движение"
@@ -180,8 +186,15 @@
         "insufficient": false,
         "currentPrice": 266.82,
         "dayChangePct": 0.76,
-        "signals": [],
-        "status": "Спокойно"
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
       },
       {
         "ticker": "VTBR",
