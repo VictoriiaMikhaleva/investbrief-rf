@@ -1207,8 +1207,8 @@
         forecast: false,
         valueLabel: v > 0 ? formatBarChartValue(v, {}) : '',
         hoverLines: v > 0
-          ? [String(y.year), formatBarChartValue(v, {}) + ' ₽/акц.']
-          : [String(y.year)]
+          ? ['Отчётный ' + String(y.year), formatBarChartValue(v, {}) + ' ₽/акц.']
+          : ['Отчётный ' + String(y.year)]
       };
     });
     if (forecast && forecast.amount != null && isFinite(forecast.amount)) {

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v11.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v12.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -52,8 +52,8 @@
 
   function invalidateAnalyticsTickerCache(ticker) {
     ticker = normalizeTicker(ticker);
-    analyticsCacheRemove('full.v8.' + ticker);
-    analyticsCacheRemove('hist.v6.' + ticker + '.' + YIELD_YEARS);
+    analyticsCacheRemove('full.v9.' + ticker);
+    analyticsCacheRemove('hist.v7.' + ticker + '.' + YIELD_YEARS);
   }
 
   function isIndexQuoteTicker(ticker) {
@@ -305,8 +305,12 @@
     }).sort(function (a, b) { return a.date.localeCompare(b.date); });
     if (!items.length) return '';
     return items.map(function (d) {
-      return monthNameFromDate(d.date) + ' ' + formatDividendRubShort(d.value) + ' ₽';
-    }).join(' · ');
+      var iso = String(d.date).slice(0, 10);
+      var dateRu = iso.length === 10
+        ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4)
+        : monthNameFromDate(d.date);
+      return dateRu + ' · ' + formatDividendRubShort(d.value) + ' ₽';
+    }).join('; ');
   }
 
 
@@ -321,7 +325,7 @@
     var html = [];
 
     html.push('<div class="div-info-block div-info-years">');
-    html.push('<div class="div-info-title">Выплаты по годам</div>');
+    html.push('<div class="div-info-title">Выплаты по отчётным годам</div>');
     yearly.forEach(function (y) {
       var sum = y.totalDiv > 0
         ? formatDividendRubShort(y.totalDiv) + ' ₽/акц.'
@@ -337,8 +341,8 @@
             '</span>' +
           '</div>' +
           (months
-            ? '<div class="div-info-months"><span class="div-info-months-lbl">Месяцы выплат:</span> ' + escapeHtml(months) + '</div>'
-            : '<div class="div-info-months muted">В этом году выплат не было</div>') +
+            ? '<div class="div-info-months"><span class="div-info-months-lbl">Даты отсечек:</span> ' + escapeHtml(months) + '</div>'
+            : '<div class="div-info-months muted">К этому отчётному году выплат нет</div>') +
         '</div>'
       );
     });
@@ -363,7 +367,7 @@
     }
 
     var winYears = getYieldWindowYears();
-    html.push('<p class="div-info-hint">Доходность года = выплаты / средняя цена MOEX за год. Средняя 5 лет — по завершённым годам ' +
+    html.push('<p class="div-info-hint">Годы на графике — отчётные, не календарные даты выплат: окт–дек относятся к текущему году, янв–сен — к предыдущему (так часто платят по итогам года в РФ). Например, отсечка в июне 2025 входит в отчётный 2024. Доходность года = сумма выплат / средняя цена MOEX за календарный год. Средняя 5 лет — по завершённым отчётным годам ' +
       winYears[0] + '–' + winYears[winYears.length - 1] + ' (MOEX ISS).</p>');
     return html.join('');
   }
@@ -614,7 +618,7 @@
   function fetchMoexShareHistoryDaily(ticker, yearsBack) {
     ticker = normalizeTicker(ticker);
     yearsBack = yearsBack || YIELD_YEARS;
-    var cacheKey = 'hist.v6.' + ticker + '.' + yearsBack;
+    var cacheKey = 'hist.v7.' + ticker + '.' + yearsBack;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
 
@@ -855,7 +859,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v8.' + ticker;
+    var cacheKey = 'full.v9.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 

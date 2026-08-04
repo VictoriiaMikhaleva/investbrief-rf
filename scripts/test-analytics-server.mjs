@@ -15,7 +15,7 @@ async function main() {
 
   const gazp = await buildTickerAnalytics('GAZP', { forceRefresh: true });
   assert(gazp.source === 'server', 'GAZP source=server', errors);
-  assert(gazp.divAvg5y != null && gazp.divAvg5y >= 7.9 && gazp.divAvg5y <= 8.5,
+  assert(gazp.divAvg5y != null && gazp.divAvg5y >= 9.1 && gazp.divAvg5y <= 9.9,
     'GAZP divAvg5y=' + gazp.divAvg5y, errors);
   assert(!gazp.divForecast || gazp.divForecast.amount == null,
     'GAZP forecast must be null', errors);

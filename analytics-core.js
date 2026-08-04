@@ -11,7 +11,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.1.0';
+  var VERSION = '1.2.0';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var YIELD_YEARS = 5;
@@ -24,13 +24,23 @@
     var y = Number(parts[0]);
     var m = Number(parts[1]);
     if (!isFinite(y) || !isFinite(m)) return '';
+    // Янв–сен: выплата за предыдущий отчётный год; окт–дек — за текущий.
     if (m >= 1 && m <= 9) return String(y - 1);
     return String(y);
   }
 
+  /** Последний завершённый отчётный год: год Y закрывается после сентября Y+1. */
+  function getLastCompletedReportingYear(now) {
+    now = now || new Date();
+    var y = now.getFullYear();
+    var m = now.getMonth() + 1;
+    if (m >= 10) return y - 1;
+    return y - 2;
+  }
+
   function getYieldWindowYears(now) {
     now = now || new Date();
-    var endYear = now.getFullYear() - 1;
+    var endYear = getLastCompletedReportingYear(now);
     var years = [];
     for (var i = YIELD_YEARS - 1; i >= 0; i--) years.push(endYear - i);
     return years;
@@ -548,12 +558,12 @@
   /** Эталоны для CI / watchdog (допуск ±0.4 п.п.). */
   var SPOT_CHECK_RULES = {
     GAZP: {
-      divAvg5y: { min: 7.9, max: 8.5 },
+      divAvg5y: { min: 9.1, max: 9.9 },
       forecastNull: true,
       forbidForecastAmount: 103.56
     },
     SBER: {
-      divAvg5y: { min: 7.5, max: 10.5 },
+      divAvg5y: { min: 11.5, max: 12.5 },
       forecastNull: false
     }
   };
@@ -601,6 +611,7 @@
     FORECAST_STALE_MONTHS: FORECAST_STALE_MONTHS,
     SPOT_CHECK_RULES: SPOT_CHECK_RULES,
     dividendReportingYear: dividendReportingYear,
+    getLastCompletedReportingYear: getLastCompletedReportingYear,
     getYieldWindowYears: getYieldWindowYears,
     yearEndClose: yearEndClose,
     averageClose: averageClose,
