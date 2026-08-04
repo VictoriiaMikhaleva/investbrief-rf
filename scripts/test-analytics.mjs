@@ -126,6 +126,7 @@ async function testTicker(ticker) {
   }
 
   for (const y of metrics.divYieldByYear || []) {
+    if (y.open) continue;
     if (y.yieldPct != null && y.yieldPct > Core.DIV_YIELD_MAX_SANE_PCT) {
       errors.push(ticker + ': yield ' + y.year + ' = ' + y.yieldPct.toFixed(1) + '% > max');
     }

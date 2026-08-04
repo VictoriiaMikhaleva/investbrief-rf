@@ -1136,7 +1136,7 @@
       var bh = Math.max(3, (v / max) * plotH) * (isHover ? 1.06 : 1);
       var x = startX + i * (barW + barGap);
       var y = pad.t + plotH - bh - lift;
-      var barColor = series[i].forecast ? forecastColor : color;
+      var barColor = series[i].forecast || series[i].estimated ? forecastColor : color;
       ctx.globalAlpha = hoverIndex >= 0 && !isHover ? 0.55 : 1;
       ctx.fillStyle = barColor;
       if (isHover) {
@@ -1199,16 +1199,27 @@
 
 
   function buildDividendRubSeries(yearly, forecast) {
-    var bars = (yearly || []).filter(function (y) { return y.totalDiv > 0; }).map(function (y) {
+    var bars = (yearly || []).filter(function (y) {
+      return y.totalDiv > 0 || y.open;
+    }).map(function (y) {
       var v = y.totalDiv > 0 ? y.totalDiv : 0;
+      var isOpen = !!y.open;
+      var hasEst = isOpen && y.expectedDiv > 0;
       return {
         v: v,
         label: String(y.year),
         forecast: false,
-        valueLabel: v > 0 ? formatBarChartValue(v, {}) : '',
+        estimated: hasEst,
+        open: isOpen,
+        valueLabel: v > 0 ? formatBarChartValue(v, {}) : (isOpen ? '—' : ''),
         hoverLines: v > 0
-          ? ['Отчётный ' + String(y.year), formatBarChartValue(v, {}) + ' ₽/акц.']
-          : ['Отчётный ' + String(y.year)]
+          ? [
+              (isOpen ? 'Отчётный ' + String(y.year) + ' (открытый)' : 'Отчётный ' + String(y.year)),
+              formatBarChartValue(v, {}) + ' ₽/акц.' +
+                (hasEst ? ' · факт ' + formatBarChartValue(y.actualDiv || 0, {}) +
+                  ' + ожид. ' + formatBarChartValue(y.expectedDiv, {}) : '')
+            ]
+          : [isOpen ? 'Отчётный ' + String(y.year) + ' · пока нет выплат' : 'Отчётный ' + String(y.year)]
       };
     });
     if (forecast && forecast.amount != null && isFinite(forecast.amount)) {
