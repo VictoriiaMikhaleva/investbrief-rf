@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v14.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v15.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -52,8 +52,8 @@
 
   function invalidateAnalyticsTickerCache(ticker) {
     ticker = normalizeTicker(ticker);
-    analyticsCacheRemove('full.v11.' + ticker);
-    analyticsCacheRemove('hist.v9.' + ticker + '.' + YIELD_YEARS);
+    analyticsCacheRemove('full.v12.' + ticker);
+    analyticsCacheRemove('hist.v10.' + ticker + '.' + YIELD_YEARS);
   }
 
   function isIndexQuoteTicker(ticker) {
@@ -645,7 +645,7 @@
   function fetchMoexShareHistoryDaily(ticker, yearsBack) {
     ticker = normalizeTicker(ticker);
     yearsBack = yearsBack || YIELD_YEARS;
-    var cacheKey = 'hist.v9.' + ticker + '.' + yearsBack;
+    var cacheKey = 'hist.v10.' + ticker + '.' + yearsBack;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
 
@@ -886,7 +886,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v11.' + ticker;
+    var cacheKey = 'full.v12.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 

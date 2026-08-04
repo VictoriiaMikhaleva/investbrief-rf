@@ -11,7 +11,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.4.0';
+  var VERSION = '1.4.1';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var YIELD_YEARS = 5;
@@ -139,9 +139,12 @@
     });
     expectedAll.forEach(function (e) {
       var yy = Number(String(e.date).slice(0, 4));
-      if (isFinite(yy)) yearSet[yy] = true;
+      // В годовом списке/графике — только до текущего календарного года.
+      if (isFinite(yy) && yy <= calYear) yearSet[yy] = true;
     });
-    return Object.keys(yearSet).map(Number).sort(function (a, b) { return a - b; }).map(function (yearNum) {
+    return Object.keys(yearSet).map(Number).sort(function (a, b) { return a - b; }).filter(function (yearNum) {
+      return yearNum <= calYear;
+    }).map(function (yearNum) {
       var actualItems = paymentsInCalendarYear(dividends, yearNum).map(function (d) {
         return { date: d.date, value: d.value, estimated: false };
       });
@@ -158,7 +161,7 @@
       if (refPrice != null && refPrice > 0 && !unreliable && actualDiv > 0) {
         var raw = (actualDiv / refPrice) * 100;
         yieldPct = isSaneYearYield(raw) ? raw : null;
-      } else if (refPrice != null && refPrice > 0 && !unreliable && totalDiv > 0 && yearNum >= calYear) {
+      } else if (refPrice != null && refPrice > 0 && !unreliable && totalDiv > 0 && yearNum === calYear) {
         var rawEst = (totalDiv / refPrice) * 100;
         yieldPct = isSaneYearYield(rawEst) ? rawEst : null;
       }
@@ -170,14 +173,14 @@
         expectedDiv: expectedDiv,
         refPrice: refPrice,
         unreliable: unreliable,
-        open: yearNum > calYear || (yearNum === calYear && expectedDiv > 0 && actualDiv === 0),
+        open: yearNum === calYear && expectedDiv > 0 && actualDiv === 0,
         calendar: true,
         items: actualItems.concat(expectedItems).sort(function (a, b) {
           return a.date.localeCompare(b.date);
         })
       };
     }).filter(function (row) {
-      return row.totalDiv > 0 || row.year >= calYear;
+      return row.totalDiv > 0 || row.year === calYear;
     });
   }
 
