@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v16.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v17.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -52,8 +52,8 @@
 
   function invalidateAnalyticsTickerCache(ticker) {
     ticker = normalizeTicker(ticker);
-    analyticsCacheRemove('full.v13.' + ticker);
-    analyticsCacheRemove('hist.v11.' + ticker + '.' + YIELD_YEARS);
+    analyticsCacheRemove('full.v14.' + ticker);
+    analyticsCacheRemove('hist.v12.' + ticker + '.' + YIELD_YEARS);
   }
 
   function isIndexQuoteTicker(ticker) {
@@ -338,31 +338,23 @@
     html.push('<div class="div-info-block div-info-years">');
     html.push('<div class="div-info-title">Выплаты по датам отсечки</div>');
     yearly.forEach(function (y) {
-      var hasEst = y.expectedDiv > 0;
-      var hasAct = y.actualDiv > 0 || (!y.calendar && y.totalDiv > 0 && !hasEst);
       var sum = y.totalDiv > 0
         ? formatDividendRubShort(y.totalDiv) + ' ₽/акц.'
         : (a.noMoexDividends ? '0 ₽/акц.' : '—');
       var yld = y.yieldPct != null && isFinite(y.yieldPct) ? formatDivYieldPct(y.yieldPct) : '';
       var months = formatDividendPaymentMonthsLine(a.dividends, y.year, y);
       var yearLbl = String(y.year);
-      if (hasEst && !hasAct) yearLbl += ' · ожидание';
-      else if (hasEst && hasAct) yearLbl += ' · факт + ожидание';
       var detail;
       if (months) {
         detail = '<div class="div-info-months"><span class="div-info-months-lbl">Даты отсечек:</span> ' +
           escapeHtml(months) + '</div>';
-        if (hasEst && hasAct) {
-          detail += '<div class="div-info-months muted">Факт: ' +
-            escapeHtml(formatDividendRubShort(y.actualDiv || 0)) +
-            ' ₽ · ожидание: ' +
-            escapeHtml(formatDividendRubShort(y.expectedDiv)) + ' ₽</div>';
-        }
+      } else if (y.year === new Date().getFullYear()) {
+        detail = '<div class="div-info-months muted">В этом календарном году выплат по отсечке пока нет</div>';
       } else {
         detail = '<div class="div-info-months muted">В этом календарном году выплат нет</div>';
       }
       html.push(
-        '<div class="div-info-year' + (hasEst ? ' div-info-year--open' : '') + '">' +
+        '<div class="div-info-year">' +
           '<div class="div-info-year-head">' +
             '<span class="div-info-year-lbl">' + escapeHtml(yearLbl) + '</span>' +
             '<span class="div-info-year-val">' + escapeHtml(sum) +
@@ -394,8 +386,8 @@
     }
 
     var winYears = getYieldWindowYears();
-    html.push('<p class="div-info-hint">Столбцы и список — по календарным датам отсечки (факт MOEX и ожидание по прошлым датам). Средняя дивидендная доходность 5 лет считается отдельно по завершённым отчётным годам ' +
-      winYears[0] + '–' + winYears[winYears.length - 1] + ' (янв–сен → прошлый отчётный год, окт–дек → текущий; MOEX ISS).</p>');
+    html.push('<p class="div-info-hint">Столбцы и список — фактические выплаты по календарным датам отсечки (MOEX ISS; при запаздывании ISS — дополнение из Smart-Lab/раскрытия). Ожидаемые даты — в календаре на 12 месяцев. Средняя доходность 5 лет считается по завершённым отчётным годам ' +
+      winYears[0] + '–' + winYears[winYears.length - 1] + ' (янв–сен → прошлый отчётный год, окт–дек → текущий).</p>');
     return html.join('');
   }
 
@@ -679,7 +671,7 @@
   function fetchMoexShareHistoryDaily(ticker, yearsBack) {
     ticker = normalizeTicker(ticker);
     yearsBack = yearsBack || YIELD_YEARS;
-    var cacheKey = 'hist.v11.' + ticker + '.' + yearsBack;
+    var cacheKey = 'hist.v12.' + ticker + '.' + yearsBack;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
 
@@ -920,7 +912,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v13.' + ticker;
+    var cacheKey = 'full.v14.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 

@@ -10,6 +10,7 @@
     "test:analytics-server": "node scripts/test-analytics-server.mjs",
     "test:agent": "node scripts/test-agent.mjs",
     "update:market-data": "node scripts/update-market-data.js",
+    "update:dividends": "node scripts/update-dividend-patches.js",
     "build:pif": "node scripts/build-pif-data.js",
     "build:pif-uk": "node scripts/fetch-uk-pif-data.js",
     "sync:assets": "node scripts/sync-asset-version.js",

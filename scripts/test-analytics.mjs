@@ -127,16 +127,38 @@ async function testTicker(ticker) {
 
   errors.push(...Core.validateSpotCheck(ticker, metrics));
 
-  if (metrics.divForecast && metrics.divForecast.amount != null) {
-    const maxReporting = Core.getYieldWindowYears().reduce((max, y) => {
-      const s = Core.sumDividendsInReportingYear(dividends, y);
-      return s > max ? s : max;
-    }, 0);
+  // Годы в UI — по календарной дате отсечки; оценки в годовой ряд не попадают.
+  for (const y of metrics.divYieldByYear || []) {
+    assert(y.calendar === true, ticker + ': год ' + y.year + ' без calendar=true', errors);
+    assert(y.expectedDiv === 0, ticker + ': год ' + y.year + ' содержит expectedDiv', errors);
+    for (const item of y.items || []) {
+      assert(!item.estimated, ticker + ': в ' + y.year + ' оценка ' + item.date, errors);
+      assert(
+        String(item.date).slice(0, 4) === String(y.year),
+        ticker + ': выплата ' + item.date + ' не в календарном годе ' + y.year,
+        errors
+      );
+    }
+    const sumItems = (y.items || []).reduce((s, d) => s + d.value, 0);
     assert(
-      metrics.divForecast.amount <= maxReporting + 0.02,
-      ticker + ': прогноз ' + metrics.divForecast.amount + ' > max отчётного года ' + maxReporting,
+      Math.abs(sumItems - (y.actualDiv || 0)) < 0.02,
+      ticker + ': сумма items ≠ actualDiv в ' + y.year,
       errors
     );
+  }
+
+  if (ticker === 'LKOH') {
+    const y26 = (metrics.divYieldByYear || []).find((y) => y.year === 2026);
+    assert(!!y26, 'LKOH: нет календарного 2026', errors);
+    if (y26) {
+      assert(Math.abs(y26.actualDiv - 675) < 0.02, 'LKOH 2026: сумма ' + y26.actualDiv + ' ≠ 675', errors);
+      const dates = (y26.items || []).map((i) => i.date + ':' + i.value).sort().join(',');
+      assert(
+        dates === '2026-01-12:397,2026-05-04:278',
+        'LKOH 2026 items: ' + dates,
+        errors
+      );
+    }
   }
 
   for (const y of metrics.divYieldByYear || []) {

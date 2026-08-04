@@ -11,7 +11,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.4.2';
+  var VERSION = '1.5.0';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var YIELD_YEARS = 5;
@@ -135,39 +135,28 @@
   }
 
   /**
-   * Отображение: календарные годы по фактическим/ожидаемым датам отсечки.
-   * Средняя 5л по-прежнему считается по отчётным годам (divYieldByYearCompleted).
+   * Отображение: календарные годы по фактическим датам отсечки (MOEX + патчи).
+   * Ожидания — только в monthlyForecast (календарь на 12 мес.).
+   * Средняя 5л по-прежнему по отчётным годам (divYieldByYearCompleted).
    */
   function buildDividendDisplayYears(dividends, dailyHistory, now) {
     now = now || new Date();
     var calYear = now.getFullYear();
     var startYear = calYear - (YIELD_YEARS - 1);
-    var expectedAll = projectExpectedCalendarPayments(dividends, now);
     var yearSet = {};
     var y;
     for (y = startYear; y <= calYear; y++) yearSet[y] = true;
     (dividends || []).forEach(function (d) {
       if (!d.date || !isFinite(d.value) || d.value <= 0) return;
       var yy = Number(String(d.date).slice(0, 4));
-      if (isFinite(yy) && yy >= startYear) yearSet[yy] = true;
+      if (isFinite(yy) && yy >= startYear && yy <= calYear) yearSet[yy] = true;
     });
-    expectedAll.forEach(function (e) {
-      var yy = Number(String(e.date).slice(0, 4));
-      // В годовом списке/графике — только до текущего календарного года.
-      if (isFinite(yy) && yy <= calYear) yearSet[yy] = true;
-    });
-    return Object.keys(yearSet).map(Number).sort(function (a, b) { return a - b; }).filter(function (yearNum) {
-      return yearNum <= calYear;
-    }).map(function (yearNum) {
+    return Object.keys(yearSet).map(Number).sort(function (a, b) { return a - b; }).map(function (yearNum) {
       var actualItems = paymentsInCalendarYear(dividends, yearNum).map(function (d) {
         return { date: d.date, value: d.value, estimated: false };
       });
-      var expectedItems = expectedAll.filter(function (e) {
-        return String(e.date).slice(0, 4) === String(yearNum);
-      });
       var actualDiv = actualItems.reduce(function (s, d) { return s + d.value; }, 0);
-      var expectedDiv = expectedItems.reduce(function (s, d) { return s + d.value; }, 0);
-      var totalDiv = actualDiv + expectedDiv;
+      var totalDiv = actualDiv;
       var refPrice = averageClose(dailyHistory, yearNum);
       if (refPrice == null) refPrice = yearEndClose(dailyHistory, yearNum);
       var yieldPct = null;
@@ -175,23 +164,18 @@
       if (refPrice != null && refPrice > 0 && !unreliable && actualDiv > 0) {
         var raw = (actualDiv / refPrice) * 100;
         yieldPct = isSaneYearYield(raw) ? raw : null;
-      } else if (refPrice != null && refPrice > 0 && !unreliable && totalDiv > 0 && yearNum === calYear) {
-        var rawEst = (totalDiv / refPrice) * 100;
-        yieldPct = isSaneYearYield(rawEst) ? rawEst : null;
       }
       return {
         year: yearNum,
         yieldPct: yieldPct,
         totalDiv: totalDiv,
         actualDiv: actualDiv,
-        expectedDiv: expectedDiv,
+        expectedDiv: 0,
         refPrice: refPrice,
         unreliable: unreliable,
-        open: yearNum === calYear && expectedDiv > 0 && actualDiv === 0,
+        open: false,
         calendar: true,
-        items: actualItems.concat(expectedItems).sort(function (a, b) {
-          return a.date.localeCompare(b.date);
-        })
+        items: actualItems
       };
     }).filter(function (row) {
       return row.totalDiv > 0 || row.year === calYear;
