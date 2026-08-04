@@ -1200,26 +1200,28 @@
 
   function buildDividendRubSeries(yearly, forecast) {
     var bars = (yearly || []).filter(function (y) {
-      return y.totalDiv > 0 || y.open;
+      return y.totalDiv > 0;
     }).map(function (y) {
       var v = y.totalDiv > 0 ? y.totalDiv : 0;
-      var isOpen = !!y.open;
-      var hasEst = isOpen && y.expectedDiv > 0;
+      var hasEst = (y.expectedDiv || 0) > 0;
+      var hasAct = y.actualDiv != null ? y.actualDiv > 0 : !hasEst;
       return {
         v: v,
         label: String(y.year),
         forecast: false,
-        estimated: hasEst,
-        open: isOpen,
-        valueLabel: v > 0 ? formatBarChartValue(v, {}) : (isOpen ? '—' : ''),
+        estimated: hasEst && !hasAct,
+        open: hasEst,
+        valueLabel: v > 0 ? formatBarChartValue(v, {}) : '',
         hoverLines: v > 0
           ? [
-              (isOpen ? 'Отчётный ' + String(y.year) + ' (открытый)' : 'Отчётный ' + String(y.year)),
+              String(y.year),
               formatBarChartValue(v, {}) + ' ₽/акц.' +
-                (hasEst ? ' · факт ' + formatBarChartValue(y.actualDiv || 0, {}) +
-                  ' + ожид. ' + formatBarChartValue(y.expectedDiv, {}) : '')
+                (hasEst && hasAct
+                  ? ' · факт ' + formatBarChartValue(y.actualDiv || 0, {}) +
+                    ' + ожид. ' + formatBarChartValue(y.expectedDiv, {})
+                  : (hasEst ? ' · ожидание' : ''))
             ]
-          : [isOpen ? 'Отчётный ' + String(y.year) + ' · пока нет выплат' : 'Отчётный ' + String(y.year)]
+          : [String(y.year)]
       };
     });
     if (forecast && forecast.amount != null && isFinite(forecast.amount)) {

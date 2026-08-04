@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v13.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v14.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -52,8 +52,8 @@
 
   function invalidateAnalyticsTickerCache(ticker) {
     ticker = normalizeTicker(ticker);
-    analyticsCacheRemove('full.v10.' + ticker);
-    analyticsCacheRemove('hist.v8.' + ticker + '.' + YIELD_YEARS);
+    analyticsCacheRemove('full.v11.' + ticker);
+    analyticsCacheRemove('hist.v9.' + ticker + '.' + YIELD_YEARS);
   }
 
   function isIndexQuoteTicker(ticker) {
@@ -184,7 +184,7 @@
     var i;
     for (i = yearly.length - 1; i >= 0; i--) {
       var y = yearly[i];
-      if (y.open) continue;
+      if (y.open || (y.expectedDiv > 0 && !(y.actualDiv > 0))) continue;
       if (y.yieldPct != null && isFinite(y.yieldPct) && y.yieldPct > 0) return y.yieldPct;
     }
     if (a.divForecast && a.divForecast.amount != null && isFinite(a.divForecast.amount) &&
@@ -336,32 +336,33 @@
     var html = [];
 
     html.push('<div class="div-info-block div-info-years">');
-    html.push('<div class="div-info-title">Выплаты по отчётным годам</div>');
+    html.push('<div class="div-info-title">Выплаты по датам отсечки</div>');
     yearly.forEach(function (y) {
-      var isOpen = !!y.open;
+      var hasEst = y.expectedDiv > 0;
+      var hasAct = y.actualDiv > 0 || (!y.calendar && y.totalDiv > 0 && !hasEst);
       var sum = y.totalDiv > 0
         ? formatDividendRubShort(y.totalDiv) + ' ₽/акц.'
         : (a.noMoexDividends ? '0 ₽/акц.' : '—');
       var yld = y.yieldPct != null && isFinite(y.yieldPct) ? formatDivYieldPct(y.yieldPct) : '';
       var months = formatDividendPaymentMonthsLine(a.dividends, y.year, y);
-      var yearLbl = String(y.year) + (isOpen ? ' · открытый' : '');
+      var yearLbl = String(y.year);
+      if (hasEst && !hasAct) yearLbl += ' · ожидание';
+      else if (hasEst && hasAct) yearLbl += ' · факт + ожидание';
       var detail;
       if (months) {
         detail = '<div class="div-info-months"><span class="div-info-months-lbl">Даты отсечек:</span> ' +
           escapeHtml(months) + '</div>';
-        if (isOpen && y.expectedDiv > 0) {
+        if (hasEst && hasAct) {
           detail += '<div class="div-info-months muted">Факт: ' +
             escapeHtml(formatDividendRubShort(y.actualDiv || 0)) +
             ' ₽ · ожидание: ' +
             escapeHtml(formatDividendRubShort(y.expectedDiv)) + ' ₽</div>';
         }
-      } else if (isOpen) {
-        detail = '<div class="div-info-months muted">Отчётный год ещё открыт: по MOEX выплат пока нет, ожидаемые даты не подтверждены</div>';
       } else {
-        detail = '<div class="div-info-months muted">К этому отчётному году выплат нет</div>';
+        detail = '<div class="div-info-months muted">В этом календарном году выплат нет</div>';
       }
       html.push(
-        '<div class="div-info-year' + (isOpen ? ' div-info-year--open' : '') + '">' +
+        '<div class="div-info-year' + (hasEst ? ' div-info-year--open' : '') + '">' +
           '<div class="div-info-year-head">' +
             '<span class="div-info-year-lbl">' + escapeHtml(yearLbl) + '</span>' +
             '<span class="div-info-year-val">' + escapeHtml(sum) +
@@ -393,13 +394,8 @@
     }
 
     var winYears = getYieldWindowYears();
-    var openYears = typeof requireAnalyticsCore === 'function' && requireAnalyticsCore().getOpenReportingYears
-      ? requireAnalyticsCore().getOpenReportingYears()
-      : [];
-    html.push('<p class="div-info-hint">Годы на графике — отчётные: окт–дек относятся к текущему году, янв–сен — к предыдущему. Открытые годы ' +
-      (openYears.length ? openYears.join(', ') : '—') +
-      ' показывают факт по MOEX и ожидание по календарю последнего закрытого года. Средняя 5 лет — только по завершённым ' +
-      winYears[0] + '–' + winYears[winYears.length - 1] + ' (MOEX ISS).</p>');
+    html.push('<p class="div-info-hint">Столбцы и список — по календарным датам отсечки (факт MOEX и ожидание по прошлым датам). Средняя дивидендная доходность 5 лет считается отдельно по завершённым отчётным годам ' +
+      winYears[0] + '–' + winYears[winYears.length - 1] + ' (янв–сен → прошлый отчётный год, окт–дек → текущий; MOEX ISS).</p>');
     return html.join('');
   }
 
@@ -649,7 +645,7 @@
   function fetchMoexShareHistoryDaily(ticker, yearsBack) {
     ticker = normalizeTicker(ticker);
     yearsBack = yearsBack || YIELD_YEARS;
-    var cacheKey = 'hist.v8.' + ticker + '.' + yearsBack;
+    var cacheKey = 'hist.v9.' + ticker + '.' + yearsBack;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
 
@@ -890,7 +886,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v10.' + ticker;
+    var cacheKey = 'full.v11.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 

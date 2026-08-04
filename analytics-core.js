@@ -11,7 +11,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.3.0';
+  var VERSION = '1.4.0';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var YIELD_YEARS = 5;
@@ -46,7 +46,7 @@
     return years;
   }
 
-  /** Открытые отчётные годы после последнего завершённого (факт + ожидание). */
+  /** Открытые отчётные годы (для средней 5л не используются). */
   function getOpenReportingYears(now) {
     now = now || new Date();
     var last = getLastCompletedReportingYear(now);
@@ -60,17 +60,6 @@
 
   function isoDateFromParts(y, m, d) {
     return String(y) + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-  }
-
-  function addCalendarYearsToIso(iso, yearsDelta) {
-    var parts = String(iso || '').slice(0, 10).split('-');
-    var y = Number(parts[0]);
-    var m = Number(parts[1]);
-    var d = Number(parts[2]);
-    if (!isFinite(y) || !isFinite(m) || !isFinite(d)) return '';
-    var dt = new Date(y + yearsDelta, m - 1, d, 12, 0, 0, 0);
-    if (isNaN(dt.getTime())) return '';
-    return isoDateFromParts(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
   }
 
   /** Следующее наступление того же месяца/дня строго после now. */
@@ -106,46 +95,59 @@
     }).sort(function (a, b) { return a.date.localeCompare(b.date); });
   }
 
-  /**
-   * Ожидаемые выплаты для открытого отчётного года: сдвигаем календарь
-   * последнего завершённого года с выплатами на (target − ref) лет.
-   * Прошедшие даты без факта в MOEX не выдумываем.
-   */
-  function projectExpectedPaymentsForReportingYear(dividends, targetYear, now) {
+  function paymentsInCalendarYear(dividends, calendarYear) {
+    var y = String(calendarYear);
+    return (dividends || []).filter(function (d) {
+      return d.date && String(d.date).slice(0, 4) === y && isFinite(d.value) && d.value > 0;
+    }).sort(function (a, b) { return a.date.localeCompare(b.date); });
+  }
+
+  /** Ожидаемые отсечки в будущем — по датам календаря последнего закрытого отчётного года. */
+  function projectExpectedCalendarPayments(dividends, now) {
     now = now || new Date();
     now.setHours(12, 0, 0, 0);
     var lastPay = getLastDividendPaymentDate(dividends);
     if (!lastPay || monthsSinceIsoDate(lastPay, now) > FORECAST_STALE_MONTHS) return [];
     var refYear = findReferenceReportingYear(dividends, now);
     if (refYear == null) return [];
-    var delta = Number(targetYear) - Number(refYear);
-    if (!isFinite(delta) || delta <= 0) return [];
-    var actual = paymentsInReportingYear(dividends, targetYear);
     var out = [];
     paymentsInReportingYear(dividends, refYear).forEach(function (div) {
-      var projected = addCalendarYearsToIso(div.date, delta);
-      if (!projected || dividendReportingYear(projected) !== String(targetYear)) return;
-      var dt = new Date(projected + 'T12:00:00');
-      if (isNaN(dt.getTime()) || dt.getTime() <= now.getTime()) return;
-      var dup = actual.some(function (a) {
-        return Math.abs(a.value - div.value) < 0.02 &&
-          Math.abs(new Date(a.date + 'T12:00:00').getTime() - dt.getTime()) <= 45 * 24 * 60 * 60 * 1000;
-      }) || out.some(function (p) {
-        return p.date === projected;
-      });
-      if (dup) return;
+      var projected = nextFutureOccurrenceIso(div.date, now);
+      if (!projected) return;
+      if (out.some(function (p) { return p.date === projected; })) return;
       out.push({ date: projected, value: div.value, estimated: true });
     });
     return out.sort(function (a, b) { return a.date.localeCompare(b.date); });
   }
 
-  function buildOpenReportingYearRows(dividends, dailyHistory, now) {
+  /**
+   * Отображение: календарные годы по фактическим/ожидаемым датам отсечки.
+   * Средняя 5л по-прежнему считается по отчётным годам (divYieldByYearCompleted).
+   */
+  function buildDividendDisplayYears(dividends, dailyHistory, now) {
     now = now || new Date();
-    return getOpenReportingYears(now).map(function (yearNum) {
-      var actualItems = paymentsInReportingYear(dividends, yearNum).map(function (d) {
+    var calYear = now.getFullYear();
+    var startYear = calYear - (YIELD_YEARS - 1);
+    var expectedAll = projectExpectedCalendarPayments(dividends, now);
+    var yearSet = {};
+    var y;
+    for (y = startYear; y <= calYear; y++) yearSet[y] = true;
+    (dividends || []).forEach(function (d) {
+      if (!d.date || !isFinite(d.value) || d.value <= 0) return;
+      var yy = Number(String(d.date).slice(0, 4));
+      if (isFinite(yy) && yy >= startYear) yearSet[yy] = true;
+    });
+    expectedAll.forEach(function (e) {
+      var yy = Number(String(e.date).slice(0, 4));
+      if (isFinite(yy)) yearSet[yy] = true;
+    });
+    return Object.keys(yearSet).map(Number).sort(function (a, b) { return a - b; }).map(function (yearNum) {
+      var actualItems = paymentsInCalendarYear(dividends, yearNum).map(function (d) {
         return { date: d.date, value: d.value, estimated: false };
       });
-      var expectedItems = projectExpectedPaymentsForReportingYear(dividends, yearNum, now);
+      var expectedItems = expectedAll.filter(function (e) {
+        return String(e.date).slice(0, 4) === String(yearNum);
+      });
       var actualDiv = actualItems.reduce(function (s, d) { return s + d.value; }, 0);
       var expectedDiv = expectedItems.reduce(function (s, d) { return s + d.value; }, 0);
       var totalDiv = actualDiv + expectedDiv;
@@ -153,9 +155,12 @@
       if (refPrice == null) refPrice = yearEndClose(dailyHistory, yearNum);
       var yieldPct = null;
       var unreliable = hasPriceScaleBreak(dailyHistory, yearNum);
-      if (refPrice != null && refPrice > 0 && !unreliable && totalDiv > 0) {
-        var raw = (totalDiv / refPrice) * 100;
+      if (refPrice != null && refPrice > 0 && !unreliable && actualDiv > 0) {
+        var raw = (actualDiv / refPrice) * 100;
         yieldPct = isSaneYearYield(raw) ? raw : null;
+      } else if (refPrice != null && refPrice > 0 && !unreliable && totalDiv > 0 && yearNum >= calYear) {
+        var rawEst = (totalDiv / refPrice) * 100;
+        yieldPct = isSaneYearYield(rawEst) ? rawEst : null;
       }
       return {
         year: yearNum,
@@ -165,18 +170,15 @@
         expectedDiv: expectedDiv,
         refPrice: refPrice,
         unreliable: unreliable,
-        open: true,
+        open: yearNum > calYear || (yearNum === calYear && expectedDiv > 0 && actualDiv === 0),
+        calendar: true,
         items: actualItems.concat(expectedItems).sort(function (a, b) {
           return a.date.localeCompare(b.date);
         })
       };
+    }).filter(function (row) {
+      return row.totalDiv > 0 || row.year >= calYear;
     });
-  }
-
-  function buildDividendDisplayYears(dividends, dailyHistory, now) {
-    var completed = computeYearlyDividendYields(dividends, dailyHistory, getYieldWindowYears(now));
-    var open = buildOpenReportingYearRows(dividends, dailyHistory, now);
-    return completed.concat(open);
   }
 
   function yearEndClose(dailyHistory, year) {
@@ -754,7 +756,6 @@
     computeDividendForecast12m: computeDividendForecast12m,
     computeTotalReturn12m: computeTotalReturn12m,
     computeYearlyDividendYields: computeYearlyDividendYields,
-    buildOpenReportingYearRows: buildOpenReportingYearRows,
     buildDividendDisplayYears: buildDividendDisplayYears,
     averageYield5y: averageYield5y,
     assessDivYieldQuality: assessDivYieldQuality,
