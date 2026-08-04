@@ -866,6 +866,10 @@
     var useServer = shouldUseServerAnalytics();
     if (useServer) {
       return fetchSecurityAnalyticsFromApi(ticker, opts.forceRefresh).then(function (api) {
+        var core = requireAnalyticsCore();
+        if (api && api.coreVersion && api.coreVersion !== core.VERSION) {
+          return buildSecurityAnalyticsLocal(ticker, cacheKey);
+        }
         return enrichServerAnalytics(api, ticker).then(function (out) {
           analyticsCacheSet(cacheKey, out, ANALYTICS_TTL);
           return out;
