@@ -4,10 +4,14 @@
  * Запуск: npm run test:analytics
  */
 import https from 'https';
+import fs from 'fs';
+import path from 'path';
 import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
 
 const require = createRequire(import.meta.url);
 const Core = require('../analytics-core.js');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TICKERS = [
   'SBER', 'GAZP', 'LKOH', 'GMKN', 'TATN', 'NVTK', 'ROSN', 'SNGS', 'SNGSP',
@@ -30,6 +34,15 @@ function get(url) {
   });
 }
 
+function loadDividendPatches() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'dividend-patches.json'), 'utf8'));
+    return raw && raw.byTicker ? raw.byTicker : {};
+  } catch (e) {
+    return {};
+  }
+}
+
 async function fetchDividends(ticker) {
   const j = await get(
     'https://iss.moex.com/iss/securities/' + ticker + '/dividends.json?iss.meta=off'
@@ -41,7 +54,8 @@ async function fetchDividends(ticker) {
     date: String(r[iD]).slice(0, 10),
     value: Number(r[iV])
   })).filter((d) => d.date && isFinite(d.value) && d.value > 0);
-  return Core.normalizeMoexDividends(rows);
+  const patches = loadDividendPatches()[ticker] || [];
+  return Core.mergeDividendPatches(rows, patches);
 }
 
 async function fetchHistory(ticker) {

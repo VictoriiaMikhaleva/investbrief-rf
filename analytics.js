@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v15.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v16.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -52,8 +52,8 @@
 
   function invalidateAnalyticsTickerCache(ticker) {
     ticker = normalizeTicker(ticker);
-    analyticsCacheRemove('full.v12.' + ticker);
-    analyticsCacheRemove('hist.v10.' + ticker + '.' + YIELD_YEARS);
+    analyticsCacheRemove('full.v13.' + ticker);
+    analyticsCacheRemove('hist.v11.' + ticker + '.' + YIELD_YEARS);
   }
 
   function isIndexQuoteTicker(ticker) {
@@ -525,23 +525,57 @@
     });
   }
 
+  var _dividendPatchesCache = null;
+  var _dividendPatchesInflight = null;
+
+  function loadDividendPatches() {
+    if (_dividendPatchesCache) return Promise.resolve(_dividendPatchesCache);
+    if (_dividendPatchesInflight) return _dividendPatchesInflight;
+    var url = 'data/dividend-patches.json';
+    try {
+      if (typeof window !== 'undefined' && window.IBRF_ASSET_VERSION) {
+        url += '?v=' + encodeURIComponent(window.IBRF_ASSET_VERSION);
+      }
+    } catch (e) { /* */ }
+    _dividendPatchesInflight = fetch(url, { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('patches http');
+      return r.json();
+    }).then(function (json) {
+      _dividendPatchesCache = json && typeof json === 'object' ? json : { byTicker: {} };
+      _dividendPatchesInflight = null;
+      return _dividendPatchesCache;
+    }).catch(function () {
+      _dividendPatchesCache = { byTicker: {} };
+      _dividendPatchesInflight = null;
+      return _dividendPatchesCache;
+    });
+    return _dividendPatchesInflight;
+  }
+
   function fetchMoexDividends(ticker) {
     ticker = normalizeTicker(ticker);
     var url = MOEX_ISS + '/securities/' + encodeURIComponent(ticker) + '/dividends.json?iss.meta=off';
-    return moexFetchJson(url).then(function (json) {
-      var block = json.dividends;
-      if (!block || !block.data || !block.data.length) return [];
-      var cols = block.columns;
-      var iDate = cols.indexOf('registryclosedate');
-      var iVal = cols.indexOf('value');
-      var rows = block.data.map(function (row) {
-        return {
-          date: String(row[iDate] || '').slice(0, 10),
-          value: Number(row[iVal])
-        };
-      }).filter(function (d) { return d.date && isFinite(d.value) && d.value > 0; });
-      return normalizeMoexDividends(rows);
-    }).catch(function () { return []; });
+    return Promise.all([
+      moexFetchJson(url).then(function (json) {
+        var block = json.dividends;
+        if (!block || !block.data || !block.data.length) return [];
+        var cols = block.columns;
+        var iDate = cols.indexOf('registryclosedate');
+        var iVal = cols.indexOf('value');
+        return block.data.map(function (row) {
+          return {
+            date: String(row[iDate] || '').slice(0, 10),
+            value: Number(row[iVal])
+          };
+        }).filter(function (d) { return d.date && isFinite(d.value) && d.value > 0; });
+      }).catch(function () { return []; }),
+      loadDividendPatches()
+    ]).then(function (parts) {
+      var patchRows = parts[1] && parts[1].byTicker && parts[1].byTicker[ticker]
+        ? parts[1].byTicker[ticker]
+        : [];
+      return requireAnalyticsCore().mergeDividendPatches(parts[0], patchRows);
+    });
   }
 
   function normalizeMoexDividends(dividends) {
@@ -645,7 +679,7 @@
   function fetchMoexShareHistoryDaily(ticker, yearsBack) {
     ticker = normalizeTicker(ticker);
     yearsBack = yearsBack || YIELD_YEARS;
-    var cacheKey = 'hist.v10.' + ticker + '.' + yearsBack;
+    var cacheKey = 'hist.v11.' + ticker + '.' + yearsBack;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isMoexHistoryCacheStale(cached)) return Promise.resolve(cached);
 
@@ -886,7 +920,7 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v12.' + ticker;
+    var cacheKey = 'full.v13.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 

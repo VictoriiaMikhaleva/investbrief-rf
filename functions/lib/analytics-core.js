@@ -11,7 +11,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.4.1';
+  var VERSION = '1.4.2';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var YIELD_YEARS = 5;
@@ -110,10 +110,24 @@
     if (!lastPay || monthsSinceIsoDate(lastPay, now) > FORECAST_STALE_MONTHS) return [];
     var refYear = findReferenceReportingYear(dividends, now);
     if (refYear == null) return [];
+    var refPays = paymentsInReportingYear(dividends, refYear);
+    if (!refPays.length) return [];
     var out = [];
-    paymentsInReportingYear(dividends, refYear).forEach(function (div) {
+    refPays.forEach(function (div) {
       var projected = nextFutureOccurrenceIso(div.date, now);
       if (!projected) return;
+      var projYear = Number(String(projected).slice(0, 4));
+      var actualInYear = paymentsInCalendarYear(dividends, projYear);
+      // Если в календарном году уже есть полный набор фактов — не дублируем оценкой.
+      if (actualInYear.length >= refPays.length) return;
+      var nearActual = (dividends || []).some(function (a) {
+        if (!a.date || !isFinite(a.value)) return false;
+        var t0 = new Date(a.date + 'T12:00:00').getTime();
+        var t1 = new Date(projected + 'T12:00:00').getTime();
+        if (isNaN(t0) || isNaN(t1)) return false;
+        return Math.abs(t1 - t0) <= 60 * 24 * 60 * 60 * 1000;
+      });
+      if (nearActual) return;
       if (out.some(function (p) { return p.date === projected; })) return;
       out.push({ date: projected, value: div.value, estimated: true });
     });
@@ -231,6 +245,19 @@
       if (!dup) out.push(d);
     });
     return out;
+  }
+
+  /** Дополняет ленту MOEX патчами (когда ISS запаздывает). */
+  function mergeDividendPatches(moexDividends, patchRows) {
+    var merged = (moexDividends || []).concat(patchRows || []).map(function (d) {
+      return {
+        date: String(d.date || '').slice(0, 10),
+        value: Number(d.value)
+      };
+    }).filter(function (d) {
+      return d.date.length === 10 && isFinite(d.value) && d.value > 0;
+    });
+    return normalizeMoexDividends(merged);
   }
 
   function sumDividendsInReportingYear(dividends, reportingYear) {
@@ -614,26 +641,21 @@
     var source = hasAnnounced ? 'по датам отсечки (МосБиржа)' : '';
 
     if (!hasAnnounced) {
-      var lastPay = getLastDividendPaymentDate(dividends);
-      if (lastPay && monthsSinceIsoDate(lastPay, now) <= FORECAST_STALE_MONTHS) {
-        var refYear = findReferenceReportingYear(dividends, now);
-        if (refYear != null) {
-          (dividends || []).forEach(function (div) {
-            if (dividendReportingYear(div.date) !== String(refYear)) return;
-            var projectedIso = nextFutureOccurrenceIso(div.date, now);
-            if (!projectedIso) return;
-            var projectedDt = new Date(projectedIso + 'T12:00:00');
-            if (isNaN(projectedDt.getTime()) || projectedDt > horizonEnd) return;
-            var bucket = monthByKey[monthKeyFromDate(projectedDt)];
-            if (!bucket) return;
-            bucket.perShare += div.value;
-            bucket.items.push({ date: projectedIso, value: div.value, estimated: true });
-            bucket.estimated = true;
-          });
-          if (months.some(function (m) { return m.perShare > 0; })) {
-            source = 'оценка: календарь выплат ' + refYear + ' г.';
-          }
-        }
+      var expected = projectExpectedCalendarPayments(dividends, now);
+      expected.forEach(function (div) {
+        var projectedDt = new Date(div.date + 'T12:00:00');
+        if (isNaN(projectedDt.getTime()) || projectedDt > horizonEnd) return;
+        var bucket = monthByKey[monthKeyFromDate(projectedDt)];
+        if (!bucket) return;
+        bucket.perShare += div.value;
+        bucket.items.push({ date: div.date, value: div.value, estimated: true });
+        bucket.estimated = true;
+      });
+      if (months.some(function (m) { return m.perShare > 0; })) {
+        var refYearLabel = findReferenceReportingYear(dividends, now);
+        source = refYearLabel != null
+          ? 'оценка: календарь выплат ' + refYearLabel + ' г.'
+          : 'оценка по календарю выплат';
       }
     }
 
@@ -753,6 +775,7 @@
     hasPriceScaleBreak: hasPriceScaleBreak,
     isSaneYearYield: isSaneYearYield,
     normalizeMoexDividends: normalizeMoexDividends,
+    mergeDividendPatches: mergeDividendPatches,
     sumDividendsInReportingYear: sumDividendsInReportingYear,
     getLastDividendPaymentDate: getLastDividendPaymentDate,
     monthsSinceIsoDate: monthsSinceIsoDate,

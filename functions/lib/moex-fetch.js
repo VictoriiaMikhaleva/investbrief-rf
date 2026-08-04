@@ -29,20 +29,32 @@ function isValidTicker(ticker) {
 
 async function fetchMoexDividends(ticker) {
   const Core = require('./analytics-core');
+  const fs = require('fs');
+  const path = require('path');
   const url = MOEX_ISS + '/securities/' + encodeURIComponent(ticker) + '/dividends.json?iss.meta=off';
   const json = await moexFetchJson(url);
   const block = json.dividends;
-  if (!block || !block.data || !block.data.length) return [];
-  const cols = block.columns;
-  const iDate = cols.indexOf('registryclosedate');
-  const iVal = cols.indexOf('value');
-  const rows = block.data.map(function (row) {
-    return {
-      date: String(row[iDate] || '').slice(0, 10),
-      value: Number(row[iVal])
-    };
-  }).filter(function (d) { return d.date && isFinite(d.value) && d.value > 0; });
-  return Core.normalizeMoexDividends(rows);
+  let rows = [];
+  if (block && block.data && block.data.length) {
+    const cols = block.columns;
+    const iDate = cols.indexOf('registryclosedate');
+    const iVal = cols.indexOf('value');
+    rows = block.data.map(function (row) {
+      return {
+        date: String(row[iDate] || '').slice(0, 10),
+        value: Number(row[iVal])
+      };
+    }).filter(function (d) { return d.date && isFinite(d.value) && d.value > 0; });
+  }
+  let patchRows = [];
+  try {
+    const patchPath = path.join(__dirname, '..', '..', 'data', 'dividend-patches.json');
+    const raw = JSON.parse(fs.readFileSync(patchPath, 'utf8'));
+    if (raw && raw.byTicker && Array.isArray(raw.byTicker[ticker])) {
+      patchRows = raw.byTicker[ticker];
+    }
+  } catch (e) { /* optional */ }
+  return Core.mergeDividendPatches(rows, patchRows);
 }
 
 async function fetchMoexShareHistoryDaily(ticker) {
