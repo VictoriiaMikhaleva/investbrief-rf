@@ -1438,12 +1438,12 @@
       return;
     }
 
-    // Один блок на бумагу: уникальные причины по сигналам + общий чеклист покупки.
+    // Один блок на бумагу: факты без повтора названий сигналов + общий чеклист покупки.
     var reasonsHtml = card.signals.map(function (sig) {
-      var fact = (sig.reasons && sig.reasons.length) ? sig.reasons[0] : '';
-      return '<li><strong>' + escapeHtml(sig.title) + '</strong>' +
-        (fact ? ' — ' + escapeHtml(fact) : '') + '</li>';
-    }).join('');
+      var fact = (sig.reasons && sig.reasons.length) ? String(sig.reasons[0] || '').trim() : '';
+      if (!fact) return '';
+      return '<li>' + escapeHtml(fact) + '</li>';
+    }).filter(Boolean).join('');
 
     var events = [];
     card.signals.forEach(function (sig) {
