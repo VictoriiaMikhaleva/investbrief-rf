@@ -16,6 +16,8 @@
 
 
   var IMOEX_TURNOVER_CACHE_MS = 5 * 60 * 1000;
+  /** Топ‑20 по VALTODAY: короткий TTL, чтобы ранг отражал текущую сессию. */
+  var TOP_VOLUME_CACHE_MS = 60 * 1000;
   var IMOEX_VOLUME_DAYS = 10;
 
 
@@ -2175,32 +2177,18 @@
 
   function fetchTopMoexSharesByVolume(limit, skipCache) {
     limit = limit || 20;
-    if (skipCache) {
-      return fetchTopMoexSharesByVolumeDirect(limit, true).then(function (top) {
-        _topTurnoverDataLive = true;
-        _topTurnoverSnapshotMeta = null;
-        _topTurnoverFetchedAt = Date.now();
-        return top;
-      }).catch(function () {
-        return fetchTopMoexSharesByVolumeFromSnapshot().then(function (pack) {
-          if (!pack) throw new Error('no top volume');
-          _topTurnoverSnapshotMeta = pack.snapshot;
-          _topTurnoverDataLive = false;
-          return pack.top.slice(0, limit);
-        });
-      });
-    }
-    return fetchTopMoexSharesByVolumeFromSnapshot().then(function (pack) {
-      if (pack) {
+    // Сначала live ISS (VALTODAY с начала сессии), снимок — только запасной канал.
+    return fetchTopMoexSharesByVolumeDirect(limit, !!skipCache).then(function (top) {
+      _topTurnoverDataLive = true;
+      _topTurnoverSnapshotMeta = null;
+      _topTurnoverFetchedAt = Date.now();
+      return top;
+    }).catch(function () {
+      return fetchTopMoexSharesByVolumeFromSnapshot().then(function (pack) {
+        if (!pack) throw new Error('no top volume');
         _topTurnoverSnapshotMeta = pack.snapshot;
         _topTurnoverDataLive = false;
         return pack.top.slice(0, limit);
-      }
-      return fetchTopMoexSharesByVolumeDirect(limit, false).then(function (top) {
-        _topTurnoverDataLive = true;
-        _topTurnoverSnapshotMeta = null;
-        _topTurnoverFetchedAt = Date.now();
-        return top;
       });
     });
   }
@@ -2255,7 +2243,7 @@
       list.sort(function (a, b) { return b.valToday - a.valToday; });
       var top = list.slice(0, limit);
       if (!top.length) throw new Error('no top volume');
-      moexCacheSet(cacheKey, top, IMOEX_TURNOVER_CACHE_MS);
+      moexCacheSet(cacheKey, top, TOP_VOLUME_CACHE_MS);
       return top;
     });
   }
@@ -2406,9 +2394,9 @@
         hintVol.textContent = 'Оборот бумаг индекса IMOEX за 10 торговых дней (млрд ₽/день, МосБиржа). * — оборот текущей сессии (VALTODAY).';
         hintVol.style.display = '';
       }
-      if (subTitle) subTitle.textContent = 'Топ‑20 по обороту за сутки';
+      if (subTitle) subTitle.textContent = 'Топ‑20 по обороту сегодня (в моменте)';
       if (hintDiv) {
-        hintDiv.textContent = 'Средняя див. доходность за 5 лет, прогноз дивидендов на 12 мес. и полная доходность 12 мес. Нажмите для подробной аналитики.';
+        hintDiv.textContent = 'Ранг по обороту с начала сегодняшней сессии (VALTODAY). Средняя див. доходность за 5 лет и прогноз — по клику на карточку.';
       }
     }
   }
@@ -2485,19 +2473,15 @@
           updatedHm = new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
         }
         var base = _topTurnoverDataLive
-          ? 'MOEX ISS · автообновление каждые 5 мин · обновлено ' + updatedHm
-          : 'MOEX ISS · Обновлено: ' + updatedHm;
+          ? 'MOEX ISS · оборот сегодня с начала сессии (VALTODAY) · обновлено ' + updatedHm
+          : 'MOEX ISS · снимок · обновлено ' + updatedHm;
         if (!_topTurnoverDataLive && isDataSnapshotStale(_topTurnoverSnapshotMeta)) {
           base += ' · Показываем последние доступные данные. Обновление задерживается.';
         }
         src.textContent = base;
       }
       paintImoexData(results);
-      if (forceRefresh || _topTurnoverDataLive) return;
-      return Promise.all([
-        fetchImoexTurnoverWeek(true),
-        fetchTopMoexSharesByVolume(20, true)
-      ]).then(paintImoexData);
+      // Live уже приоритетнее снимка; повторный запрос не нужен.
     }).catch(function () {
       if (bars) bars.innerHTML = '<p class="muted hint-frame">Объём торгов временно недоступен</p>';
       renderImoexTopVolumeTable([], 'RU');

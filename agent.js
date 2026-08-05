@@ -510,6 +510,37 @@
     }).slice(0, 5);
   }
 
+  /** Доля бумаги в портфеле (акции), или пояснение если позиции нет. */
+  function formatAgentPortfolioShare(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (typeof getPortfolio !== 'function') return 'нет данных портфеля';
+    var positions = getPortfolio().positions || [];
+    var part = 0;
+    var total = 0;
+    positions.forEach(function (p) {
+      var t = normalizeTicker(p.ticker);
+      if (!t || t === 'IMOEX' || t === 'MOEX' || t === 'INDEX') return;
+      if (typeof isPortfolioBondPosition === 'function' && isPortfolioBondPosition(p)) return;
+      var mv;
+      if (typeof getPositionMarketValue === 'function') {
+        mv = getPositionMarketValue(p, null);
+      } else {
+        var qty = Number(p.qty);
+        var px = Number(p.currentPrice != null ? p.currentPrice : p.avgPrice);
+        mv = (isFinite(qty) && isFinite(px)) ? qty * px : null;
+      }
+      if (mv == null || !isFinite(mv) || mv <= 0) return;
+      total += mv;
+      if (t === ticker) part += mv;
+    });
+    if (part <= 0) return 'нет в портфеле';
+    if (total <= 0) return '—';
+    if (typeof formatPortfolioWeightPct === 'function') {
+      return formatPortfolioWeightPct(part, total);
+    }
+    return ((part / total) * 100).toFixed(1).replace('.', ',') + '%';
+  }
+
   function analyzeAgentSignals(securityData, relatedEvents, agentSettings) {
     if (!securityData || securityData.insufficient) return [];
     var s = agentSettings || getAgentSettings();
@@ -546,21 +577,13 @@
       ? (d.todayTurnover / d.avgTurnover7d)
       : null;
 
+    // У каждого сигнала — только свой факт (без повторов цены/оборота/недели в checklist).
     if (d.dayChangePct != null && d.dayChangePct <= -dayTh) {
       signals.push({
         id: 'day-down',
         title: 'Заметное снижение за день',
         reasons: [
-          'Факт: за день ' + fmtPct(d.dayChangePct) + ' (порог сигнала: ≤ −' + fmtNum(dayTh, 1) + '%).',
-          'Текущая цена: ' + formatAgentPrice(d.currentPrice) + '.',
-          'Оборот сегодня: ' + fmtTurn(d.todayTurnover) + (turnoverFactor != null ? ' (×' + fmtNum(turnoverFactor, 2) + ' к 7-дневному среднему).' : '.')
-        ],
-        checklist: [
-          'Изменение за неделю: ' + fmtPct(d.weekChangePct),
-          'Диапазон 30 дней: ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh),
-          'Средний оборот за 7 дней: ' + fmtTurn(d.avgTurnover7d),
-          'Источник и дата последней новости по тикеру',
-          'Доля бумаги в портфеле после движения'
+          'За день ' + fmtPct(d.dayChangePct) + ' (порог: ≤ −' + fmtNum(dayTh, 1) + '%).'
         ]
       });
     }
@@ -570,16 +593,7 @@
         id: 'day-up',
         title: 'Заметный рост за день',
         reasons: [
-          'Факт: за день ' + fmtPct(d.dayChangePct) + ' (порог сигнала: ≥ +' + fmtNum(dayTh, 1) + '%).',
-          'Текущая цена: ' + formatAgentPrice(d.currentPrice) + '.',
-          'Оборот сегодня: ' + fmtTurn(d.todayTurnover) + (turnoverFactor != null ? ' (×' + fmtNum(turnoverFactor, 2) + ' к 7-дневному среднему).' : '.')
-        ],
-        checklist: [
-          'Изменение за неделю: ' + fmtPct(d.weekChangePct),
-          'Диапазон 30 дней: ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh),
-          'Средний оборот за 7 дней: ' + fmtTurn(d.avgTurnover7d),
-          'Источник и дата последней новости по тикеру',
-          'Доля бумаги в портфеле после движения'
+          'За день ' + fmtPct(d.dayChangePct) + ' (порог: ≥ +' + fmtNum(dayTh, 1) + '%).'
         ]
       });
     }
@@ -589,16 +603,7 @@
         id: 'week-down',
         title: 'Снижение за неделю',
         reasons: [
-          'Факт: за неделю ' + fmtPct(d.weekChangePct) + ' (порог сигнала: ≤ −' + fmtNum(wDown, 1) + '%).',
-          'Текущая цена: ' + formatAgentPrice(d.currentPrice) + '.',
-          'Движение за день: ' + fmtPct(d.dayChangePct) + '.'
-        ],
-        checklist: [
-          'Диапазон 30 дней: ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh),
-          'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
-          'Ключевые новости за 7 дней по тикеру',
-          'Дата ближайшей отчетности/дивидендной отсечки',
-          'Текущая доля бумаги в портфеле'
+          'За неделю ' + fmtPct(d.weekChangePct) + ' (порог: ≤ −' + fmtNum(wDown, 1) + '%).'
         ]
       });
     }
@@ -608,16 +613,7 @@
         id: 'week-up',
         title: 'Рост за неделю',
         reasons: [
-          'Факт: за неделю ' + fmtPct(d.weekChangePct) + ' (порог сигнала: ≥ +' + fmtNum(wUp, 1) + '%).',
-          'Текущая цена: ' + formatAgentPrice(d.currentPrice) + '.',
-          'Движение за день: ' + fmtPct(d.dayChangePct) + '.'
-        ],
-        checklist: [
-          'Диапазон 30 дней: ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh),
-          'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
-          'Ключевые новости за 7 дней по тикеру',
-          'Дата ближайшей отчетности/дивидендной отсечки',
-          'Текущая доля бумаги в портфеле'
+          'За неделю ' + fmtPct(d.weekChangePct) + ' (порог: ≥ +' + fmtNum(wUp, 1) + '%).'
         ]
       });
     }
@@ -628,16 +624,9 @@
         id: 'turnover-high',
         title: 'Оборот выше среднего',
         reasons: [
-          'Факт: оборот сегодня ' + fmtTurn(d.todayTurnover) + '.',
-          'Средний оборот за 7 дней: ' + fmtTurn(d.avgTurnover7d) + '.',
-          'Отношение: ×' + fmtNum(turnoverFactor, 2) + ' (порог сигнала: ×' + fmtNum(turnMul, 1) + ').'
-        ],
-        checklist: [
-          'Изменение цены за день: ' + fmtPct(d.dayChangePct),
-          'Изменение цены за неделю: ' + fmtPct(d.weekChangePct),
-          'Текущая цена: ' + formatAgentPrice(d.currentPrice),
-          'Последние события по тикеру с датой публикации',
-          'Сравнение оборота с прошлыми пиками за месяц'
+          'Оборот сегодня ' + fmtTurn(d.todayTurnover) +
+            ' при среднем за 7 дней ' + fmtTurn(d.avgTurnover7d) +
+            ' (×' + fmtNum(turnoverFactor, 2) + ', порог ×' + fmtNum(turnMul, 1) + ').'
         ]
       });
     }
@@ -649,15 +638,9 @@
           id: 'month-low',
           title: 'Близко к нижней границе месяца',
           reasons: [
-            'Факт: цена ' + formatAgentPrice(d.currentPrice) + ', минимум 30 дней ' + formatAgentPrice(d.monthLow) + '.',
-            'До минимума осталось: ' + fmtPct(((d.currentPrice - d.monthLow) / d.monthLow) * 100) + '.',
-            'Граница сигнала: нижние 15% диапазона ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh) + '.'
-          ],
-          checklist: [
-            'Изменение за день/неделю: ' + fmtPct(d.dayChangePct) + ' / ' + fmtPct(d.weekChangePct),
-            'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
-            'Последние новости по тикеру за 7 дней',
-            'Ближайшая отчетность и дивидендные даты'
+            'Цена ' + formatAgentPrice(d.currentPrice) +
+              ' у минимума 30 дней ' + formatAgentPrice(d.monthLow) +
+              ' (диапазон ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh) + ').'
           ]
         });
       }
@@ -666,15 +649,9 @@
           id: 'month-high',
           title: 'Близко к верхней границе месяца',
           reasons: [
-            'Факт: цена ' + formatAgentPrice(d.currentPrice) + ', максимум 30 дней ' + formatAgentPrice(d.monthHigh) + '.',
-            'До максимума осталось: ' + fmtPct(((d.monthHigh - d.currentPrice) / d.currentPrice) * 100) + '.',
-            'Граница сигнала: верхние 15% диапазона ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh) + '.'
-          ],
-          checklist: [
-            'Изменение за день/неделю: ' + fmtPct(d.dayChangePct) + ' / ' + fmtPct(d.weekChangePct),
-            'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
-            'Последние новости по тикеру за 7 дней',
-            'Текущая доля бумаги в портфеле'
+            'Цена ' + formatAgentPrice(d.currentPrice) +
+              ' у максимума 30 дней ' + formatAgentPrice(d.monthHigh) +
+              ' (диапазон ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh) + ').'
           ]
         });
       }
@@ -690,16 +667,7 @@
         id: 'event',
         title: 'Есть событие по бумаге',
         reasons: [
-          'Факт: найдено событий по тикеру — ' + relatedEvents.length + '.',
-          'Последнее событие: «' + String(latestEvent.title || 'без заголовка') + '».',
-          'Источник/дата: ' + latestSource + ' / ' + latestDate + '.'
-        ],
-        checklist: [
-          'Изменение цены за день: ' + fmtPct(d.dayChangePct),
-          'Изменение цены за неделю: ' + fmtPct(d.weekChangePct),
-          'Оборот сегодня / средний 7 дней: ' + fmtTurn(d.todayTurnover) + ' / ' + fmtTurn(d.avgTurnover7d),
-          'Есть ли прямое упоминание дивидендов, прибыли или долга в тексте события',
-          'Дата и первоисточник публикации'
+          'Последнее: «' + String(latestEvent.title || 'без заголовка') + '» (' + latestSource + ' / ' + latestDate + ').'
         ],
         events: relatedEvents
       });
@@ -1464,36 +1432,60 @@
     document.querySelectorAll('.agent-card-expanded').forEach(function (el) { el.hidden = true; });
     if (open) return;
     if (card.insufficient) return;
-    var html = card.signals.length
-      ? card.signals.map(function (sig) {
-          var eventsHtml = '';
-          if (sig.events && sig.events.length) {
-            eventsHtml = '<ul class="agent-event-list">' + sig.events.map(function (ev) {
-              return '<li>' + escapeHtml(ev.title || '') + '</li>';
-            }).join('') + '</ul>';
-          }
-          return (
-            '<div class="agent-signal agent-signal--expanded">' +
-              '<h5>' + escapeHtml(sig.title) + '</h5>' +
-              '<div class="agent-reasons"><p>Почему появился сигнал:</p><ol>' +
-                sig.reasons.map(function (r) { return '<li>' + escapeHtml(r) + '</li>'; }).join('') +
-              '</ol></div>' +
-              '<div class="agent-checklist"><p>Что проверить:</p><ul>' +
-                sig.checklist.map(function (c) { return '<li>' + escapeHtml(c) + '</li>'; }).join('') +
-              '</ul></div>' + eventsHtml +
-              '<div class="agent-signal-actions">' +
-                '<p class="muted agent-signal-actions-label">Ваша реакция на сигнал:</p>' +
-                '<div class="row agent-signal-actions-row">' +
-                  '<button type="button" class="primary" data-agent-log-action="buy" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(sig.id) + '" data-agent-signal-title="' + escapeHtml(sig.title) + '">Купил</button>' +
-                  '<button type="button" class="ghost" data-agent-log-action="sell" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(sig.id) + '" data-agent-signal-title="' + escapeHtml(sig.title) + '">Продал</button>' +
-                  '<button type="button" class="ghost" data-agent-log-action="skip" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(sig.id) + '" data-agent-signal-title="' + escapeHtml(sig.title) + '">Пропустил</button>' +
-                  '<button type="button" class="ghost" data-agent-log-action="watch" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(sig.id) + '" data-agent-signal-title="' + escapeHtml(sig.title) + '">В наблюдение</button>' +
-                '</div>' +
-              '</div>' +
-            '</div>'
-          );
-        }).join('')
-      : '';
+    if (!card.signals || !card.signals.length) {
+      expanded.innerHTML = '';
+      expanded.hidden = false;
+      return;
+    }
+
+    // Один блок на бумагу: уникальные причины по сигналам + общий чеклист покупки.
+    var reasonsHtml = card.signals.map(function (sig) {
+      var fact = (sig.reasons && sig.reasons.length) ? sig.reasons[0] : '';
+      return '<li><strong>' + escapeHtml(sig.title) + '</strong>' +
+        (fact ? ' — ' + escapeHtml(fact) : '') + '</li>';
+    }).join('');
+
+    var events = [];
+    card.signals.forEach(function (sig) {
+      if (sig.events && sig.events.length) {
+        sig.events.forEach(function (ev) { events.push(ev); });
+      }
+    });
+    var eventsHtml = '';
+    if (events.length) {
+      eventsHtml = '<ul class="agent-event-list">' + events.slice(0, 3).map(function (ev) {
+        return '<li>' + escapeHtml(ev.title || '') + '</li>';
+      }).join('') + '</ul>';
+    }
+
+    var shareText = formatAgentPortfolioShare(card.ticker);
+    var primary = card.signals[0];
+    var html =
+      '<div class="agent-signal agent-signal--expanded agent-signal--unified">' +
+        '<div class="agent-reasons">' +
+          '<p class="agent-reasons-lbl">Почему появился сигнал:</p>' +
+          '<ol>' + reasonsHtml + '</ol>' +
+        '</div>' +
+        eventsHtml +
+        '<div class="agent-checklist">' +
+          '<p class="agent-checklist-lbl">Что проверить, если решите покупать:</p>' +
+          '<ul>' +
+            '<li><button type="button" class="agent-inline-link" data-agent-open-analytics="' +
+              escapeHtml(card.ticker) +
+              '">Последние новости по тикеру за 7 дней</button></li>' +
+            '<li>Текущая доля бумаги в портфеле: <strong>' + escapeHtml(shareText) + '</strong></li>' +
+          '</ul>' +
+        '</div>' +
+        '<div class="agent-signal-actions">' +
+          '<p class="muted agent-signal-actions-label">Ваша реакция:</p>' +
+          '<div class="row agent-signal-actions-row">' +
+            '<button type="button" class="primary" data-agent-log-action="buy" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id) + '" data-agent-signal-title="' + escapeHtml(primary.title) + '">Купил</button>' +
+            '<button type="button" class="ghost" data-agent-log-action="sell" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id) + '" data-agent-signal-title="' + escapeHtml(primary.title) + '">Продал</button>' +
+            '<button type="button" class="ghost" data-agent-log-action="skip" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id) + '" data-agent-signal-title="' + escapeHtml(primary.title) + '">Пропустил</button>' +
+            '<button type="button" class="ghost" data-agent-log-action="watch" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id) + '" data-agent-signal-title="' + escapeHtml(primary.title) + '">В наблюдение</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
     expanded.innerHTML = html;
     expanded.hidden = false;
   }
@@ -1551,6 +1543,15 @@
       var detailBtn = e.target.closest('[data-agent-detail]');
       if (detailBtn) {
         toggleAgentDetail(detailBtn.getAttribute('data-agent-detail'));
+        return;
+      }
+      var analyticsBtn = e.target.closest('[data-agent-open-analytics]');
+      if (analyticsBtn) {
+        e.preventDefault();
+        var at = normalizeTicker(analyticsBtn.getAttribute('data-agent-open-analytics') || '');
+        if (!at) return;
+        if (typeof openAnalyticsModal === 'function') openAnalyticsModal(at);
+        else if (typeof selectAnalyticsTicker === 'function') selectAnalyticsTicker(at);
         return;
       }
       var logBtn = e.target.closest('[data-agent-log-action]');

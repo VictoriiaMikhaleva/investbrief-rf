@@ -100,27 +100,38 @@ async function updateFile(name, source, builder) {
 }
 
 async function fetchTopTurnoverData() {
-  const q = '?iss.meta=off&securities.columns=SECID,SHORTNAME&marketdata.columns=SECID,LAST,VALTODAY,LASTTOPREVPRICE&limit=120';
-  const topJson = await fetchJson(`${MOEX}/engines/stock/markets/shares/boards/TQBR/securities.json${q}`);
-  const md = topJson.marketdata;
-  const sec = topJson.securities;
-  if (!md || !md.columns || !md.data) throw new Error('TQBR marketdata unavailable');
-  const iSec = md.columns.indexOf('SECID');
-  const iLast = md.columns.indexOf('LAST');
-  const iVal = md.columns.indexOf('VALTODAY');
-  const iChg = md.columns.indexOf('LASTTOPREVPRICE');
+  const pageSize = 100;
+  let start = 0;
   const names = {};
-  if (sec && sec.data) {
-    sec.data.forEach((row) => { names[row[0]] = row[1] || row[0]; });
+  const all = [];
+  while (true) {
+    const q = `?iss.meta=off&securities.columns=SECID,SHORTNAME&marketdata.columns=SECID,LAST,VALTODAY,LASTTOPREVPRICE&start=${start}&limit=${pageSize}`;
+    const topJson = await fetchJson(`${MOEX}/engines/stock/markets/shares/boards/TQBR/securities.json${q}`);
+    const md = topJson.marketdata;
+    const sec = topJson.securities;
+    if (!md || !md.columns || !md.data) throw new Error('TQBR marketdata unavailable');
+    if (sec && sec.data) {
+      sec.data.forEach((row) => { names[row[0]] = row[1] || row[0]; });
+    }
+    const iSec = md.columns.indexOf('SECID');
+    const iLast = md.columns.indexOf('LAST');
+    const iVal = md.columns.indexOf('VALTODAY');
+    const iChg = md.columns.indexOf('LASTTOPREVPRICE');
+    md.data.forEach((row) => {
+      all.push({
+        ticker: row[iSec],
+        name: names[row[iSec]] || row[iSec],
+        price: safeNumber(row[iLast]),
+        valToday: safeNumber(row[iVal]),
+        changePct: safeNumber(row[iChg])
+      });
+    });
+    const cursor = md.cursor && md.cursor.data && md.cursor.data[0];
+    const total = cursor ? Number(cursor[1]) : all.length;
+    if (pageSize > 0 && start + md.data.length < total) start += pageSize;
+    else break;
   }
-  const top = md.data
-    .map((row) => ({
-      ticker: row[iSec],
-      name: names[row[iSec]] || row[iSec],
-      price: safeNumber(row[iLast]),
-      valToday: safeNumber(row[iVal]),
-      changePct: safeNumber(row[iChg])
-    }))
+  const top = all
     .filter((r) => r.ticker && r.price != null && r.valToday != null && r.valToday > 0)
     .sort((a, b) => b.valToday - a.valToday)
     .slice(0, 20);

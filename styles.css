@@ -3620,6 +3620,25 @@
       color: var(--text);
       font-size: 0.74rem;
     }
+    .agent-inline-link {
+      display: inline;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      background: none;
+      color: var(--accent);
+      font: inherit;
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      cursor: pointer;
+    }
+    .agent-inline-link:hover {
+      opacity: 0.85;
+    }
+    .agent-signal--unified .agent-reasons ol {
+      list-style: disc;
+    }
     .agent-reasons ol,
     .agent-checklist ul,
     .agent-signal--expanded ol,
