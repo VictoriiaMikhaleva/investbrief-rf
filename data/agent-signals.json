@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-08-10T02:28:58.514Z",
+  "updatedAt": "2026-08-10T04:14:57.616Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -53,8 +53,8 @@
         "ticker": "GAZP",
         "name": "ГАЗПРОМ ао",
         "insufficient": false,
-        "currentPrice": 93.67,
-        "dayChangePct": 2.22,
+        "currentPrice": 93.8,
+        "dayChangePct": 2.36,
         "signals": [],
         "status": "Спокойно"
       },
@@ -62,17 +62,24 @@
         "ticker": "OZON",
         "name": "Озон",
         "insufficient": false,
-        "currentPrice": 2937,
-        "dayChangePct": 2.8,
-        "signals": [],
-        "status": "Спокойно"
+        "currentPrice": 2943,
+        "dayChangePct": 3.01,
+        "signals": [
+          {
+            "id": "day-up",
+            "title": "Заметный рост за день",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Сильное движение"
       },
       {
         "ticker": "T",
         "name": "Т-Техно ао",
         "insufficient": false,
-        "currentPrice": 279.18,
-        "dayChangePct": -0.68,
+        "currentPrice": 279.72,
+        "dayChangePct": -0.48,
         "signals": [
           {
             "id": "month-high",
@@ -112,8 +119,8 @@
         "ticker": "NVTK",
         "name": "Новатэк ао",
         "insufficient": false,
-        "currentPrice": 1028,
-        "dayChangePct": 1.97,
+        "currentPrice": 1029.7,
+        "dayChangePct": 2.14,
         "signals": [
           {
             "id": "month-high",
@@ -153,8 +160,8 @@
         "ticker": "SMLT",
         "name": "Самолет ао",
         "insufficient": false,
-        "currentPrice": 382.6,
-        "dayChangePct": 3.13,
+        "currentPrice": 382.8,
+        "dayChangePct": 3.18,
         "signals": [
           {
             "id": "day-up",
@@ -184,9 +191,15 @@
         "ticker": "ALRS",
         "name": "АЛРОСА ао",
         "insufficient": false,
-        "currentPrice": 22.29,
-        "dayChangePct": 2.86,
+        "currentPrice": 22.41,
+        "dayChangePct": 3.41,
         "signals": [
+          {
+            "id": "day-up",
+            "title": "Заметный рост за день",
+            "reasons": [],
+            "checklist": []
+          },
           {
             "id": "month-high",
             "title": "Близко к верхней границе месяца",
@@ -194,7 +207,7 @@
             "checklist": []
           }
         ],
-        "status": "Зона внимания"
+        "status": "Сильное движение"
       },
       {
         "ticker": "LKOH",
@@ -232,8 +245,8 @@
         "ticker": "LQDT",
         "name": "LQDT ETF",
         "insufficient": false,
-        "currentPrice": 2.058,
-        "dayChangePct": 0.04,
+        "currentPrice": 2.0579,
+        "dayChangePct": 0.03,
         "signals": [
           {
             "id": "month-high",
@@ -280,10 +293,17 @@
         "ticker": "AFKS",
         "name": "Система ао",
         "insufficient": false,
-        "currentPrice": 9.165,
-        "dayChangePct": 2.94,
-        "signals": [],
-        "status": "Спокойно"
+        "currentPrice": 9.199,
+        "dayChangePct": 3.32,
+        "signals": [
+          {
+            "id": "day-up",
+            "title": "Заметный рост за день",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Сильное движение"
       },
       {
         "ticker": "YDEX",
