@@ -516,18 +516,67 @@
     if (exportJsonBtn) exportJsonBtn.addEventListener('click', exportAll);
     var importFileBtn = document.getElementById('importFileBtn');
     var importFileInput = document.getElementById('importFileInput');
+    var backupImportModal = document.getElementById('backupImportConfirmModal');
+    var backupImportOk = document.getElementById('backupImportConfirmOk');
+    var backupImportCancel = document.getElementById('backupImportConfirmCancel');
+    var pendingBackupImport = null;
+
+    function closeBackupImportConfirm(clearInput) {
+      if (backupImportModal) {
+        backupImportModal.hidden = true;
+        backupImportModal.classList.remove('open');
+      }
+      pendingBackupImport = null;
+      if (clearInput && importFileInput) importFileInput.value = '';
+    }
+
+    function openBackupImportConfirm(onConfirm) {
+      if (!backupImportModal || !backupImportOk || !backupImportCancel) {
+        if (onConfirm) onConfirm();
+        return;
+      }
+      pendingBackupImport = onConfirm;
+      backupImportModal.hidden = false;
+      backupImportModal.classList.add('open');
+      backupImportOk.focus();
+    }
+
+    if (backupImportOk && !backupImportOk.dataset.bound) {
+      backupImportOk.dataset.bound = '1';
+      backupImportOk.addEventListener('click', function () {
+        var fn = pendingBackupImport;
+        closeBackupImportConfirm(false);
+        if (fn) fn();
+      });
+    }
+    if (backupImportCancel && !backupImportCancel.dataset.bound) {
+      backupImportCancel.dataset.bound = '1';
+      backupImportCancel.addEventListener('click', function () {
+        closeBackupImportConfirm(true);
+      });
+    }
+    if (backupImportModal && !backupImportModal.dataset.bound) {
+      backupImportModal.dataset.bound = '1';
+      backupImportModal.addEventListener('click', function (e) {
+        if (e.target === backupImportModal) closeBackupImportConfirm(true);
+      });
+    }
+
     if (importFileBtn && importFileInput) importFileBtn.addEventListener('click', function () {
       importFileInput.click();
     });
     if (importFileInput) importFileInput.addEventListener('change', function (e) {
       var file = e.target.files && e.target.files[0];
       if (!file) return;
-      var reader = new FileReader();
-      reader.onload = function () {
-        importAll(reader.result);
-        e.target.value = '';
-      };
-      reader.readAsText(file);
+      var inputEl = e.target;
+      openBackupImportConfirm(function () {
+        var reader = new FileReader();
+        reader.onload = function () {
+          importAll(reader.result);
+          inputEl.value = '';
+        };
+        reader.readAsText(file);
+      });
     });
 
     var briefArticleCloseBtn = document.getElementById('briefArticleCloseBtn');

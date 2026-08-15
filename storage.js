@@ -623,11 +623,11 @@
     try {
       data = JSON.parse(jsonStr);
     } catch (e) {
-      showToast('Не удалось прочитать файл');
+      showToast('Не удалось загрузить файл. Проверьте, что это резервная копия ИнвестБрифа.');
       return;
     }
     if (!data || data.version !== '1.0.0') {
-      showToast('Не удалось загрузить: файл не подходит');
+      showToast('Не удалось загрузить файл. Проверьте, что это резервная копия ИнвестБрифа.');
       return;
     }
     if (data.profile) saveJSON(KEYS.profile, data.profile);
@@ -665,7 +665,7 @@
     renderPortfolio();
     renderAlerts();
     updateStats();
-    showToast('Настройки загружены');
+    showToast('Данные восстановлены. Портфель, список наблюдения и настройки обновлены.');
     if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
   }
 
