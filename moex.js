@@ -18,6 +18,9 @@
   var IMOEX_TURNOVER_CACHE_MS = 5 * 60 * 1000;
   /** Топ‑20 по VALTODAY: короткий TTL, чтобы ранг отражал текущую сессию. */
   var TOP_VOLUME_CACHE_MS = 60 * 1000;
+  /** Live-обновление карточек топ‑20 на главной (VALTODAY меняется в течение сессии). */
+  var TOP_VOLUME_LIVE_REFRESH_MS = 60 * 1000;
+  var topVolumeRefreshTimer = null;
   var IMOEX_VOLUME_DAYS = 10;
 
 
@@ -2200,52 +2203,94 @@
       var cached = moexCacheGet(cacheKey);
       if (cached) return Promise.resolve(cached);
     }
-    var all = [];
-    var start = 0;
-    var page = 100;
+    var iss = (typeof MOEX_ISS !== 'undefined' && MOEX_ISS) ? MOEX_ISS : 'https://iss.moex.com/iss';
+    // Один запрос с сортировкой VALTODAY на стороне MOEX — быстрее и точнее полного обхода TQBR.
+    var fetchLimit = Math.max(limit * 4, 60);
+    var url = iss + '/engines/stock/markets/shares/boards/TQBR/securities.json' +
+      '?iss.meta=off&securities.columns=SECID,SHORTNAME' +
+      '&marketdata.columns=SECID,LAST,VALTODAY,LASTTOPREVPRICE' +
+      '&sort_column=VALTODAY&sort_order=desc&limit=' + fetchLimit;
 
-    function pageFetch() {
-      var url = 'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json' +
-        '?iss.meta=off&securities.columns=SECID,SHORTNAME' +
-        '&marketdata.columns=SECID,LAST,VALTODAY,LASTTOPREVPRICE&start=' + start + '&limit=' + page;
-      return moexFetchJson(url).then(function (json) {
-        if (!json.marketdata || !json.marketdata.data.length) return all;
-        var cols = json.marketdata.columns;
-        var names = {};
-        (json.securities.data || []).forEach(function (r) { names[r[0]] = r[1]; });
-        var iSec = cols.indexOf('SECID');
-        var iLast = cols.indexOf('LAST');
-        var iVal = cols.indexOf('VALTODAY');
-        var iChg = cols.indexOf('LASTTOPREVPRICE');
-        json.marketdata.data.forEach(function (row) {
-          var ticker = row[iSec];
-          var val = row[iVal];
-          var last = row[iLast];
-          if (!ticker || val == null || !isFinite(val) || val <= 0 || last == null || !isFinite(last)) return;
-          all.push({
-            ticker: ticker,
-            name: names[ticker] || getTickerSubtitle(ticker),
-            valToday: val,
-            price: last,
-            changePct: row[iChg] != null && isFinite(Number(row[iChg])) ? Number(row[iChg]) : null
-          });
+    return moexFetchJson(url).then(function (json) {
+      if (!json.marketdata || !json.marketdata.data || !json.marketdata.data.length) {
+        throw new Error('no top volume');
+      }
+      var cols = json.marketdata.columns;
+      var names = {};
+      (json.securities.data || []).forEach(function (r) { names[r[0]] = r[1]; });
+      var iSec = cols.indexOf('SECID');
+      var iLast = cols.indexOf('LAST');
+      var iVal = cols.indexOf('VALTODAY');
+      var iChg = cols.indexOf('LASTTOPREVPRICE');
+      var list = [];
+      json.marketdata.data.forEach(function (row) {
+        var ticker = row[iSec];
+        var val = row[iVal];
+        var last = row[iLast];
+        if (!ticker || val == null || !isFinite(val) || val <= 0 || last == null || !isFinite(last)) return;
+        list.push({
+          ticker: ticker,
+          name: names[ticker] || getTickerSubtitle(ticker),
+          valToday: val,
+          price: last,
+          changePct: row[iChg] != null && isFinite(Number(row[iChg])) ? Number(row[iChg]) : null
         });
-        var cursor = json.marketdata.cursor && json.marketdata.cursor.data && json.marketdata.cursor.data[0];
-        if (cursor && start + page < cursor[1]) {
-          start += page;
-          return pageFetch();
-        }
-        return all;
       });
-    }
-
-    return pageFetch().then(function (list) {
       list.sort(function (a, b) { return b.valToday - a.valToday; });
       var top = list.slice(0, limit);
       if (!top.length) throw new Error('no top volume');
       moexCacheSet(cacheKey, top, TOP_VOLUME_CACHE_MS);
       return top;
     });
+  }
+
+
+
+  function paintTopVolumeSourceLine() {
+    var src = document.getElementById('imoexMarketSource');
+    if (!src) return;
+    var updatedHm = '';
+    if (_topTurnoverDataLive && _topTurnoverFetchedAt) {
+      updatedHm = new Date(_topTurnoverFetchedAt).toLocaleString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } else if (_topTurnoverSnapshotMeta) {
+      updatedHm = formatSnapshotUpdatedHm(_topTurnoverSnapshotMeta);
+    } else {
+      updatedHm = new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    }
+    var base = _topTurnoverDataLive
+      ? 'MOEX ISS · оборот сегодня с начала сессии (VALTODAY) · обновлено ' + updatedHm
+      : 'MOEX ISS · снимок · обновлено ' + updatedHm;
+    if (!_topTurnoverDataLive && isDataSnapshotStale(_topTurnoverSnapshotMeta)) {
+      base += ' · Показываем последние доступные данные. Обновление задерживается.';
+    }
+    src.textContent = base;
+  }
+
+
+
+  function refreshTopVolumeCardsLive() {
+    if (document.visibilityState !== 'visible') return Promise.resolve();
+    if (!state || state.tab !== 'briefing') return Promise.resolve();
+    if (typeof shouldShowRuBriefingMarketBlocks === 'function' && !shouldShowRuBriefingMarketBlocks()) {
+      return Promise.resolve();
+    }
+    return fetchTopMoexSharesByVolume(20, true).then(function (top) {
+      if (!top || !top.length) return;
+      renderImoexTopVolumeTable(top, 'RU');
+      paintTopVolumeSourceLine();
+    }).catch(function () { /* оставляем последний успешный ряд */ });
+  }
+
+
+
+  function scheduleTopVolumeLiveRefresh() {
+    if (topVolumeRefreshTimer) clearInterval(topVolumeRefreshTimer);
+    topVolumeRefreshTimer = setInterval(function () {
+      refreshTopVolumeCardsLive();
+    }, TOP_VOLUME_LIVE_REFRESH_MS);
   }
 
 
@@ -2460,28 +2505,15 @@
       function paintImoexData(rows) {
         renderImoexVolumeBars(rows[0]);
         renderImoexTopVolumeTable(rows[1], 'RU');
-        if (!src) return;
-        var updatedHm = '';
-        if (_topTurnoverDataLive && _topTurnoverFetchedAt) {
-          updatedHm = new Date(_topTurnoverFetchedAt).toLocaleString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit'
-          });
-        } else if (_topTurnoverSnapshotMeta) {
-          updatedHm = formatSnapshotUpdatedHm(_topTurnoverSnapshotMeta);
-        } else {
-          updatedHm = new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        }
-        var base = _topTurnoverDataLive
-          ? 'MOEX ISS · оборот сегодня с начала сессии (VALTODAY) · обновлено ' + updatedHm
-          : 'MOEX ISS · снимок · обновлено ' + updatedHm;
-        if (!_topTurnoverDataLive && isDataSnapshotStale(_topTurnoverSnapshotMeta)) {
-          base += ' · Показываем последние доступные данные. Обновление задерживается.';
-        }
-        src.textContent = base;
+        paintTopVolumeSourceLine();
       }
       paintImoexData(results);
-      // Live уже приоритетнее снимка; повторный запрос не нужен.
+      if (forceRefresh && _topTurnoverDataLive) return;
+      return fetchTopMoexSharesByVolume(20, true).then(function (top) {
+        if (!top || !top.length) return;
+        renderImoexTopVolumeTable(top, 'RU');
+        paintTopVolumeSourceLine();
+      }).catch(function () { /* snapshot или прошлый live */ });
     }).catch(function () {
       if (bars) bars.innerHTML = '<p class="muted hint-frame">Объём торгов временно недоступен</p>';
       renderImoexTopVolumeTable([], 'RU');
@@ -2781,12 +2813,14 @@
         renderMoexIndexBox();
       }
     }, MACRO_REFRESH_MS);
+    scheduleTopVolumeLiveRefresh();
     if (!macroVisibilityBound) {
       macroVisibilityBound = true;
       document.addEventListener('visibilitychange', function () {
         if (document.visibilityState !== 'visible') return;
         if (state && state.tab === 'briefing') {
           refreshBriefingMarketData(true);
+          refreshTopVolumeCardsLive();
         }
         if (state && state.tab === 'watchlist' && typeof renderMoexIndexBox === 'function') {
           renderMoexIndexBox();
