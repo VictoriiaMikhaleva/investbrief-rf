@@ -57,12 +57,9 @@ async function fetchMoexDividends(ticker) {
   return Core.mergeDividendPatches(rows, patchRows);
 }
 
-async function fetchMoexShareHistoryDaily(ticker) {
-  const Core = require('./analytics-core');
-  const till = new Date().toISOString().slice(0, 10);
-  const windowYears = Core.getYieldWindowYears();
-  const from = (windowYears[0] - 1) + '-01-01';
-  const baseUrl = MOEX_ISS + '/history/engines/stock/markets/shares/boards/TQBR/securities/' +
+async function fetchMoexShareHistoryRange(ticker, from, till, board) {
+  board = board || 'TQBR';
+  const baseUrl = MOEX_ISS + '/history/engines/stock/markets/shares/boards/' + board + '/securities/' +
     encodeURIComponent(ticker) + '.json?from=' + from + '&till=' + till +
     '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE';
 
@@ -102,7 +99,23 @@ async function fetchMoexShareHistoryDaily(ticker) {
 
   const byDate = {};
   all.forEach(function (r) { byDate[r.date] = r; });
-  let history = Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
+  return Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
+}
+
+async function fetchMoexShareHistoryDaily(ticker) {
+  const Core = require('./analytics-core');
+  const till = new Date().toISOString().slice(0, 10);
+  const windowYears = Core.getYieldWindowYears();
+  const from = (windowYears[0] - 1) + '-01-01';
+  const boards = ['TQTF', 'TQBR'];
+  let history = [];
+  for (let i = 0; i < boards.length; i++) {
+    const rows = await fetchMoexShareHistoryRange(ticker, from, till, boards[i]);
+    const byDate = {};
+    history.forEach(function (r) { byDate[r.date] = r; });
+    rows.forEach(function (r) { byDate[r.date] = r; });
+    history = Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
+  }
 
   if (Core.isHistoryVolumeBehindQuotes(history)) {
     const lastVol = Core.moexHistoryLastVolumeDate(history);
@@ -110,40 +123,10 @@ async function fetchMoexShareHistoryDaily(ticker) {
       const next = new Date(lastVol + 'T12:00:00');
       next.setDate(next.getDate() + 1);
       const tailFrom = next.toISOString().slice(0, 10);
-      const tailUrl = MOEX_ISS + '/history/engines/stock/markets/shares/boards/TQBR/securities/' +
-        encodeURIComponent(ticker) + '.json?from=' + tailFrom + '&till=' + till +
-        '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE';
-      let tailStart = 0;
-      let tDate = -1;
-      let tClose = -1;
-      let tVal = -1;
-      while (true) {
-        const tailJson = await moexFetchJson(tailUrl + '&start=' + tailStart);
-        const tailHist = tailJson.history;
-        if (!tailHist || !tailHist.data || !tailHist.data.length) break;
-        if (tDate < 0) {
-          tDate = tailHist.columns.indexOf('TRADEDATE');
-          tClose = tailHist.columns.indexOf('CLOSE');
-          tVal = tailHist.columns.indexOf('VALUE');
-        }
-        tailHist.data.forEach(function (row) {
-          const d = String(row[tDate] || '').slice(0, 10);
-          const close = Number(row[tClose]);
-          const val = Number(row[tVal]);
-          if (!d) return;
-          byDate[d] = {
-            date: d,
-            close: isFinite(close) ? close : null,
-            value: isFinite(val) ? val : null,
-            t: new Date(d + 'T12:00:00').getTime()
-          };
-        });
-        const tailCur = tailJson['history.cursor'] && tailJson['history.cursor'].data && tailJson['history.cursor'].data[0];
-        const tailTotal = tailCur ? Number(tailCur[1]) : tailAll.length;
-        const tailPage = tailCur ? Number(tailCur[2]) : tailHist.data.length;
-        if (tailPage > 0 && tailStart + tailHist.data.length < tailTotal) tailStart += tailPage;
-        else break;
-      }
+      const tailRows = await fetchMoexShareHistoryRange(ticker, tailFrom, till, 'TQBR');
+      const byDate = {};
+      history.forEach(function (r) { byDate[r.date] = r; });
+      tailRows.forEach(function (r) { byDate[r.date] = r; });
       history = Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
     }
   }

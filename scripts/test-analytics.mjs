@@ -58,10 +58,7 @@ async function fetchDividends(ticker) {
   return Core.mergeDividendPatches(rows, patches);
 }
 
-async function fetchHistory(ticker) {
-  const till = new Date().toISOString().slice(0, 10);
-  const windowYears = Core.getYieldWindowYears();
-  const from = windowYears[0] - 1 + '-01-01';
+async function fetchHistoryBoard(ticker, board, from, till) {
   let all = [];
   let start = 0;
   let iDate;
@@ -70,7 +67,7 @@ async function fetchHistory(ticker) {
 
   while (true) {
     const url =
-      'https://iss.moex.com/iss/history/engines/stock/markets/shares/boards/TQBR/securities/' +
+      'https://iss.moex.com/iss/history/engines/stock/markets/shares/boards/' + board + '/securities/' +
       ticker + '.json?from=' + from + '&till=' + till +
       '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE&start=' + start;
     const j = await get(url);
@@ -98,6 +95,18 @@ async function fetchHistory(ticker) {
 
   const byDate = {};
   all.forEach((r) => { byDate[r.date] = r; });
+  return Object.keys(byDate).sort().map((d) => byDate[d]);
+}
+
+async function fetchHistory(ticker) {
+  const till = new Date().toISOString().slice(0, 10);
+  const windowYears = Core.getYieldWindowYears();
+  const from = windowYears[0] - 1 + '-01-01';
+  const tqtf = await fetchHistoryBoard(ticker, 'TQTF', from, till);
+  const tqbr = await fetchHistoryBoard(ticker, 'TQBR', from, till);
+  const byDate = {};
+  tqtf.forEach((r) => { byDate[r.date] = r; });
+  tqbr.forEach((r) => { byDate[r.date] = r; });
   return Object.keys(byDate).sort().map((d) => byDate[d]);
 }
 
@@ -171,6 +180,18 @@ async function testTicker(ticker) {
   return { ticker, errors, metrics };
 }
 
+async function testAkmmBpifTotalReturn() {
+  const errors = [];
+  const ticker = 'AKMM';
+  const history = await fetchHistory(ticker);
+  const metrics = Core.buildMetricsFromMoex([], history, null);
+  const tr = metrics.totalReturn12m && metrics.totalReturn12m.pct;
+  assert(history.length >= 500, ticker + ': мало объединённой истории TQTF+TQBR (' + history.length + ')', errors);
+  assert(tr != null && isFinite(tr) && tr > 5, ticker + ': полная доходность 12м = ' + tr + ' (ожидали >5%)', errors);
+  assert(metrics.noMoexDividends === true, ticker + ': должен быть без дивидендов MOEX', errors);
+  return { ticker, errors, metrics, historyLen: history.length };
+}
+
 async function main() {
   console.log('AnalyticsCore v' + Core.VERSION + ' · tickers: ' + TICKERS.length);
   const allErrors = [];
@@ -194,6 +215,21 @@ async function main() {
       allErrors.push(ticker + ': ' + (e.message || e));
       console.log('ERR ', ticker, e.message || e);
     }
+  }
+
+  try {
+    const { errors, metrics, historyLen } = await testAkmmBpifTotalReturn();
+    checked++;
+    if (errors.length) {
+      allErrors.push(...errors);
+      console.log('FAIL', 'AKMM', errors.join('; '));
+    } else {
+      const tr = metrics.totalReturn12m.pct.toFixed(1) + '%';
+      console.log('OK  ', 'AKMM', 'total12m=' + tr, 'hist=' + historyLen);
+    }
+  } catch (e) {
+    allErrors.push('AKMM: ' + (e.message || e));
+    console.log('ERR ', 'AKMM', e.message || e);
   }
 
   console.log('---');

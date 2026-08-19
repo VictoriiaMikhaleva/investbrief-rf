@@ -11,7 +11,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.5.0';
+  var VERSION = '1.5.1';
+  /** Минимальный интервал между якорными датами для полной доходности 12м (~11 мес.). */
+  var TOTAL_RETURN_MIN_SPAN_DAYS = 330;
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var YIELD_YEARS = 5;
@@ -361,6 +363,13 @@
     var startPoint = nearestCloseOnOrBefore(dailyHistory, startIso);
     var endPoint = nearestCloseOnOrBefore(dailyHistory, endIso);
     if (!startPoint || !endPoint || !isFinite(startPoint.close) || startPoint.close <= 0) {
+      return { pct: null, priceReturnPct: null, divPaid12m: null, source: '' };
+    }
+
+    var anchorStartMs = new Date(startPoint.date + 'T12:00:00').getTime();
+    var anchorEndMs = new Date(endPoint.date + 'T12:00:00').getTime();
+    if (isNaN(anchorStartMs) || isNaN(anchorEndMs) ||
+        anchorEndMs - anchorStartMs < TOTAL_RETURN_MIN_SPAN_DAYS * 24 * 60 * 60 * 1000) {
       return { pct: null, priceReturnPct: null, divPaid12m: null, source: '' };
     }
 

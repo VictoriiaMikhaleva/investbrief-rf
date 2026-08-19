@@ -76,6 +76,53 @@ async function checkMoexImoex() {
   console.log('OK   MOEX IMOEX ·', price.toFixed(2));
 }
 
+async function checkAkmmTotalReturn() {
+  const { createRequire } = await import('module');
+  const require = createRequire(import.meta.url);
+  const Core = require('../analytics-core.js');
+  const till = new Date().toISOString().slice(0, 10);
+  const from = Core.getYieldWindowYears()[0] - 1 + '-01-01';
+
+  async function fetchBoard(board) {
+    let all = [];
+    let start = 0;
+    while (true) {
+      const url = MOEX + '/history/engines/stock/markets/shares/boards/' + board +
+        '/securities/AKMM.json?from=' + from + '&till=' + till +
+        '&iss.meta=off&history.columns=TRADEDATE,CLOSE&start=' + start;
+      const j = await fetchJson(url);
+      if (!j.history || !j.history.data.length) break;
+      const iD = j.history.columns.indexOf('TRADEDATE');
+      const iC = j.history.columns.indexOf('CLOSE');
+      j.history.data.forEach((r) => {
+        all.push({ date: String(r[iD]).slice(0, 10), close: Number(r[iC]) });
+      });
+      const cur = j['history.cursor'] && j['history.cursor'].data && j['history.cursor'].data[0];
+      const total = cur ? Number(cur[1]) : all.length;
+      const page = j.history.data.length;
+      if (page > 0 && start + page < total) start += page;
+      else break;
+    }
+    return all;
+  }
+
+  const byDate = {};
+  (await fetchBoard('TQTF')).forEach((r) => { byDate[r.date] = r; });
+  (await fetchBoard('TQBR')).forEach((r) => { byDate[r.date] = r; });
+  const history = Object.keys(byDate).sort().map((d) => byDate[d]);
+  const tr = Core.buildMetricsFromMoex([], history, null).totalReturn12m;
+  const pct = tr && tr.pct;
+  if (history.length < 500) {
+    fail('AKMM history TQTF+TQBR: мало строк (' + history.length + ')');
+    return;
+  }
+  if (pct == null || !isFinite(pct) || pct <= 5) {
+    fail('AKMM полная доходность 12м: ' + pct + ' (ожидали >5% при объединённой истории)');
+    return;
+  }
+  console.log('OK   AKMM total return 12m ·', pct.toFixed(1) + '%', '· hist', history.length);
+}
+
 function checkTopTurnoverSnapshot() {
   const file = path.join(ROOT, 'data', 'top-turnover.json');
   if (!fs.existsSync(file)) {
@@ -142,6 +189,7 @@ async function main() {
   try {
     await checkMoexImoex();
     await checkMoexTopTurnoverLive();
+    await checkAkmmTotalReturn();
   } catch (e) {
     fail('MOEX: ' + (e.message || e));
   }
