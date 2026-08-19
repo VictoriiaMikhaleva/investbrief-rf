@@ -1,0 +1,36 @@
+# Smoke-агент: ловит поломки MOEX, топ-20, аналитики и главной до пользователей.
+name: Smoke health
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**.js'
+      - '**.html'
+      - '**.css'
+      - 'data/**'
+      - 'scripts/**'
+      - '.github/workflows/smoke.yml'
+  pull_request:
+    paths:
+      - '**.js'
+      - '**.html'
+      - 'data/**'
+      - 'scripts/**'
+  schedule:
+    # Пн–Пт каждые 30 мин (UTC); ~10:00–18:30 МСК в торговые дни
+    - cron: '0,30 7-15 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run smoke agent
+        run: npm run smoke
+        env:
+          SMOKE_SITE_URL: https://victoriiamikhaleva.github.io/investbrief-rf/

@@ -9,6 +9,7 @@
     "test:analytics": "node scripts/test-analytics.mjs",
     "test:analytics-server": "node scripts/test-analytics-server.mjs",
     "test:agent": "node scripts/test-agent.mjs",
+    "smoke": "node scripts/smoke-health.mjs",
     "update:market-data": "node scripts/update-market-data.js",
     "update:dividends": "node scripts/update-dividend-patches.js",
     "build:pif": "node scripts/build-pif-data.js",
