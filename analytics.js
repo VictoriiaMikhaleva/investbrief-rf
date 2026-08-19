@@ -1138,9 +1138,13 @@
     }
     if (totalReturnEl) {
       var tr = a.totalReturn12m && isFinite(a.totalReturn12m.pct) ? Number(a.totalReturn12m.pct) : null;
+      if (tr === 0 && a.totalReturn12m && !String(a.totalReturn12m.source || '').trim()) tr = null;
       if (tr == null) {
         totalReturnEl.textContent = '—';
         totalReturnEl.className = 'quote-div-val muted';
+        totalReturnEl.title = a.noMoexDividends
+          ? 'Недостаточно истории торгов для расчёта за 12 месяцев'
+          : '';
       } else {
         totalReturnEl.textContent = formatDivYieldPct(tr);
         totalReturnEl.className = 'quote-div-val' + (tr >= 0 ? ' pnl-pos' : ' pnl-neg');

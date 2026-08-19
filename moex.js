@@ -2233,7 +2233,8 @@
           name: names[ticker] || getTickerSubtitle(ticker),
           valToday: val,
           price: last,
-          changePct: row[iChg] != null && isFinite(Number(row[iChg])) ? Number(row[iChg]) : null
+          changePct: row[iChg] != null && isFinite(Number(row[iChg])) ? Number(row[iChg]) : null,
+          tradeDate: getMoexSessionTradeDateIso()
         });
       });
       list.sort(function (a, b) { return b.valToday - a.valToday; });
@@ -2245,6 +2246,55 @@
   }
 
 
+
+  function getMoexSessionTradeDateIso() {
+    return moexFormatDateMsk(new Date());
+  }
+
+  function topVolumeCardsFingerprint(rows) {
+    return (rows || []).map(function (r, i) {
+      return (i + 1) + ':' + r.ticker + ':' + Math.round(Number(r.valToday) || 0);
+    }).join('|');
+  }
+
+  function patchTopVolumeCardWrap(wrap, r, rank) {
+    if (!wrap || !r) return;
+    if (r.valToday != null && isFinite(Number(r.valToday))) {
+      wrap.setAttribute('data-val-today', String(Number(r.valToday)));
+    }
+    var rankEl = wrap.querySelector('.quote-card-ticker');
+    if (rankEl) rankEl.textContent = '#' + rank + ' ' + r.ticker;
+    var subEl = wrap.querySelector('.quote-card-sub');
+    if (subEl && r.name) subEl.textContent = r.name;
+    var priceEl = wrap.querySelector('.quote-card-price');
+    var changeEl = wrap.querySelector('.quote-card-change');
+    if (priceEl) priceEl.textContent = formatChartPrice(r.price, r.ticker);
+    if (changeEl) {
+      var ch = formatMacroChange(r.changePct);
+      changeEl.textContent = ch.text;
+      changeEl.className = 'quote-card-change ' + ch.cls;
+    }
+    var turnoverEl = wrap.querySelector('[data-turnover]');
+    if (turnoverEl && r.valToday != null && isFinite(Number(r.valToday))) {
+      turnoverEl.textContent = formatBlnRub(r.valToday) + ' млрд ₽';
+      turnoverEl.className = 'quote-div-val';
+    }
+    if (typeof setQuoteCardTurnoverLabel === 'function') {
+      setQuoteCardTurnoverLabel(wrap, {
+        ticker: r.ticker,
+        tradeDate: r.tradeDate || getMoexSessionTradeDateIso(),
+        market: wrap.getAttribute('data-market') || 'RU'
+      });
+    }
+  }
+
+  function quoteCardNeedsEnrich(wrap) {
+    if (!wrap) return true;
+    var avgEl = wrap.querySelector('[data-div-avg]');
+    if (!avgEl) return true;
+    var txt = (avgEl.textContent || '').trim();
+    return !txt || txt === '…';
+  }
 
   function paintTopVolumeSourceLine() {
     var src = document.getElementById('imoexMarketSource');
@@ -2277,9 +2327,38 @@
     if (typeof shouldShowRuBriefingMarketBlocks === 'function' && !shouldShowRuBriefingMarketBlocks()) {
       return Promise.resolve();
     }
+    var sessionDate = getMoexSessionTradeDateIso();
     return fetchTopMoexSharesByVolume(20, true).then(function (top) {
       if (!top || !top.length) return;
+      top.forEach(function (r) {
+        if (!r.tradeDate) r.tradeDate = sessionDate;
+      });
+      var grid = document.getElementById('imoexTopVolumeCards');
+      var fp = topVolumeCardsFingerprint(top);
+      if (grid && grid.getAttribute('data-topvol-fp') === fp) {
+        paintTopVolumeSourceLine();
+        return;
+      }
+      if (grid && grid.querySelectorAll('.quote-card-wrap').length === top.length) {
+        var orderSame = top.every(function (r, i) {
+          var wrap = grid.querySelector('.quote-card-wrap:nth-child(' + (i + 1) + ')');
+          return wrap && wrap.getAttribute('data-ticker') === r.ticker;
+        });
+        if (orderSame) {
+          top.forEach(function (r, i) {
+            patchTopVolumeCardWrap(
+              grid.querySelector('.quote-card-wrap[data-ticker="' + r.ticker + '"]'),
+              r,
+              i + 1
+            );
+          });
+          grid.setAttribute('data-topvol-fp', fp);
+          paintTopVolumeSourceLine();
+          return;
+        }
+      }
       renderImoexTopVolumeTable(top, 'RU');
+      if (grid) grid.setAttribute('data-topvol-fp', fp);
       paintTopVolumeSourceLine();
     }).catch(function () { /* оставляем последний успешный ряд */ });
   }
@@ -2330,10 +2409,14 @@
 
 
 
-  function renderImoexTopVolumeTable(rows, market) {
+  function renderImoexTopVolumeTable(rows, market, opts) {
+    opts = opts || {};
     market = market || 'RU';
     var isUs = market === 'US';
-    if (typeof window.resetEnrichQueue === 'function') window.resetEnrichQueue();
+    var sessionDate = getMoexSessionTradeDateIso();
+    if (opts.resetEnrich !== false && typeof window.resetEnrichQueue === 'function') {
+      window.resetEnrichQueue();
+    }
     var grid = document.getElementById('imoexTopVolumeCards');
     var tbody = document.getElementById('imoexTopVolumeBody');
     if (!rows || !rows.length) {
@@ -2345,7 +2428,12 @@
       grid.innerHTML = rows.map(function (r, i) {
         var ch = formatMacroChange(r.changePct);
         var divHtml = typeof window.quoteCardDivMetricsHtml === 'function'
-          ? window.quoteCardDivMetricsHtml({ compact: isUs, us: isUs, ticker: r.ticker })
+          ? window.quoteCardDivMetricsHtml({
+            compact: isUs,
+            us: isUs,
+            ticker: r.ticker,
+            tradeDate: r.tradeDate || sessionDate
+          })
           : '';
         return (
           '<div class="quote-card-wrap imoex-top-card" data-ticker="' + escapeHtml(r.ticker) + '" data-market="' + market + '"' +
@@ -2372,9 +2460,19 @@
             turnoverEl.textContent = formatBlnRub(r.valToday) + ' млрд ₽';
             turnoverEl.className = 'quote-div-val';
           }
+          if (typeof setQuoteCardTurnoverLabel === 'function') {
+            setQuoteCardTurnoverLabel(wrap, {
+              ticker: r.ticker,
+              tradeDate: r.tradeDate || sessionDate,
+              market: market
+            });
+          }
         }
-        if (wrap && typeof queueEnrichQuoteCard === 'function') queueEnrichQuoteCard(wrap, r.ticker, market);
-        else if (wrap && typeof enrichQuoteCard === 'function') enrichQuoteCard(wrap, r.ticker);
+        if (wrap && typeof queueEnrichQuoteCard === 'function' && quoteCardNeedsEnrich(wrap)) {
+          queueEnrichQuoteCard(wrap, r.ticker, market);
+        } else if (wrap && typeof enrichQuoteCard === 'function' && quoteCardNeedsEnrich(wrap)) {
+          enrichQuoteCard(wrap, r.ticker);
+        }
         if (wrap && isUs && r.divYieldPct != null) {
           var avgEl = wrap.querySelector('[data-div-avg]');
           var turnoverElUs = wrap.querySelector('[data-turnover]');
@@ -2391,6 +2489,7 @@
           if (t && typeof openSecurityAnalyticsModal === 'function') openSecurityAnalyticsModal(t);
         });
       });
+      grid.setAttribute('data-topvol-fp', topVolumeCardsFingerprint(rows));
     }
     if (!tbody) return;
     tbody.innerHTML = rows.map(function (r, i) {
