@@ -1,0 +1,13 @@
+{
+  "name": "investbrief-api",
+  "version": "1.0.0",
+  "description": "InvestBrief RF — облачная синхронизация пользовательских данных (Yandex Cloud Function + YDB)",
+  "main": "index.js",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@yandex-cloud/ydb-sdk": "^5.7.0"
+  }
+}
