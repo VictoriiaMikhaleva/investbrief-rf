@@ -3689,8 +3689,41 @@
     }
     .agent-event-list {
       margin: 0.35rem 0 0;
-      padding-left: 1.1rem;
+      padding-left: 0;
+      list-style: none;
       font-size: 0.78rem;
+    }
+    .agent-event-item {
+      margin: 0 0 0.55rem;
+      padding: 0.45rem 0.55rem;
+      border-radius: 0.4rem;
+      background: rgba(61, 92, 71, 0.04);
+      border: 1px solid rgba(61, 92, 71, 0.1);
+    }
+    .agent-event-what { font-weight: 600; line-height: 1.35; }
+    .agent-event-meta { font-size: 0.72rem; margin-top: 0.2rem; }
+    .agent-event-link {
+      display: inline-block;
+      margin-top: 0.3rem;
+      font-size: 0.74rem;
+      color: var(--accent);
+    }
+    .agent-context-block { margin-top: 0.7rem; }
+    .agent-context-lbl {
+      margin: 0 0 0.25rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .agent-context-note {
+      margin: 0 0 0.4rem;
+      font-size: 0.72rem;
+      line-height: 1.4;
+    }
+    .agent-context-preview {
+      margin: 0;
+      font-size: 0.76rem;
+      line-height: 1.35;
     }
     .agent-history {
       margin-bottom: 0.65rem;

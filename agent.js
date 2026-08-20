@@ -502,12 +502,320 @@
     });
   }
 
+  var AGENT_COMPANY_ALIASES = {
+    SBER: ['сбербанк', 'сбер', 'sberbank', 'sber'],
+    GAZP: ['газпром', 'gazprom'],
+    LKOH: ['лукойл', 'lukoil'],
+    ROSN: ['роснефть', 'rosneft'],
+    NVTK: ['новатэк', 'novatek'],
+    GMKN: ['норникель', 'nornickel', 'гмк'],
+    TATN: ['татнефть', 'tatneft'],
+    MTSS: ['мтс', 'mtss'],
+    VTBR: ['втб', 'vtb'],
+    MOEX: ['мосбирж', 'moex'],
+    ALRS: ['алроса', 'alrosa'],
+    MAGN: ['магнитогорск', 'ммк', 'magn'],
+    NLMK: ['нлмк', 'nlmk'],
+    CHMF: ['северсталь', 'severstal'],
+    PLZL: ['полюс', 'polyus'],
+    YDEX: ['яндекс', 'yandex'],
+    OZON: ['озон', 'ozon'],
+    T: ['т-банк', 'тинькофф', 'tinkoff'],
+    ASTR: ['астра', 'astra']
+  };
+
+  var AGENT_TICKER_SECTOR = {
+    SBER: 'banks', VTBR: 'banks', T: 'banks',
+    GAZP: 'oil', LKOH: 'oil', ROSN: 'oil', NVTK: 'oil', TATN: 'oil',
+    GMKN: 'metals', ALRS: 'metals', MAGN: 'metals', NLMK: 'metals', CHMF: 'metals', PLZL: 'metals',
+    YDEX: 'tech', OZON: 'tech', ASTR: 'tech',
+    MTSS: 'telecom',
+    MOEX: 'exchange'
+  };
+
+  var AGENT_SECTOR_KEYWORDS = {
+    banks: ['банк', 'кредитн', 'депозит', 'процентн став', 'мониторинг максимальн'],
+    oil: ['нефть', 'нефтегаз', 'газпром', 'нпз', 'баррел'],
+    metals: ['металл', 'сталь', 'никел', 'алюмин', 'медь', 'золот'],
+    tech: ['it-', ' айти', 'технологии', 'цифров'],
+    telecom: ['телеком', 'сотов', 'мобильн оператор'],
+    exchange: ['бирж', 'торгов']
+  };
+
+  var AGENT_MACRO_KEYS = [
+    'ключев', 'ключевой став', 'инфляц', 'курс ', 'валют', 'макро', 'ввп',
+    'денежно-кредит', 'дкп', 'резервн', 'платёжн баланс', 'платежн баланс'
+  ];
+
+  var AGENT_SECTOR_GENERIC_KEYS = [
+    'мониторинг максимальных процентных ставок',
+    'кредитных организаций',
+    'банковского сектора',
+    'банковск сектор',
+    'отраслев',
+    'по отрасли'
+  ];
+
+  var AGENT_ISSUER_EVENT_KEYS = [
+    'дивиденд', 'отчёт', 'отчет', 'мсфо', 'рсбу', 'прибыл', 'выручк',
+    'собрани акционер', 'госа', 'совет директоров',
+    'buyback', 'байбек', 'spo', 'допэмис', 'доп. эмис',
+    'санкц', 'сделк', 'поглощен', 'присоедин', 'm&a',
+    'раскрыт', 'существенн факт'
+  ];
+
+  function agentNormText(s) {
+    return (' ' + String(s || '').toLowerCase().replace(/\s+/g, ' ') + ' ');
+  }
+
+  function agentCompanyAliases(ticker) {
+    var t = normalizeTicker(ticker);
+    var list = (AGENT_COMPANY_ALIASES[t] || []).slice();
+    list.push(t.toLowerCase());
+    if (typeof getTickerSubtitle === 'function') {
+      var name = String(getTickerSubtitle(t) || '').toLowerCase().trim();
+      if (name && name !== t.toLowerCase()) list.push(name);
+    }
+    return list;
+  }
+
+  function agentTextMentionsCompany(text, ticker) {
+    var hay = agentNormText(text);
+    var aliases = agentCompanyAliases(ticker);
+    var i;
+    for (i = 0; i < aliases.length; i++) {
+      var a = String(aliases[i] || '').toLowerCase().trim();
+      if (!a) continue;
+      if (hay.indexOf(a) >= 0) return true;
+    }
+    return false;
+  }
+
+  function agentTextHasAny(text, keys) {
+    var hay = agentNormText(text);
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      if (hay.indexOf(keys[i]) >= 0) return true;
+    }
+    return false;
+  }
+
+  function getTickerSector(ticker) {
+    return AGENT_TICKER_SECTOR[normalizeTicker(ticker)] || '';
+  }
+
+  function formatAgentEventDate(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var months = ['янв.', 'фев.', 'мар.', 'апр.', 'мая', 'июн.', 'июл.', 'авг.', 'сен.', 'окт.', 'ноя.', 'дек.'];
+    return d.getDate() + ' ' + months[d.getMonth()];
+  }
+
+  function shortenAgentEventTitle(title, maxLen) {
+    var t = String(title || '').replace(/\s+/g, ' ').trim();
+    maxLen = maxLen || 110;
+    if (t.length <= maxLen) return t;
+    return t.slice(0, maxLen - 1).replace(/\s+\S*$/, '') + '…';
+  }
+
+  function describeAgentEventWhat(brief, level) {
+    var title = shortenAgentEventTitle(brief && brief.title, 100);
+    var et = brief && brief.eventType;
+    if (level === 'issuer') {
+      if (et === 'earnings') return 'Отчётность: ' + title;
+      if (et === 'dividend') return 'Дивиденды: ' + title;
+      return title;
+    }
+    if (level === 'sector') return title;
+    return title;
+  }
+
+  function classifyAgentEvent(brief, ticker) {
+    if (!brief) return null;
+    ticker = normalizeTicker(ticker);
+    var title = String(brief.title || '');
+    var summary = String(brief.summary || '');
+    var body = String(brief.body || '');
+    var titleHay = title;
+    var softHay = title + ' ' + summary;
+    var allHay = softHay + ' ' + body.slice(0, 1200);
+    var feedId = String(brief.feedId || '');
+    var sourceName = String(brief.sourceName || '');
+    var companyInTitle = agentTextMentionsCompany(titleHay, ticker);
+    var companyInSoft = companyInTitle || agentTextMentionsCompany(softHay, ticker);
+    var companyAnywhere = companyInSoft || agentTextMentionsCompany(allHay, ticker);
+    var sector = getTickerSector(ticker);
+    var isCbr = feedId.indexOf('cbr') === 0 || sourceName.indexOf('Банк России') >= 0;
+    var isMacroFeed = brief.type === 'macro' || feedId.indexOf('cbr') === 0 ||
+      (brief.category && String(brief.category).indexOf('Макро') >= 0);
+    var hasMacroKeys = agentTextHasAny(softHay, AGENT_MACRO_KEYS);
+    var hasSectorGeneric = agentTextHasAny(softHay, AGENT_SECTOR_GENERIC_KEYS);
+    var hasSectorKeys = sector && AGENT_SECTOR_KEYWORDS[sector]
+      ? agentTextHasAny(softHay, AGENT_SECTOR_KEYWORDS[sector])
+      : false;
+    var hasIssuerEventKeys = agentTextHasAny(softHay, AGENT_ISSUER_EVENT_KEYS);
+    var briefTicker = normalizeTicker(brief.ticker);
+
+    // Сильная связь: компания в заголовке или корпоративное событие с явным упоминанием.
+    if (companyInTitle || (hasIssuerEventKeys && companyInSoft)) {
+      return {
+        level: 'issuer',
+        sector: sector,
+        companyInTitle: companyInTitle,
+        what: describeAgentEventWhat(brief, 'issuer'),
+        sourceName: brief.sourceName || 'Источник',
+        publishedAt: brief.publishedAt,
+        dateLabel: formatAgentEventDate(brief.publishedAt),
+        sourceUrl: brief.sourceUrl || '',
+        title: title,
+        id: brief.id || brief.sourceUrl || title
+      };
+    }
+
+    // Макрофон: ЦБ/макро без компании как главного объекта.
+    if ((isMacroFeed || hasMacroKeys || briefTicker === 'MOEX' || briefTicker === 'IMOEX') && !companyInTitle) {
+      if (hasSectorGeneric || (hasSectorKeys && isCbr && !hasMacroKeys)) {
+        return {
+          level: 'sector',
+          sector: sector || 'banks',
+          companyInTitle: false,
+          what: describeAgentEventWhat(brief, 'sector'),
+          sourceName: brief.sourceName || 'Источник',
+          publishedAt: brief.publishedAt,
+          dateLabel: formatAgentEventDate(brief.publishedAt),
+          sourceUrl: brief.sourceUrl || '',
+          title: title,
+          id: brief.id || brief.sourceUrl || title
+        };
+      }
+      return {
+        level: 'macro',
+        sector: sector,
+        companyInTitle: false,
+        what: describeAgentEventWhat(brief, 'macro'),
+        sourceName: brief.sourceName || 'Источник',
+        publishedAt: brief.publishedAt,
+        dateLabel: formatAgentEventDate(brief.publishedAt),
+        sourceUrl: brief.sourceUrl || '',
+        title: title,
+        id: brief.id || brief.sourceUrl || title
+      };
+    }
+
+    // Фон сектора: отраслевой контекст без эмитента в заголовке.
+    if ((hasSectorGeneric || hasSectorKeys) && !companyInTitle) {
+      return {
+        level: 'sector',
+        sector: sector,
+        companyInTitle: false,
+        what: describeAgentEventWhat(brief, 'sector'),
+        sourceName: brief.sourceName || 'Источник',
+        publishedAt: brief.publishedAt,
+        dateLabel: formatAgentEventDate(brief.publishedAt),
+        sourceUrl: brief.sourceUrl || '',
+        title: title,
+        id: brief.id || brief.sourceUrl || title
+      };
+    }
+
+    // Слабое упоминание компании только в тексте общего материала — не issuer.
+    if (companyAnywhere && !companyInTitle && (isMacroFeed || hasSectorGeneric || hasMacroKeys)) {
+      return {
+        level: hasSectorGeneric || hasSectorKeys ? 'sector' : 'macro',
+        sector: sector,
+        companyInTitle: false,
+        what: describeAgentEventWhat(brief, hasSectorGeneric || hasSectorKeys ? 'sector' : 'macro'),
+        sourceName: brief.sourceName || 'Источник',
+        publishedAt: brief.publishedAt,
+        dateLabel: formatAgentEventDate(brief.publishedAt),
+        sourceUrl: brief.sourceUrl || '',
+        title: title,
+        id: brief.id || brief.sourceUrl || title
+      };
+    }
+
+    // Бумага указана как ticker у брифа, но без признаков эмитента — не поднимаем статус.
+    if (briefTicker === ticker && !companyInTitle) {
+      if (hasSectorGeneric || hasSectorKeys) {
+        return {
+          level: 'sector',
+          sector: sector,
+          companyInTitle: false,
+          what: describeAgentEventWhat(brief, 'sector'),
+          sourceName: brief.sourceName || 'Источник',
+          publishedAt: brief.publishedAt,
+          dateLabel: formatAgentEventDate(brief.publishedAt),
+          sourceUrl: brief.sourceUrl || '',
+          title: title,
+          id: brief.id || brief.sourceUrl || title
+        };
+      }
+      return {
+        level: 'macro',
+        sector: sector,
+        companyInTitle: false,
+        what: describeAgentEventWhat(brief, 'macro'),
+        sourceName: brief.sourceName || 'Источник',
+        publishedAt: brief.publishedAt,
+        dateLabel: formatAgentEventDate(brief.publishedAt),
+        sourceUrl: brief.sourceUrl || '',
+        title: title,
+        id: brief.id || brief.sourceUrl || title
+      };
+    }
+
+    return null;
+  }
+
+  function dedupeAgentEvents(list) {
+    var seen = {};
+    var out = [];
+    (list || []).forEach(function (ev) {
+      if (!ev) return;
+      var key = String(ev.sourceUrl || '').trim() ||
+        agentNormText(ev.title || ev.what).replace(/[^a-zа-я0-9]+/gi, '').slice(0, 96);
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      out.push(ev);
+    });
+    return out;
+  }
+
   function findRelatedEventsForTicker(ticker) {
     var t = normalizeTicker(ticker);
     if (typeof getAllBriefs !== 'function') return [];
-    return getAllBriefs().filter(function (b) {
-      return normalizeTicker(b.ticker) === t;
-    }).slice(0, 5);
+    var sector = getTickerSector(t);
+    var collected = [];
+    getAllBriefs().forEach(function (b) {
+      var classified = classifyAgentEvent(b, t);
+      if (!classified) return;
+      var briefTicker = normalizeTicker(b.ticker);
+      if (classified.level === 'issuer') {
+        if (briefTicker === t || classified.companyInTitle) collected.push(classified);
+        return;
+      }
+      if (classified.level === 'sector') {
+        if (briefTicker === t || (sector && classified.sector === sector)) collected.push(classified);
+        return;
+      }
+      if (classified.level === 'macro') {
+        // Только то, что ошибочно привязано к тикеру — не заливаем весь макро на каждую карточку.
+        if (briefTicker === t) collected.push(classified);
+      }
+    });
+    collected = dedupeAgentEvents(collected);
+    collected.sort(function (a, b) {
+      return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+    });
+    var issuer = [];
+    var sectorEv = [];
+    var macroEv = [];
+    collected.forEach(function (ev) {
+      if (ev.level === 'issuer' && issuer.length < 4) issuer.push(ev);
+      else if (ev.level === 'sector' && sectorEv.length < 3) sectorEv.push(ev);
+      else if (ev.level === 'macro' && macroEv.length < 2) macroEv.push(ev);
+    });
+    return issuer.concat(sectorEv, macroEv);
   }
 
   /** Доля бумаги в портфеле (акции), или пояснение если позиции нет. */
@@ -658,19 +966,41 @@
     }
 
     if (relatedEvents && relatedEvents.length) {
-      var latestEvent = relatedEvents[0] || {};
-      var latestDate = latestEvent.publishedAt
-        ? (typeof formatDateRu === 'function' ? formatDateRu(latestEvent.publishedAt) : String(latestEvent.publishedAt))
-        : 'дата не указана';
-      var latestSource = latestEvent.sourceName || 'источник не указан';
-      signals.push({
-        id: 'event',
-        title: 'Есть событие по бумаге',
-        reasons: [
-          'Последнее: «' + String(latestEvent.title || 'без заголовка') + '» (' + latestSource + ' / ' + latestDate + ').'
-        ],
-        events: relatedEvents
-      });
+      var issuerEvents = relatedEvents.filter(function (e) { return e && e.level === 'issuer'; });
+      var sectorEvents = relatedEvents.filter(function (e) { return e && e.level === 'sector'; });
+      var macroEvents = relatedEvents.filter(function (e) { return e && e.level === 'macro'; });
+
+      if (issuerEvents.length) {
+        var latestIssuer = issuerEvents[0];
+        signals.push({
+          id: 'event',
+          title: 'Есть событие по бумаге',
+          reasons: [
+            (latestIssuer.what || 'Событие по бумаге') +
+              (latestIssuer.sourceName ? ' · ' + latestIssuer.sourceName : '') +
+              (latestIssuer.dateLabel ? ' · ' + latestIssuer.dateLabel : '') + '.'
+          ],
+          events: issuerEvents
+        });
+      }
+      if (sectorEvents.length) {
+        signals.push({
+          id: 'context-sector',
+          title: 'Фон сектора',
+          reasons: [],
+          events: sectorEvents,
+          contextOnly: true
+        });
+      }
+      if (macroEvents.length) {
+        signals.push({
+          id: 'context-macro',
+          title: 'Макрофон',
+          reasons: [],
+          events: macroEvents,
+          contextOnly: true
+        });
+      }
     }
 
     return signals;
@@ -678,8 +1008,10 @@
 
   function deriveAgentStatus(signals) {
     if (!signals || !signals.length) return 'Спокойно';
-    if (signals.some(function (s) { return s.id === 'event'; })) return 'Есть событие';
-    if (signals.some(function (s) { return s.id === 'day-down' || s.id === 'day-up'; })) return 'Сильное движение';
+    var actionable = signals.filter(function (s) { return s && !s.contextOnly; });
+    if (!actionable.length) return 'Спокойно';
+    if (actionable.some(function (s) { return s.id === 'event'; })) return 'Есть событие';
+    if (actionable.some(function (s) { return s.id === 'day-down' || s.id === 'day-up'; })) return 'Сильное движение';
     return 'Зона внимания';
   }
 
@@ -707,8 +1039,9 @@
   function buildAgentSignalFingerprint(cards) {
     if (!cards || !cards.length) return '';
     return cards.map(function (c) {
-      if (!c.signals || !c.signals.length) return c.ticker + ':';
-      return c.ticker + ':' + c.signals.map(function (s) { return s.id; }).sort().join(',');
+      var actionable = (c.signals || []).filter(function (s) { return s && !s.contextOnly; });
+      if (!actionable.length) return c.ticker + ':';
+      return c.ticker + ':' + actionable.map(function (s) { return s.id; }).sort().join(',');
     }).sort().join('|');
   }
 
@@ -974,7 +1307,8 @@
     if (!cards || !cards.length) return 0;
     return cards.reduce(function (sum, card) {
       if (card.insufficient || !card.signals || !card.signals.length) return sum;
-      return sum + card.signals.length;
+      var n = card.signals.filter(function (s) { return s && !s.contextOnly; }).length;
+      return sum + n;
     }, 0);
   }
 
@@ -1050,8 +1384,8 @@
       var pa = agentCardSortPriority(a);
       var pb = agentCardSortPriority(b);
       if (pa !== pb) return pa - pb;
-      var sa = a && a.signals ? a.signals.length : 0;
-      var sb = b && b.signals ? b.signals.length : 0;
+      var sa = a && a.signals ? a.signals.filter(function (s) { return s && !s.contextOnly; }).length : 0;
+      var sb = b && b.signals ? b.signals.filter(function (s) { return s && !s.contextOnly; }).length : 0;
       if (sb !== sa) return sb - sa;
       return String(a && a.ticker || '').localeCompare(String(b && b.ticker || ''));
     });
@@ -1117,13 +1451,17 @@
       );
     }
 
-    var hasSignals = !!(card.signals && card.signals.length);
+    var actionableSignals = (card.signals || []).filter(function (s) { return s && !s.contextOnly; });
+    var hasSignals = actionableSignals.length > 0;
+    var hasContext = (card.signals || []).some(function (s) { return s && s.contextOnly; });
     var signalsHtml = '';
     if (hasSignals) {
       signalsHtml = '<div class="agent-signals-preview"><ul class="agent-signal-titles">' +
-        card.signals.map(function (sig) {
+        actionableSignals.map(function (sig) {
           return '<li class="agent-signal-title">' + escapeHtml(sig.title) + '</li>';
         }).join('') + '</ul></div>';
+    } else if (hasContext) {
+      signalsHtml = '<div class="agent-signals-preview"><p class="agent-context-preview muted">Есть фон сектора / макрофон — без статуса «событие»</p></div>';
     }
 
     var toneClass = card.status === 'Сильное движение' ? 'agent-card--strong'
@@ -1144,7 +1482,7 @@
         '</div>' +
         signalsHtml +
         '<div class="agent-card-actions">' +
-          (hasSignals
+          (hasSignals || hasContext
             ? '<button type="button" class="ghost agent-detail-btn" data-agent-detail="' + escapeHtml(card.ticker) + '">Подробнее</button>'
             : '') +
           '<button type="button" class="ghost agent-hide-btn" data-agent-hide="' + escapeHtml(card.ticker) + '">Скрыть из наблюдения</button>' +
@@ -1439,33 +1777,79 @@
     }
 
     // Один блок на бумагу: факты без повтора названий сигналов + общий чеклист покупки.
-    var reasonsHtml = card.signals.map(function (sig) {
+    var reasonsHtml = card.signals.filter(function (sig) {
+      return sig && !sig.contextOnly;
+    }).map(function (sig) {
       var fact = (sig.reasons && sig.reasons.length) ? String(sig.reasons[0] || '').trim() : '';
       if (!fact) return '';
       return '<li>' + escapeHtml(fact) + '</li>';
     }).filter(Boolean).join('');
 
-    var events = [];
+    function renderEventItems(list) {
+      return (list || []).slice(0, 4).map(function (ev) {
+        var what = escapeHtml(ev.what || ev.title || 'Событие');
+        var meta = escapeHtml([ev.sourceName, ev.dateLabel].filter(Boolean).join(' · '));
+        var link = ev.sourceUrl
+          ? '<a class="agent-event-link" href="' + escapeHtml(ev.sourceUrl) +
+            '" target="_blank" rel="noopener noreferrer">Открыть оригинал</a>'
+          : '';
+        return (
+          '<li class="agent-event-item">' +
+            '<div class="agent-event-what">' + what + '</div>' +
+            (meta ? '<div class="agent-event-meta muted">' + meta + '</div>' : '') +
+            link +
+          '</li>'
+        );
+      }).join('');
+    }
+
+    var issuerEvents = [];
+    var sectorEvents = [];
+    var macroEvents = [];
     card.signals.forEach(function (sig) {
-      if (sig.events && sig.events.length) {
-        sig.events.forEach(function (ev) { events.push(ev); });
-      }
+      if (!sig || !sig.events) return;
+      if (sig.id === 'event') issuerEvents = issuerEvents.concat(sig.events);
+      if (sig.id === 'context-sector') sectorEvents = sectorEvents.concat(sig.events);
+      if (sig.id === 'context-macro') macroEvents = macroEvents.concat(sig.events);
     });
+    issuerEvents = dedupeAgentEvents(issuerEvents);
+    sectorEvents = dedupeAgentEvents(sectorEvents);
+    macroEvents = dedupeAgentEvents(macroEvents);
+
     var eventsHtml = '';
-    if (events.length) {
-      eventsHtml = '<ul class="agent-event-list">' + events.slice(0, 3).map(function (ev) {
-        return '<li>' + escapeHtml(ev.title || '') + '</li>';
-      }).join('') + '</ul>';
+    if (issuerEvents.length) {
+      eventsHtml +=
+        '<div class="agent-context-block agent-context-block--issuer">' +
+          '<p class="agent-context-lbl">События по бумаге</p>' +
+          '<ul class="agent-event-list">' + renderEventItems(issuerEvents) + '</ul>' +
+        '</div>';
+    }
+    if (sectorEvents.length) {
+      eventsHtml +=
+        '<div class="agent-context-block agent-context-block--sector">' +
+          '<p class="agent-context-lbl">Фон сектора</p>' +
+          '<p class="agent-context-note muted">Фон сектора не является событием по конкретной бумаге, но может помочь понять общий контекст. Не инвестиционная рекомендация.</p>' +
+          '<ul class="agent-event-list">' + renderEventItems(sectorEvents) + '</ul>' +
+        '</div>';
+    }
+    if (macroEvents.length) {
+      eventsHtml +=
+        '<div class="agent-context-block agent-context-block--macro">' +
+          '<p class="agent-context-lbl">Макрофон</p>' +
+          '<p class="agent-context-note muted">Общий макрофон, не событие по эмитенту. Не инвестиционная рекомендация.</p>' +
+          '<ul class="agent-event-list">' + renderEventItems(macroEvents) + '</ul>' +
+        '</div>';
     }
 
     var shareText = formatAgentPortfolioShare(card.ticker);
-    var primary = card.signals[0];
     var html =
       '<div class="agent-signal agent-signal--expanded agent-signal--unified">' +
-        '<div class="agent-reasons">' +
-          '<p class="agent-reasons-lbl">Почему появился сигнал:</p>' +
-          '<ol>' + reasonsHtml + '</ol>' +
-        '</div>' +
+        (reasonsHtml
+          ? '<div class="agent-reasons">' +
+              '<p class="agent-reasons-lbl">Почему появился сигнал:</p>' +
+              '<ol>' + reasonsHtml + '</ol>' +
+            '</div>'
+          : '') +
         eventsHtml +
         '<div class="agent-checklist">' +
           '<p class="agent-checklist-lbl">Что проверить, если решите покупать:</p>' +
@@ -1675,6 +2059,8 @@
   }
 
   window.analyzeAgentSignals = analyzeAgentSignals;
+  window.classifyAgentEvent = classifyAgentEvent;
+  window.deriveAgentStatus = deriveAgentStatus;
   window.loadTopTurnoverTickers = loadTopTurnoverTickers;
   window.renderAgentSection = renderAgentSection;
   window.renderAgentSettings = renderAgentSettings;
