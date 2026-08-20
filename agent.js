@@ -1304,9 +1304,10 @@
   function countAttentionZones(cards) {
     if (!cards || !cards.length) return 0;
     return cards.reduce(function (sum, card) {
-      if (card.insufficient || !card.signals || !card.signals.length) return sum;
-      var n = card.signals.filter(function (s) { return s && !s.contextOnly; }).length;
-      return sum + n;
+      if (!card || card.insufficient) return sum;
+      if (card.status === 'Зона внимания' || card.status === 'Есть событие') return sum + 1;
+      var hasActionable = (card.signals || []).some(function (s) { return s && !s.contextOnly; });
+      return hasActionable ? sum + 1 : sum;
     }, 0);
   }
 
