@@ -520,7 +520,7 @@
     PLZL: ['полюс', 'polyus'],
     YDEX: ['яндекс', 'yandex'],
     OZON: ['озон', 'ozon'],
-    T: ['т-банк', 'тинькофф', 'tinkoff'],
+    T: ['т-банк', 'т банк', 'тинькофф', 'tinkoff', 'т-технолог', 'т технологи'],
     ASTR: ['астра', 'astra']
   };
 
@@ -571,12 +571,23 @@
   function agentCompanyAliases(ticker) {
     var t = normalizeTicker(ticker);
     var list = (AGENT_COMPANY_ALIASES[t] || []).slice();
-    list.push(t.toLowerCase());
+    // Короткий тикер (T, S…) нельзя искать как подстроку — ловит любую букву в тексте.
+    if (t.length >= 3) list.push(t.toLowerCase());
     if (typeof getTickerSubtitle === 'function') {
       var name = String(getTickerSubtitle(t) || '').toLowerCase().trim();
-      if (name && name !== t.toLowerCase()) list.push(name);
+      if (name && name !== t.toLowerCase() && name.length >= 4) list.push(name);
     }
     return list;
+  }
+
+  function agentAliasMatches(hay, alias) {
+    var a = String(alias || '').toLowerCase().trim();
+    if (!a) return false;
+    if (a.length <= 2) {
+      var re = new RegExp('(?:^|[^a-zа-я0-9])' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[^a-zа-я0-9]|$)', 'i');
+      return re.test(hay);
+    }
+    return hay.indexOf(a) >= 0;
   }
 
   function agentTextMentionsCompany(text, ticker) {
@@ -584,9 +595,7 @@
     var aliases = agentCompanyAliases(ticker);
     var i;
     for (i = 0; i < aliases.length; i++) {
-      var a = String(aliases[i] || '').toLowerCase().trim();
-      if (!a) continue;
-      if (hay.indexOf(a) >= 0) return true;
+      if (agentAliasMatches(hay, aliases[i])) return true;
     }
     return false;
   }

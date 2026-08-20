@@ -151,6 +151,25 @@ function assert(cond, msg) {
   );
   assert(withIssuer.some((s) => s.id === 'event'), 'issuer event must create event signal');
   assert(helpers.deriveAgentStatus(withIssuer) === 'Есть событие', 'issuer must set Есть событие');
+
+  const oilForT = {
+    title: 'Reuters рассказал о соперничестве Китая и Индии за российскую нефть',
+    summary: 'Борьба за поставки нефти',
+    body: '',
+    ticker: 'MOEX',
+    type: 'macro',
+    feedId: 'rbc',
+    sourceName: 'РБК — экономика',
+    publishedAt: '2026-08-20T10:00:00.000Z',
+    sourceUrl: 'https://www.rbc.ru/example-oil'
+  };
+  const oilCls = helpers.classifyAgentEvent(oilForT, 'T');
+  assert(!oilCls || oilCls.level !== 'issuer', 'oil news must not be issuer event for T, got ' + (oilCls && oilCls.level));
+  assert(!helpers.analyzeAgentSignals(
+    { insufficient: false, dayChangePct: -2, weekChangePct: 0, currentPrice: 250, monthHigh: 280, monthLow: 240 },
+    oilCls ? [oilCls] : [],
+    settings
+  ).some((s) => s.id === 'event'), 'T must not get event status from oil news');
 }
 
 const tickers = ['SBER', 'GAZP', 'VTBR', 'LKOH'];
