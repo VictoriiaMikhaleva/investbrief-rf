@@ -1838,6 +1838,9 @@
     }
 
     var shareText = formatAgentPortfolioShare(card.ticker);
+    var primary = (card.signals || []).find(function (s) { return s && !s.contextOnly; }) ||
+      (card.signals && card.signals[0]) ||
+      { id: '', title: '' };
     var html =
       '<div class="agent-signal agent-signal--expanded agent-signal--unified">' +
         (reasonsHtml
@@ -1859,10 +1862,10 @@
         '<div class="agent-signal-actions">' +
           '<p class="muted agent-signal-actions-label">Ваша реакция:</p>' +
           '<div class="row agent-signal-actions-row">' +
-            '<button type="button" class="primary" data-agent-log-action="buy" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id) + '" data-agent-signal-title="' + escapeHtml(primary.title) + '">Купил</button>' +
-            '<button type="button" class="ghost" data-agent-log-action="sell" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id) + '" data-agent-signal-title="' + escapeHtml(primary.title) + '">Продал</button>' +
-            '<button type="button" class="ghost" data-agent-log-action="skip" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id) + '" data-agent-signal-title="' + escapeHtml(primary.title) + '">Пропустил</button>' +
-            '<button type="button" class="ghost" data-agent-log-action="watch" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id) + '" data-agent-signal-title="' + escapeHtml(primary.title) + '">В наблюдение</button>' +
+            '<button type="button" class="primary" data-agent-log-action="buy" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id || '') + '" data-agent-signal-title="' + escapeHtml(primary.title || '') + '">Купил</button>' +
+            '<button type="button" class="ghost" data-agent-log-action="sell" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id || '') + '" data-agent-signal-title="' + escapeHtml(primary.title || '') + '">Продал</button>' +
+            '<button type="button" class="ghost" data-agent-log-action="skip" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id || '') + '" data-agent-signal-title="' + escapeHtml(primary.title || '') + '">Пропустил</button>' +
+            '<button type="button" class="ghost" data-agent-log-action="watch" data-agent-ticker="' + escapeHtml(card.ticker) + '" data-agent-signal-id="' + escapeHtml(primary.id || '') + '" data-agent-signal-title="' + escapeHtml(primary.title || '') + '">В наблюдение</button>' +
           '</div>' +
         '</div>' +
       '</div>';
