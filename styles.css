@@ -3676,6 +3676,13 @@
       flex-wrap: wrap;
       gap: 0.35rem;
       margin-top: 0.55rem;
+      position: relative;
+      z-index: 2;
+    }
+    .agent-card-actions .agent-detail-btn,
+    .agent-card-actions .agent-hide-btn {
+      pointer-events: auto;
+      cursor: pointer;
     }
     .agent-card-expanded {
       margin-top: 0.65rem;
