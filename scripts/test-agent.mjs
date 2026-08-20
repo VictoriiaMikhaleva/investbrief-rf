@@ -104,8 +104,7 @@ function assert(cond, msg) {
     sourceUrl: 'https://www.cbr.ru/press/'
   };
   const c = helpers.classifyAgentEvent(cbr, 'SBER');
-  assert(c && c.level === 'sector', 'CBR rates monitoring for SBER must be sector, got ' + (c && c.level));
-  assert(c && c.dateLabel && !/T\d{2}:/.test(c.dateLabel), 'date must be human, got ' + (c && c.dateLabel));
+  assert(!c, 'CBR rates monitoring must be ignored in agent, got ' + (c && c.level));
 
   const issuer = {
     title: 'Сбербанк опубликовал отчётность по МСФО за полугодие',
@@ -116,11 +115,12 @@ function assert(cond, msg) {
     eventType: 'earnings',
     feedId: 'interfax',
     sourceName: 'Интерфакс',
-    publishedAt: '2026-08-10T10:00:00.000Z',
+    publishedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     sourceUrl: 'https://www.interfax.ru/example'
   };
   const i = helpers.classifyAgentEvent(issuer, 'SBER');
-  assert(i && i.level === 'issuer', 'Sber earnings must be issuer, got ' + (i && i.level));
+  assert(i && i.level === 'issuer' && i.critical, 'Sber earnings must be critical issuer, got ' + (i && i.level));
+  assert(i && /Отчётность/i.test(i.thesis || ''), 'earnings thesis must be short, got ' + (i && i.thesis));
 
   const macro = {
     title: 'Банк России сохранил ключевую ставку',
@@ -134,22 +134,22 @@ function assert(cond, msg) {
     sourceUrl: 'https://www.cbr.ru/dkp/'
   };
   const m = helpers.classifyAgentEvent(macro, 'SBER');
-  assert(m && m.level === 'macro', 'Key rate for SBER must be macro, got ' + (m && m.level));
+  assert(!m, 'Key rate must be ignored in agent, got ' + (m && m.level));
 
-  const onlySector = helpers.analyzeAgentSignals(
+  const onlyNoise = helpers.analyzeAgentSignals(
     { insufficient: false, dayChangePct: 0.1, weekChangePct: 0.2, currentPrice: 100, monthHigh: 110, monthLow: 90 },
-    [c],
+    [],
     settings
   );
-  assert(!onlySector.some((s) => s.id === 'event'), 'sector context must not create event signal');
-  assert(helpers.deriveAgentStatus(onlySector) === 'Спокойно', 'sector-only card status must be Спокойно');
+  assert(!onlyNoise.some((s) => s.id === 'event'), 'no critical events → no event signal');
+  assert(helpers.deriveAgentStatus(onlyNoise) === 'Спокойно', 'calm when no actionable signals');
 
   const withIssuer = helpers.analyzeAgentSignals(
     { insufficient: false, dayChangePct: 0.1, weekChangePct: 0.2, currentPrice: 100, monthHigh: 110, monthLow: 90 },
     [i],
     settings
   );
-  assert(withIssuer.some((s) => s.id === 'event'), 'issuer event must create event signal');
+  assert(withIssuer.some((s) => s.id === 'event'), 'issuer critical event must create event signal');
   assert(helpers.deriveAgentStatus(withIssuer) === 'Есть событие', 'issuer must set Есть событие');
 
   const oilForT = {
@@ -164,12 +164,7 @@ function assert(cond, msg) {
     sourceUrl: 'https://www.rbc.ru/example-oil'
   };
   const oilCls = helpers.classifyAgentEvent(oilForT, 'T');
-  assert(!oilCls || oilCls.level !== 'issuer', 'oil news must not be issuer event for T, got ' + (oilCls && oilCls.level));
-  assert(!helpers.analyzeAgentSignals(
-    { insufficient: false, dayChangePct: -2, weekChangePct: 0, currentPrice: 250, monthHigh: 280, monthLow: 240 },
-    oilCls ? [oilCls] : [],
-    settings
-  ).some((s) => s.id === 'event'), 'T must not get event status from oil news');
+  assert(!oilCls, 'oil news must not appear for T, got ' + (oilCls && oilCls.level));
 }
 
 const tickers = ['SBER', 'GAZP', 'VTBR', 'LKOH'];
