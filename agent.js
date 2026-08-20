@@ -1011,12 +1011,10 @@
     var actionable = signals.filter(function (s) { return s && !s.contextOnly; });
     if (!actionable.length) return 'Спокойно';
     if (actionable.some(function (s) { return s.id === 'event'; })) return 'Есть событие';
-    if (actionable.some(function (s) { return s.id === 'day-down' || s.id === 'day-up'; })) return 'Сильное движение';
     return 'Зона внимания';
   }
 
   function statusClass(status) {
-    if (status === 'Сильное движение') return 'agent-status--strong';
     if (status === 'Есть событие') return 'agent-status--event';
     if (status === 'Зона внимания') return 'agent-status--watch';
     return 'agent-status--calm';
@@ -1372,10 +1370,9 @@
 
   function agentCardSortPriority(card) {
     if (!card || card.insufficient) return 9;
-    if (card.status === 'Сильное движение') return 0;
+    if (card.status === 'Есть событие') return 0;
     if (card.status === 'Зона внимания') return 1;
-    if (card.status === 'Есть событие') return 2;
-    if (card.status === 'Спокойно') return 3;
+    if (card.status === 'Спокойно') return 2;
     return 8;
   }
 
@@ -1461,12 +1458,11 @@
           return '<li class="agent-signal-title">' + escapeHtml(sig.title) + '</li>';
         }).join('') + '</ul></div>';
     } else if (hasContext) {
-      signalsHtml = '<div class="agent-signals-preview"><p class="agent-context-preview muted">Есть фон сектора / макрофон — без статуса «событие»</p></div>';
+      signalsHtml = '<div class="agent-signals-preview"><p class="agent-context-preview muted">Есть фон сектора или макрофон — без статуса «событие»</p></div>';
     }
 
-    var toneClass = card.status === 'Сильное движение' ? 'agent-card--strong'
-      : (card.status === 'Зона внимания' ? 'agent-card--watch'
-        : (card.status === 'Есть событие' ? 'agent-card--event' : 'agent-card--calm'));
+    var toneClass = card.status === 'Зона внимания' ? 'agent-card--watch'
+      : (card.status === 'Есть событие' ? 'agent-card--event' : 'agent-card--calm');
     return (
       '<article class="agent-card ' + toneClass + '" data-agent-ticker="' + escapeHtml(card.ticker) + '">' +
         '<div class="agent-card-head">' +
@@ -1828,7 +1824,7 @@
       eventsHtml +=
         '<div class="agent-context-block agent-context-block--sector">' +
           '<p class="agent-context-lbl">Фон сектора</p>' +
-          '<p class="agent-context-note muted">Фон сектора не является событием по конкретной бумаге, но может помочь понять общий контекст. Не инвестиционная рекомендация.</p>' +
+          '<p class="agent-context-note muted">Фон сектора — это общий контекст по отрасли. Он не является событием по конкретной бумаге.</p>' +
           '<ul class="agent-event-list">' + renderEventItems(sectorEvents) + '</ul>' +
         '</div>';
     }
@@ -1836,7 +1832,7 @@
       eventsHtml +=
         '<div class="agent-context-block agent-context-block--macro">' +
           '<p class="agent-context-lbl">Макрофон</p>' +
-          '<p class="agent-context-note muted">Общий макрофон, не событие по эмитенту. Не инвестиционная рекомендация.</p>' +
+          '<p class="agent-context-note muted">Макрофон может влиять на рынок в целом, но не означает отдельного события по этой бумаге.</p>' +
           '<ul class="agent-event-list">' + renderEventItems(macroEvents) + '</ul>' +
         '</div>';
     }

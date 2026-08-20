@@ -345,7 +345,7 @@ function mapSignalTitle(id) {
 
 function deriveStatus(signalIds) {
   if (!signalIds || !signalIds.length) return 'Спокойно';
-  if (signalIds.includes('day-down') || signalIds.includes('day-up')) return 'Сильное движение';
+  if (signalIds.includes('event')) return 'Есть событие';
   return 'Зона внимания';
 }
 
