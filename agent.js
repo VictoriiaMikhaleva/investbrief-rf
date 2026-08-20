@@ -638,9 +638,9 @@
           id: 'month-low',
           title: 'Близко к нижней границе месяца',
           reasons: [
-            'Цена ' + formatAgentPrice(d.currentPrice) +
-              ' у минимума 30 дней ' + formatAgentPrice(d.monthLow) +
-              ' (диапазон ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh) + ').'
+            'Цена у нижней границы месяца: ' + formatAgentPrice(d.currentPrice) +
+              ' при минимуме ' + formatAgentPrice(d.monthLow) +
+              ' и максимуме ' + formatAgentPrice(d.monthHigh) + '.'
           ]
         });
       }
@@ -649,9 +649,9 @@
           id: 'month-high',
           title: 'Близко к верхней границе месяца',
           reasons: [
-            'Цена ' + formatAgentPrice(d.currentPrice) +
-              ' у максимума 30 дней ' + formatAgentPrice(d.monthHigh) +
-              ' (диапазон ' + formatAgentPrice(d.monthLow) + ' — ' + formatAgentPrice(d.monthHigh) + ').'
+            'Цена у верхней границы месяца: ' + formatAgentPrice(d.currentPrice) +
+              ' при минимуме ' + formatAgentPrice(d.monthLow) +
+              ' и максимуме ' + formatAgentPrice(d.monthHigh) + '.'
           ]
         });
       }
