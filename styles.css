@@ -3733,6 +3733,32 @@
       margin-left: 0.35rem;
       font-weight: 500;
     }
+    .agent-news-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .agent-news-item {
+      padding: 0.65rem 0;
+      border-bottom: 1px solid rgba(61, 92, 71, 0.1);
+    }
+    .agent-news-item:last-child { border-bottom: none; }
+    .agent-news-title {
+      font-weight: 600;
+      font-size: 0.92rem;
+      line-height: 1.35;
+    }
+    .agent-news-meta {
+      margin-top: 0.2rem;
+      font-size: 0.74rem;
+    }
+    .agent-news-actions {
+      margin-top: 0.35rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.75rem;
+      align-items: center;
+    }
     .agent-context-block { margin-top: 0.7rem; }
     .agent-context-lbl {
       margin: 0 0 0.25rem;

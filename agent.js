@@ -521,7 +521,8 @@
     YDEX: ['яндекс', 'yandex'],
     OZON: ['озон', 'ozon'],
     T: ['т-банк', 'т банк', 'тинькофф', 'tinkoff', 'т-технолог', 'т технологи'],
-    ASTR: ['астра', 'astra']
+    ASTR: ['астра', 'astra'],
+    SMLT: ['самолет', 'samolet', 'smlt']
   };
 
   var AGENT_TICKER_SECTOR = {
@@ -1667,6 +1668,9 @@
             '<li><button type="button" class="agent-inline-link" data-agent-open-analytics="' +
               escapeHtml(card.ticker) +
               '">Карточка бумаги в аналитике</button></li>' +
+            '<li><button type="button" class="agent-inline-link" data-agent-open-news="' +
+              escapeHtml(card.ticker) +
+              '">Новости по тикеру за 7 дней</button></li>' +
             '<li>Текущая доля бумаги в портфеле: <strong>' + escapeHtml(shareText) + '</strong></li>' +
           '</ul>' +
         '</div>' +
@@ -1682,6 +1686,121 @@
       '</div>';
     expanded.innerHTML = html;
     expanded.hidden = false;
+  }
+
+  function findAgentTickerNews(ticker, maxAgeDays) {
+    ticker = normalizeTicker(ticker);
+    maxAgeDays = maxAgeDays || AGENT_EVENT_MAX_AGE_DAYS;
+    if (!ticker || typeof getAllBriefs !== 'function') return [];
+    var cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    var collected = [];
+    getAllBriefs().forEach(function (b) {
+      if (!b) return;
+      var pub = new Date(b.publishedAt || 0).getTime();
+      if (!isFinite(pub) || pub < cutoff) return;
+      var tickMatch = normalizeTicker(b.ticker || '') === ticker;
+      var titleMatch = agentTextMentionsCompany(b.title || '', ticker);
+      if (!tickMatch && !titleMatch) return;
+      collected.push(b);
+    });
+    collected = dedupeAgentEvents(collected.map(function (b) {
+      return {
+        id: b.id || b.sourceUrl || b.title,
+        title: b.title,
+        sourceUrl: b.sourceUrl,
+        sourceName: b.sourceName,
+        publishedAt: b.publishedAt,
+        dateLabel: formatAgentEventDate(b.publishedAt),
+        summary: b.summary || '',
+        briefId: b.id
+      };
+    }));
+    collected.sort(function (a, b) {
+      return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+    });
+    return collected.slice(0, 10);
+  }
+
+  function ensureAgentNewsModal() {
+    var el = document.getElementById('agentTickerNewsModal');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'agentTickerNewsModal';
+    el.className = 'modal-overlay';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.setAttribute('aria-labelledby', 'agentTickerNewsTitle');
+    el.hidden = true;
+    el.innerHTML =
+      '<div class="modal modal--article">' +
+        '<div class="brief-article-modal-head">' +
+          '<h2 class="brief-article-modal-title" id="agentTickerNewsTitle">Новости по тикеру</h2>' +
+        '</div>' +
+        '<div class="brief-article-body" id="agentTickerNewsBody"></div>' +
+        '<div class="modal-actions">' +
+          '<button type="button" id="agentTickerNewsCloseBtn" class="primary">Закрыть</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(el);
+    function closeModal() {
+      el.hidden = true;
+      document.body.style.overflow = '';
+    }
+    el.addEventListener('click', function (e) {
+      if (e.target === el) closeModal();
+    });
+    var closeBtn = document.getElementById('agentTickerNewsCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    el.addEventListener('click', function (e) {
+      var openBtn = e.target.closest('[data-agent-news-brief]');
+      if (!openBtn) return;
+      e.preventDefault();
+      var id = openBtn.getAttribute('data-agent-news-brief');
+      closeModal();
+      if (id && typeof openBriefArticleModal === 'function') openBriefArticleModal(id);
+    });
+    return el;
+  }
+
+  function openAgentTickerNews(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!ticker) return;
+    var items = findAgentTickerNews(ticker, 7);
+    var modal = ensureAgentNewsModal();
+    var titleEl = document.getElementById('agentTickerNewsTitle');
+    var bodyEl = document.getElementById('agentTickerNewsBody');
+    var name = typeof getTickerSubtitle === 'function' ? getTickerSubtitle(ticker) : ticker;
+    if (titleEl) titleEl.textContent = 'Новости · ' + ticker + (name && name !== ticker ? ' · ' + name : '');
+    if (!bodyEl) return;
+    if (!items.length) {
+      bodyEl.innerHTML =
+        '<p class="muted">За 7 дней в ленте нет материалов с упоминанием этой бумаги в заголовке. ' +
+        'Откройте сводку новостей или карточку в аналитике.</p>';
+    } else {
+      bodyEl.innerHTML =
+        '<ul class="agent-news-list">' +
+          items.map(function (ev) {
+            var meta = escapeHtml([ev.sourceName, ev.dateLabel].filter(Boolean).join(' · '));
+            var openBrief = ev.briefId
+              ? '<button type="button" class="agent-inline-link" data-agent-news-brief="' +
+                escapeHtml(ev.briefId) + '">Читать</button>'
+              : '';
+            var src = ev.sourceUrl
+              ? ' <a class="agent-event-link" href="' + escapeHtml(ev.sourceUrl) +
+                '" target="_blank" rel="noopener noreferrer">оригинал</a>'
+              : '';
+            return (
+              '<li class="agent-news-item">' +
+                '<div class="agent-news-title">' + escapeHtml(ev.title || 'Без заголовка') + '</div>' +
+                (meta ? '<div class="agent-news-meta muted">' + meta + '</div>' : '') +
+                '<div class="agent-news-actions">' + openBrief + src + '</div>' +
+              '</li>'
+            );
+          }).join('') +
+        '</ul>';
+    }
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
   }
 
   function syncAgentSettingsControls() {
@@ -1746,6 +1865,14 @@
         if (!at) return;
         if (typeof openAnalyticsModal === 'function') openAnalyticsModal(at);
         else if (typeof selectAnalyticsTicker === 'function') selectAnalyticsTicker(at);
+        return;
+      }
+      var newsBtn = e.target.closest('[data-agent-open-news]');
+      if (newsBtn) {
+        e.preventDefault();
+        var nt = normalizeTicker(newsBtn.getAttribute('data-agent-open-news') || '');
+        if (!nt) return;
+        openAgentTickerNews(nt);
         return;
       }
       var logBtn = e.target.closest('[data-agent-log-action]');

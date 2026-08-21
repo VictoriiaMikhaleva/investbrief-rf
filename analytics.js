@@ -1093,13 +1093,40 @@
     var legacy = wrapEl.querySelector('[data-div-yield]');
     if (legacy) legacy.style.display = 'none';
 
+    var pinned = wrapEl.getAttribute && wrapEl.getAttribute('data-val-today');
+    var pinnedNum = pinned != null ? Number(pinned) : null;
+    var hasPinnedTurnover = isFinite(pinnedNum) && pinnedNum > 0;
+    var mk = wrapEl.getAttribute && wrapEl.getAttribute('data-market');
+    var isUsWrap = mk === 'US' || (typeof Markets !== 'undefined' && Markets.isUsTicker(
+      wrapEl.getAttribute && wrapEl.getAttribute('data-ticker')
+    ));
+
+    function paintPinnedOrClearTurnover(clearIfMissing) {
+      if (!turnoverEl) return;
+      if (hasPinnedTurnover) {
+        turnoverEl.textContent = isUsWrap ? formatUsdTurnoverShort(pinnedNum) : formatTurnoverBln(pinnedNum);
+        turnoverEl.className = turnoverEl.textContent === '—' ? 'quote-div-val muted' : 'quote-div-val';
+        setQuoteCardTurnoverLabel(wrapEl, {
+          ticker: wrapEl.getAttribute && wrapEl.getAttribute('data-ticker'),
+          tradeDate: resolveQuoteTradeDate(a) || undefined,
+          market: mk
+        });
+        return;
+      }
+      if (clearIfMissing) {
+        turnoverEl.textContent = '—';
+        turnoverEl.className = 'quote-div-val muted';
+      }
+    }
+
     if (!a || !a.eligible) {
       if (avgEl) {
         avgEl.textContent = '—';
         avgEl.className = 'quote-div-val muted';
         avgEl.title = '';
       }
-      if (turnoverEl) turnoverEl.textContent = '—';
+      // Топ‑20: не затирать VALTODAY ранжирования, если enrich неуспешен.
+      paintPinnedOrClearTurnover(true);
       if (totalReturnEl) {
         totalReturnEl.textContent = '—';
         totalReturnEl.className = 'quote-div-val muted';
@@ -1115,18 +1142,17 @@
       }
     }
     if (turnoverEl) {
-      var pinned = wrapEl.getAttribute && wrapEl.getAttribute('data-val-today');
-      var pinnedNum = pinned != null ? Number(pinned) : null;
-      var v = a.quote && a.quote.valueToday != null ? a.quote.valueToday : null;
-      if ((v == null || !isFinite(Number(v))) && isFinite(pinnedNum) && pinnedNum > 0) v = pinnedNum;
-      if ((v == null || !isFinite(Number(v))) && a.volumeByDay && a.volumeByDay.length) {
-        var last = a.volumeByDay[a.volumeByDay.length - 1];
-        if (last && isFinite(Number(last.v))) v = Number(last.v) * 1e9;
+      var v = null;
+      // Ранг топ‑20 фиксирует VALTODAY в data-val-today — он приоритетнее кэша аналитики.
+      if (hasPinnedTurnover) {
+        v = pinnedNum;
+      } else {
+        v = a.quote && a.quote.valueToday != null ? a.quote.valueToday : null;
+        if ((v == null || !isFinite(Number(v))) && a.volumeByDay && a.volumeByDay.length) {
+          var last = a.volumeByDay[a.volumeByDay.length - 1];
+          if (last && isFinite(Number(last.v))) v = Number(last.v) * 1e9;
+        }
       }
-      var mk = wrapEl.getAttribute && wrapEl.getAttribute('data-market');
-      var isUsWrap = mk === 'US' || (typeof Markets !== 'undefined' && Markets.isUsTicker(
-        wrapEl.getAttribute && wrapEl.getAttribute('data-ticker')
-      ));
       turnoverEl.textContent = isUsWrap ? formatUsdTurnoverShort(v) : formatTurnoverBln(v);
       if (turnoverEl.textContent === '—') turnoverEl.className = 'quote-div-val muted';
       else turnoverEl.className = 'quote-div-val';
