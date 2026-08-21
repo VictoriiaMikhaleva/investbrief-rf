@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-08-21T20:09:48.646Z",
+  "updatedAt": "2026-08-21T20:39:45.035Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -15,14 +15,14 @@
       "LKOH",
       "OZON",
       "GMKN",
-      "YDEX",
       "LQDT",
+      "YDEX",
       "NVTK",
       "ROSN",
       "ALRS",
       "MAGN",
-      "SBFR",
       "VTBR",
+      "SBFR",
       "X5",
       "VKCO"
     ],
@@ -53,17 +53,24 @@
         "ticker": "SMLT",
         "name": "Самолет ао",
         "insufficient": false,
-        "currentPrice": 373.2,
-        "dayChangePct": 2.7,
-        "signals": [],
-        "status": "Спокойно"
+        "currentPrice": 374.8,
+        "dayChangePct": 3.14,
+        "signals": [
+          {
+            "id": "day-up",
+            "title": "Заметный рост за день",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
       },
       {
         "ticker": "SBER",
         "name": "Сбербанк",
         "insufficient": false,
-        "currentPrice": 273.13,
-        "dayChangePct": 0.75,
+        "currentPrice": 273.44,
+        "dayChangePct": 0.86,
         "signals": [],
         "status": "Спокойно"
       },
@@ -71,7 +78,7 @@
         "ticker": "SBMM",
         "name": "SBMM ETF",
         "insufficient": false,
-        "currentPrice": 19.2305,
+        "currentPrice": 19.23,
         "dayChangePct": 0.12,
         "signals": [
           {
@@ -87,8 +94,8 @@
         "ticker": "PLZL",
         "name": "Полюс",
         "insufficient": false,
-        "currentPrice": 1174.4,
-        "dayChangePct": 2.09,
+        "currentPrice": 1173.2,
+        "dayChangePct": 1.98,
         "signals": [],
         "status": "Спокойно"
       },
@@ -96,8 +103,8 @@
         "ticker": "GAZP",
         "name": "ГАЗПРОМ ао",
         "insufficient": false,
-        "currentPrice": 84.58,
-        "dayChangePct": 2.06,
+        "currentPrice": 84.65,
+        "dayChangePct": 2.15,
         "signals": [],
         "status": "Спокойно"
       },
@@ -105,8 +112,8 @@
         "ticker": "T",
         "name": "Т-Техно ао",
         "insufficient": false,
-        "currentPrice": 256.5,
-        "dayChangePct": 0.87,
+        "currentPrice": 256.84,
+        "dayChangePct": 1.01,
         "signals": [],
         "status": "Спокойно"
       },
@@ -114,8 +121,8 @@
         "ticker": "LKOH",
         "name": "ЛУКОЙЛ",
         "insufficient": false,
-        "currentPrice": 4247,
-        "dayChangePct": 1.47,
+        "currentPrice": 4249,
+        "dayChangePct": 1.52,
         "signals": [],
         "status": "Спокойно"
       },
@@ -123,8 +130,8 @@
         "ticker": "OZON",
         "name": "Озон",
         "insufficient": false,
-        "currentPrice": 2976.5,
-        "dayChangePct": 0.76,
+        "currentPrice": 2974.5,
+        "dayChangePct": 0.69,
         "signals": [],
         "status": "Спокойно"
       },
@@ -132,8 +139,8 @@
         "ticker": "GMKN",
         "name": "ГМКНорНик",
         "insufficient": false,
-        "currentPrice": 124.18,
-        "dayChangePct": 3.62,
+        "currentPrice": 124.46,
+        "dayChangePct": 3.86,
         "signals": [
           {
             "id": "day-up",
@@ -149,15 +156,6 @@
           }
         ],
         "status": "Зона внимания"
-      },
-      {
-        "ticker": "YDEX",
-        "name": "ЯНДЕКС",
-        "insufficient": false,
-        "currentPrice": 3636,
-        "dayChangePct": 0.94,
-        "signals": [],
-        "status": "Спокойно"
       },
       {
         "ticker": "LQDT",
@@ -176,11 +174,20 @@
         "status": "Зона внимания"
       },
       {
+        "ticker": "YDEX",
+        "name": "ЯНДЕКС",
+        "insufficient": false,
+        "currentPrice": 3639,
+        "dayChangePct": 1.03,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
         "ticker": "NVTK",
         "name": "Новатэк ао",
         "insufficient": false,
-        "currentPrice": 944.1,
-        "dayChangePct": 2.6,
+        "currentPrice": 943.9,
+        "dayChangePct": 2.58,
         "signals": [],
         "status": "Спокойно"
       },
@@ -197,8 +204,8 @@
         "ticker": "ALRS",
         "name": "АЛРОСА ао",
         "insufficient": false,
-        "currentPrice": 19.4,
-        "dayChangePct": 2.54,
+        "currentPrice": 19.45,
+        "dayChangePct": 2.8,
         "signals": [],
         "status": "Спокойно"
       },
@@ -206,12 +213,28 @@
         "ticker": "MAGN",
         "name": "ММК",
         "insufficient": false,
-        "currentPrice": 21.47,
-        "dayChangePct": 3.77,
+        "currentPrice": 21.465,
+        "dayChangePct": 3.75,
         "signals": [
           {
             "id": "day-up",
             "title": "Заметный рост за день",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
+      },
+      {
+        "ticker": "VTBR",
+        "name": "ВТБ ао",
+        "insufficient": false,
+        "currentPrice": 53.035,
+        "dayChangePct": 0.33,
+        "signals": [
+          {
+            "id": "month-low",
+            "title": "Близко к нижней границе месяца",
             "reasons": [],
             "checklist": []
           }
@@ -235,22 +258,6 @@
         "status": "Зона внимания"
       },
       {
-        "ticker": "VTBR",
-        "name": "ВТБ ао",
-        "insufficient": false,
-        "currentPrice": 53.07,
-        "dayChangePct": 0.4,
-        "signals": [
-          {
-            "id": "month-low",
-            "title": "Близко к нижней границе месяца",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Зона внимания"
-      },
-      {
         "ticker": "X5",
         "name": "КЦ ИКС 5",
         "insufficient": false,
@@ -263,8 +270,8 @@
         "ticker": "VKCO",
         "name": "МКПАО \"ВК\"",
         "insufficient": false,
-        "currentPrice": 132.95,
-        "dayChangePct": 0.23,
+        "currentPrice": 132.65,
+        "dayChangePct": 0,
         "signals": [
           {
             "id": "week-down",
