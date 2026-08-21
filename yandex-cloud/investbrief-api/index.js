@@ -4,6 +4,7 @@
  * InvestBrief API — Yandex Cloud Function
  * Frontend → API Gateway → investbrief-api → YDB Serverless (investbrief-prod)
  *
+ * Таблица users_data создаётся вручную в YDB Console (DDL не выполняется из функции).
  * Auth: пока userId передаётся клиентом. Для production добавить verifyAuth(event)
  * и сопоставление userId с subject токена.
  */
@@ -11,15 +12,10 @@
 const {
   Driver,
   getCredentialsFromEnv,
-  TypedValues,
-  Types,
-  Column,
-  TableDescription,
-  StatusCode
+  TypedValues
 } = require('ydb-sdk');
 
 const SERVICE_NAME = 'investbrief-api';
-const USERS_DATA_TABLE = 'users_data';
 
 /** После миграции на investbrief.ru заменить '*' на проверку origin из этого списка. */
 const ALLOWED_ORIGINS = [
@@ -45,21 +41,6 @@ const FORBIDDEN_PAYLOAD_KEYS = new Set([
 ]);
 
 let driverPromise = null;
-let tableReadyPromise = null;
-
-function isTableAlreadyExistsError(err) {
-  if (!err) return false;
-  if (err.code === StatusCode.ALREADY_EXISTS) return true;
-  var msg = err.message ? String(err.message) : String(err);
-  return /already exists|AlreadyExists/i.test(msg);
-}
-
-function isTableNotFoundError(err) {
-  if (!err) return false;
-  if (err.code === StatusCode.SCHEME_ERROR) return true;
-  var msg = err.message ? String(err.message) : String(err);
-  return /does not exist|not found|path .* not found/i.test(msg);
-}
 
 function getDriver() {
   if (!driverPromise) {
@@ -86,49 +67,6 @@ function getDriver() {
     })();
   }
   return driverPromise;
-}
-
-function buildUsersDataTableDescription() {
-  return new TableDescription()
-    .withColumn(new Column('userId', Types.UTF8))
-    .withColumn(new Column('portfolioJson', Types.optional(Types.UTF8)))
-    .withColumn(new Column('watchlistJson', Types.optional(Types.UTF8)))
-    .withColumn(new Column('agentSettingsJson', Types.optional(Types.UTF8)))
-    .withColumn(new Column('settingsJson', Types.optional(Types.UTF8)))
-    .withColumn(new Column('dataVersion', Types.optional(Types.INT32)))
-    .withColumn(new Column('updatedAt', Types.optional(Types.UTF8)))
-    .withPrimaryKey('userId');
-}
-
-function ensureUsersDataTable(driver) {
-  if (!tableReadyPromise) {
-    tableReadyPromise = (async function () {
-      try {
-        await driver.tableClient.withSession(async function (session) {
-          try {
-            await session.describeTable(USERS_DATA_TABLE);
-            return;
-          } catch (describeErr) {
-            if (!isTableNotFoundError(describeErr)) {
-              throw describeErr;
-            }
-          }
-
-          try {
-            await session.createTable(USERS_DATA_TABLE, buildUsersDataTableDescription());
-          } catch (createErr) {
-            if (isTableAlreadyExistsError(createErr)) return;
-            throw createErr;
-          }
-        });
-      } catch (err) {
-        console.error('[investbrief-api] ensureUsersDataTable failed', err);
-        tableReadyPromise = null;
-        throw err;
-      }
-    })();
-  }
-  return tableReadyPromise;
 }
 
 function corsHeaders(requestOrigin) {
@@ -312,7 +250,6 @@ function rowToUserData(row) {
 async function saveUserData(record) {
   try {
     var driver = await getDriver();
-    await ensureUsersDataTable(driver);
 
     await driver.tableClient.withSession(async function (session) {
       await session.executeQuery(`
@@ -350,7 +287,6 @@ async function saveUserData(record) {
 async function loadUserData(userId) {
   try {
     var driver = await getDriver();
-    await ensureUsersDataTable(driver);
 
     var row = null;
     await driver.tableClient.withSession(async function (session) {
