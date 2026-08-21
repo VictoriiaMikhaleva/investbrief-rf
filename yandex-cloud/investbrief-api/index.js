@@ -8,7 +8,7 @@
  * и сопоставление userId с subject токена.
  */
 
-const { Driver, getCredentialsFromEnv, TypedValues } = require('@yandex-cloud/ydb-sdk');
+const { Driver, getCredentialsFromEnv, TypedValues } = require('ydb-sdk');
 
 const SERVICE_NAME = 'investbrief-api';
 
