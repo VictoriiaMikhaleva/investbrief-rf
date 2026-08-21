@@ -8,9 +8,18 @@
  * и сопоставление userId с subject токена.
  */
 
-const { Driver, getCredentialsFromEnv, TypedValues } = require('ydb-sdk');
+const {
+  Driver,
+  getCredentialsFromEnv,
+  TypedValues,
+  Types,
+  Column,
+  TableDescription,
+  StatusCode
+} = require('ydb-sdk');
 
 const SERVICE_NAME = 'investbrief-api';
+const USERS_DATA_TABLE = 'users_data';
 
 /** После миграции на investbrief.ru заменить '*' на проверку origin из этого списка. */
 const ALLOWED_ORIGINS = [
@@ -38,50 +47,86 @@ const FORBIDDEN_PAYLOAD_KEYS = new Set([
 let driverPromise = null;
 let tableReadyPromise = null;
 
+function isTableAlreadyExistsError(err) {
+  if (!err) return false;
+  if (err.code === StatusCode.ALREADY_EXISTS) return true;
+  var msg = err.message ? String(err.message) : String(err);
+  return /already exists|AlreadyExists/i.test(msg);
+}
+
+function isTableNotFoundError(err) {
+  if (!err) return false;
+  if (err.code === StatusCode.SCHEME_ERROR) return true;
+  var msg = err.message ? String(err.message) : String(err);
+  return /does not exist|not found|path .* not found/i.test(msg);
+}
+
 function getDriver() {
   if (!driverPromise) {
-    const endpoint = process.env.YDB_ENDPOINT;
-    const database = process.env.YDB_DATABASE;
-    if (!endpoint || !database) {
-      throw new Error('YDB_ENDPOINT and YDB_DATABASE must be set');
-    }
-    const driver = new Driver({
-      endpoint,
-      database,
-      authService: getCredentialsFromEnv()
-    });
-    driverPromise = driver.ready(10000).then(function (ok) {
-      if (!ok) throw new Error('YDB driver not ready');
-      return driver;
-    });
+    driverPromise = (async function () {
+      try {
+        const endpoint = process.env.YDB_ENDPOINT;
+        const database = process.env.YDB_DATABASE;
+        if (!endpoint || !database) {
+          throw new Error('YDB_ENDPOINT and YDB_DATABASE must be set');
+        }
+        const driver = new Driver({
+          endpoint,
+          database,
+          authService: getCredentialsFromEnv()
+        });
+        const ok = await driver.ready(10000);
+        if (!ok) throw new Error('YDB driver not ready');
+        return driver;
+      } catch (err) {
+        console.error('[investbrief-api] getDriver failed', err);
+        driverPromise = null;
+        throw err;
+      }
+    })();
   }
   return driverPromise;
 }
 
+function buildUsersDataTableDescription() {
+  return new TableDescription()
+    .withColumn(new Column('userId', Types.UTF8))
+    .withColumn(new Column('portfolioJson', Types.optional(Types.UTF8)))
+    .withColumn(new Column('watchlistJson', Types.optional(Types.UTF8)))
+    .withColumn(new Column('agentSettingsJson', Types.optional(Types.UTF8)))
+    .withColumn(new Column('settingsJson', Types.optional(Types.UTF8)))
+    .withColumn(new Column('dataVersion', Types.optional(Types.INT32)))
+    .withColumn(new Column('updatedAt', Types.optional(Types.UTF8)))
+    .withPrimaryKey('userId');
+}
+
 function ensureUsersDataTable(driver) {
   if (!tableReadyPromise) {
-    tableReadyPromise = driver.tableClient.withSession(async function (session) {
+    tableReadyPromise = (async function () {
       try {
-        await session.executeSchemeQuery(`
-          CREATE TABLE users_data (
-            userId Utf8 NOT NULL,
-            portfolioJson Utf8,
-            watchlistJson Utf8,
-            agentSettingsJson Utf8,
-            settingsJson Utf8,
-            dataVersion Int32,
-            updatedAt Utf8,
-            PRIMARY KEY (userId)
-          )
-        `);
+        await driver.tableClient.withSession(async function (session) {
+          try {
+            await session.describeTable(USERS_DATA_TABLE);
+            return;
+          } catch (describeErr) {
+            if (!isTableNotFoundError(describeErr)) {
+              throw describeErr;
+            }
+          }
+
+          try {
+            await session.createTable(USERS_DATA_TABLE, buildUsersDataTableDescription());
+          } catch (createErr) {
+            if (isTableAlreadyExistsError(createErr)) return;
+            throw createErr;
+          }
+        });
       } catch (err) {
-        var msg = err && err.message ? String(err.message) : String(err);
-        if (msg.indexOf('already exists') >= 0 || msg.indexOf('AlreadyExists') >= 0) {
-          return;
-        }
+        console.error('[investbrief-api] ensureUsersDataTable failed', err);
+        tableReadyPromise = null;
         throw err;
       }
-    });
+    })();
   }
   return tableReadyPromise;
 }
@@ -265,59 +310,69 @@ function rowToUserData(row) {
 }
 
 async function saveUserData(record) {
-  var driver = await getDriver();
-  await ensureUsersDataTable(driver);
+  try {
+    var driver = await getDriver();
+    await ensureUsersDataTable(driver);
 
-  await driver.tableClient.withSession(async function (session) {
-    await session.executeQuery(`
-      DECLARE $userId AS Utf8;
-      DECLARE $portfolioJson AS Utf8;
-      DECLARE $watchlistJson AS Utf8;
-      DECLARE $agentSettingsJson AS Utf8;
-      DECLARE $settingsJson AS Utf8;
-      DECLARE $dataVersion AS Int32;
-      DECLARE $updatedAt AS Utf8;
+    await driver.tableClient.withSession(async function (session) {
+      await session.executeQuery(`
+        DECLARE $userId AS Utf8;
+        DECLARE $portfolioJson AS Utf8;
+        DECLARE $watchlistJson AS Utf8;
+        DECLARE $agentSettingsJson AS Utf8;
+        DECLARE $settingsJson AS Utf8;
+        DECLARE $dataVersion AS Int32;
+        DECLARE $updatedAt AS Utf8;
 
-      UPSERT INTO users_data (
-        userId, portfolioJson, watchlistJson, agentSettingsJson, settingsJson, dataVersion, updatedAt
-      ) VALUES (
-        $userId, $portfolioJson, $watchlistJson, $agentSettingsJson, $settingsJson, $dataVersion, $updatedAt
-      );
-    `, {
-      $userId: TypedValues.utf8(record.userId),
-      $portfolioJson: TypedValues.utf8(JSON.stringify(record.portfolio)),
-      $watchlistJson: TypedValues.utf8(JSON.stringify(record.watchlist)),
-      $agentSettingsJson: TypedValues.utf8(JSON.stringify(record.agentSettings)),
-      $settingsJson: TypedValues.utf8(JSON.stringify(record.settings)),
-      $dataVersion: TypedValues.int32(record.dataVersion),
-      $updatedAt: TypedValues.utf8(record.updatedAt)
+        UPSERT INTO users_data (
+          userId, portfolioJson, watchlistJson, agentSettingsJson, settingsJson, dataVersion, updatedAt
+        ) VALUES (
+          $userId, $portfolioJson, $watchlistJson, $agentSettingsJson, $settingsJson, $dataVersion, $updatedAt
+        );
+      `, {
+        $userId: TypedValues.utf8(record.userId),
+        $portfolioJson: TypedValues.utf8(JSON.stringify(record.portfolio)),
+        $watchlistJson: TypedValues.utf8(JSON.stringify(record.watchlist)),
+        $agentSettingsJson: TypedValues.utf8(JSON.stringify(record.agentSettings)),
+        $settingsJson: TypedValues.utf8(JSON.stringify(record.settings)),
+        $dataVersion: TypedValues.int32(record.dataVersion),
+        $updatedAt: TypedValues.utf8(record.updatedAt)
+      });
     });
-  });
 
-  return record;
+    return record;
+  } catch (err) {
+    console.error('[investbrief-api] saveUserData failed', err);
+    throw err;
+  }
 }
 
 async function loadUserData(userId) {
-  var driver = await getDriver();
-  await ensureUsersDataTable(driver);
+  try {
+    var driver = await getDriver();
+    await ensureUsersDataTable(driver);
 
-  var row = null;
-  await driver.tableClient.withSession(async function (session) {
-    var result = await session.executeQuery(`
-      DECLARE $userId AS Utf8;
-      SELECT userId, portfolioJson, watchlistJson, agentSettingsJson, settingsJson, dataVersion, updatedAt
-      FROM users_data
-      WHERE userId = $userId;
-    `, {
-      $userId: TypedValues.utf8(userId)
+    var row = null;
+    await driver.tableClient.withSession(async function (session) {
+      var result = await session.executeQuery(`
+        DECLARE $userId AS Utf8;
+        SELECT userId, portfolioJson, watchlistJson, agentSettingsJson, settingsJson, dataVersion, updatedAt
+        FROM users_data
+        WHERE userId = $userId;
+      `, {
+        $userId: TypedValues.utf8(userId)
+      });
+
+      var sets = result.resultSets || [];
+      if (!sets.length) return;
+      row = parseResultRow(sets[0]);
     });
 
-    var sets = result.resultSets || [];
-    if (!sets.length) return;
-    row = parseResultRow(sets[0]);
-  });
-
-  return rowToUserData(row);
+    return rowToUserData(row);
+  } catch (err) {
+    console.error('[investbrief-api] loadUserData failed', err);
+    throw err;
+  }
 }
 
 async function resolveTrustedUserId(event, body) {
