@@ -1744,6 +1744,7 @@
     document.body.appendChild(el);
     function closeModal() {
       el.hidden = true;
+      el.classList.remove('open');
       document.body.style.overflow = '';
     }
     el.addEventListener('click', function (e) {
@@ -1800,6 +1801,7 @@
         '</ul>';
     }
     modal.hidden = false;
+    modal.classList.add('open');
     document.body.style.overflow = 'hidden';
   }
 
