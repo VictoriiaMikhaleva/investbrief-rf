@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-08-22T09:36:25.724Z",
+  "updatedAt": "2026-08-22T09:56:02.609Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -10,21 +10,21 @@
       "T",
       "VTBR",
       "SBER",
-      "MAGN",
       "GAZP",
+      "MAGN",
       "PLZL",
       "SBMM",
       "OZON",
+      "GMKN",
       "VKCO",
       "MGNT",
-      "GMKN",
       "NLMK",
       "ROSN",
       "RUAL",
       "YDEX",
       "LQDT",
-      "LKOH",
-      "SBFR"
+      "SBFR",
+      "LKOH"
     ],
     "thresholds": {
       "dayMoveThreshold": 3,
@@ -37,8 +37,8 @@
         "ticker": "SMLT",
         "name": "Самолет ао",
         "insufficient": false,
-        "currentPrice": 367.8,
-        "dayChangePct": -1.87,
+        "currentPrice": 367.6,
+        "dayChangePct": -1.92,
         "signals": [],
         "status": "Спокойно"
       },
@@ -62,8 +62,8 @@
         "ticker": "T",
         "name": "Т-Техно ао",
         "insufficient": false,
-        "currentPrice": 254.12,
-        "dayChangePct": -1.21,
+        "currentPrice": 253.42,
+        "dayChangePct": -1.48,
         "signals": [],
         "status": "Спокойно"
       },
@@ -71,8 +71,8 @@
         "ticker": "VTBR",
         "name": "ВТБ ао",
         "insufficient": false,
-        "currentPrice": 52.525,
-        "dayChangePct": -1.04,
+        "currentPrice": 52.49,
+        "dayChangePct": -1.1,
         "signals": [
           {
             "id": "month-low",
@@ -87,17 +87,8 @@
         "ticker": "SBER",
         "name": "Сбербанк",
         "insufficient": false,
-        "currentPrice": 272.43,
-        "dayChangePct": -0.33,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
-        "ticker": "MAGN",
-        "name": "ММК",
-        "insufficient": false,
-        "currentPrice": 21.005,
-        "dayChangePct": -2.35,
+        "currentPrice": 272.03,
+        "dayChangePct": -0.48,
         "signals": [],
         "status": "Спокойно"
       },
@@ -105,8 +96,17 @@
         "ticker": "GAZP",
         "name": "ГАЗПРОМ ао",
         "insufficient": false,
-        "currentPrice": 84.04,
-        "dayChangePct": -0.87,
+        "currentPrice": 83.89,
+        "dayChangePct": -1.05,
+        "signals": [],
+        "status": "Спокойно"
+      },
+      {
+        "ticker": "MAGN",
+        "name": "ММК",
+        "insufficient": false,
+        "currentPrice": 21.035,
+        "dayChangePct": -2.21,
         "signals": [],
         "status": "Спокойно"
       },
@@ -114,8 +114,8 @@
         "ticker": "PLZL",
         "name": "Полюс",
         "insufficient": false,
-        "currentPrice": 1166,
-        "dayChangePct": -0.49,
+        "currentPrice": 1166.2,
+        "dayChangePct": -0.48,
         "signals": [],
         "status": "Спокойно"
       },
@@ -152,11 +152,27 @@
         "status": "Зона внимания"
       },
       {
+        "ticker": "GMKN",
+        "name": "ГМКНорНик",
+        "insufficient": false,
+        "currentPrice": 123.04,
+        "dayChangePct": -1.27,
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
+      },
+      {
         "ticker": "VKCO",
         "name": "МКПАО \"ВК\"",
         "insufficient": false,
-        "currentPrice": 130.1,
-        "dayChangePct": -2.14,
+        "currentPrice": 130.05,
+        "dayChangePct": -2.18,
         "signals": [],
         "status": "Спокойно"
       },
@@ -170,27 +186,11 @@
         "status": "Спокойно"
       },
       {
-        "ticker": "GMKN",
-        "name": "ГМКНорНик",
-        "insufficient": false,
-        "currentPrice": 123.3,
-        "dayChangePct": -1.06,
-        "signals": [
-          {
-            "id": "month-high",
-            "title": "Близко к верхней границе месяца",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Зона внимания"
-      },
-      {
         "ticker": "NLMK",
         "name": "НЛМК ао",
         "insufficient": false,
-        "currentPrice": 70.06,
-        "dayChangePct": -2.42,
+        "currentPrice": 70.02,
+        "dayChangePct": -2.48,
         "signals": [],
         "status": "Спокойно"
       },
@@ -198,8 +198,8 @@
         "ticker": "ROSN",
         "name": "Роснефть",
         "insufficient": false,
-        "currentPrice": 315.6,
-        "dayChangePct": -0.49,
+        "currentPrice": 315.45,
+        "dayChangePct": -0.54,
         "signals": [],
         "status": "Спокойно"
       },
@@ -207,8 +207,8 @@
         "ticker": "RUAL",
         "name": "РУСАЛ ао",
         "insufficient": false,
-        "currentPrice": 25.94,
-        "dayChangePct": -1.74,
+        "currentPrice": 25.88,
+        "dayChangePct": -1.97,
         "signals": [],
         "status": "Спокойно"
       },
@@ -216,8 +216,8 @@
         "ticker": "YDEX",
         "name": "ЯНДЕКС",
         "insufficient": false,
-        "currentPrice": 3603,
-        "dayChangePct": -1.06,
+        "currentPrice": 3600.5,
+        "dayChangePct": -1.13,
         "signals": [],
         "status": "Спокойно"
       },
@@ -238,20 +238,11 @@
         "status": "Зона внимания"
       },
       {
-        "ticker": "LKOH",
-        "name": "ЛУКОЙЛ",
-        "insufficient": false,
-        "currentPrice": 4230,
-        "dayChangePct": -0.52,
-        "signals": [],
-        "status": "Спокойно"
-      },
-      {
         "ticker": "SBFR",
         "name": "SBFR ETF",
         "insufficient": false,
-        "currentPrice": 15.37,
-        "dayChangePct": 0.03,
+        "currentPrice": 15.372,
+        "dayChangePct": 0.04,
         "signals": [
           {
             "id": "month-high",
@@ -261,6 +252,15 @@
           }
         ],
         "status": "Зона внимания"
+      },
+      {
+        "ticker": "LKOH",
+        "name": "ЛУКОЙЛ",
+        "insufficient": false,
+        "currentPrice": 4229,
+        "dayChangePct": -0.54,
+        "signals": [],
+        "status": "Спокойно"
       }
     ]
   }
