@@ -212,6 +212,37 @@ input:focus, select:focus, textarea:focus {
   border-color: rgba(23, 34, 51, 0.11);
 }
 
+/* Топ-20 по обороту: убрать бежевый tint, выровнять со светлыми карточками */
+.imoex-top-cards .quote-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 35%, #d7dde6 65%);
+  box-shadow: var(--shadow-card);
+  background-image: none;
+}
+
+.imoex-top-cards .quote-card:hover {
+  border-color: rgba(23, 34, 51, 0.12);
+  border-left-color: color-mix(in srgb, var(--bronze) 55%, var(--accent) 45%);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-1px);
+  background: var(--bg-panel);
+}
+
+.imoex-top-cards .quote-card-div-block,
+.imoex-top-cards .quote-card-div-block--compact {
+  border-top-color: rgba(23, 34, 51, 0.08);
+}
+
+.imoex-top-cards .quote-card-ticker {
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.imoex-top-cards .quote-card-price {
+  color: var(--text);
+}
+
 .brief-card::before {
   width: 3px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 55%, #7a9a86) 0%, var(--accent) 100%);
