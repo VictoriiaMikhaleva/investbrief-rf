@@ -437,7 +437,7 @@
           return;
         }
         if (!isPrivacyConsentChecked()) {
-          showToast('Подтвердите согласие с Политикой конфиденциальности');
+          showToast('Отметьте согласие на обработку персональных данных');
           return;
         }
         withAuthBusy(function () {
@@ -457,6 +457,10 @@
         var fb = getFb();
         if (!fb) {
           showCloudSyncError(firebaseUnavailableMessage(), { force: true });
+          return;
+        }
+        if (!isPrivacyConsentChecked()) {
+          showToast('Отметьте согласие на обработку персональных данных');
           return;
         }
         withAuthBusy(function () {

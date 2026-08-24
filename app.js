@@ -686,6 +686,24 @@
 
 
 
+  var COOKIE_NOTICE_KEY = 'ibrf.cookieNotice.accepted';
+
+  function initCookieNotice() {
+    var banner = document.getElementById('cookieNotice');
+    var acceptBtn = document.getElementById('cookieNoticeAccept');
+    if (!banner || !acceptBtn) return;
+    try {
+      if (localStorage.getItem(COOKIE_NOTICE_KEY) === '1') return;
+    } catch (e) { /* ignore */ }
+    banner.hidden = false;
+    acceptBtn.addEventListener('click', function () {
+      try {
+        localStorage.setItem(COOKIE_NOTICE_KEY, '1');
+      } catch (err) { /* ignore */ }
+      banner.hidden = true;
+    });
+  }
+
   function init() {
     if (state.analyticsPriceHorizon === 'year') state.analyticsPriceHorizon = '5y';
     bindEvents();
@@ -717,6 +735,7 @@
       bindChartHover(document.getElementById('imoexMiniChart'));
       bindChartHover(document.getElementById('analyticsPriceChart'));
       bindChartHover(document.getElementById('portfolioInsightPriceChart'));
+      initCookieNotice();
     } catch (err) {
       console.error('InvestBrief init error', err);
     }

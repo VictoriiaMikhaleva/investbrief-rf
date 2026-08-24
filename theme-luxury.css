@@ -525,16 +525,40 @@ input:focus, select:focus, textarea:focus {
   width: 100%;
   max-width: 1080px;
   flex: 0 0 100%;
-  padding: 0.5rem 2.5rem 1rem;
+  padding: 0.75rem 2.5rem 1.1rem;
   border-top: 1px solid rgba(23, 34, 51, 0.14);
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   line-height: 1.45;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.app-footer-brand {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.35rem 0.6rem;
+}
+
+.app-footer-disclaimer,
+.app-footer-sources {
+  margin: 0;
+  max-width: 46rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.app-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.85rem;
+  font-size: 0.78rem;
 }
 
 .app-footer a {
@@ -548,9 +572,64 @@ input:focus, select:focus, textarea:focus {
   text-decoration: underline;
 }
 
+.settings-about-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.45rem;
+  align-items: center;
+  margin: 0.65rem 0 0;
+  font-size: 0.84rem;
+}
+
+.cookie-notice {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1200;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 34, 51, 0.14);
+  background: rgba(247, 244, 238, 0.96);
+  box-shadow: 0 10px 28px rgba(23, 34, 51, 0.14);
+  color: var(--text);
+}
+
+.cookie-notice__text {
+  margin: 0 0 0.7rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.cookie-notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.cookie-notice__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.8rem;
+  text-decoration: none;
+}
+
 @media (max-width: 899px) {
   .app-footer {
-    display: none;
+    display: flex;
+    padding: 0.75rem 1rem 5.75rem;
+    font-size: 0.72rem;
+  }
+
+  .cookie-notice {
+    bottom: 4.75rem;
+    left: 0.75rem;
+    right: 0.75rem;
   }
 }
 

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <!-- ibrf-asset-version: 202608241553 -->
+  <script>
+    (function () {
+      var marker = 'investbrief-rf';
+      var path = location.pathname || '/';
+      if (path === '/' + marker) {
+        location.replace('/' + marker + '/' + location.search + location.hash);
+        return;
+      }
+      var pos = path.indexOf(marker);
+      if (pos !== -1) {
+        var baseHref = path.slice(0, pos + marker.length) + '/';
+        var base = document.createElement('base');
+        base.href = baseHref;
+        document.head.appendChild(base);
+      }
+    })();
+  </script>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Правовая информация — ИнвестБриф РФ</title>
+  <meta name="description" content="Правовая информация сервиса InvestBrief: статус, дисклеймеры, источники данных и ограничения ответственности." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css?v=202608241553" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=202608241553" />
+  <style>
+    .legal-page { max-width: 42rem; margin: 0 auto; padding: 1.5rem 1.25rem 1.75rem; }
+    .legal-page h1 { font-family: var(--font-heading); font-size: 1.65rem; margin: 0 0 0.35rem; }
+    .legal-page .legal-meta { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1.5rem; }
+    .legal-page h2 { font-size: 1.05rem; margin: 1.35rem 0 0.5rem; color: var(--accent); }
+    .legal-page p, .legal-page li { line-height: 1.6; font-size: 0.95rem; }
+    .legal-page ul { padding-left: 1.2rem; margin: 0.35rem 0 0.75rem; }
+    .legal-back { display: inline-block; margin-bottom: 1rem; }
+    .legal-footer-wrap { max-width: 42rem; margin: 0 auto; padding: 0 1.25rem 1.5rem; }
+    .legal-nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin: 0 0 1.25rem; font-size: 0.88rem; }
+  </style>
+</head>
+<body>
+  <div class="legal-page">
+    <a class="legal-back muted" href="./index.html">← На главную</a>
+    <h1>Правовая информация</h1>
+    <p class="legal-meta">InvestBrief · редакция от 24.08.2026</p>
+    <nav class="legal-nav" aria-label="Правовые документы">
+      <a href="./privacy.html">Политика конфиденциальности</a>
+      <a href="./terms.html">Пользовательское соглашение</a>
+    </nav>
+
+    <h2>1. Статус сервиса</h2>
+    <p>InvestBrief — информационно-аналитический сервис. Сервис помогает структурировать открытые рыночные данные, быстрее находить важные события и лучше понимать инвестиционные инструменты.</p>
+    <p>InvestBrief не является инвестиционным советником, брокером или управляющей компанией и не даёт индивидуальных инвестиционных рекомендаций. Информация на сайте носит справочный и образовательный характер. Все решения пользователь принимает самостоятельно.</p>
+
+    <h2>2. Не инвестиционная рекомендация</h2>
+    <p>Материалы, расчёты, зоны внимания, прогнозы выплат и данные портфеля не являются индивидуальной инвестиционной рекомендацией, предложением купить или продать ценные бумаги, инвестиционной консультацией или гарантией доходности.</p>
+
+    <h2>3. Самостоятельные решения пользователя</h2>
+    <p>Пользователь самостоятельно оценивает риски и принимает инвестиционные решения. Перед совершением сделок рекомендуется проверить данные у брокера, эмитента, на сайте Московской Биржи или в иных официальных источниках.</p>
+
+    <h2>4. Рыночные данные</h2>
+    <p>Рыночные данные могут отображаться с задержкой. Данные могут быть неполными, устаревшими или временно недоступными. InvestBrief не гарантирует абсолютную точность, полноту и непрерывность отображения данных.</p>
+
+    <h2>5. Портфель</h2>
+    <p>Раздел «Мой портфель» предназначен для справочного учёта. Расчёты зависят от данных, введённых пользователем, доступных рыночных данных и принятых методик расчёта. Результаты являются оценочными.</p>
+
+    <h2>6. Дивиденды, купоны и прогнозы</h2>
+    <p>История выплат и прогнозы выплат рассчитываются справочно по открытым данным и не гарантируют будущие выплаты. Фактические выплаты зависят от решений эмитентов, параметров инструментов, налогов, комиссий и других факторов.</p>
+
+    <h2>7. Агент наблюдения</h2>
+    <p>Зона внимания — это не рекомендация к сделке. Это повод самостоятельно проверить цену, объём торгов, новости, отчётность и риски по инструменту.</p>
+
+    <h2>8. Источники данных</h2>
+    <p>Рыночные данные и справочная информация могут формироваться на основе открытых источников, включая MOEX ISS / Московскую Биржу, сайты эмитентов и иные публичные источники. Данные могут отображаться с задержкой, быть неполными или временно недоступными. InvestBrief не является аффилированным сервисом ПАО Московская Биржа и не использует логотипы или фирменное оформление Московской Биржи.</p>
+
+    <p class="muted" style="margin-top:2rem;"><a href="./index.html">Вернуться в приложение</a></p>
+  </div>
+  <div class="legal-footer-wrap">
+    <footer class="app-footer" aria-label="Подпись проекта">
+      <span>Создано Викторией Михалевой · контент, ИИ и цифровые проекты</span>
+      <a href="https://www.content-system.ru/" target="_blank" rel="noopener noreferrer">content-system.ru</a>
+      <nav class="app-footer-links" aria-label="Правовые ссылки">
+        <a href="./legal.html">Правовая информация</a>
+        <a href="./privacy.html">Политика конфиденциальности</a>
+        <a href="./terms.html">Пользовательское соглашение</a>
+      </nav>
+    </footer>
+  </div>
+</body>
+</html>

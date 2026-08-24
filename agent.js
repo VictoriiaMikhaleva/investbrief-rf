@@ -1059,9 +1059,9 @@
     if (statsEl) {
       var st = computeAgentLogStats(log);
       statsEl.innerHTML =
-        '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.signals + '</span><span class="agent-log-stat-label muted">сигналов за 30 дн.</span></div>' +
+        '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.signals + '</span><span class="agent-log-stat-label muted">зон внимания за 30 дн.</span></div>' +
         '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.actions + '</span><span class="agent-log-stat-label muted">ваших действий</span></div>' +
-        '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.reactionPct + '%</span><span class="agent-log-stat-label muted">реакция на сигналы</span></div>' +
+        '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.reactionPct + '%</span><span class="agent-log-stat-label muted">реакция на зоны внимания</span></div>' +
         '<div class="agent-log-stat"><span class="agent-log-stat-num">' + st.byAction.buy + ' / ' + st.byAction.sell + '</span><span class="agent-log-stat-label muted">купил / продал</span></div>';
     }
 
@@ -1106,7 +1106,7 @@
     }
     if (clearBtn) {
       clearBtn.addEventListener('click', function () {
-        if (!confirm('Очистить весь журнал сигналов и действий?')) return;
+        if (!confirm('Очистить весь журнал зон внимания и действий?')) return;
         setAgentActionLog([]);
         renderAgentLogPanel();
         renderAgentHistory();
@@ -1255,7 +1255,7 @@
     if (!el) return;
     var history = getAgentActionLog().slice(0, 10);
     if (!history.length) {
-      el.innerHTML = '<p class="muted">История появится после первых сигналов или ваших действий.</p>';
+      el.innerHTML = '<p class="muted">История появится после первых зон внимания или ваших действий.</p>';
       return;
     }
     el.innerHTML = history.map(function (h) {
@@ -1657,13 +1657,13 @@
       '<div class="agent-signal agent-signal--expanded agent-signal--unified">' +
         (reasonsHtml
           ? '<div class="agent-reasons">' +
-              '<p class="agent-reasons-lbl">Почему появился сигнал:</p>' +
+              '<p class="agent-reasons-lbl">Почему появилась зона внимания:</p>' +
               '<ol>' + reasonsHtml + '</ol>' +
             '</div>'
           : '') +
         eventsHtml +
         '<div class="agent-checklist">' +
-          '<p class="agent-checklist-lbl">Что проверить, если решите покупать:</p>' +
+          '<p class="agent-checklist-lbl">Что проверить по инструменту:</p>' +
           '<ul>' +
             '<li><button type="button" class="agent-inline-link" data-agent-open-analytics="' +
               escapeHtml(card.ticker) +

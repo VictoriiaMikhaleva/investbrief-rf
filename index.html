@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru" class="us-market-unavailable">
 <head>
-  <!-- ibrf-asset-version: 202608241522 -->
+  <!-- ibrf-asset-version: 202608241553 -->
   <script>
     /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS и JS на мобильных. */
     (function () {
@@ -32,13 +32,13 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-  <link rel="manifest" href="./site.webmanifest?v=202608241522" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
+  <link rel="manifest" href="./site.webmanifest?v=202608241553" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
   <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, агент наблюдения, ОФЗ, дивиденды и обороты торгов." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=202608241522" />
-  <link rel="stylesheet" href="./theme-luxury.css?v=202608241522" />  <!-- Yandex.Metrika counter -->
+  <link rel="stylesheet" href="./styles.css?v=202608241553" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=202608241553" />  <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
       m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
@@ -245,8 +245,8 @@
             </div>
             <div id="agentGrid" class="agent-grid" aria-live="polite"></div>
             <details class="agent-log-panel" id="agentLogPanel">
-              <summary>Журнал сигналов и действий</summary>
-              <p class="muted agent-log-lead">Цепочка «сигнал агента → ваша реакция» для анализа продуктивности. Отметьте действие в «Подробнее» на карточке бумаги.</p>
+              <summary>Журнал зон внимания и действий</summary>
+              <p class="muted agent-log-lead">Цепочка «зона внимания → ваша реакция» для анализа продуктивности. Отметьте действие в «Подробнее» на карточке бумаги.</p>
               <div id="agentLogStats" class="agent-log-stats" aria-live="polite"></div>
               <div class="row agent-log-filters">
                 <label class="muted agent-log-filter">
@@ -280,7 +280,7 @@
                   <tbody id="agentLogBody"></tbody>
                 </table>
               </div>
-              <p class="muted agent-log-empty" id="agentLogEmpty" hidden>Записей пока нет. Обновите агента или отметьте реакцию на сигнал.</p>
+              <p class="muted agent-log-empty" id="agentLogEmpty" hidden>Записей пока нет. Обновите агента или отметьте реакцию на зону внимания.</p>
               <button type="button" id="agentLogClearBtn" class="ghost small">Очистить журнал</button>
             </details>
             <p class="muted agent-disclaimer hint-frame">Агент не даёт инвестиционных рекомендаций. Он помогает заметить необычные движения и события.</p>
@@ -784,8 +784,8 @@
               <div class="check-row">
                 <input type="checkbox" id="privacyConsent" />
                 <label for="privacyConsent" class="check-row-text">
-                  Я согласен(на) с обработкой персональных данных и принимаю
-                  <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политику конфиденциальности</a>
+                  Я согласен(на) на обработку персональных данных в соответствии с
+                  <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политикой конфиденциальности</a>.
                 </label>
               </div>
               <p class="muted auth-soon-hint hint-frame">Дайджест скоро — email-рассылка пока в разработке.</p>
@@ -794,8 +794,8 @@
                 <button type="button" id="authSignUpBtn">Создать аккаунт</button>
               </div>
               <p class="muted auth-google-legal hint-frame">
-                Продолжая вход через Google, вы соглашаетесь с
-                <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политикой конфиденциальности</a>.
+                Для входа через Google отметьте согласие выше. Обработка данных — по
+                <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политике конфиденциальности</a>.
               </p>
               <button type="button" id="authGoogleBtn" class="ghost" style="margin-top:0.35rem;">Войти через Google</button>
             </div>
@@ -959,14 +959,29 @@
               <p>Вход необязателен. Без аккаунта портфель, список наблюдения и настройки сохраняются в этом браузере.</p>
               <p>ИнвестБриф не является инвестиционным советником и не даёт индивидуальных инвестиционных рекомендаций.</p>
             </div>
-            <p class="muted settings-about-legal"><a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a></p>
+            <nav class="settings-about-legal muted" aria-label="Правовые документы">
+              <a href="./legal.html" target="_blank" rel="noopener noreferrer">Правовая информация</a>
+              <span aria-hidden="true">·</span>
+              <a href="./privacy.html" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a>
+              <span aria-hidden="true">·</span>
+              <a href="./terms.html" target="_blank" rel="noopener noreferrer">Пользовательское соглашение</a>
+            </nav>
           </div>
         </section>
       </main>
 
       <footer class="app-footer" aria-label="Подпись проекта">
-        <span>Создано Викторией Михалевой · контент, ИИ и цифровые проекты</span>
-        <a href="https://www.content-system.ru/" target="_blank" rel="noopener noreferrer">content-system.ru</a>
+        <div class="app-footer-brand">
+          <span>Создано Викторией Михалевой · контент, ИИ и цифровые проекты</span>
+          <a href="https://www.content-system.ru/" target="_blank" rel="noopener noreferrer">content-system.ru</a>
+        </div>
+        <p class="app-footer-disclaimer">InvestBrief не является инвестиционным советником, брокером или управляющей компанией и не даёт индивидуальных инвестиционных рекомендаций. Информация на сайте носит справочный и образовательный характер. Все решения пользователь принимает самостоятельно.</p>
+        <p class="app-footer-sources">Источники данных: открытые каналы, включая MOEX ISS / Московскую Биржу и сайты эмитентов. Данные могут отображаться с задержкой. InvestBrief не является аффилированным сервисом ПАО Московская Биржа.</p>
+        <nav class="app-footer-links" aria-label="Правовые ссылки">
+          <a href="./legal.html">Правовая информация</a>
+          <a href="./privacy.html">Политика конфиденциальности</a>
+          <a href="./terms.html">Пользовательское соглашение</a>
+        </nav>
       </footer>
     </div>
 
@@ -1099,16 +1114,24 @@
     </div>
   </div>
 
-  <script type="module" src="./firebase-init.mjs?v=202608241522"></script>
+  <div class="cookie-notice" id="cookieNotice" role="dialog" aria-live="polite" aria-label="Уведомление о cookies и локальном хранилище" hidden>
+    <p class="cookie-notice__text">InvestBrief использует cookies и локальное хранилище браузера для работы сайта, сохранения настроек, портфеля и списка наблюдения. Продолжая использовать сайт, вы соглашаетесь с этим. Подробнее — в Политике конфиденциальности.</p>
+    <div class="cookie-notice__actions">
+      <button type="button" class="primary" id="cookieNoticeAccept">Понятно</button>
+      <a class="ghost cookie-notice__link" href="./privacy.html" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a>
+    </div>
+  </div>
+
+  <script type="module" src="./firebase-init.mjs?v=202608241553"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="./nav-books.js?v=202608241522"></script>
-  <script src="./markets.js?v=202608241522"></script>
-  <script src="./storage.js?v=202608241522"></script>
-  <script src="./ui.js?v=202608241522"></script>
-  <script src="./news.js?v=202608241522"></script>
-  <script src="./moex.js?v=202608241522"></script>
-  <script src="./pif-articles.js?v=202608241522"></script>
-  <script src="./manual-data.js?v=202608241522"></script>  <script>
+  <script src="./nav-books.js?v=202608241553"></script>
+  <script src="./markets.js?v=202608241553"></script>
+  <script src="./storage.js?v=202608241553"></script>
+  <script src="./ui.js?v=202608241553"></script>
+  <script src="./news.js?v=202608241553"></script>
+  <script src="./moex.js?v=202608241553"></script>
+  <script src="./pif-articles.js?v=202608241553"></script>
+  <script src="./manual-data.js?v=202608241553"></script>  <script>
     /** Серверная аналитика: Firebase Function (prod) или /api/analytics при npm start */
     window.INVESTBRIEF_ANALYTICS_API = 'https://europe-west1-investor-brief-rf.cloudfunctions.net/getAnalytics';
     (function () {
@@ -1120,13 +1143,13 @@
       }
     })();
   </script>
-  <script src="./analytics-core.js?v=202608241522"></script>
-  <script src="./analytics.js?v=202608241522"></script>
-  <script src="./ofz.js?v=202608241522"></script>
-  <script src="./pif.js?v=202608241522"></script>
-  <script src="./portfolio.js?v=202608241522"></script>
-  <script src="./agent.js?v=202608241522"></script>
-  <script src="./watchdog.js?v=202608241522"></script>
-  <script src="./firebase-sync.js?v=202608241522"></script>
-  <script src="./app.js?v=202608241522"></script></body>
+  <script src="./analytics-core.js?v=202608241553"></script>
+  <script src="./analytics.js?v=202608241553"></script>
+  <script src="./ofz.js?v=202608241553"></script>
+  <script src="./pif.js?v=202608241553"></script>
+  <script src="./portfolio.js?v=202608241553"></script>
+  <script src="./agent.js?v=202608241553"></script>
+  <script src="./watchdog.js?v=202608241553"></script>
+  <script src="./firebase-sync.js?v=202608241553"></script>
+  <script src="./app.js?v=202608241553"></script></body>
 </html>
