@@ -919,3 +919,40 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* panel-intro--one-line: см. правила .panel-intro.hint-frame > p выше */
+
+/* Телефон: больше полезной ширины у карточных сеток (desktop/tablet без изменений) */
+@media (max-width: 640px) {
+  .header {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .content {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .glass {
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+  }
+
+  .quote-cards-grid,
+  .imoex-top-cards,
+  .analytics-grid.quote-cards-grid,
+  .agent-grid,
+  .market-tiles,
+  .market-tiles--compact {
+    gap: 0.45rem;
+  }
+
+  .agent-card {
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+  }
+
+  .portfolio-totals-wrap {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}
