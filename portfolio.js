@@ -2747,7 +2747,7 @@
       } else if (group.salesOnly) {
         html += '<tr class="pf-table-row pf-sales-only-head" data-chart-ticker="' + escapeHtml(group.ticker) + '">' +
           '<td class="ticker">' + escapeHtml(group.ticker) + '</td>' +
-          '<td colspan="' + (PF_TABLE_COLS - 2) + '" class="muted">все продано · история сделок ниже</td>' +
+          '<td colspan="' + (PF_TABLE_COLS - 2) + '" class="muted">все продано · история в «Подробнее»</td>' +
           '<td class="pf-row-actions">' + buildPortfolioHistoryToggleBtn(group.ticker) + '</td></tr>';
       }
 
