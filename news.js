@@ -964,7 +964,8 @@
     pfEditPrefix: '',
     pfSaleTicker: '',
     pfTableRenderId: 0,
-    pfExpandedTickers: {}
+    pfExpandedTickers: {},
+    pfHistoryTickers: {}
   };
   if (typeof globalThis !== 'undefined') globalThis.state = state;
   else if (typeof window !== 'undefined') window.state = state;

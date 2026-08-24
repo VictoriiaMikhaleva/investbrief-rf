@@ -302,7 +302,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__prefill = computePortfolioNewLotPrefill;' +
       '\nthis.__ofzWarn = shouldWarnOfzAvgLooksLikeRubles;' +
       '\nthis.__isFormBond = isPortfolioFormBondTicker;' +
-      '\nthis.__summarize = summarizeTickerHistory;',
+      '\nthis.__summarize = summarizeTickerHistory;' +
+      '\nthis.__allocPnl = getSaleAllocationPnlRub;',
     sandbox,
     { timeout: 5000 }
   );
@@ -319,7 +320,8 @@ function loadPortfolioCalcHelpers() {
     computePortfolioNewLotPrefill: sandbox.__prefill,
     shouldWarnOfzAvgLooksLikeRubles: sandbox.__ofzWarn,
     isPortfolioFormBondTicker: sandbox.__isFormBond,
-    summarizeTickerHistory: sandbox.__summarize
+    summarizeTickerHistory: sandbox.__summarize,
+    getSaleAllocationPnlRub: sandbox.__allocPnl
   };
 }
 
@@ -803,9 +805,37 @@ const calc = loadPortfolioCalcHelpers();
   assert(hist.unrealizedPnlRub === 0, 'fully sold unrealized 0');
 }
 
+{
+  // Волна 2.2: вклад allocation в результат
+  const sale = {
+    ticker: 'SBER',
+    qty: 3,
+    buyPrice: 250,
+    salePrice: 280,
+    allocations: [
+      { lotId: 'A', qty: 1, buyPrice: 240 },
+      { lotId: 'B', qty: 2, buyPrice: 255 }
+    ]
+  };
+  const a0 = calc.getSaleAllocationPnlRub(sale.allocations[0], sale);
+  const a1 = calc.getSaleAllocationPnlRub(sale.allocations[1], sale);
+  assert(Math.abs(a0 - 40) < 1e-9, 'alloc0 (280-240)*1');
+  assert(Math.abs(a1 - 50) < 1e-9, 'alloc1 (280-255)*2');
+  const ofzSale = {
+    ticker: 'OFZ_26238',
+    qty: 5,
+    buyPrice: 95,
+    salePrice: 98,
+    faceValue: 1000,
+    allocations: [{ lotId: 'O', qty: 5, buyPrice: 95 }]
+  };
+  const ofzAlloc = calc.getSaleAllocationPnlRub(ofzSale.allocations[0], ofzSale, { faceValue: 1000 });
+  assert(Math.abs(ofzAlloc - 150) < 1e-6, 'OFZ alloc pnl 150₽ not 15₽');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1 history');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2 history');
