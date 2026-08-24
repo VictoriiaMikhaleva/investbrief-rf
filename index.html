@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru" class="us-market-unavailable">
 <head>
-  <!-- ibrf-asset-version: 202608241721 -->
+  <!-- ibrf-asset-version: 202608241731 -->
   <script>
     /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS и JS на мобильных. */
     (function () {
@@ -32,13 +32,13 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-  <link rel="manifest" href="./site.webmanifest?v=202608241721" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
+  <link rel="manifest" href="./site.webmanifest?v=202608241731" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
   <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, агент наблюдения, ОФЗ, дивиденды и обороты торгов." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=202608241721" />
-  <link rel="stylesheet" href="./theme-luxury.css?v=202608241721" />  <!-- Yandex.Metrika counter -->
+  <link rel="stylesheet" href="./styles.css?v=202608241731" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=202608241731" />  <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
       m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
@@ -217,11 +217,11 @@
           <section class="home-block">
             <h3 class="home-block-title">Рынок в целом</h3>
             <div class="market-macro-row" id="marketMacroRow" aria-label="Макропоказатели"></div>
-            <p class="muted chart-source hint-frame" id="marketMacroSource">Загрузка данных МосБиржи и ЦБ РФ…</p>
+            <p class="muted chart-source hint-frame" id="marketMacroSource">Данные могут отображаться с задержкой. Источники: открытые данные, включая MOEX ISS.</p>
             <p class="muted home-hint hint-frame" id="marketKeyRateHint">После решения ЦБ новая ключевая ставка обычно применяется со следующего рабочего дня. До этой даты в карточке может быть показано объявленное решение.</p>
             <div class="glass imoex-market-panel" id="imoexMarketPanel" hidden>
               <h4 class="imoex-panel-title">Объём торгов · оборот и лидеры</h4>
-              <p class="muted imoex-panel-hint hint-frame">Оборот бумаг индекса IMOEX за 10 торговых дней (млрд ₽/день, МосБиржа). * — текущая сессия</p>
+              <p class="muted imoex-panel-hint hint-frame">Оборот бумаг индекса IMOEX за 10 торговых дней (млрд ₽/день). * — текущая сессия</p>
               <div id="imoexVolumeBars" class="imoex-volume-bars" aria-live="polite">Загрузка…</div>
               <h4 class="imoex-subtitle">Топ‑20 по обороту сегодня (в моменте)</h4>
               <p class="muted imoex-panel-hint hint-frame imoex-panel-hint--one-line" style="margin-top:0;">Средняя див. доходность за 5 лет, прогноз дивидендов на 12 мес. и полная доходность 12 мес. Нажмите для подробной аналитики.</p>
@@ -433,7 +433,7 @@
             <div class="ofz-section-head">
               <div>
                 <h3 class="home-block-title" id="ofzSectionTitle">ОФЗ</h3>
-                <p class="muted ofz-section-lead">Это независимый проект для личного анализа ОФЗ.<br>ОФЗ — облигации федерального займа.<br>Котировки и параметры выпусков — МосБиржа ISS (TQOB).<br>Не является индивидуальной инвестиционной рекомендацией.</p>
+                <p class="muted ofz-section-lead">Это независимый проект для личного анализа ОФЗ.<br>ОФЗ — облигации федерального займа.<br>Данные могут отображаться с задержкой. Источники: открытые данные, включая MOEX ISS.<br>Не является индивидуальной инвестиционной рекомендацией.</p>
                 <p class="muted ofz-load-status" id="ofzLoadStatus"></p>
               </div>
               <div class="ofz-section-controls row">
@@ -455,7 +455,7 @@
 
             <div class="analytics-chart-panel ofz-yield-curve-panel">
               <h4 class="analytics-chart-lbl">Кривая доходности ОФЗ</h4>
-              <p class="analytics-chart-note muted" id="ofzYieldCurveNote">Дюрация и доходность к погашению · данные МосБиржа ISS</p>
+              <p class="analytics-chart-note muted" id="ofzYieldCurveNote">Дюрация и доходность к погашению · открытые данные, включая MOEX ISS</p>
               <div class="chart-canvas-wrap analytics-chart-wrap ofz-yield-curve-wrap">
                 <canvas id="ofzYieldCurveChart" aria-label="Кривая доходности ОФЗ по дюрации"></canvas>
                 <div class="chart-hover-tip" id="ofzYieldCurveTip"></div>
@@ -530,7 +530,7 @@
                 <tbody id="ofzCompareBody"></tbody>
               </table>
             </div>
-            <p class="muted chart-source hint-frame">Котировки, купоны, дюрация и доходность — <a href="https://www.moex.com/" target="_blank" rel="noopener noreferrer">МосБиржа ISS</a> (TQOB). InvestBrief не связан со Smart-Lab. Доходность — расчётная к погашению по данным биржи.</p>
+            <p class="muted chart-source hint-frame">Данные могут отображаться с задержкой. Источники: открытые данные, включая MOEX ISS. Доходность к погашению — расчётная.</p>
           </section>
         </div>
 
@@ -612,7 +612,7 @@
               <p class="muted pif-detail-links" id="pifDetailLinks"></p>
             </section>
 
-            <p class="muted chart-source hint-frame">Реестр и витрина — <a href="https://www.cbr.ru/RSCI/data_showcase/" target="_blank" rel="noopener noreferrer">Банк России</a>. Котировки БПИФ — <a href="https://www.moex.com/" target="_blank" rel="noopener noreferrer">МосБиржа ISS</a>. Архивные фонды подгружаются отдельным файлом (~2 МБ).</p>
+            <p class="muted chart-source hint-frame">Реестр фондов — Банк России. Данные могут отображаться с задержкой. Источники: открытые данные, включая MOEX ISS.</p>
           </section>
           </div>
         </section>
@@ -620,7 +620,7 @@
         <section id="tab-portfolio" class="panel" data-panel="portfolio">
           <h2>Мой портфель</h2>
           <div class="panel-intro hint-frame panel-intro--one-line">
-            <p>Не является индивидуальной инвестиционной рекомендацией. Позиции хранятся локально. Котировки — с МосБиржи и Yahoo Finance.</p>
+            <p>Не является индивидуальной инвестиционной рекомендацией. Позиции хранятся локально. Данные могут отображаться с задержкой. Источники: открытые данные, включая MOEX ISS.</p>
           </div>
           <p class="muted hint-frame portfolio-calc-disclaimer">Расчёты по выплатам и доходности являются оценочными. Они считаются на текущий остаток бумаг и не являются индивидуальной инвестиционной рекомендацией.</p>
 
@@ -976,7 +976,7 @@
           <a href="https://www.content-system.ru/" target="_blank" rel="noopener noreferrer">content-system.ru</a>
         </div>
         <p class="app-footer-disclaimer">InvestBrief не является инвестиционным советником, брокером или управляющей компанией и не даёт индивидуальных инвестиционных рекомендаций. Информация на сайте носит справочный и образовательный характер. Все решения пользователь принимает самостоятельно.</p>
-        <p class="app-footer-sources">Источники данных: открытые каналы, включая MOEX ISS / Московскую Биржу и сайты эмитентов. Данные могут отображаться с задержкой. InvestBrief не является аффилированным сервисом ПАО Московская Биржа.</p>
+        <p class="app-footer-sources">InvestBrief использует открытые источники данных, включая MOEX ISS, и не является сервисом Московской Биржи, её партнёром или аффилированным проектом.</p>
         <nav class="app-footer-links" aria-label="Правовые ссылки">
           <a href="./legal.html">Правовая информация</a>
           <a href="./privacy.html">Политика конфиденциальности</a>
@@ -1122,16 +1122,16 @@
     </div>
   </div>
 
-  <script type="module" src="./firebase-init.mjs?v=202608241721"></script>
+  <script type="module" src="./firebase-init.mjs?v=202608241731"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="./nav-books.js?v=202608241721"></script>
-  <script src="./markets.js?v=202608241721"></script>
-  <script src="./storage.js?v=202608241721"></script>
-  <script src="./ui.js?v=202608241721"></script>
-  <script src="./news.js?v=202608241721"></script>
-  <script src="./moex.js?v=202608241721"></script>
-  <script src="./pif-articles.js?v=202608241721"></script>
-  <script src="./manual-data.js?v=202608241721"></script>  <script>
+  <script src="./nav-books.js?v=202608241731"></script>
+  <script src="./markets.js?v=202608241731"></script>
+  <script src="./storage.js?v=202608241731"></script>
+  <script src="./ui.js?v=202608241731"></script>
+  <script src="./news.js?v=202608241731"></script>
+  <script src="./moex.js?v=202608241731"></script>
+  <script src="./pif-articles.js?v=202608241731"></script>
+  <script src="./manual-data.js?v=202608241731"></script>  <script>
     /** Серверная аналитика: Firebase Function (prod) или /api/analytics при npm start */
     window.INVESTBRIEF_ANALYTICS_API = 'https://europe-west1-investor-brief-rf.cloudfunctions.net/getAnalytics';
     (function () {
@@ -1143,13 +1143,13 @@
       }
     })();
   </script>
-  <script src="./analytics-core.js?v=202608241721"></script>
-  <script src="./analytics.js?v=202608241721"></script>
-  <script src="./ofz.js?v=202608241721"></script>
-  <script src="./pif.js?v=202608241721"></script>
-  <script src="./portfolio.js?v=202608241721"></script>
-  <script src="./agent.js?v=202608241721"></script>
-  <script src="./watchdog.js?v=202608241721"></script>
-  <script src="./firebase-sync.js?v=202608241721"></script>
-  <script src="./app.js?v=202608241721"></script></body>
+  <script src="./analytics-core.js?v=202608241731"></script>
+  <script src="./analytics.js?v=202608241731"></script>
+  <script src="./ofz.js?v=202608241731"></script>
+  <script src="./pif.js?v=202608241731"></script>
+  <script src="./portfolio.js?v=202608241731"></script>
+  <script src="./agent.js?v=202608241731"></script>
+  <script src="./watchdog.js?v=202608241731"></script>
+  <script src="./firebase-sync.js?v=202608241731"></script>
+  <script src="./app.js?v=202608241731"></script></body>
 </html>

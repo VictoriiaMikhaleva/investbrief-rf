@@ -1205,9 +1205,12 @@
     }
     zonesEl.textContent = main;
     if (sourceEl) {
+      var hint = (typeof window !== 'undefined' && window.INVESTBRIEF_OPEN_MARKET_DATA_HINT)
+        ? window.INVESTBRIEF_OPEN_MARKET_DATA_HINT
+        : 'Данные могут отображаться с задержкой. Источники: открытые данные, включая MOEX ISS.';
       sourceEl.textContent = _agentDataSourceMode === 'snapshot'
-        ? 'Источник: снимок с сервера (MOEX обновляется ~раз в 30 мин)'
-        : 'Источник: Московская биржа · автообновление каждые 5 мин';
+        ? hint + ' · снимок с сервера (~раз в 30 мин)'
+        : hint + ' · автообновление каждые 5 мин';
     }
   }
 

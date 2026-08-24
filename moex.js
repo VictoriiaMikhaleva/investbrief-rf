@@ -22,6 +22,9 @@
   var TOP_VOLUME_LIVE_REFRESH_MS = 60 * 1000;
   var topVolumeRefreshTimer = null;
   var IMOEX_VOLUME_DAYS = 10;
+  /** Короткая info-плашка у рыночных данных (полная формулировка — в legal/terms/футере). */
+  var OPEN_MARKET_DATA_HINT = 'Данные могут отображаться с задержкой. Источники: открытые данные, включая MOEX ISS.';
+  window.INVESTBRIEF_OPEN_MARKET_DATA_HINT = OPEN_MARKET_DATA_HINT;
 
 
 
@@ -816,7 +819,7 @@
     if (!valueEl || !canvas) return;
 
     var horizon = state.imoexHorizon || 'month';
-    sourceEl.textContent = 'Загрузка данных МосБиржи…';
+    sourceEl.textContent = 'Загрузка…';
 
     Promise.all([
       moexFetchJson(moexMarketdataUrl({ type: 'index', engine: 'stock', market: 'index', secid: IMOEX_SECID })),
@@ -837,13 +840,14 @@
       dayEl.className = 'index-change ' + (chg >= 0 ? 'pnl-pos' : 'pnl-neg');
       monthEl.textContent = 'Месяц: ' + (monthChg >= 0 ? '+' : '') + Number(monthChg).toFixed(2) + '%';
       drawPriceChart(canvas, hist.series, { ticker: IMOEX_SECID, horizon: horizon });
-      sourceEl.textContent = 'МосБиржа · IMOEX · ' + new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      sourceEl.textContent = OPEN_MARKET_DATA_HINT + ' · обновлено ' +
+        new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     }).catch(function () {
       valueEl.textContent = '—';
       dayEl.textContent = 'Нет данных';
       dayEl.className = 'index-change muted';
       monthEl.textContent = '';
-      sourceEl.textContent = 'Данные МосБиржи недоступны';
+      sourceEl.textContent = OPEN_MARKET_DATA_HINT + ' Данные временно недоступны.';
     });
   }
 
@@ -2310,11 +2314,9 @@
     } else {
       updatedHm = new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     }
-    var base = _topTurnoverDataLive
-      ? 'MOEX ISS · оборот сегодня с начала сессии (VALTODAY) · обновлено ' + updatedHm
-      : 'MOEX ISS · снимок · обновлено ' + updatedHm;
+    var base = OPEN_MARKET_DATA_HINT + ' · обновлено ' + updatedHm;
     if (!_topTurnoverDataLive && isDataSnapshotStale(_topTurnoverSnapshotMeta)) {
-      base += ' · Показываем последние доступные данные. Обновление задерживается.';
+      base += ' · Показываем последние доступные данные.';
     }
     src.textContent = base;
   }
@@ -2595,7 +2597,7 @@
       bars.style.display = '';
       bars.innerHTML = '<p class="muted">Загрузка…</p>';
     }
-    if (src && !forceRefresh) src.textContent = 'Загрузка данных МосБиржи…';
+    if (src && !forceRefresh) src.textContent = 'Загрузка…';
 
     Promise.all([
       fetchImoexTurnoverWeek(!!forceRefresh),
@@ -2616,7 +2618,7 @@
     }).catch(function () {
       if (bars) bars.innerHTML = '<p class="muted hint-frame">Объём торгов временно недоступен</p>';
       renderImoexTopVolumeTable([], 'RU');
-      if (src) src.textContent = 'Данные МосБиржи недоступны';
+      if (src) src.textContent = OPEN_MARKET_DATA_HINT + ' Данные временно недоступны.';
     });
   }
 
@@ -2713,14 +2715,14 @@
     if (mode === 'loading') {
       el.textContent = shouldShowUsBriefingMarketBlocks()
         ? 'Загрузка данных Yahoo Finance…'
-        : 'Загрузка данных МосБиржи и ЦБ РФ…';
+        : 'Загрузка…';
       return;
     }
     if (shouldShowUsBriefingMarketBlocks()) {
       var usHm = _marketMacroDataLive && _marketMacroFetchedAt
         ? new Date(_marketMacroFetchedAt).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' })
         : new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-      el.textContent = 'Yahoo Finance · МосБиржа FORTS · автообновление каждые 5 мин · обновлено ' + usHm;
+      el.textContent = 'Данные могут отображаться с задержкой. Источники: Yahoo Finance и открытые данные, включая MOEX ISS. · обновлено ' + usHm;
       return;
     }
     var updatedHm = '';
@@ -2734,14 +2736,12 @@
     } else {
       updatedHm = new Date().toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     }
-    var base = _marketMacroDataLive
-      ? 'МосБиржа ISS · ЦБ РФ · автообновление каждые 5 мин · обновлено ' + updatedHm
-      : 'МосБиржа ISS · ЦБ РФ · Обновлено: ' + updatedHm;
+    var base = OPEN_MARKET_DATA_HINT + ' · ЦБ РФ · обновлено ' + updatedHm;
     if (_marketMacroCbrFxDate) {
-      base += ' · официальный курс валют ЦБ на ' + formatCbrFxDateRu(_marketMacroCbrFxDate);
+      base += ' · курс валют ЦБ на ' + formatCbrFxDateRu(_marketMacroCbrFxDate);
     }
     if (!_marketMacroDataLive && isDataSnapshotStale(_marketSnapshotMeta)) {
-      base += ' · Показываем последние доступные данные. Обновление задерживается.';
+      base += ' · Показываем последние доступные данные.';
     }
     el.textContent = base;
   }

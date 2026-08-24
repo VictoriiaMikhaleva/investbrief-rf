@@ -591,7 +591,7 @@
     if (!el) return;
     var statusEl = document.getElementById('ofzLoadStatus');
     if (_loading) {
-      el.textContent = 'Загрузка выпусков ОФЗ с доски TQOB (МосБиржа ISS)…';
+      el.textContent = 'Загрузка выпусков ОФЗ (TQOB)…';
       if (statusEl) statusEl.textContent = '';
       return;
     }
@@ -602,7 +602,7 @@
     }
     el.innerHTML = 'Это независимый проект для личного анализа ОФЗ.<br>ОФЗ — облигации федерального займа.<br>' +
       count + ' выпуск' + ofzPluralRu(count) +
-      ' на TQOB · котировки и параметры — МосБиржа ISS.<br>Не является индивидуальной инвестиционной рекомендацией.';
+      ' на TQOB.<br>Данные могут отображаться с задержкой. Источники: открытые данные, включая MOEX ISS.<br>Не является индивидуальной инвестиционной рекомендацией.';
     if (statusEl) {
       var updatedHm = '';
       if (_ofzDataLive && _ofzLastFetchedAt) {
@@ -1255,7 +1255,7 @@
     var tbody = document.getElementById('ofzCompareBody');
     if (!tbody) return;
     if (_loading) {
-      tbody.innerHTML = '<tr><td colspan="' + OFZ_TABLE_COLS + '" class="muted">Загрузка данных МосБиржи…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + OFZ_TABLE_COLS + '" class="muted">Загрузка…</td></tr>';
       updateOfzTableFilterNote(0, 0);
       return;
     }
@@ -1417,7 +1417,7 @@
       });
     }).catch(function () {
       _loading = false;
-      _loadError = 'Ошибка загрузки данных МосБиржи.';
+      _loadError = 'Ошибка загрузки данных ОФЗ.';
       updateOfzSectionLead(0);
       renderOfzTable();
     });
