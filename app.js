@@ -514,6 +514,21 @@
 
     var exportJsonBtn = document.getElementById('exportJsonBtn');
     if (exportJsonBtn) exportJsonBtn.addEventListener('click', exportAll);
+
+    var migrationBackupBtn = document.getElementById('migrationBackupBtn');
+    if (migrationBackupBtn) {
+      migrationBackupBtn.addEventListener('click', function () {
+        if (typeof switchTab === 'function') switchTab('settings');
+        window.setTimeout(function () {
+          var block = document.getElementById('settingsBackupBlock');
+          if (block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (exportJsonBtn) {
+            exportJsonBtn.focus({ preventScroll: true });
+          }
+        }, 80);
+      });
+    }
+
     var importFileBtn = document.getElementById('importFileBtn');
     var importFileInput = document.getElementById('importFileInput');
     var backupImportModal = document.getElementById('backupImportConfirmModal');
