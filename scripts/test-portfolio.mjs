@@ -301,7 +301,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__today = localPortfolioTodayYmd;' +
       '\nthis.__prefill = computePortfolioNewLotPrefill;' +
       '\nthis.__ofzWarn = shouldWarnOfzAvgLooksLikeRubles;' +
-      '\nthis.__isFormBond = isPortfolioFormBondTicker;',
+      '\nthis.__isFormBond = isPortfolioFormBondTicker;' +
+      '\nthis.__summarize = summarizeTickerHistory;',
     sandbox,
     { timeout: 5000 }
   );
@@ -317,7 +318,8 @@ function loadPortfolioCalcHelpers() {
     localPortfolioTodayYmd: sandbox.__today,
     computePortfolioNewLotPrefill: sandbox.__prefill,
     shouldWarnOfzAvgLooksLikeRubles: sandbox.__ofzWarn,
-    isPortfolioFormBondTicker: sandbox.__isFormBond
+    isPortfolioFormBondTicker: sandbox.__isFormBond,
+    summarizeTickerHistory: sandbox.__summarize
   };
 }
 
@@ -670,9 +672,140 @@ const calc = loadPortfolioCalcHelpers();
   );
 }
 
+{
+  // Волна 2.1: summarizeTickerHistory — акция, два открытых лота
+  const positions = [
+    { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, currentPrice: 300 },
+    { ticker: 'SBER', lotId: 'S2', qty: 5, avgPrice: 280, currentPrice: 300 },
+    { ticker: 'GAZP', lotId: 'G1', qty: 100, avgPrice: 160, currentPrice: 170 }
+  ];
+  const frozenPosLen = positions.length;
+  const hist = calc.summarizeTickerHistory('SBER', positions, []);
+  assert(hist.ticker === 'SBER', 'stock hist ticker');
+  assert(hist.lotCount === 2 && hist.openLots.length === 2, 'two open lots');
+  assert(hist.openQty === 15, 'openQty 10+5');
+  assert(Math.abs(hist.openCostRub - 3900) < 1e-9, 'openCostRub 10*250+5*280');
+  assert(Math.abs(hist.openMarketValueRub - 4500) < 1e-9, 'openMV 15*300');
+  assert(Math.abs(hist.unrealizedPnlRub - 600) < 1e-9, 'unrealized 4500-3900');
+  assert(hist.saleCount === 0 && hist.totalSoldQty === 0, 'no sales');
+  assert(hist.totalBoughtQty === 15, 'bought = open when no sales');
+  assert(positions.length === frozenPosLen, 'positions not mutated (length)');
+}
+
+{
+  // Волна 2.1: акция с продажей
+  const positions = [
+    { ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 250, currentPrice: 300 }
+  ];
+  const sales = [
+    {
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 10,
+      buyPrice: 250,
+      salePrice: 280,
+      saleDate: '2025-06-01'
+    }
+  ];
+  const expectedRealized = calc.getSaleRealizedPnl(sales[0]).amount;
+  const hist = calc.summarizeTickerHistory('sber', positions, sales);
+  assert(hist.totalSoldQty === 10, 'totalSoldQty');
+  assert(Math.abs(hist.realizedPnlRub - expectedRealized) < 1e-9, 'realized via getSaleRealizedPnl');
+  assert(Math.abs(hist.realizedPnlRub - 300) < 1e-9, 'realized (280-250)*10');
+  assert(hist.openQty === 5, 'openQty after partial');
+  assert(hist.totalBoughtQty === 15, 'bought = open + sold');
+  assert(hist.saleCount === 1, 'saleCount 1');
+}
+
+{
+  // Волна 2.1: ОФЗ — % → ₽ (не 95₽ вместо 950₽)
+  const positions = [
+    { ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95, currentPrice: 98, faceValue: 1000 }
+  ];
+  const sales = [
+    {
+      saleId: 'OS1',
+      ticker: 'OFZ_26238',
+      qty: 5,
+      buyPrice: 95,
+      salePrice: 98,
+      saleDate: '2025-07-01',
+      faceValue: 1000
+    }
+  ];
+  const bondMeta = { faceValue: 1000 };
+  const hist = calc.summarizeTickerHistory('OFZ_26238', positions, sales, bondMeta);
+  assert(Math.abs(hist.openCostRub - 9500) < 1e-6, 'OFZ cost 10*95%*1000 = 9500₽');
+  assert(Math.abs(hist.openMarketValueRub - 9800) < 1e-6, 'OFZ MV 10*98%*1000 = 9800₽');
+  assert(Math.abs(hist.unrealizedPnlRub - 300) < 1e-6, 'OFZ unrealized 300₽');
+  assert(Math.abs(hist.realizedPnlRub - 150) < 1e-6, 'OFZ realized 5*(98-95)%*1000 = 150₽');
+  assert(hist.openCostRub !== 95 && hist.openCostRub !== 950, 'OFZ cost is not raw percent');
+}
+
+{
+  // Волна 2.1: sale с allocations[]
+  const positions = [
+    { ticker: 'LKOH', lotId: 'L1', qty: 2, avgPrice: 7000, currentPrice: 7100 }
+  ];
+  const sales = [
+    {
+      saleId: 'LS1',
+      ticker: 'LKOH',
+      qty: 3,
+      buyPrice: 6900,
+      salePrice: 7200,
+      saleDate: '2025-08-01',
+      allocations: [
+        { lotId: 'L0', qty: 1, buyPrice: 6800, buyDate: '2024-01-01' },
+        { lotId: 'L1', qty: 2, buyPrice: 6950, buyDate: '2024-06-01' }
+      ]
+    }
+  ];
+  const salesCopy = JSON.parse(JSON.stringify(sales));
+  const hist = calc.summarizeTickerHistory('LKOH', positions, sales);
+  assert(hist.saleCount === 1, 'alloc saleCount');
+  assert(hist.sales[0].allocations && hist.sales[0].allocations.length === 2, 'allocations preserved');
+  assert(hist.sales[0].allocations[0].lotId === 'L0', 'alloc lotId kept');
+  assert(JSON.stringify(sales) === JSON.stringify(salesCopy), 'sales array not mutated');
+  const viaHelper = calc.getSaleRealizedPnl(sales[0]).amount;
+  assert(Math.abs(hist.realizedPnlRub - viaHelper) < 1e-9, 'realized matches getSaleRealizedPnl(allocations)');
+}
+
+{
+  // Волна 2.1: legacy sale без allocations
+  const hist = calc.summarizeTickerHistory('GAZP', [], [{
+    saleId: 'LEG1',
+    ticker: 'GAZP',
+    qty: 20,
+    buyPrice: 150,
+    salePrice: 165,
+    saleDate: '2025-01-10'
+  }]);
+  assert(hist.saleCount === 1 && hist.openQty === 0, 'legacy sale only');
+  assert(Math.abs(hist.realizedPnlRub - 300) < 1e-9, 'legacy realized (165-150)*20');
+  assert(hist.totalBoughtQty === 20 && hist.totalSoldQty === 20, 'legacy bought=sold');
+}
+
+{
+  // Волна 2.1: тикер полностью продан
+  const hist = calc.summarizeTickerHistory('PLZL', [], [{
+    saleId: 'P1',
+    ticker: 'PLZL',
+    qty: 4,
+    buyPrice: 10000,
+    salePrice: 11000,
+    saleDate: '2025-03-01'
+  }]);
+  assert(hist.openQty === 0 && hist.lotCount === 0, 'fully sold openQty/lotCount');
+  assert(hist.openMarketValueRub === 0 && hist.openCostRub === 0, 'fully sold MV/cost 0');
+  assert(hist.sales.length === 1, 'sales present');
+  assert(Math.abs(hist.realizedPnlRub - 4000) < 1e-9, 'fully sold realized kept');
+  assert(hist.unrealizedPnlRub === 0, 'fully sold unrealized 0');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1 history');

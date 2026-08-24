@@ -711,6 +711,77 @@
     return has ? totalCost : null;
   }
 
+  /**
+   * Волна 2.1: read-only сводка истории по тикеру для UI.
+   * Не мутирует positions/sales и не пишет в storage.
+   * bondMeta — опционально (faceValue для ОФЗ).
+   */
+  function summarizeTickerHistory(ticker, positions, sales, bondMeta) {
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    var empty = {
+      ticker: ticker || '',
+      openLots: [],
+      sales: [],
+      openQty: 0,
+      openMarketValueRub: 0,
+      openCostRub: 0,
+      unrealizedPnlRub: 0,
+      realizedPnlRub: 0,
+      totalBoughtQty: 0,
+      totalSoldQty: 0,
+      saleCount: 0,
+      lotCount: 0
+    };
+    if (!ticker) return empty;
+
+    var openLots = (positions || []).filter(function (p) {
+      if ((typeof normalizeTicker === 'function' ? normalizeTicker(p.ticker) : String(p.ticker || '').toUpperCase()) !== ticker) {
+        return false;
+      }
+      var q = Number(p.qty);
+      return isFinite(q) && q > 1e-9;
+    });
+    var tickerSales = (sales || []).filter(function (s) {
+      return (typeof normalizeTicker === 'function' ? normalizeTicker(s.ticker) : String(s.ticker || '').toUpperCase()) === ticker;
+    });
+
+    var openQty = 0;
+    var openCostRub = 0;
+    var openMarketValueRub = 0;
+    openLots.forEach(function (lot) {
+      var q = Number(lot.qty);
+      if (isFinite(q) && q > 0) openQty += q;
+      openCostRub += getPositionCostRub(lot, bondMeta);
+      openMarketValueRub += getPositionMarketValue(lot, bondMeta);
+    });
+
+    var totalSoldQty = 0;
+    var realizedPnlRub = 0;
+    tickerSales.forEach(function (sale) {
+      var q = Number(sale.qty);
+      if (isFinite(q) && q > 0) totalSoldQty += q;
+      var pnl = getSaleRealizedPnl(sale, bondMeta);
+      if (pnl.amount != null && isFinite(pnl.amount)) realizedPnlRub += pnl.amount;
+    });
+
+    return {
+      ticker: ticker,
+      openLots: openLots,
+      sales: tickerSales,
+      openQty: openQty,
+      openMarketValueRub: openMarketValueRub,
+      openCostRub: openCostRub,
+      unrealizedPnlRub: openMarketValueRub - openCostRub,
+      realizedPnlRub: realizedPnlRub,
+      totalBoughtQty: openQty + totalSoldQty,
+      totalSoldQty: totalSoldQty,
+      saleCount: tickerSales.length,
+      lotCount: openLots.length
+    };
+  }
+
 
 
   function findPortfolioLots(ticker, positions) {
