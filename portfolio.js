@@ -1443,6 +1443,10 @@
       if (btn) btn.textContent = editing ? 'Сохранить изменения' : 'Добавить позицию в портфель';
       if (cancel) cancel.hidden = !editing;
     });
+    var hintNew = document.getElementById('pfAddAvgHintNew');
+    var hintEdit = document.getElementById('pfAddAvgHintEdit');
+    if (hintNew) hintNew.hidden = editing;
+    if (hintEdit) hintEdit.hidden = !editing;
   }
 
 

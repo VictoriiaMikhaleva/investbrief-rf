@@ -932,6 +932,10 @@ input:focus, select:focus, textarea:focus {
   max-width: 22rem;
 }
 
+.pf-field-hint[hidden] {
+  display: none !important;
+}
+
 .pf-field-warn {
   display: block;
   margin-top: 0.35rem;
