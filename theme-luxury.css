@@ -936,14 +936,28 @@ input:focus, select:focus, textarea:focus {
   display: none !important;
 }
 
+.pf-field-hint--avg {
+  grid-column: 1 / -1;
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.05rem;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.pf-field-hint--avg[hidden] {
+  display: none !important;
+}
+
 .pf-field-hint--ofz {
   grid-column: 1 / -1;
-  max-width: 42rem;
+  max-width: none;
   width: 100%;
   box-sizing: border-box;
   margin-top: 0.1rem;
   margin-bottom: 0;
-  padding: 0.5rem 0.7rem 0.5rem 0.75rem;
+  padding: 0.5rem 0.85rem 0.5rem 0.85rem;
   font-size: 0.78rem;
   line-height: 1.45;
   font-weight: 500;
@@ -965,7 +979,7 @@ input:focus, select:focus, textarea:focus {
   font-size: 0.76rem;
   line-height: 1.4;
   font-weight: 600;
-  max-width: 42rem;
+  max-width: none;
   width: 100%;
   box-sizing: border-box;
   color: #8A5E2E;
@@ -982,16 +996,15 @@ input:focus, select:focus, textarea:focus {
 
 /* Телефон: больше полезной ширины у карточных сеток (desktop/tablet без изменений) */
 @media (max-width: 640px) {
-  .pf-field-hint--ofz {
-    max-width: none;
-    margin-top: 0.05rem;
-    padding: 0.42rem 0.55rem 0.42rem 0.65rem;
-    font-size: 0.74rem;
-    line-height: 1.4;
+  .pf-field-hint--avg {
+    white-space: normal;
   }
 
-  .pf-field-warn {
-    max-width: none;
+  .pf-field-hint--ofz {
+    margin-top: 0.05rem;
+    padding: 0.42rem 0.6rem 0.42rem 0.65rem;
+    font-size: 0.74rem;
+    line-height: 1.4;
   }
 
   .header {
