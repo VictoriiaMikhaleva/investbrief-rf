@@ -461,7 +461,8 @@
 
 
 
-  function selectPortfolioTicker(ticker) {
+  function selectPortfolioTicker(ticker, opts) {
+    opts = opts || {};
     ticker = normalizeTicker(ticker);
     if (!findPortfolioPosition(ticker)) return;
     state.chartTicker = ticker;
@@ -471,7 +472,9 @@
     var sel = document.getElementById('chartTickerSelect');
     if (sel) sel.value = ticker;
     renderPortfolioFolder();
+    // Перерисовка аналитики без автоскролла; скролл только при явном выборе бумаги.
     renderPortfolioChart();
+    if (opts.scroll === false) return;
     var section = document.getElementById('portfolioInsightsSection');
     if (section && !section.hidden) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1038,9 +1041,10 @@
 
 
 
-  function renderPortfolioChart() {
+  function renderPortfolioChart(opts) {
+    opts = opts || {};
     if (typeof renderPortfolioInsights === 'function') {
-      renderPortfolioInsights(state.chartTicker);
+      renderPortfolioInsights(state.chartTicker, { scroll: !!opts.scroll });
       return;
     }
     var positions = getPortfolioPaperPositions();
@@ -2325,6 +2329,19 @@
 
 
   function handlePortfolioTableClick(e) {
+    // Action-кнопки / контролы внутри карточки: не открывать аналитику и не скроллить.
+    var actionEl = e.target.closest(
+      'button, a, input, select, textarea, label,' +
+      '[data-pf-toggle-history], [data-pf-hide-closed], [data-pf-restore-closed],' +
+      '[data-pf-show-hidden-closed], [data-pf-collapse-hidden-closed],' +
+      '[data-pf-expand-lots], [data-pf-collapse-lots],' +
+      '[data-pf-sell-ticker], [data-pf-sell-lot], [data-pf-undo-sale],' +
+      '[data-pf-edit-lot], [data-pf-remove-lot],' +
+      '.portfolio-card-actions, .portfolio-closed-card-actions,' +
+      '.portfolio-card-detail, .portfolio-closed-card-detail,' +
+      '.pf-row-actions, .pf-lot-toggle-row, .pf-sale-row, .pf-ticker-detail-row'
+    );
+
     var historyBtn = e.target.closest('[data-pf-toggle-history]');
     if (historyBtn) {
       e.preventDefault();
@@ -2428,13 +2445,11 @@
       }
       return;
     }
-    if (e.target.closest('.pf-lot-toggle-row')) return;
-    if (e.target.closest('.pf-sale-row')) return;
-    if (e.target.closest('.pf-ticker-detail-row')) return;
-    if (e.target.closest('.portfolio-card-detail')) return;
-    if (e.target.closest('.portfolio-card-actions')) return;
-    if (e.target.closest('.portfolio-closed-card-actions')) return;
-    if (e.target.closest('.portfolio-closed-card-detail')) return;
+    if (actionEl) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     var card = e.target.closest('.portfolio-card[data-chart-ticker]');
     if (card) {
       if (state.tab === 'watchlist') switchTab('portfolio');
@@ -2442,7 +2457,7 @@
       return;
     }
     var row = e.target.closest('tr[data-chart-ticker]');
-    if (row && !e.target.closest('.pf-row-actions')) {
+    if (row) {
       if (state.tab === 'watchlist') switchTab('portfolio');
       selectPortfolioTicker(row.getAttribute('data-chart-ticker'));
     }

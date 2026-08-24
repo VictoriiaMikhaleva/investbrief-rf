@@ -1989,7 +1989,9 @@
 
 
 
-  function renderPortfolioInsights(ticker) {
+  function renderPortfolioInsights(ticker, opts) {
+    opts = opts || {};
+    var wantScroll = !!opts.scroll;
     var sec = document.getElementById('portfolioInsightsSection');
     if (!sec) return;
     ticker = normalizeTicker(ticker || '');
@@ -2077,7 +2079,7 @@
           if (divNote) divNote.textContent = bond.coupons && bond.coupons.length ? bondAnalyticsDivNote() : 'Купоны по выпуску пока недоступны.';
           if (volNote) volNote.textContent = bondAnalyticsVolNote();
         });
-        sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (wantScroll) sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
       }
       if (metaEl) metaEl.textContent = 'US позиция · дивидендная аналитика МосБиржи недоступна';
@@ -2131,7 +2133,7 @@
         volNote.className = 'analytics-chart-note chart-info-readable' + (a.volumeStale ? ' data-stale-warning' : '');
       }
     });
-    sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (wantScroll) sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   window.paintQuoteMiniCharts = paintQuoteMiniCharts;
