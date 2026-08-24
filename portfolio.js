@@ -1837,20 +1837,46 @@
     }, 0);
   }
 
-  function updatePortfolioSellAllBtn(totalQty) {
-    var btn = document.getElementById('pfSaleAllBtn');
-    if (!btn) return;
+  function updatePortfolioSaleAvailableHint(totalQty) {
+    var hint = document.getElementById('pfSaleAvailableHint');
+    var saleBtn = document.getElementById('pfSaleBtn');
     if (totalQty == null) totalQty = getPortfolioSellableQty();
     var ok = isFinite(totalQty) && totalQty > 0;
-    btn.hidden = !ok;
-    btn.disabled = !ok;
-    if (ok) {
-      btn.setAttribute('data-pf-sell-all-qty', String(totalQty));
-      btn.title = 'Подставить весь остаток: ' + totalQty + ' шт.';
-    } else {
-      btn.removeAttribute('data-pf-sell-all-qty');
-      btn.title = '';
+    if (hint) {
+      if (!state.pfSaleTicker) {
+        hint.hidden = true;
+        hint.textContent = '';
+      } else {
+        hint.hidden = false;
+        hint.textContent = 'Доступно: ' + (ok ? String(totalQty) : '0') + ' шт.';
+      }
     }
+    if (saleBtn) {
+      saleBtn.disabled = !state.pfSaleTicker || !ok;
+      if (saleBtn.disabled) {
+        saleBtn.title = 'Нет доступного количества для продажи';
+      } else {
+        saleBtn.removeAttribute('title');
+      }
+    }
+  }
+
+  function updatePortfolioSellAllBtn(totalQty) {
+    var btn = document.getElementById('pfSaleAllBtn');
+    if (totalQty == null) totalQty = getPortfolioSellableQty();
+    var ok = isFinite(totalQty) && totalQty > 0;
+    if (btn) {
+      btn.hidden = !ok;
+      btn.disabled = !ok;
+      if (ok) {
+        btn.setAttribute('data-pf-sell-all-qty', String(totalQty));
+        btn.title = 'Подставить весь остаток: ' + totalQty + ' шт.';
+      } else {
+        btn.removeAttribute('data-pf-sell-all-qty');
+        btn.title = '';
+      }
+    }
+    updatePortfolioSaleAvailableHint(totalQty);
   }
 
   /** Только подставляет количество в форму продажи, не фиксирует сделку. */
@@ -2247,6 +2273,14 @@
     if (e.target.closest('.pf-lot-toggle-row')) return;
     if (e.target.closest('.pf-sale-row')) return;
     if (e.target.closest('.pf-ticker-detail-row')) return;
+    if (e.target.closest('.portfolio-card-detail')) return;
+    if (e.target.closest('.portfolio-card-actions')) return;
+    var card = e.target.closest('.portfolio-card[data-chart-ticker]');
+    if (card) {
+      if (state.tab === 'watchlist') switchTab('portfolio');
+      selectPortfolioTicker(card.getAttribute('data-chart-ticker'));
+      return;
+    }
     var row = e.target.closest('tr[data-chart-ticker]');
     if (row && !e.target.closest('.pf-row-actions')) {
       if (state.tab === 'watchlist') switchTab('portfolio');
@@ -2401,12 +2435,14 @@
       (open ? 'Скрыть' : 'Подробнее') + '</button>';
   }
 
-  function buildPortfolioTickerDetailHtml(ticker, positions, sales, bondMeta, isBond) {
+  function buildPortfolioTickerDetailHtml(ticker, positions, sales, bondMeta, isBond, opts) {
+    opts = opts || {};
+    var stack = opts.layout === 'stack';
     var hist = summarizeTickerHistory(ticker, positions, sales, bondMeta);
     var uCls = hist.unrealizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
     var rCls = hist.realizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
-    var html = '<div class="pf-ticker-detail">' +
-      '<div class="pf-ticker-detail-title">Подробнее по ' + escapeHtml(hist.ticker) + '</div>' +
+    var html = '<div class="pf-ticker-detail' + (stack ? ' pf-ticker-detail--stack' : '') + '">' +
+      (stack ? '' : '<div class="pf-ticker-detail-title">Подробнее по ' + escapeHtml(hist.ticker) + '</div>') +
       (isBond
         ? '<p class="pf-ticker-detail-note muted">Цены ОФЗ указаны в % от номинала.</p>'
         : '') +
@@ -2430,6 +2466,24 @@
     html += '<div class="pf-ticker-detail-section"><h4 class="pf-ticker-detail-h">Открытые покупки</h4>';
     if (!hist.openLots.length) {
       html += '<p class="muted pf-ticker-detail-empty">Открытых позиций по этой бумаге нет.</p>';
+    } else if (stack) {
+      html += '<div class="pf-stack-list">';
+      hist.openLots.forEach(function (lot) {
+        html += '<div class="pf-stack-item">' +
+          '<div class="pf-stack-meta">' +
+            '<span><span class="lbl">Дата</span> ' + escapeHtml(formatPortfolioDate(lot)) + '</span>' +
+            '<span><span class="lbl">Кол-во</span> ' + escapeHtml(formatPortfolioQty(lot)) + '</span>' +
+            '<span><span class="lbl">Цена</span> ' + escapeHtml(formatPositionAvg(lot, { bond: isBond })) + '</span>' +
+          '</div>' +
+          (lot.comment
+            ? '<div class="pf-stack-comment muted">' + escapeHtml(lot.comment) + '</div>'
+            : '') +
+          '<div class="pf-row-actions">' +
+            '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-edit-lot="' + escapeHtml(lot.lotId || '') + '">Изменить</button> ' +
+            '<button type="button" class="small pf-btn pf-btn-danger" data-pf-remove-lot="' + escapeHtml(lot.lotId || '') + '">Удалить</button>' +
+          '</div></div>';
+      });
+      html += '</div>';
     } else {
       html += '<table class="pf-mini-table"><thead><tr>' +
         '<th>Дата</th><th>Кол-во</th><th>Цена покупки</th><th>Комментарий</th><th></th>' +
@@ -2458,52 +2512,141 @@
         var db = b.saleDate || '';
         return da < db ? 1 : (da > db ? -1 : 0);
       });
-      html += '<table class="pf-mini-table"><thead><tr>' +
-        '<th>Дата</th><th>Кол-во</th><th>Цена продажи</th><th>Цена покупки</th><th>Результат</th><th></th>' +
-        '</tr></thead><tbody>';
-      sortedSales.forEach(function (sale) {
-        var pnl = getSaleRealizedPnl(sale, bondMeta);
-        var pnlCls = pnl.amount != null && pnl.amount >= 0 ? 'pnl-pos' : 'pnl-neg';
-        var buyLbl = formatPortfolioHistoryPrice(sale.buyPrice, sale.ticker, isBond, sale.currency);
-        var sellLbl = formatPortfolioHistoryPrice(sale.salePrice, sale.ticker, isBond, sale.currency);
-        html += '<tr>' +
-          '<td>' + escapeHtml(formatPortfolioSaleDate(sale)) + '</td>' +
-          '<td class="pf-sale-qty">−' + escapeHtml(String(sale.qty)) + '</td>' +
-          '<td>' + escapeHtml(sellLbl) + '</td>' +
-          '<td>' + escapeHtml(buyLbl) + '</td>' +
-          '<td class="' + pnlCls + '">' +
-            escapeHtml(pnl.amount != null ? formatSignedRubAmount(pnl.amount) : '—') +
-          '</td>' +
-          '<td class="pf-row-actions">' +
-            '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
-          '</td></tr>';
-        if (sale.allocations && sale.allocations.length) {
-          html += '<tr class="pf-alloc-row"><td colspan="6"><div class="pf-alloc-box">' +
-            '<div class="pf-alloc-title muted">Разбивка по покупкам</div>' +
-            '<table class="pf-mini-table pf-mini-table--nested"><thead><tr>' +
-            '<th>Дата покупки</th><th>Кол-во</th><th>Цена покупки</th><th>Вклад в результат</th>' +
-            '</tr></thead><tbody>';
-          sale.allocations.forEach(function (alloc) {
-            var allocPnl = getSaleAllocationPnlRub(alloc, sale, bondMeta);
-            var aCls = allocPnl != null && allocPnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-            var allocDate = typeof safeFormatPortfolioDate === 'function'
-              ? safeFormatPortfolioDate(alloc.buyDate)
-              : (alloc.buyDate || '—');
-            html += '<tr>' +
-              '<td>' + escapeHtml(allocDate || '—') + '</td>' +
-              '<td>' + escapeHtml(String(alloc.qty != null ? alloc.qty : '—')) + '</td>' +
-              '<td>' + escapeHtml(formatPortfolioHistoryPrice(alloc.buyPrice, sale.ticker, isBond, sale.currency)) + '</td>' +
-              '<td class="' + (allocPnl != null ? aCls : 'muted') + '">' +
-                escapeHtml(allocPnl != null ? formatSignedRubAmount(allocPnl) : '—') +
-              '</td></tr>';
-          });
-          html += '</tbody></table></div></td></tr>';
-        }
-      });
-      html += '</tbody></table>';
+      if (stack) {
+        html += '<div class="pf-stack-list">';
+        sortedSales.forEach(function (sale) {
+          var pnl = getSaleRealizedPnl(sale, bondMeta);
+          var pnlCls = pnl.amount != null && pnl.amount >= 0 ? 'pnl-pos' : 'pnl-neg';
+          var buyLbl = formatPortfolioHistoryPrice(sale.buyPrice, sale.ticker, isBond, sale.currency);
+          var sellLbl = formatPortfolioHistoryPrice(sale.salePrice, sale.ticker, isBond, sale.currency);
+          html += '<div class="pf-stack-item">' +
+            '<div class="pf-stack-meta">' +
+              '<span><span class="lbl">Дата</span> ' + escapeHtml(formatPortfolioSaleDate(sale)) + '</span>' +
+              '<span class="pf-sale-qty"><span class="lbl">Кол-во</span> −' + escapeHtml(String(sale.qty)) + '</span>' +
+              '<span><span class="lbl">Продажа</span> ' + escapeHtml(sellLbl) + '</span>' +
+              '<span><span class="lbl">Покупка</span> ' + escapeHtml(buyLbl) + '</span>' +
+              '<span class="' + pnlCls + '"><span class="lbl">Результат</span> ' +
+                escapeHtml(pnl.amount != null ? formatSignedRubAmount(pnl.amount) : '—') + '</span>' +
+            '</div>' +
+            '<div class="pf-row-actions">' +
+              '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
+            '</div>';
+          if (sale.allocations && sale.allocations.length) {
+            html += '<div class="pf-alloc-box">' +
+              '<div class="pf-alloc-title muted">Разбивка по покупкам</div>' +
+              '<div class="pf-stack-list pf-stack-list--nested">';
+            sale.allocations.forEach(function (alloc) {
+              var allocPnl = getSaleAllocationPnlRub(alloc, sale, bondMeta);
+              var aCls = allocPnl != null && allocPnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+              var allocDate = typeof safeFormatPortfolioDate === 'function'
+                ? safeFormatPortfolioDate(alloc.buyDate)
+                : (alloc.buyDate || '—');
+              html += '<div class="pf-stack-item pf-stack-item--nested">' +
+                '<div class="pf-stack-meta">' +
+                  '<span><span class="lbl">Дата</span> ' + escapeHtml(allocDate || '—') + '</span>' +
+                  '<span><span class="lbl">Кол-во</span> ' + escapeHtml(String(alloc.qty != null ? alloc.qty : '—')) + '</span>' +
+                  '<span><span class="lbl">Цена</span> ' +
+                    escapeHtml(formatPortfolioHistoryPrice(alloc.buyPrice, sale.ticker, isBond, sale.currency)) + '</span>' +
+                  '<span class="' + (allocPnl != null ? aCls : 'muted') + '"><span class="lbl">Вклад</span> ' +
+                    escapeHtml(allocPnl != null ? formatSignedRubAmount(allocPnl) : '—') + '</span>' +
+                '</div></div>';
+            });
+            html += '</div></div>';
+          }
+          html += '</div>';
+        });
+        html += '</div>';
+      } else {
+        html += '<table class="pf-mini-table"><thead><tr>' +
+          '<th>Дата</th><th>Кол-во</th><th>Цена продажи</th><th>Цена покупки</th><th>Результат</th><th></th>' +
+          '</tr></thead><tbody>';
+        sortedSales.forEach(function (sale) {
+          var pnl = getSaleRealizedPnl(sale, bondMeta);
+          var pnlCls = pnl.amount != null && pnl.amount >= 0 ? 'pnl-pos' : 'pnl-neg';
+          var buyLbl = formatPortfolioHistoryPrice(sale.buyPrice, sale.ticker, isBond, sale.currency);
+          var sellLbl = formatPortfolioHistoryPrice(sale.salePrice, sale.ticker, isBond, sale.currency);
+          html += '<tr>' +
+            '<td>' + escapeHtml(formatPortfolioSaleDate(sale)) + '</td>' +
+            '<td class="pf-sale-qty">−' + escapeHtml(String(sale.qty)) + '</td>' +
+            '<td>' + escapeHtml(sellLbl) + '</td>' +
+            '<td>' + escapeHtml(buyLbl) + '</td>' +
+            '<td class="' + pnlCls + '">' +
+              escapeHtml(pnl.amount != null ? formatSignedRubAmount(pnl.amount) : '—') +
+            '</td>' +
+            '<td class="pf-row-actions">' +
+              '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
+            '</td></tr>';
+          if (sale.allocations && sale.allocations.length) {
+            html += '<tr class="pf-alloc-row"><td colspan="6"><div class="pf-alloc-box">' +
+              '<div class="pf-alloc-title muted">Разбивка по покупкам</div>' +
+              '<table class="pf-mini-table pf-mini-table--nested"><thead><tr>' +
+              '<th>Дата покупки</th><th>Кол-во</th><th>Цена покупки</th><th>Вклад в результат</th>' +
+              '</tr></thead><tbody>';
+            sale.allocations.forEach(function (alloc) {
+              var allocPnl = getSaleAllocationPnlRub(alloc, sale, bondMeta);
+              var aCls = allocPnl != null && allocPnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+              var allocDate = typeof safeFormatPortfolioDate === 'function'
+                ? safeFormatPortfolioDate(alloc.buyDate)
+                : (alloc.buyDate || '—');
+              html += '<tr>' +
+                '<td>' + escapeHtml(allocDate || '—') + '</td>' +
+                '<td>' + escapeHtml(String(alloc.qty != null ? alloc.qty : '—')) + '</td>' +
+                '<td>' + escapeHtml(formatPortfolioHistoryPrice(alloc.buyPrice, sale.ticker, isBond, sale.currency)) + '</td>' +
+                '<td class="' + (allocPnl != null ? aCls : 'muted') + '">' +
+                  escapeHtml(allocPnl != null ? formatSignedRubAmount(allocPnl) : '—') +
+                '</td></tr>';
+            });
+            html += '</tbody></table></div></td></tr>';
+          }
+        });
+        html += '</tbody></table>';
+      }
     }
     html += '</div></div>';
     return html;
+  }
+
+  function buildPortfolioMobileCardHtml(agg, bondMeta, sleeveTotal, allPositions, allSales) {
+    var ticker = normalizeTicker(agg && agg.ticker);
+    if (!ticker) return '';
+    var isBond = isPortfolioBondPosition(agg);
+    var marketVal = getPositionMarketValue(agg, bondMeta);
+    var weight = formatPortfolioWeightPct(marketVal, sleeveTotal);
+    var pnl = isBond ? null : getPositionReturnPct(agg);
+    var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+    var avg = formatPositionAvg(agg, { bond: isBond });
+    var cur = formatPositionPrice(agg, { bond: isBond });
+    var mBadge = typeof Markets !== 'undefined'
+      ? ' <span class="market-badge market-badge--' + (agg.market === 'US' ? 'us' : 'ru') + '">' +
+          escapeHtml(Markets.marketBadgeLabel(agg.market || 'RU')) + '</span>'
+      : '';
+    var extra = isBond
+      ? '<span>Погашение</span><span>' + (bondMeta && bondMeta.matDate
+        ? escapeHtml(typeof formatOfzDate === 'function' ? formatOfzDate(bondMeta.matDate) : bondMeta.matDate)
+        : '—') + '</span>'
+      : '<span>Доходность</span><span class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>';
+    var open = !!(state.pfHistoryTickers && state.pfHistoryTickers[ticker]);
+    var sellable = getPortfolioSellableQty(ticker);
+    var actions = '<div class="portfolio-card-actions pf-row-actions">' +
+      (sellable > 0
+        ? '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-sell-ticker="' +
+            escapeHtml(ticker) + '">Продать</button> '
+        : '') +
+      buildPortfolioHistoryToggleBtn(ticker) +
+      '</div>';
+    var detail = open
+      ? buildPortfolioTickerDetailHtml(ticker, allPositions, allSales, bondMeta, isBond, { layout: 'stack' })
+      : '';
+    return '<div class="portfolio-card' + (open ? ' portfolio-card--open' : '') +
+      '" data-chart-ticker="' + escapeHtml(ticker) + '">' +
+      '<div class="ticker">' + escapeHtml(ticker) + mBadge + '</div>' +
+      '<div class="grid"><span>Доля</span><span>' + escapeHtml(weight) + '</span>' +
+      '<span>Ср. цена</span><span>' + escapeHtml(avg) + '</span>' +
+      '<span>Текущая</span><span>' + escapeHtml(cur) + '</span>' +
+      extra + '</div>' +
+      actions +
+      (detail ? '<div class="portfolio-card-detail">' + detail + '</div>' : '') +
+      '</div>';
   }
 
   function buildPortfolioTickerDetailRow(ticker, positions, sales, bondMeta, isBond) {
@@ -2738,25 +2881,7 @@
         var isBond = isPortfolioBondPosition(p);
         var bondMeta = bondMetaMap[p.ticker] || null;
         var sleeveTotal = isBond ? bondTotal : stockTotal;
-        var marketVal = getPositionMarketValue(p, bondMeta);
-        var weight = formatPortfolioWeightPct(marketVal, sleeveTotal);
-        var pnl = isBond ? null : getPositionReturnPct(p);
-        var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-        var avg = formatPositionAvg(p, { bond: isBond });
-        var cur = formatPositionPrice(p, { bond: isBond });
-        var mBadge = typeof Markets !== 'undefined'
-          ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
-          : '';
-        var extra = isBond
-          ? '<span>Погашение</span><span>' + (bondMeta && bondMeta.matDate
-            ? escapeHtml(typeof formatOfzDate === 'function' ? formatOfzDate(bondMeta.matDate) : bondMeta.matDate)
-            : '—') + '</span>'
-          : '<span>Доходность</span><span class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>';
-        return '<div class="portfolio-card" data-chart-ticker="' + escapeHtml(p.ticker) + '"><div class="ticker">' + escapeHtml(p.ticker) + mBadge + '</div>' +
-          '<div class="grid"><span>Доля</span><span>' + escapeHtml(weight) + '</span>' +
-          '<span>Ср. цена</span><span>' + escapeHtml(avg) + '</span>' +
-          '<span>Текущая</span><span>' + escapeHtml(cur) + '</span>' +
-          extra + '</div></div>';
+        return buildPortfolioMobileCardHtml(p, bondMeta, sleeveTotal, positions, sales);
       }).join('');
     });
   }

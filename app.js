@@ -477,13 +477,7 @@
     });
 
     var portfolioCards = document.getElementById('portfolioCards');
-    if (portfolioCards) portfolioCards.addEventListener('click', function (e) {
-      var card = e.target.closest('.portfolio-card');
-      if (!card) return;
-      var tickerEl = card.querySelector('.ticker');
-      if (!tickerEl) return;
-      selectPortfolioTicker(tickerEl.textContent.trim());
-    });
+    if (portfolioCards) portfolioCards.addEventListener('click', handlePortfolioTableClick);
 
     var chartResizeTimer;
     window.addEventListener('resize', function () {

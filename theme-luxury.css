@@ -1375,6 +1375,101 @@ input:focus, select:focus, textarea:focus {
   font-size: 0.74rem;
 }
 
+/* Волна 2.3: mobile-аккордеон «Подробнее» внутри карточки */
+.portfolio-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+  cursor: default;
+}
+
+.portfolio-card-actions .pf-btn,
+.portfolio-card-actions .pf-history-toggle {
+  cursor: pointer;
+}
+
+.portfolio-card--open {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+}
+
+.portfolio-card-detail {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(23, 34, 51, 0.07);
+  cursor: default;
+}
+
+.pf-ticker-detail--stack .pf-ticker-detail-summary {
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem 0.55rem;
+}
+
+.pf-stack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.pf-stack-list--nested {
+  gap: 0.3rem;
+  margin-top: 0.25rem;
+}
+
+.pf-stack-item {
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(246, 247, 249, 0.9);
+  border: 1px solid rgba(23, 34, 51, 0.045);
+}
+
+.pf-stack-item--nested {
+  padding: 0.35rem 0.45rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.pf-stack-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.pf-stack-meta .lbl {
+  display: inline;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-right: 0.15rem;
+}
+
+.pf-stack-comment {
+  margin-top: 0.25rem;
+  font-size: 0.74rem;
+}
+
+.pf-stack-item .pf-row-actions {
+  margin-top: 0.35rem;
+}
+
+/* Волна 2.4: «Доступно: N шт.» у поля продажи */
+.pf-sale-qty-field {
+  position: relative;
+}
+
+.pf-sale-available {
+  display: block;
+  margin-top: 0.28rem;
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+#pfSaleBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* panel-intro--one-line: см. правила .panel-intro.hint-frame > p выше */
 
 /* Телефон: больше полезной ширины у карточных сеток (desktop/tablet без изменений) */
