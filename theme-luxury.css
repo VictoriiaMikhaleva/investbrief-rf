@@ -943,7 +943,16 @@ input:focus, select:focus, textarea:focus {
   box-sizing: border-box;
   margin-top: 0.05rem;
   margin-bottom: 0;
+  padding: 0.42rem 0.75rem 0.42rem 0.75rem;
   white-space: nowrap;
+  color: var(--text);
+  background: color-mix(in srgb, #fffdf8 85%, var(--bronze-soft) 15%);
+  border-left: 3px solid color-mix(in srgb, var(--bronze) 70%, #e0c9a8 30%);
+  border-radius: 0 10px 10px 0;
+}
+
+.pf-field-hint--avg.muted {
+  color: var(--text);
 }
 
 .pf-field-hint--avg[hidden] {
@@ -998,6 +1007,7 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 640px) {
   .pf-field-hint--avg {
     white-space: normal;
+    padding: 0.38rem 0.55rem 0.38rem 0.65rem;
   }
 
   .pf-field-hint--ofz {
