@@ -2665,6 +2665,7 @@
     _marketMacroDataLive = false;
     var d = snapshot.data || {};
     if (d.keyRate && d.keyRate.rate != null) {
+      try { moexCacheSet('cbr.keyrate', d.keyRate, MACRO_REFRESH_MS); } catch (e) { /* noop */ }
       patchMacroTile(row, 'rate', formatKeyRateLabel(d.keyRate.rate), buildKeyRateMeta(d.keyRate));
     }
     if (d.imoex && d.imoex.price != null) {
@@ -2748,6 +2749,24 @@
 
 
 
+  function hasMacroTileRealValue(row, id) {
+    if (!row) return false;
+    var valEl = row.querySelector('[data-macro-id="' + id + '"] .macro-tile-val');
+    var cur = valEl && String(valEl.textContent || '').trim();
+    return !!(cur && cur !== '…' && cur !== '—' && cur !== '-');
+  }
+
+  /** Если live-парсинг ЦБ недоступен (CORS/прокси), оставляем snapshot/кэш. */
+  function restoreKeyRateFromSnapshot(row) {
+    return fetchInvestbriefDataFile('market-snapshot.json', true).then(function (snapshot) {
+      var kr = snapshot && snapshot.data && snapshot.data.keyRate;
+      if (!kr || kr.rate == null || !isFinite(Number(kr.rate))) return false;
+      try { moexCacheSet('cbr.keyrate', kr, MACRO_REFRESH_MS); } catch (e) { /* noop */ }
+      patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate), buildKeyRateMeta(kr));
+      return true;
+    }).catch(function () { return false; });
+  }
+
   function renderMarketMacro(forceRefresh) {
     var row = document.getElementById('marketMacroRow');
     if (!row) return;
@@ -2788,7 +2807,12 @@
       fetchCbrKeyRate().then(function (kr) {
         patchMacroTile(row, 'rate', formatKeyRateLabel(kr.rate), buildKeyRateMeta(kr));
       }).catch(function () {
-        patchMacroTile(row, 'rate', '—', { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ', tag: 'ключевая' });
+        // Не затираем snapshot/кэш прочерками, если live CBR (CORS/прокси) недоступен.
+        if (hasMacroTileRealValue(row, 'rate')) return;
+        return restoreKeyRateFromSnapshot(row).then(function (ok) {
+          if (ok) return;
+          patchMacroTile(row, 'rate', '—', { changeText: '—', changeCls: 'muted', source: 'ЦБ РФ', tag: 'ключевая' });
+        });
       }),
 
       fetchMoexQuote('IMOEX').then(function (q) {
