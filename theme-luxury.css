@@ -1487,6 +1487,130 @@ input:focus, select:focus, textarea:focus {
   cursor: not-allowed;
 }
 
+/* Волна 2.x: визуальная иерархия операций в «Подробнее» */
+.pf-ticker-detail-summary {
+  border-left: 2px solid color-mix(in srgb, #9aa5b4 55%, #d5dae1 45%);
+  background: color-mix(in srgb, #f6f7f9 88%, #ffffff 12%);
+}
+
+.pf-history-section--open-lots > .pf-ticker-detail-h {
+  color: color-mix(in srgb, var(--accent) 72%, #4a5c52 28%);
+}
+
+.pf-history-section--sales > .pf-ticker-detail-h {
+  color: color-mix(in srgb, var(--bronze) 70%, #6d4f2a 30%);
+}
+
+.pf-op-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.38rem;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.pf-op-badge--buy {
+  color: color-mix(in srgb, var(--accent-hover) 78%, #2f4a37 22%);
+  background: color-mix(in srgb, var(--accent-soft) 70%, #ffffff 30%);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, #d5e0d8 78%);
+}
+
+.pf-op-badge--sale {
+  color: color-mix(in srgb, #8a5a3a 72%, #5c4030 28%);
+  background: color-mix(in srgb, var(--bronze-soft) 55%, #fff8f2 45%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 28%, #e8d5c4 72%);
+}
+
+.pf-stack-item.pf-open-lot {
+  background: color-mix(in srgb, var(--accent-soft) 38%, #ffffff 62%);
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, rgba(23, 34, 51, 0.05) 88%);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 42%, #c5d4cb 58%);
+}
+
+.pf-mini-table--open-lots {
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, rgba(23, 34, 51, 0.05) 88%);
+  background: color-mix(in srgb, var(--accent-soft) 22%, #ffffff 78%);
+}
+
+.pf-mini-table--open-lots th,
+.pf-mini-table--open-lots td {
+  border-bottom-color: color-mix(in srgb, var(--accent) 8%, rgba(23, 34, 51, 0.04) 92%);
+}
+
+.pf-mini-table--open-lots tbody tr.pf-open-lot-row td:first-child {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 42%, #c5d4cb 58%);
+  padding-left: 0.55rem;
+}
+
+.pf-stack-item.pf-sale-row {
+  background: color-mix(in srgb, var(--bronze-soft) 32%, #fffaf6 68%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 16%, rgba(23, 34, 51, 0.05) 84%);
+  border-left: 3px solid color-mix(in srgb, var(--bronze) 48%, #d4b896 52%);
+}
+
+.pf-mini-table--sales {
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 14%, rgba(23, 34, 51, 0.05) 86%);
+  background: color-mix(in srgb, var(--bronze-soft) 20%, #fffdfb 80%);
+}
+
+.pf-mini-table--sales th,
+.pf-mini-table--sales td {
+  border-bottom-color: color-mix(in srgb, var(--bronze) 10%, rgba(23, 34, 51, 0.04) 90%);
+}
+
+.pf-mini-table--sales tbody tr.pf-sale-row td:first-child {
+  border-left: 3px solid color-mix(in srgb, var(--bronze) 48%, #d4b896 52%);
+  padding-left: 0.5rem;
+}
+
+.pf-alloc-box.pf-allocation-box,
+.pf-allocation-box {
+  margin-top: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  background: color-mix(in srgb, #ffffff 82%, #f3f5f7 18%);
+  border: 1px solid color-mix(in srgb, #c9d0d8 35%, rgba(23, 34, 51, 0.06) 65%);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.pf-allocation-box .pf-stack-item--nested {
+  background: color-mix(in srgb, #f8f9fb 70%, #ffffff 30%);
+  border: 1px solid rgba(23, 34, 51, 0.035);
+  border-left: 2px solid color-mix(in srgb, #a8b2be 40%, #d8dde4 60%);
+}
+
+.pf-closed-row > td {
+  background: color-mix(in srgb, #eef2ef 55%, #f7f8f7 45%) !important;
+  color: color-mix(in srgb, var(--text-muted) 75%, #5a6570 25%);
+}
+
+.pf-closed-row .ticker {
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text) 70%, #5c6b62 30%);
+}
+
+.pf-closed-row .pf-closed-label {
+  font-size: 0.84rem;
+  font-style: italic;
+  opacity: 0.92;
+}
+
+.pf-closed-row:hover > td {
+  background: color-mix(in srgb, #e8eeea 60%, #f4f6f4 40%) !important;
+}
+
 /* panel-intro--one-line: см. правила .panel-intro.hint-frame > p выше */
 
 /* Телефон: больше полезной ширины у карточных сеток (desktop/tablet без изменений) */

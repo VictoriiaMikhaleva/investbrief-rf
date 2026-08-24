@@ -2463,14 +2463,15 @@
           '<span class="val ' + rCls + '">' + escapeHtml(formatSignedRubAmount(hist.realizedPnlRub)) + '</span></div>' +
       '</div>';
 
-    html += '<div class="pf-ticker-detail-section"><h4 class="pf-ticker-detail-h">Открытые покупки</h4>';
+    html += '<div class="pf-ticker-detail-section pf-history-section--open-lots"><h4 class="pf-ticker-detail-h">Открытые покупки</h4>';
     if (!hist.openLots.length) {
       html += '<p class="muted pf-ticker-detail-empty">Открытых позиций по этой бумаге нет.</p>';
     } else if (stack) {
       html += '<div class="pf-stack-list">';
       hist.openLots.forEach(function (lot) {
-        html += '<div class="pf-stack-item">' +
+        html += '<div class="pf-stack-item pf-open-lot">' +
           '<div class="pf-stack-meta">' +
+            '<span class="pf-op-badge pf-op-badge--buy">покупка</span>' +
             '<span><span class="lbl">Дата</span> ' + escapeHtml(formatPortfolioDate(lot)) + '</span>' +
             '<span><span class="lbl">Кол-во</span> ' + escapeHtml(formatPortfolioQty(lot)) + '</span>' +
             '<span><span class="lbl">Цена</span> ' + escapeHtml(formatPositionAvg(lot, { bond: isBond })) + '</span>' +
@@ -2485,11 +2486,11 @@
       });
       html += '</div>';
     } else {
-      html += '<table class="pf-mini-table"><thead><tr>' +
+      html += '<table class="pf-mini-table pf-mini-table--open-lots"><thead><tr>' +
         '<th>Дата</th><th>Кол-во</th><th>Цена покупки</th><th>Комментарий</th><th></th>' +
         '</tr></thead><tbody>';
       hist.openLots.forEach(function (lot) {
-        html += '<tr>' +
+        html += '<tr class="pf-open-lot-row">' +
           '<td>' + escapeHtml(formatPortfolioDate(lot)) + '</td>' +
           '<td>' + escapeHtml(formatPortfolioQty(lot)) + '</td>' +
           '<td>' + escapeHtml(formatPositionAvg(lot, { bond: isBond })) + '</td>' +
@@ -2503,7 +2504,7 @@
     }
     html += '</div>';
 
-    html += '<div class="pf-ticker-detail-section"><h4 class="pf-ticker-detail-h">Продажи</h4>';
+    html += '<div class="pf-ticker-detail-section pf-history-section--sales"><h4 class="pf-ticker-detail-h">Продажи</h4>';
     if (!hist.sales.length) {
       html += '<p class="muted pf-ticker-detail-empty">Продаж по этой бумаге пока нет.</p>';
     } else {
@@ -2519,8 +2520,9 @@
           var pnlCls = pnl.amount != null && pnl.amount >= 0 ? 'pnl-pos' : 'pnl-neg';
           var buyLbl = formatPortfolioHistoryPrice(sale.buyPrice, sale.ticker, isBond, sale.currency);
           var sellLbl = formatPortfolioHistoryPrice(sale.salePrice, sale.ticker, isBond, sale.currency);
-          html += '<div class="pf-stack-item">' +
+          html += '<div class="pf-stack-item pf-sale-row">' +
             '<div class="pf-stack-meta">' +
+              '<span class="pf-op-badge pf-op-badge--sale">продажа</span>' +
               '<span><span class="lbl">Дата</span> ' + escapeHtml(formatPortfolioSaleDate(sale)) + '</span>' +
               '<span class="pf-sale-qty"><span class="lbl">Кол-во</span> −' + escapeHtml(String(sale.qty)) + '</span>' +
               '<span><span class="lbl">Продажа</span> ' + escapeHtml(sellLbl) + '</span>' +
@@ -2532,7 +2534,7 @@
               '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
             '</div>';
           if (sale.allocations && sale.allocations.length) {
-            html += '<div class="pf-alloc-box">' +
+            html += '<div class="pf-alloc-box pf-allocation-box">' +
               '<div class="pf-alloc-title muted">Разбивка по покупкам</div>' +
               '<div class="pf-stack-list pf-stack-list--nested">';
             sale.allocations.forEach(function (alloc) {
@@ -2557,7 +2559,7 @@
         });
         html += '</div>';
       } else {
-        html += '<table class="pf-mini-table"><thead><tr>' +
+        html += '<table class="pf-mini-table pf-mini-table--sales"><thead><tr>' +
           '<th>Дата</th><th>Кол-во</th><th>Цена продажи</th><th>Цена покупки</th><th>Результат</th><th></th>' +
           '</tr></thead><tbody>';
         sortedSales.forEach(function (sale) {
@@ -2565,8 +2567,9 @@
           var pnlCls = pnl.amount != null && pnl.amount >= 0 ? 'pnl-pos' : 'pnl-neg';
           var buyLbl = formatPortfolioHistoryPrice(sale.buyPrice, sale.ticker, isBond, sale.currency);
           var sellLbl = formatPortfolioHistoryPrice(sale.salePrice, sale.ticker, isBond, sale.currency);
-          html += '<tr>' +
-            '<td>' + escapeHtml(formatPortfolioSaleDate(sale)) + '</td>' +
+          html += '<tr class="pf-sale-row">' +
+            '<td><span class="pf-op-badge pf-op-badge--sale">продажа</span> ' +
+              escapeHtml(formatPortfolioSaleDate(sale)) + '</td>' +
             '<td class="pf-sale-qty">−' + escapeHtml(String(sale.qty)) + '</td>' +
             '<td>' + escapeHtml(sellLbl) + '</td>' +
             '<td>' + escapeHtml(buyLbl) + '</td>' +
@@ -2577,7 +2580,7 @@
               '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
             '</td></tr>';
           if (sale.allocations && sale.allocations.length) {
-            html += '<tr class="pf-alloc-row"><td colspan="6"><div class="pf-alloc-box">' +
+            html += '<tr class="pf-alloc-row"><td colspan="6"><div class="pf-alloc-box pf-allocation-box">' +
               '<div class="pf-alloc-title muted">Разбивка по покупкам</div>' +
               '<table class="pf-mini-table pf-mini-table--nested"><thead><tr>' +
               '<th>Дата покупки</th><th>Кол-во</th><th>Цена покупки</th><th>Вклад в результат</th>' +
@@ -2745,9 +2748,9 @@
           });
         });
       } else if (group.salesOnly) {
-        html += '<tr class="pf-table-row pf-sales-only-head" data-chart-ticker="' + escapeHtml(group.ticker) + '">' +
+        html += '<tr class="pf-table-row pf-sales-only-head pf-closed-row" data-chart-ticker="' + escapeHtml(group.ticker) + '">' +
           '<td class="ticker">' + escapeHtml(group.ticker) + '</td>' +
-          '<td colspan="' + (PF_TABLE_COLS - 2) + '" class="muted">все продано · история в «Подробнее»</td>' +
+          '<td colspan="' + (PF_TABLE_COLS - 2) + '" class="pf-closed-label muted">все продано · история в «Подробнее»</td>' +
           '<td class="pf-row-actions">' + buildPortfolioHistoryToggleBtn(group.ticker) + '</td></tr>';
       }
 
