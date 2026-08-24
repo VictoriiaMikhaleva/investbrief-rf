@@ -247,9 +247,143 @@ const h = loadStorageHelpers();
   assert(saved.schemaVersion === 1, 'setPortfolio writes schemaVersion');
 }
 
+function loadPortfolioCalcHelpers() {
+  const code = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const sandbox = {
+    console,
+    Date,
+    Math,
+    Number,
+    String,
+    Array,
+    Object,
+    JSON,
+    isFinite,
+    parseInt,
+    parseFloat,
+    normalizeTicker: (t) => String(t || '').trim().toUpperCase(),
+    isRuBondTicker: (ticker) => {
+      ticker = String(ticker || '').trim().toUpperCase();
+      return ticker.indexOf('OFZ') >= 0 || (ticker.indexOf('SU') === 0 && ticker.length > 8);
+    },
+    Markets: {
+      isUsPosition: () => false,
+      isUsTicker: () => false,
+      formatMoneyValue: (v) => (v == null ? '—' : String(v))
+    },
+    document: { getElementById: () => null },
+    escapeHtml: (s) => String(s == null ? '' : s),
+    showToast: () => {},
+    getPortfolio: () => ({ positions: [], sales: [], cashFlows: [], schemaVersion: 1 }),
+    setPortfolio: () => {},
+    state: {},
+    Promise,
+    setTimeout: () => {},
+    clearTimeout: () => {}
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(
+    code +
+      '\nthis.__bondRub = bondRubFromPct;' +
+      '\nthis.__resolveFace = resolveBondFaceValue;' +
+      '\nthis.__cost = getPositionCostRub;' +
+      '\nthis.__mv = getPositionMarketValue;' +
+      '\nthis.__salePnl = getSaleRealizedPnl;' +
+      '\nthis.__pricePlus = computePricePlusPayoutsPct;' +
+      '\nthis.__remain = getRemainingCostBasis;' +
+      '\nthis.__totalRealized = getTotalRealizedPnl;',
+    sandbox,
+    { timeout: 5000 }
+  );
+  return {
+    bondRubFromPct: sandbox.__bondRub,
+    resolveBondFaceValue: sandbox.__resolveFace,
+    getPositionCostRub: sandbox.__cost,
+    getPositionMarketValue: sandbox.__mv,
+    getSaleRealizedPnl: sandbox.__salePnl,
+    computePricePlusPayoutsPct: sandbox.__pricePlus,
+    getRemainingCostBasis: sandbox.__remain,
+    getTotalRealizedPnl: sandbox.__totalRealized
+  };
+}
+
+const calc = loadPortfolioCalcHelpers();
+
+{
+  // Цена + выплаты
+  assert(
+    Math.abs(calc.computePricePlusPayoutsPct(1000, 500, 10000) - 15) < 1e-9,
+    'price+payouts: (1000+500)/10000 = 15%'
+  );
+  assert(calc.computePricePlusPayoutsPct(500, 0, 10000) === 5, 'paid missing/0 → treat as 0');
+  assert(calc.computePricePlusPayoutsPct(500, null, 10000) === 5, 'paid null → 0');
+  assert(calc.computePricePlusPayoutsPct(-2000, 300, 10000) === -17, 'negative unrealized');
+  assert(calc.computePricePlusPayoutsPct(100, 0, 0) == null, 'remainCost 0 → null');
+  assert(calc.computePricePlusPayoutsPct(100, 0, -1) == null, 'remainCost negative → null');
+  assert(calc.computePricePlusPayoutsPct(null, 100, 10000) == null, 'unrealized null → null');
+}
+
+{
+  // ОФЗ: cost / MV / unrealized in ₽; avgPrice stays %
+  const lot = {
+    ticker: 'OFZ26241',
+    qty: 10,
+    avgPrice: 95,
+    currentPrice: 98,
+    lotId: 'OFZ_T1'
+  };
+  const meta = { faceValue: 1000 };
+  assert(calc.bondRubFromPct(95, 10, 1000) === 9500, 'bondRubFromPct cost 9500');
+  assert(calc.getPositionCostRub(lot, meta) === 9500, 'OFZ cost 9500₽');
+  assert(calc.getPositionMarketValue(lot, meta) === 9800, 'OFZ MV 9800₽');
+  assert(
+    calc.getPositionMarketValue(lot, meta) - calc.getPositionCostRub(lot, meta) === 300,
+    'OFZ unrealized 300₽'
+  );
+  assert(calc.resolveBondFaceValue(lot, meta) === 1000, 'face from meta');
+  assert(calc.resolveBondFaceValue({ faceValue: 1500 }, meta) === 1500, 'face from pos wins');
+  assert(calc.resolveBondFaceValue({}, null) === 1000, 'face default 1000');
+
+  const sale = {
+    ticker: 'OFZ26241',
+    qty: 5,
+    buyPrice: 95,
+    salePrice: 98
+  };
+  const salePnl = calc.getSaleRealizedPnl(sale, meta);
+  assert(salePnl.amount === 150, 'OFZ realized (98-95)/100*1000*5 = 150₽');
+  assert(Math.abs(salePnl.pct - (150 / 4750) * 100) < 1e-9, 'OFZ realized pct vs rub cost');
+
+  const stockSale = {
+    ticker: 'SBER',
+    qty: 10,
+    buyPrice: 250,
+    salePrice: 280
+  };
+  const stockPnl = calc.getSaleRealizedPnl(stockSale, null);
+  assert(stockPnl.amount === 300, 'stock sale P&L unchanged: (280-250)*10 = 300');
+
+  const stockLot = { ticker: 'SBER', qty: 10, avgPrice: 250, currentPrice: 280 };
+  assert(calc.getPositionCostRub(stockLot, null) === 2500, 'stock cost unchanged');
+  assert(calc.getPositionMarketValue(stockLot, null) === 2800, 'stock MV unchanged');
+}
+
+{
+  // avgPrice ОФЗ после getPortfolio остаётся 95, не 950
+  const pf = h.normalizePortfolio({
+    positions: [{ ticker: 'OFZ26241', qty: 10, avgPrice: 95, currentPrice: 98, lotId: 'OFZ_KEEP' }]
+  });
+  assert(pf.positions[0].avgPrice === 95, 'normalize keeps OFZ avgPrice=95');
+  h.setPortfolio(pf);
+  const again = h.getPortfolio();
+  assert(again.positions[0].avgPrice === 95, 'getPortfolio keeps OFZ avgPrice=95 (not 950)');
+  assert(calc.getPositionCostRub(again.positions[0], { faceValue: 1000 }) === 9500, 'rub cost on the fly only');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0 normalize + backup compatibility');
+console.log('OK  portfolio wave-0 schema + wave-1 calc (price+payouts, OFZ rub)');

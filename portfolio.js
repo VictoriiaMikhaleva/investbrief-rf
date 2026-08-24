@@ -48,14 +48,51 @@
       : 1000;
   }
 
+  /** Face: pos/sale.faceValue → bondMeta.faceValue → 1000. avgPrice для ОФЗ остаётся в % номинала. */
+  function resolveBondFaceValue(posOrSale, bondMeta) {
+    var fromEntity = posOrSale && posOrSale.faceValue;
+    if (fromEntity != null && isFinite(Number(fromEntity)) && Number(fromEntity) > 0) {
+      return Number(fromEntity);
+    }
+    return getPortfolioBondFaceValue(bondMeta);
+  }
+
+  /** Рублёвая оценка позиции/сделки по цене в % номинала. */
+  function bondRubFromPct(pct, qty, face) {
+    var p = Number(pct);
+    var q = Number(qty);
+    var f = Number(face);
+    if (!isFinite(p) || !isFinite(q) || q <= 0 || !isFinite(f) || f <= 0) return null;
+    return q * (p / 100) * f;
+  }
+
+  function getPositionCostRub(pos, bondMeta) {
+    var q = Number(pos && pos.qty);
+    var a = Number(pos && pos.avgPrice);
+    if (!isFinite(q) || q <= 0 || !isFinite(a) || a <= 0) return 0;
+    if (isPortfolioBondPosition(pos)) {
+      var rub = bondRubFromPct(a, q, resolveBondFaceValue(pos, bondMeta));
+      return rub != null ? rub : 0;
+    }
+    return q * a;
+  }
+
+  /** (нереализ. + выплачено 12м) / вложено × 100; иначе null. */
+  function computePricePlusPayoutsPct(unrealized, paid12m, remainCost) {
+    if (remainCost == null || !isFinite(remainCost) || remainCost <= 0) return null;
+    if (unrealized == null || !isFinite(unrealized)) return null;
+    var paid = paid12m != null && isFinite(paid12m) ? Number(paid12m) : 0;
+    return ((unrealized + paid) / remainCost) * 100;
+  }
+
   function getPositionMarketValue(pos, bondMeta) {
     var qty = isFinite(Number(pos.qty)) && Number(pos.qty) > 0 ? Number(pos.qty) : 0;
     if (!qty) return 0;
     var price = Number(pos.currentPrice);
     if (!isFinite(price)) return 0;
     if (isPortfolioBondPosition(pos)) {
-      var face = getPortfolioBondFaceValue(bondMeta);
-      return qty * (price / 100) * face;
+      var rub = bondRubFromPct(price, qty, resolveBondFaceValue(pos, bondMeta));
+      return rub != null ? rub : 0;
     }
     return qty * price;
   }
@@ -151,7 +188,7 @@
     bondMetaMap = bondMetaMap || {};
     incomeTotals = incomeTotals || { paid12m: 0, forecast12m: 0 };
     sales = sales || [];
-    var realized = getTotalRealizedPnl(sales);
+    var realized = getTotalRealizedPnl(sales, bondMetaMap);
     if ((!positions || !positions.length) && realized == null) {
       el.hidden = true;
       el.innerHTML = '';
@@ -161,17 +198,17 @@
     var bondValue = 0;
     var remainCost = 0;
     (positions || []).forEach(function (p) {
-      var val = getPositionMarketValue(p, bondMetaMap[p.ticker]);
+      var meta = bondMetaMap[p.ticker];
+      var val = getPositionMarketValue(p, meta);
       if (isPortfolioBondPosition(p)) bondValue += val;
       else stockValue += val;
-      var q = Number(p.qty);
-      var a = Number(p.avgPrice);
-      if (isFinite(q) && q > 0 && isFinite(a) && a > 0) remainCost += q * a;
+      remainCost += getPositionCostRub(p, meta);
     });
     var totalValue = stockValue + bondValue;
     var stockShare = totalValue > 0 ? stockValue / totalValue * 100 : 0;
     var bondShare = totalValue > 0 ? bondValue / totalValue * 100 : 0;
     var unrealized = remainCost > 0 && totalValue > 0 ? totalValue - remainCost : null;
+    var pricePlusPayouts = computePricePlusPayoutsPct(unrealized, incomeTotals.paid12m, remainCost);
     el.hidden = false;
     el.innerHTML =
       '<div class="portfolio-totals-grid">' +
@@ -195,6 +232,13 @@
             '</div>'
           : '') +
         '<div class="portfolio-total-card">' +
+          '<span class="portfolio-total-lbl">Цена + выплаты</span>' +
+          '<span class="portfolio-total-val' + (pricePlusPayouts != null ? (pricePlusPayouts >= 0 ? ' pnl-pos' : ' pnl-neg') : '') + '">' +
+            escapeHtml(pricePlusPayouts != null ? formatSignedPct(pricePlusPayouts, 2) : '—') +
+          '</span>' +
+          '<span class="portfolio-total-sub muted">оценка на текущий остаток</span>' +
+        '</div>' +
+        '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Акции</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(stockValue)) + '</span>' +
           '<span class="portfolio-total-sub muted">' + escapeHtml(stockShare.toFixed(1).replace('.', ',') + '% остатка') + '</span>' +
@@ -207,12 +251,12 @@
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Выплачено за 12 мес.</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.paid12m)) + '</span>' +
-          '<span class="portfolio-total-sub muted">дивиденды и купоны</span>' +
+          '<span class="portfolio-total-sub muted">на текущий остаток · 12 мес.</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Прогноз на 12 мес.</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.forecast12m)) + '</span>' +
-          '<span class="portfolio-total-sub muted">дивиденды и купоны</span>' +
+          '<span class="portfolio-total-sub muted">на текущий остаток · 12 мес.</span>' +
         '</div>' +
       '</div>';
   }
@@ -565,9 +609,12 @@
 
 
 
-  function getSaleRealizedPnl(sale) {
+  function getSaleRealizedPnl(sale, bondMeta) {
     var sell = Number(sale && sale.salePrice);
     if (!isFinite(sell) || sell <= 0) return { amount: null, pct: null };
+
+    var isBond = isPortfolioBondPosition(sale || {});
+    var face = isBond ? resolveBondFaceValue(sale, bondMeta) : null;
 
     if (sale.allocations && sale.allocations.length) {
       var amount = 0;
@@ -578,8 +625,15 @@
         var sp = isFinite(Number(a.salePrice)) && Number(a.salePrice) > 0
           ? Number(a.salePrice) : sell;
         if (!isFinite(q) || q <= 0 || !isFinite(buy) || buy <= 0) return;
-        amount += (sp - buy) * q;
-        cost += buy * q;
+        if (isBond) {
+          var rubPnl = bondRubFromPct(sp - buy, q, face);
+          var rubCost = bondRubFromPct(buy, q, face);
+          if (rubPnl != null) amount += rubPnl;
+          if (rubCost != null) cost += rubCost;
+        } else {
+          amount += (sp - buy) * q;
+          cost += buy * q;
+        }
       });
       if (cost <= 0) return { amount: null, pct: null };
       return { amount: amount, pct: (amount / cost) * 100 };
@@ -589,6 +643,14 @@
     var buy = Number(sale && sale.buyPrice);
     if (!isFinite(q) || q <= 0 || !isFinite(buy) || buy <= 0) {
       return { amount: null, pct: null };
+    }
+    if (isBond) {
+      var bondAmount = bondRubFromPct(sell - buy, q, face);
+      var bondCost = bondRubFromPct(buy, q, face);
+      if (bondAmount == null || bondCost == null || bondCost <= 0) {
+        return { amount: null, pct: null };
+      }
+      return { amount: bondAmount, pct: (bondAmount / bondCost) * 100 };
     }
     var pnlAmount = (sell - buy) * q;
     return { amount: pnlAmount, pct: ((sell - buy) / buy) * 100 };
@@ -617,11 +679,13 @@
 
 
 
-  function getTotalRealizedPnl(sales) {
+  function getTotalRealizedPnl(sales, bondMetaMap) {
+    bondMetaMap = bondMetaMap || {};
     var total = 0;
     var has = false;
     (sales || []).forEach(function (s) {
-      var pnl = getSaleRealizedPnl(s);
+      var t = typeof normalizeTicker === 'function' ? normalizeTicker(s.ticker) : String(s.ticker || '').toUpperCase();
+      var pnl = getSaleRealizedPnl(s, bondMetaMap[t] || bondMetaMap[s.ticker]);
       if (pnl.amount != null && isFinite(pnl.amount)) {
         total += pnl.amount;
         has = true;
@@ -632,18 +696,19 @@
 
 
 
-  function getRemainingCostBasis(lots) {
-    var totalQty = 0;
+  function getRemainingCostBasis(lots, bondMetaMap) {
+    bondMetaMap = bondMetaMap || {};
     var totalCost = 0;
+    var has = false;
     (lots || []).forEach(function (l) {
-      var q = Number(l.qty);
-      var a = Number(l.avgPrice);
-      if (isFinite(q) && q > 0 && isFinite(a) && a > 0) {
-        totalQty += q;
-        totalCost += q * a;
+      var t = typeof normalizeTicker === 'function' ? normalizeTicker(l.ticker) : String(l.ticker || '').toUpperCase();
+      var cost = getPositionCostRub(l, bondMetaMap[t] || bondMetaMap[l.ticker]);
+      if (cost > 0) {
+        totalCost += cost;
+        has = true;
       }
     });
-    return totalQty > 0 ? totalCost : null;
+    return has ? totalCost : null;
   }
 
 
@@ -1645,7 +1710,7 @@
     if (!portfolio.sales) portfolio.sales = [];
     portfolio.sales.push(sale);
     setPortfolio(portfolio);
-    var pnl = getSaleRealizedPnl(sale);
+    var pnl = getSaleRealizedPnl(sale, null);
     cancelPortfolioSale();
     var msg = 'Продажа зафиксирована: ' + ticker;
     if (salePrice != null && isFinite(salePrice)) {
@@ -1976,7 +2041,7 @@
   function buildPortfolioSaleRow(sale, group, opts) {
     opts = opts || {};
     var isBond = opts.isBond;
-    var pnl = getSaleRealizedPnl(sale);
+    var pnl = getSaleRealizedPnl(sale, opts.bondMeta || null);
     var pnlCls = pnl.amount != null && pnl.amount >= 0 ? 'pnl-pos' : 'pnl-neg';
     var buyLbl = sale.buyPrice != null && isFinite(Number(sale.buyPrice))
       ? formatPositionAvg({ avgPrice: sale.buyPrice, currency: sale.currency, ticker: sale.ticker }, { bond: isBond })
@@ -2066,7 +2131,10 @@
       }
 
       tickerSales.forEach(function (sale) {
-        html += buildPortfolioSaleRow(sale, group, { isBond: isBond });
+        html += buildPortfolioSaleRow(sale, group, {
+          isBond: isBond,
+          bondMeta: bondMetaMap[group.ticker] || null
+        });
       });
 
       if (hiddenCount > 0) {
