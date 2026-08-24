@@ -1082,29 +1082,127 @@ input:focus, select:focus, textarea:focus {
   display: none !important;
 }
 
-/* Волна 2.2 / 2.2.1: desktop «Подробнее по тикеру» */
+/* Волна 2.2.x: иерархия action-кнопок портфеля */
+#tab-portfolio .pf-btn,
+#tab-portfolio .pf-history-toggle {
+  box-sizing: border-box;
+  min-height: 1.85rem;
+  height: auto;
+  padding: 0.2rem 0.52rem;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#tab-portfolio .pf-row-actions {
+  white-space: nowrap;
+}
+
+#tab-portfolio .pf-row-actions .pf-btn + .pf-btn,
+#tab-portfolio .pf-row-actions .pf-btn + .pf-history-toggle,
+#tab-portfolio .pf-row-actions .pf-history-toggle + .pf-btn {
+  margin-left: 0.18rem;
+}
+
+/* Изменить / Продать — нейтральный outline */
+#tab-portfolio .pf-btn-edit {
+  border: 1px solid color-mix(in srgb, var(--border) 78%, #9aa5b4 22%);
+  background: color-mix(in srgb, #ffffff 88%, var(--bg-elevated) 12%);
+  color: color-mix(in srgb, var(--text) 78%, #5a6578 22%);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-btn-edit:hover {
+  border-color: color-mix(in srgb, var(--border) 55%, #7d8898 45%);
+  background: color-mix(in srgb, #f7f8fa 85%, #ffffff 15%);
+  color: var(--text);
+}
+
+#tab-portfolio .pf-btn-edit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(90, 101, 120, 0.12);
+}
+
+/* Отменить / Отмена — нейтрально, ближе к Изменить */
+#tab-portfolio .pf-btn-cancel {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, #a8b0bc 18%);
+  background: rgba(255, 255, 255, 0.72);
+  color: color-mix(in srgb, var(--text-muted) 70%, var(--text) 30%);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-btn-cancel:hover {
+  border-color: color-mix(in srgb, var(--border) 60%, #8a94a3 40%);
+  background: color-mix(in srgb, #f5f6f8 90%, #ffffff 10%);
+  color: var(--text);
+}
+
+#tab-portfolio .pf-btn-cancel:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(90, 101, 120, 0.1);
+}
+
+/* Удалить — мягкий destructive, без сплошного красного */
+#tab-portfolio .pf-btn-danger {
+  border: 1px solid color-mix(in srgb, #b86a5c 38%, #e8d8d2 62%);
+  background: linear-gradient(180deg, #fffcfa 0%, color-mix(in srgb, #f7ebe7 55%, #ffffff 45%) 100%);
+  color: color-mix(in srgb, #9a5648 72%, #5c3a34 28%);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+#tab-portfolio .pf-btn-danger:hover {
+  border-color: color-mix(in srgb, #b86a5c 55%, #d8bbb2 45%);
+  background: linear-gradient(180deg, #fff8f6 0%, color-mix(in srgb, #f3e2dd 65%, #fffaf8 35%) 100%);
+  color: color-mix(in srgb, #8f4c40 78%, #4a2f2a 22%);
+}
+
+#tab-portfolio .pf-btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(184, 106, 92, 0.14);
+}
+
+/* Подробнее — мягкое полезное действие (sage) */
 .pf-history-toggle {
-  border: 1px solid color-mix(in srgb, var(--accent) 32%, #c5d0c8 68%);
-  background: color-mix(in srgb, var(--accent-soft) 70%, #ffffff 30%);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, #c9d4cd 72%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, color-mix(in srgb, var(--accent-soft) 62%, #ffffff 38%) 100%);
   color: var(--accent-hover);
   font-weight: 600;
-  border-radius: 8px;
-  padding: 0.22rem 0.55rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 .pf-history-toggle:hover {
-  border-color: color-mix(in srgb, var(--accent) 48%, #b7c6bb 52%);
-  background: color-mix(in srgb, var(--accent-soft) 88%, #ffffff 12%);
+  border-color: color-mix(in srgb, var(--accent) 44%, #b7c6bb 56%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, color-mix(in srgb, var(--accent-soft) 82%, #ffffff 18%) 100%);
   color: var(--accent-hover);
 }
 
+.pf-history-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Скрыть — active-state, охристо-бронзовый (не destructive) */
 .pf-history-toggle--open,
 .pf-history-toggle[aria-expanded="true"] {
-  border-color: color-mix(in srgb, var(--bronze) 55%, var(--accent) 45%);
-  background: linear-gradient(180deg, rgba(255, 252, 247, 0.98) 0%, color-mix(in srgb, var(--bronze-soft) 55%, #fff 45%) 100%);
-  color: #7a5528;
-  font-weight: 700;
-  box-shadow: inset 0 0 0 1px rgba(196, 138, 74, 0.12);
+  border-color: color-mix(in srgb, var(--bronze) 48%, #e6d5bc 52%);
+  background: linear-gradient(180deg, #fffdf9 0%, color-mix(in srgb, var(--bronze-soft) 70%, #fff8ef 30%) 100%);
+  color: #7a5a32;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(196, 138, 74, 0.1);
+}
+
+.pf-history-toggle--open:hover,
+.pf-history-toggle[aria-expanded="true"]:hover {
+  border-color: color-mix(in srgb, var(--bronze) 62%, #dcc4a0 38%);
+  background: linear-gradient(180deg, #fffaf2 0%, color-mix(in srgb, var(--bronze-soft) 82%, #fff3e4 18%) 100%);
+  color: #6d4f2a;
 }
 
 .pf-sale-qty-field .pf-sale-all-btn {

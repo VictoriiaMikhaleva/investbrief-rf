@@ -2324,7 +2324,7 @@
       ? '<td class="pf-div-cell" rowspan="' + (opts.incomeRowSpan || 1) + '" data-pf-div-cell="' + escapeHtml(group.ticker) + '"><span class="muted">…</span></td>'
       : '';
     var sellActions = lotIndex === 0
-      ? '<button type="button" class="ghost small" data-pf-sell-ticker="' + escapeHtml(group.ticker) + '">Продать</button> ' +
+      ? '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-sell-ticker="' + escapeHtml(group.ticker) + '">Продать</button> ' +
         buildPortfolioHistoryToggleBtn(group.ticker) + ' '
       : '';
     var weightedAvgCell = lotIndex === 0
@@ -2344,8 +2344,8 @@
       '<td class="pf-comment">' + escapeHtml(p.comment || '—') + '</td>' +
       '<td class="pf-row-actions">' +
         sellActions +
-        '<button type="button" class="ghost small" data-pf-edit-lot="' + escapeHtml(p.lotId || '') + '">Изменить</button> ' +
-        '<button type="button" class="danger small" data-pf-remove-lot="' + escapeHtml(p.lotId || '') + '">Удалить</button>' +
+        '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-edit-lot="' + escapeHtml(p.lotId || '') + '">Изменить</button> ' +
+        '<button type="button" class="small pf-btn pf-btn-danger" data-pf-remove-lot="' + escapeHtml(p.lotId || '') + '">Удалить</button>' +
       '</td></tr>';
   }
 
@@ -2396,7 +2396,7 @@
   function buildPortfolioHistoryToggleBtn(ticker) {
     ticker = normalizeTicker(ticker);
     var open = !!(state.pfHistoryTickers && state.pfHistoryTickers[ticker]);
-    return '<button type="button" class="small pf-history-toggle' + (open ? ' pf-history-toggle--open' : '') +
+    return '<button type="button" class="small pf-btn pf-history-toggle' + (open ? ' pf-history-toggle--open' : '') +
       '" data-pf-toggle-history="' + escapeHtml(ticker) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
       (open ? 'Скрыть' : 'Подробнее') + '</button>';
   }
@@ -2441,8 +2441,8 @@
           '<td>' + escapeHtml(formatPositionAvg(lot, { bond: isBond })) + '</td>' +
           '<td class="pf-comment">' + escapeHtml(lot.comment || '—') + '</td>' +
           '<td class="pf-row-actions">' +
-            '<button type="button" class="ghost small" data-pf-edit-lot="' + escapeHtml(lot.lotId || '') + '">Изменить</button> ' +
-            '<button type="button" class="danger small" data-pf-remove-lot="' + escapeHtml(lot.lotId || '') + '">Удалить</button>' +
+            '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-edit-lot="' + escapeHtml(lot.lotId || '') + '">Изменить</button> ' +
+            '<button type="button" class="small pf-btn pf-btn-danger" data-pf-remove-lot="' + escapeHtml(lot.lotId || '') + '">Удалить</button>' +
           '</td></tr>';
       });
       html += '</tbody></table>';
@@ -2475,7 +2475,7 @@
             escapeHtml(pnl.amount != null ? formatSignedRubAmount(pnl.amount) : '—') +
           '</td>' +
           '<td class="pf-row-actions">' +
-            '<button type="button" class="ghost small" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
+            '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
           '</td></tr>';
         if (sale.allocations && sale.allocations.length) {
           html += '<tr class="pf-alloc-row"><td colspan="6"><div class="pf-alloc-box">' +
@@ -2543,7 +2543,7 @@
       '<td class="muted">—</td>' +
       '<td class="pf-comment">' + escapeHtml(sale.comment || '—') + '</td>' +
       '<td class="pf-row-actions">' +
-        '<button type="button" class="ghost small" data-pf-undo-sale="' + escapeHtml(sale.saleId) + '">Отменить</button>' +
+        '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId) + '">Отменить</button>' +
       '</td></tr>';
   }
 
