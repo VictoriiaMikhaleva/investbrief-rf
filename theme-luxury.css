@@ -946,7 +946,8 @@ input:focus, select:focus, textarea:focus {
   padding: 0.42rem 0.75rem 0.42rem 0.75rem;
   white-space: nowrap;
   color: var(--text);
-  background: color-mix(in srgb, #fffdf8 85%, var(--bronze-soft) 15%);
+  background: linear-gradient(180deg, rgba(255, 252, 247, 0.98) 0%, var(--bg-panel) 42%);
+  border: 1px solid rgba(196, 138, 74, 0.16);
   border-left: 3px solid color-mix(in srgb, var(--bronze) 70%, #e0c9a8 30%);
   border-radius: 0 10px 10px 0;
 }
@@ -971,7 +972,8 @@ input:focus, select:focus, textarea:focus {
   line-height: 1.45;
   font-weight: 500;
   color: var(--text);
-  background: color-mix(in srgb, #fffaf3 78%, var(--bronze-soft) 22%);
+  background: linear-gradient(180deg, rgba(255, 252, 247, 0.98) 0%, var(--bg-panel) 42%);
+  border: 1px solid rgba(196, 138, 74, 0.2);
   border-left: 3px solid var(--bronze);
   border-radius: 0 10px 10px 0;
 }
