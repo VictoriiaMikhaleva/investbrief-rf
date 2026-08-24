@@ -971,11 +971,18 @@
 
 
   function formatPortfolioDate(p) {
-    if (!p.buyDate) return '—';
+    if (typeof safeFormatPortfolioDate === 'function') {
+      return safeFormatPortfolioDate(p && p.buyDate);
+    }
+    var iso = typeof normalizePortfolioDate === 'function'
+      ? normalizePortfolioDate(p && p.buyDate)
+      : (p && p.buyDate ? String(p.buyDate).slice(0, 10) : '');
+    if (!iso) return '—';
     try {
-      return new Date(p.buyDate + 'T12:00:00').toLocaleDateString('ru-RU');
+      var lbl = new Date(iso + 'T12:00:00').toLocaleDateString('ru-RU');
+      return lbl && !/invalid/i.test(lbl) ? lbl : '—';
     } catch (e) {
-      return p.buyDate;
+      return '—';
     }
   }
 
@@ -1101,7 +1108,9 @@
     var t = normalizeTicker(sec.ticker);
     var qty = captured.qty;
     var avg = captured.avg;
-    var buyDate = captured.buyDate;
+    var buyDate = typeof normalizePortfolioDate === 'function'
+      ? normalizePortfolioDate(captured.buyDate)
+      : String(captured.buyDate || '').trim();
     var comment = captured.comment;
     var hasQty = qty != null && isFinite(qty) && qty > 0;
     var hasAvg = avg != null && isFinite(avg) && avg > 0;
@@ -1124,7 +1133,7 @@
       }
       if (qty != null) editingLot.qty = qty;
       if (avg != null) editingLot.avgPrice = avg;
-      if (buyDate) editingLot.buyDate = buyDate;
+      editingLot.buyDate = buyDate;
       editingLot.comment = comment;
       setPortfolio(portfolio);
       cancelPortfolioEdit();
@@ -1275,7 +1284,11 @@
     var avgEl = document.getElementById(pfFieldId(prefix, 'Avg'));
     if (avgEl) avgEl.value = pos.avgPrice != null && isFinite(Number(pos.avgPrice)) ? String(pos.avgPrice) : '';
     var dateEl = document.getElementById(pfFieldId(prefix, 'Date'));
-    if (dateEl) dateEl.value = pos.buyDate || '';
+    if (dateEl) {
+      dateEl.value = typeof normalizePortfolioDate === 'function'
+        ? normalizePortfolioDate(pos.buyDate)
+        : (pos.buyDate || '');
+    }
     var commentEl = document.getElementById(pfFieldId(prefix, 'Comment'));
     if (commentEl) commentEl.value = pos.comment || '';
   }
@@ -1672,7 +1685,9 @@
     }
     var qty = captured.qty;
     var salePrice = captured.price;
-    var saleDate = captured.date || new Date().toISOString().slice(0, 10);
+    var saleDate = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(captured.date) || new Date().toISOString().slice(0, 10))
+      : (captured.date || new Date().toISOString().slice(0, 10));
     if (qty == null || !isFinite(qty) || qty <= 0) {
       showToast('Укажите количество для продажи');
       return;
@@ -2028,11 +2043,18 @@
 
 
   function formatPortfolioSaleDate(sale) {
-    if (!sale || !sale.saleDate) return '—';
+    if (typeof safeFormatPortfolioDate === 'function') {
+      return safeFormatPortfolioDate(sale && sale.saleDate);
+    }
+    var iso = typeof normalizePortfolioDate === 'function'
+      ? normalizePortfolioDate(sale && sale.saleDate)
+      : (sale && sale.saleDate ? String(sale.saleDate).slice(0, 10) : '');
+    if (!iso) return '—';
     try {
-      return new Date(sale.saleDate + 'T12:00:00').toLocaleDateString('ru-RU');
+      var lbl = new Date(iso + 'T12:00:00').toLocaleDateString('ru-RU');
+      return lbl && !/invalid/i.test(lbl) ? lbl : '—';
     } catch (e) {
-      return sale.saleDate;
+      return '—';
     }
   }
 

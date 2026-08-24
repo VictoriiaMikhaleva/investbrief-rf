@@ -1718,12 +1718,10 @@
     if (!item) return '';
     var price = Number(item.avgPrice);
     var qty = isFinite(Number(item.qty)) && Number(item.qty) > 0 ? Number(item.qty) : null;
-    var dateLbl = item.buyDate || '';
-    try {
-      if (item.buyDate) {
-        dateLbl = new Date(item.buyDate + 'T12:00:00').toLocaleDateString('ru-RU');
-      }
-    } catch (e) { /* noop */ }
+    var dateLbl = typeof safeFormatPortfolioDate === 'function'
+      ? safeFormatPortfolioDate(item.buyDate)
+      : (item.buyDate || '');
+    if (dateLbl === '—') dateLbl = '';
     var parts = [dateLbl, isFinite(price) ? formatChartPrice(price, ticker) : ''];
     if (qty != null) parts.push(qty + ' шт.');
     return parts.filter(Boolean).join(' · ');
@@ -1837,7 +1835,11 @@
 
     var items = (lots || []).filter(function (l) {
       var price = Number(l.avgPrice);
-      return l.buyDate && isFinite(price) && price > 0;
+      var d = typeof normalizePortfolioDate === 'function' ? normalizePortfolioDate(l.buyDate) : l.buyDate;
+      return d && isFinite(price) && price > 0;
+    }).map(function (l) {
+      var d = typeof normalizePortfolioDate === 'function' ? normalizePortfolioDate(l.buyDate) : l.buyDate;
+      return d === l.buyDate ? l : Object.assign({}, l, { buyDate: d });
     }).sort(function (a, b) {
       return a.buyDate < b.buyDate ? -1 : (a.buyDate > b.buyDate ? 1 : 0);
     });
@@ -1966,8 +1968,14 @@
       }
 
       try {
-        var d = new Date(c.item.buyDate + 'T12:00:00');
+        var iso = typeof normalizePortfolioDate === 'function'
+          ? normalizePortfolioDate(c.item.buyDate)
+          : c.item.buyDate;
+        if (!iso) return;
+        var d = new Date(iso + 'T12:00:00');
+        if (isNaN(d.getTime())) return;
         var lbl = d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
+        if (!lbl || /invalid/i.test(lbl)) return;
         ctx.fillStyle = isHover ? '#2B2B2B' : '#6B6B6B';
         ctx.font = (isHover ? 'bold ' : '') + '11px Inter, Manrope, sans-serif';
         ctx.textAlign = 'center';
@@ -2019,7 +2027,8 @@
 
     if (candlePanel && candleCanvas) {
       var datedLots = purchaseLots.filter(function (l) {
-        return l.buyDate && isFinite(Number(l.avgPrice)) && Number(l.avgPrice) > 0;
+        var d = typeof normalizePortfolioDate === 'function' ? normalizePortfolioDate(l.buyDate) : l.buyDate;
+        return d && isFinite(Number(l.avgPrice)) && Number(l.avgPrice) > 0;
       });
       if (datedLots.length >= 2) {
         candlePanel.hidden = false;

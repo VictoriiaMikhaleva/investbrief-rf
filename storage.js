@@ -239,9 +239,59 @@
       type: type,
       amount: amount,
       currency: currency,
-      date: raw.date ? String(raw.date).slice(0, 10) : '',
+      date: normalizePortfolioDate(raw.date),
       comment: String(raw.comment || '').trim().slice(0, 500)
     };
+  }
+
+  /**
+   * Дата портфеля → YYYY-MM-DD или "" (нет / битая / "Invalid Date").
+   * Не пишет в storage строку "Invalid Date"; для as-of позже: пустая = даты нет.
+   */
+  function normalizePortfolioDate(value) {
+    if (value == null) return '';
+    var s = String(value).trim();
+    if (!s) return '';
+    if (/^invalid\b/i.test(s) || s === 'Invalid Date') return '';
+
+    var ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (ymd) {
+      var y = Number(ymd[1]);
+      var mo = Number(ymd[2]);
+      var d = Number(ymd[3]);
+      if (!isFinite(y) || !isFinite(mo) || !isFinite(d)) return '';
+      var dt = new Date(Date.UTC(y, mo - 1, d));
+      if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+      return ymd[1] + '-' + ymd[2] + '-' + ymd[3];
+    }
+
+    var dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+    if (dmy) {
+      var d2 = Number(dmy[1]);
+      var mo2 = Number(dmy[2]);
+      var y2 = Number(dmy[3]);
+      var dt2 = new Date(Date.UTC(y2, mo2 - 1, d2));
+      if (dt2.getUTCFullYear() !== y2 || dt2.getUTCMonth() !== mo2 - 1 || dt2.getUTCDate() !== d2) return '';
+      return y2 + '-' + String(mo2).padStart(2, '0') + '-' + String(d2).padStart(2, '0');
+    }
+
+    // Не парсим произвольный мусор через Date.parse — только явный ISO с временем
+    var isoTime = s.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+    if (isoTime) return normalizePortfolioDate(isoTime[1]);
+    return '';
+  }
+
+  /** Отображение даты портфеля: ru-RU или "—"; никогда "Invalid Date". */
+  function safeFormatPortfolioDate(value) {
+    var iso = normalizePortfolioDate(value);
+    if (!iso) return '—';
+    try {
+      var lbl = new Date(iso + 'T12:00:00').toLocaleDateString('ru-RU');
+      if (!lbl || /invalid/i.test(lbl)) return '—';
+      return lbl;
+    } catch (e) {
+      return '—';
+    }
   }
 
   /**
@@ -296,7 +346,7 @@
           qty: aq,
           buyPrice: isFinite(ab) ? ab : null,
           salePrice: isFinite(parseFloat(a.salePrice)) ? parseFloat(a.salePrice) : null,
-          buyDate: a.buyDate ? String(a.buyDate).slice(0, 10) : ''
+          buyDate: normalizePortfolioDate(a.buyDate)
         });
       });
     }
@@ -306,9 +356,9 @@
       ticker: t,
       qty: qty,
       buyPrice: buyPrice,
-      buyDate: raw.buyDate ? String(raw.buyDate).slice(0, 10) : '',
+      buyDate: normalizePortfolioDate(raw.buyDate),
       salePrice: salePrice,
-      saleDate: raw.saleDate ? String(raw.saleDate).slice(0, 10) : '',
+      saleDate: normalizePortfolioDate(raw.saleDate),
       comment: String(raw.comment || '').trim(),
       market: mk.market,
       currency: mk.currency
@@ -344,7 +394,7 @@
       qty: qty,
       avgPrice: avg,
       currentPrice: cur,
-      buyDate: raw.buyDate ? String(raw.buyDate).slice(0, 10) : '',
+      buyDate: normalizePortfolioDate(raw.buyDate),
       comment: String(raw.comment || '').trim(),
       market: mk.market,
       currency: mk.currency
@@ -598,8 +648,24 @@
       return { positions: [], sales: [], cashFlows: [], schemaVersion: 1 };
     }
     var needsPersist = false;
+    function dateNeedsHeal(d) {
+      if (d == null || d === '') return false;
+      return normalizePortfolioDate(d) !== String(d).trim();
+    }
     (p.positions || []).forEach(function (raw) {
-      if (raw && !raw.lotId) needsPersist = true;
+      if (!raw) return;
+      if (!raw.lotId) needsPersist = true;
+      if (dateNeedsHeal(raw.buyDate)) needsPersist = true;
+    });
+    (p.sales || []).forEach(function (raw) {
+      if (!raw) return;
+      if (dateNeedsHeal(raw.buyDate) || dateNeedsHeal(raw.saleDate)) needsPersist = true;
+      (raw.allocations || []).forEach(function (a) {
+        if (a && dateNeedsHeal(a.buyDate)) needsPersist = true;
+      });
+    });
+    (p.cashFlows || []).forEach(function (raw) {
+      if (raw && dateNeedsHeal(raw.date)) needsPersist = true;
     });
     var normalized = normalizePortfolio(p);
     if (needsPersist) {
@@ -758,5 +824,7 @@
     window.normalizePosition = normalizePosition;
     window.normalizeSale = normalizeSale;
     window.normalizeCashFlow = normalizeCashFlow;
+    window.normalizePortfolioDate = normalizePortfolioDate;
+    window.safeFormatPortfolioDate = safeFormatPortfolioDate;
   }
 

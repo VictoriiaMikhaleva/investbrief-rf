@@ -67,7 +67,7 @@ function loadStorageHelpers() {
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
-  vm.runInNewContext(code + '\nthis.__np = normalizePortfolio;\nthis.__npos = normalizePosition;\nthis.__ns = normalizeSale;\nthis.__ncf = normalizeCashFlow;\nthis.__getP = getPortfolio;\nthis.__setP = setPortfolio;\nthis.__export = exportAll;\nthis.__import = importAll;\nthis.__KEYS = KEYS;\n', sandbox, { timeout: 5000 });
+  vm.runInNewContext(code + '\nthis.__np = normalizePortfolio;\nthis.__npos = normalizePosition;\nthis.__ns = normalizeSale;\nthis.__ncf = normalizeCashFlow;\nthis.__getP = getPortfolio;\nthis.__setP = setPortfolio;\nthis.__export = exportAll;\nthis.__import = importAll;\nthis.__KEYS = KEYS;\nthis.__nDate = normalizePortfolioDate;\nthis.__safeDate = safeFormatPortfolioDate;\n', sandbox, { timeout: 5000 });
   return {
     normalizePortfolio: sandbox.__np,
     normalizePosition: sandbox.__npos,
@@ -76,6 +76,8 @@ function loadStorageHelpers() {
     getPortfolio: sandbox.__getP,
     setPortfolio: sandbox.__setP,
     importAll: sandbox.__import,
+    normalizePortfolioDate: sandbox.__nDate,
+    safeFormatPortfolioDate: sandbox.__safeDate,
     store,
     KEYS: sandbox.__KEYS
   };
@@ -381,9 +383,65 @@ const calc = loadPortfolioCalcHelpers();
   assert(calc.getPositionCostRub(again.positions[0], { faceValue: 1000 }) === 9500, 'rub cost on the fly only');
 }
 
+{
+  // Даты портфеля: normalize + display + import heal
+  assert(h.normalizePortfolioDate('') === '', 'empty string → ""');
+  assert(h.normalizePortfolioDate(null) === '', 'null → ""');
+  assert(h.normalizePortfolioDate(undefined) === '', 'undefined → ""');
+  assert(h.normalizePortfolioDate('Invalid Date') === '', '"Invalid Date" → ""');
+  assert(h.normalizePortfolioDate('Invalid D') === '', 'truncated Invalid → ""');
+  assert(h.normalizePortfolioDate('2026-07-02') === '2026-07-02', 'valid YYYY-MM-DD kept');
+  assert(h.normalizePortfolioDate('2026-02-30') === '', 'impossible calendar date → ""');
+  assert(h.safeFormatPortfolioDate('Invalid Date') === '—', 'safe format Invalid → —');
+  assert(h.safeFormatPortfolioDate('') === '—', 'safe format empty → —');
+  assert(h.safeFormatPortfolioDate(null) === '—', 'safe format null → —');
+  const okLbl = h.safeFormatPortfolioDate('2026-07-02');
+  assert(okLbl && okLbl !== '—' && !/invalid/i.test(okLbl), 'safe format valid date shows label');
+
+  const broken = h.normalizePortfolio({
+    positions: [
+      { ticker: 'SBERP', qty: 1, avgPrice: 180, buyDate: '', lotId: 'D1' },
+      { ticker: 'SBER', qty: 1, avgPrice: 250, buyDate: null, lotId: 'D2' },
+      { ticker: 'GAZP', qty: 1, avgPrice: 160, buyDate: 'Invalid Date', lotId: 'D3' },
+      { ticker: 'LKOH', qty: 1, avgPrice: 7000, buyDate: '2026-07-02', lotId: 'D4' }
+    ],
+    sales: [{
+      saleId: 'S1',
+      ticker: 'SBER',
+      qty: 1,
+      buyPrice: 240,
+      salePrice: 250,
+      saleDate: 'Invalid Date',
+      buyDate: 'not-a-date',
+      allocations: [{ lotId: 'D2', qty: 1, buyPrice: 240, buyDate: 'Invalid Date' }]
+    }]
+  });
+  assert(broken.positions.length === 4, 'broken dates do not drop positions');
+  assert(broken.positions[0].buyDate === '', 'pos buyDate "" stays ""');
+  assert(broken.positions[1].buyDate === '', 'pos buyDate null → ""');
+  assert(broken.positions[2].buyDate === '', 'pos buyDate Invalid Date → ""');
+  assert(broken.positions[2].avgPrice === 160 && broken.positions[2].qty === 1, 'other fields preserved');
+  assert(broken.positions[3].buyDate === '2026-07-02', 'valid buyDate kept');
+  assert(broken.sales[0].saleDate === '', 'saleDate Invalid → ""');
+  assert(broken.sales[0].buyDate === '', 'sale buyDate garbage → ""');
+  assert(broken.sales[0].allocations[0].buyDate === '', 'allocation buyDate Invalid → ""');
+  assert(broken.sales[0].qty === 1 && broken.sales[0].salePrice === 250, 'sale qty/price preserved');
+
+  h.setPortfolio({
+    positions: [{ ticker: 'SBERP', qty: 1, avgPrice: 180, buyDate: 'Invalid Date', lotId: 'HEAL1' }],
+    sales: [],
+    cashFlows: []
+  });
+  const healed = h.getPortfolio();
+  assert(healed.positions[0].buyDate === '', 'getPortfolio heals Invalid Date to ""');
+  assert(healed.positions[0].lotId === 'HEAL1' && healed.positions[0].avgPrice === 180, 'heal keeps lotId/avgPrice');
+  const stored = JSON.parse(h.store[h.KEYS.portfolio]);
+  assert(stored.positions[0].buyDate === '', 'persisted buyDate is empty, not Invalid Date');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0 schema + wave-1 calc (price+payouts, OFZ rub)');
+console.log('OK  portfolio wave-0/1 + date normalize');
