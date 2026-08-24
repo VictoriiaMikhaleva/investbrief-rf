@@ -226,7 +226,7 @@
           : '') +
         (unrealized != null
           ? '<div class="portfolio-total-card">' +
-              '<span class="portfolio-total-lbl">Нереализованный результат</span>' +
+              '<span class="portfolio-total-lbl">Результат по текущим ценам</span>' +
               '<span class="portfolio-total-val ' + (unrealized >= 0 ? 'pnl-pos' : 'pnl-neg') + '">' + escapeHtml(formatSignedRubAmount(unrealized)) + '</span>' +
               '<span class="portfolio-total-sub muted">текущая стоимость минус вложено</span>' +
             '</div>'
