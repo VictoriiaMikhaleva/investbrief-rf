@@ -249,14 +249,14 @@
           '<span class="portfolio-total-sub muted">' + escapeHtml(bondShare.toFixed(1).replace('.', ',') + '% остатка') + '</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
-          '<span class="portfolio-total-lbl">Выплачено за 12 мес.</span>' +
+          '<span class="portfolio-total-lbl">История выплат 12 мес.</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.paid12m)) + '</span>' +
-          '<span class="portfolio-total-sub muted">на текущий остаток · 12 мес.</span>' +
+          '<span class="portfolio-total-sub muted">по текущему количеству</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Прогноз на 12 мес.</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.forecast12m)) + '</span>' +
-          '<span class="portfolio-total-sub muted">на текущий остаток · 12 мес.</span>' +
+          '<span class="portfolio-total-sub muted">по текущему количеству</span>' +
         '</div>' +
       '</div>';
   }

@@ -2098,7 +2098,7 @@
           '<div class="insight-kpi"><span class="insight-kpi-lbl">Див. 5л ср.</span><span class="insight-kpi-val">' + divAvg5yValHtml(a) + '</span></div>' +
           '<div class="insight-kpi"><span class="insight-kpi-lbl">Прогноз 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(formatDivRubPerShare(fc && fc.amount)) + '</span></div>' +
           '<div class="insight-kpi"><span class="insight-kpi-lbl">На позицию</span><span class="insight-kpi-val">' + escapeHtml(forecastTotal != null ? forecastTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>' +
-          '<div class="insight-kpi"><span class="insight-kpi-lbl">Выплачено 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(paidTotal != null ? paidTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>';
+          '<div class="insight-kpi"><span class="insight-kpi-lbl">История выплат 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(paidTotal != null ? paidTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>';
       }
       if (divCanvas) {
         drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {

@@ -443,7 +443,7 @@
     var perShare = formatDivRubPerShare(forecast.amount);
     var total = q != null ? (forecast.amount * q) : null;
     var paid = forecast.paid12m != null && isFinite(forecast.paid12m)
-      ? 'выплачено ' + formatPortfolioRubTotal(forecast.paid12m, q)
+      ? 'история 12 мес. ' + formatPortfolioRubTotal(forecast.paid12m, q)
       : '';
     var upcoming = forecast.upcoming12m != null && isFinite(forecast.upcoming12m)
       ? 'прогноз ' + formatPortfolioRubTotal(forecast.upcoming12m, q)
@@ -484,7 +484,7 @@
       lines.push('<span class="pf-div-forecast muted">—</span>');
     }
     var paid = sums.paid12m != null && isFinite(sums.paid12m) && sums.paid12m > 0
-      ? 'выплачено ' + formatPortfolioRubTotal(sums.paid12m, null)
+      ? 'история 12 мес. ' + formatPortfolioRubTotal(sums.paid12m, null)
       : '';
     var upcoming = sums.upcoming12m != null && isFinite(sums.upcoming12m) && sums.upcoming12m > 0
       ? 'прогноз ' + formatPortfolioRubTotal(sums.upcoming12m, null)
