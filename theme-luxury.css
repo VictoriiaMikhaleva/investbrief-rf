@@ -932,6 +932,24 @@ input:focus, select:focus, textarea:focus {
   max-width: 22rem;
 }
 
+.pf-field-warn {
+  display: block;
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  font-weight: 600;
+  max-width: 24rem;
+  color: #8A5E2E;
+  background: rgba(196, 138, 74, 0.12);
+  border: 1px solid rgba(196, 138, 74, 0.28);
+  border-radius: 10px;
+}
+
+.pf-field-warn[hidden] {
+  display: none !important;
+}
+
 /* panel-intro--one-line: см. правила .panel-intro.hint-frame > p выше */
 
 /* Телефон: больше полезной ширины у карточных сеток (desktop/tablet без изменений) */

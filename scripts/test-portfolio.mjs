@@ -299,7 +299,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__remain = getRemainingCostBasis;' +
       '\nthis.__totalRealized = getTotalRealizedPnl;' +
       '\nthis.__today = localPortfolioTodayYmd;' +
-      '\nthis.__prefill = computePortfolioNewLotPrefill;',
+      '\nthis.__prefill = computePortfolioNewLotPrefill;' +
+      '\nthis.__ofzWarn = shouldWarnOfzAvgLooksLikeRubles;',
     sandbox,
     { timeout: 5000 }
   );
@@ -313,7 +314,8 @@ function loadPortfolioCalcHelpers() {
     getRemainingCostBasis: sandbox.__remain,
     getTotalRealizedPnl: sandbox.__totalRealized,
     localPortfolioTodayYmd: sandbox.__today,
-    computePortfolioNewLotPrefill: sandbox.__prefill
+    computePortfolioNewLotPrefill: sandbox.__prefill,
+    shouldWarnOfzAvgLooksLikeRubles: sandbox.__ofzWarn
   };
 }
 
@@ -633,6 +635,17 @@ const calc = loadPortfolioCalcHelpers();
   const savedPrefill = h.getPortfolio().positions[0];
   assert(savedPrefill.buyDate === today, 'saved buyDate is YYYY-MM-DD');
   assert(!/^\d{2}\.\d{2}\.\d{4}$/.test(savedPrefill.buyDate), 'storage is not DD.MM.YYYY');
+}
+
+{
+  // ОФЗ: предупреждение «похоже на рубли» при avg > 200
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(false, 1112) === false, 'SBER/stock: no warn');
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, 81.33) === false, 'OFZ 81.33: no warn');
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, 200) === false, 'OFZ 200: no warn');
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, 200.01) === true, 'OFZ >200: warn');
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, 1112) === true, 'OFZ 1112: warn');
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, '') === false, 'OFZ empty: no warn');
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, null) === false, 'OFZ null: no warn');
 }
 
 if (errors.length) {

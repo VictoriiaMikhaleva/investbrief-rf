@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru" class="us-market-unavailable">
 <head>
-  <!-- ibrf-asset-version: 202608241228 -->
+  <!-- ibrf-asset-version: 202608241311 -->
   <script>
     /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS и JS на мобильных. */
     (function () {
@@ -32,13 +32,13 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-  <link rel="manifest" href="./site.webmanifest?v=202608241228" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
+  <link rel="manifest" href="./site.webmanifest?v=202608241311" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
   <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, агент наблюдения, ОФЗ, дивиденды и обороты торгов." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=202608241228" />
-  <link rel="stylesheet" href="./theme-luxury.css?v=202608241228" />  <!-- Yandex.Metrika counter -->
+  <link rel="stylesheet" href="./styles.css?v=202608241311" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=202608241311" />  <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
       m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
@@ -645,7 +645,9 @@
               <label>Средняя цена
                 <input id="pfAddAvg" type="number" min="0" step="0.01" placeholder="250" />
                 <span class="pf-field-hint muted">Подставили текущую цену. Измените, если покупали по другой цене.</span>
-                <span class="pf-field-hint muted" id="pfAddOfzPriceHint" hidden>Для ОФЗ цена на бирже обычно показывается в % от номинала: 81,33% ≈ 813 ₽ за облигацию с номиналом 1000 ₽.</span>
+                <span class="pf-field-hint muted" id="pfAddOfzPriceHint" hidden>Для ОФЗ цена на бирже указывается в % от номинала: 81,33% ≈ 813 ₽ за облигацию с номиналом 1000 ₽.</span>
+                <span class="pf-field-hint muted" id="pfAddOfzPriceExample" hidden>Пример: цена 95,40 означает примерно 954 ₽ за одну ОФЗ с номиналом 1000 ₽.</span>
+                <span class="pf-field-warn" id="pfAddOfzPriceWarn" hidden role="status">Похоже, указана цена в рублях. Для ОФЗ обычно нужно ввести процент от номинала: например, 1112 ₽ ≈ 111,2%.</span>
               </label>
               <label>Дата покупки
                 <input id="pfAddDate" type="date" min="1900-01-01" max="2100-12-31" />
@@ -1094,16 +1096,16 @@
     </div>
   </div>
 
-  <script type="module" src="./firebase-init.mjs?v=202608241228"></script>
+  <script type="module" src="./firebase-init.mjs?v=202608241311"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="./nav-books.js?v=202608241228"></script>
-  <script src="./markets.js?v=202608241228"></script>
-  <script src="./storage.js?v=202608241228"></script>
-  <script src="./ui.js?v=202608241228"></script>
-  <script src="./news.js?v=202608241228"></script>
-  <script src="./moex.js?v=202608241228"></script>
-  <script src="./pif-articles.js?v=202608241228"></script>
-  <script src="./manual-data.js?v=202608241228"></script>  <script>
+  <script src="./nav-books.js?v=202608241311"></script>
+  <script src="./markets.js?v=202608241311"></script>
+  <script src="./storage.js?v=202608241311"></script>
+  <script src="./ui.js?v=202608241311"></script>
+  <script src="./news.js?v=202608241311"></script>
+  <script src="./moex.js?v=202608241311"></script>
+  <script src="./pif-articles.js?v=202608241311"></script>
+  <script src="./manual-data.js?v=202608241311"></script>  <script>
     /** Серверная аналитика: Firebase Function (prod) или /api/analytics при npm start */
     window.INVESTBRIEF_ANALYTICS_API = 'https://europe-west1-investor-brief-rf.cloudfunctions.net/getAnalytics';
     (function () {
@@ -1115,13 +1117,13 @@
       }
     })();
   </script>
-  <script src="./analytics-core.js?v=202608241228"></script>
-  <script src="./analytics.js?v=202608241228"></script>
-  <script src="./ofz.js?v=202608241228"></script>
-  <script src="./pif.js?v=202608241228"></script>
-  <script src="./portfolio.js?v=202608241228"></script>
-  <script src="./agent.js?v=202608241228"></script>
-  <script src="./watchdog.js?v=202608241228"></script>
-  <script src="./firebase-sync.js?v=202608241228"></script>
-  <script src="./app.js?v=202608241228"></script></body>
+  <script src="./analytics-core.js?v=202608241311"></script>
+  <script src="./analytics.js?v=202608241311"></script>
+  <script src="./ofz.js?v=202608241311"></script>
+  <script src="./pif.js?v=202608241311"></script>
+  <script src="./portfolio.js?v=202608241311"></script>
+  <script src="./agent.js?v=202608241311"></script>
+  <script src="./watchdog.js?v=202608241311"></script>
+  <script src="./firebase-sync.js?v=202608241311"></script>
+  <script src="./app.js?v=202608241311"></script></body>
 </html>

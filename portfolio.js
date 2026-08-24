@@ -1315,12 +1315,50 @@
 
   function updatePortfolioOfzPriceHint(ticker, item) {
     var hint = document.getElementById('pfAddOfzPriceHint');
-    if (!hint) return;
+    var example = document.getElementById('pfAddOfzPriceExample');
     var isBond = !!(item && (item.kind === 'bond' || item.type === 'bond'));
     if (!isBond && typeof isRuBondTicker === 'function') {
       isBond = !!isRuBondTicker(ticker);
     }
-    hint.hidden = !isBond;
+    if (hint) hint.hidden = !isBond;
+    if (example) example.hidden = !isBond;
+    updatePortfolioOfzAvgWarn(ticker, item);
+  }
+
+  /** Порог: значение > 200 для ОФЗ похоже на рубли, а не на % номинала. */
+  function shouldWarnOfzAvgLooksLikeRubles(isBond, avgRaw) {
+    if (!isBond) return false;
+    var s = String(avgRaw == null ? '' : avgRaw).trim().replace(',', '.');
+    if (!s) return false;
+    var n = Number(s);
+    if (!isFinite(n)) return false;
+    return n > 200;
+  }
+
+  function isPortfolioFormBondTicker(ticker, item) {
+    if (item && (item.kind === 'bond' || item.type === 'bond')) return true;
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (!ticker) {
+      var tickerEl = document.getElementById('pfAddTicker');
+      ticker = tickerEl ? String(tickerEl.value || '').trim() : '';
+      if (typeof normalizeTicker === 'function') ticker = normalizeTicker(ticker);
+      if (typeof normalizeBondTickerInput === 'function') {
+        var bondQuick = normalizeBondTickerInput(ticker);
+        if (bondQuick) ticker = bondQuick;
+      }
+    }
+    return typeof isRuBondTicker === 'function' && !!isRuBondTicker(ticker);
+  }
+
+  function updatePortfolioOfzAvgWarn(ticker, item) {
+    var warn = document.getElementById('pfAddOfzPriceWarn');
+    if (!warn) return;
+    var avgEl = document.getElementById('pfAddAvg');
+    var isBond = isPortfolioFormBondTicker(ticker, item);
+    var show = shouldWarnOfzAvgLooksLikeRubles(isBond, avgEl ? avgEl.value : '');
+    warn.hidden = !show;
   }
 
   /** Автоподстановка даты/цены только для новой позиции; не затирает ручной ввод. */
@@ -1344,6 +1382,7 @@
     if (plan.avgPrice != null && avgEl && !String(avgEl.value || '').trim()) {
       avgEl.value = String(plan.avgPrice);
     }
+    updatePortfolioOfzAvgWarn();
     return plan;
   }
 
@@ -1360,6 +1399,7 @@
       var price = q && q.price != null && isFinite(Number(q.price)) ? Number(q.price) : null;
       if (price == null) return;
       prefillPortfolioNewLotDefaults('', { quotePrice: price });
+      updatePortfolioOfzAvgWarn(ticker, item);
     }).catch(function () { /* цена недоступна — поле не трогаем */ });
   }
 
@@ -1380,6 +1420,7 @@
     }
     var commentEl = document.getElementById(pfFieldId(prefix, 'Comment'));
     if (commentEl) commentEl.value = pos.comment || '';
+    if (!prefix) updatePortfolioOfzAvgWarn(pos.ticker);
   }
 
 
@@ -1430,7 +1471,11 @@
     clearAllPortfolioForms();
     updatePortfolioFormChrome();
     var ofzHint = document.getElementById('pfAddOfzPriceHint');
+    var ofzExample = document.getElementById('pfAddOfzPriceExample');
+    var ofzWarn = document.getElementById('pfAddOfzPriceWarn');
     if (ofzHint) ofzHint.hidden = true;
+    if (ofzExample) ofzExample.hidden = true;
+    if (ofzWarn) ofzWarn.hidden = true;
     prefillPortfolioNewLotDefaults('', {});
   }
 

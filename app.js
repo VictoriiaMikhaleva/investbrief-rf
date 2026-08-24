@@ -368,6 +368,24 @@
     });
     var pfCancelEditBtn = document.getElementById('pfCancelEditBtn');
     if (pfCancelEditBtn) pfCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
+    var pfAddAvg = document.getElementById('pfAddAvg');
+    if (pfAddAvg) {
+      ['input', 'change'].forEach(function (evt) {
+        pfAddAvg.addEventListener(evt, function () {
+          if (typeof updatePortfolioOfzAvgWarn === 'function') updatePortfolioOfzAvgWarn();
+        });
+      });
+    }
+    var pfAddTickerEl = document.getElementById('pfAddTicker');
+    if (pfAddTickerEl) {
+      pfAddTickerEl.addEventListener('change', function () {
+        if (typeof updatePortfolioOfzPriceHint === 'function') {
+          updatePortfolioOfzPriceHint(pfAddTickerEl.value);
+        } else if (typeof updatePortfolioOfzAvgWarn === 'function') {
+          updatePortfolioOfzAvgWarn(pfAddTickerEl.value);
+        }
+      });
+    }
     var pfSaleBtn = document.getElementById('pfSaleBtn');
     if (pfSaleBtn) pfSaleBtn.addEventListener('click', function () {
       commitPortfolioSale(state.pfSaleTicker);
