@@ -76,6 +76,7 @@ function loadStorageHelpers() {
     getPortfolio: sandbox.__getP,
     setPortfolio: sandbox.__setP,
     importAll: sandbox.__import,
+    exportAll: sandbox.__export,
     normalizePortfolioDate: sandbox.__nDate,
     safeFormatPortfolioDate: sandbox.__safeDate,
     store,
@@ -212,8 +213,10 @@ const h = loadStorageHelpers();
   assert(after.positions[0].qty === 10, 'import qty');
   assert(after.positions[0].avgPrice === 250.5, 'import avgPrice');
   assert(after.positions[0].lotId === 'SBER_KEEP', 'import lotId');
+  assert(after.positions[0].buyDate === '2024-01-15', 'import preserves buyDate YYYY-MM-DD');
   assert(after.sales.length === 1 && after.sales[0].saleId === 'SALE_KEEP', 'import sales');
   assert(after.sales[0].allocations && after.sales[0].allocations[0].qty === 2, 'import allocations');
+  assert(after.sales[0].allocations[0].buyDate === '2024-01-15', 'import allocation buyDate');
   assert(after.schemaVersion === 1, 'import adds schemaVersion');
   assert(Array.isArray(after.cashFlows), 'import adds cashFlows array');
 }
@@ -439,9 +442,67 @@ const calc = loadPortfolioCalcHelpers();
   assert(stored.positions[0].buyDate === '', 'persisted buyDate is empty, not Invalid Date');
 }
 
+{
+  // Round-trip: setPortfolio → export payload (как exportAll: getPortfolio) → clear → importAll
+  // Акция SBERP и ОФЗ с валидной YYYY-MM-DD не должны терять дату.
+  h.setPortfolio({
+    positions: [
+      { ticker: 'SBERP', qty: 1, avgPrice: 180, buyDate: '2026-07-02', lotId: 'SBERP_RT', comment: 'pref' },
+      { ticker: 'OFZ26234', qty: 233, avgPrice: 95.5, buyDate: '2026-07-01', lotId: 'OFZ_RT' }
+    ],
+    sales: [],
+    cashFlows: []
+  });
+  const beforeExport = h.getPortfolio();
+  const sberpBefore = beforeExport.positions.find((p) => p.ticker === 'SBERP');
+  const ofzBefore = beforeExport.positions.find((p) => p.ticker === 'OFZ26234');
+  assert(sberpBefore && sberpBefore.buyDate === '2026-07-02', 'before export SBERP buyDate in storage/getPortfolio');
+  assert(ofzBefore && ofzBefore.buyDate === '2026-07-01', 'before export OFZ buyDate in storage/getPortfolio');
+
+  const exportPayload = {
+    version: '1.0.0',
+    exportedAt: '2026-08-24T00:00:00.000Z',
+    portfolio: beforeExport
+  };
+  const sberpInFile = exportPayload.portfolio.positions.find((p) => p.ticker === 'SBERP');
+  const ofzInFile = exportPayload.portfolio.positions.find((p) => p.ticker === 'OFZ26234');
+  assert(sberpInFile.buyDate === '2026-07-02', 'export JSON contains SBERP buyDate');
+  assert(ofzInFile.buyDate === '2026-07-01', 'export JSON contains OFZ buyDate');
+
+  h.setPortfolio({ positions: [], sales: [], cashFlows: [] });
+  assert(h.getPortfolio().positions.length === 0, 'portfolio cleared before import');
+
+  h.importAll(JSON.stringify(exportPayload));
+  const after = h.getPortfolio();
+  const sberpAfter = after.positions.find((p) => p.ticker === 'SBERP');
+  const ofzAfter = after.positions.find((p) => p.ticker === 'OFZ26234');
+  assert(sberpAfter && sberpAfter.buyDate === '2026-07-02', 'after import SBERP buyDate stays 2026-07-02');
+  assert(ofzAfter && ofzAfter.buyDate === '2026-07-01', 'after import OFZ buyDate stays 2026-07-01');
+  assert(sberpAfter.avgPrice === 180 && sberpAfter.lotId === 'SBERP_RT', 'SBERP other fields intact after RT');
+  assert(ofzAfter.avgPrice === 95.5 && ofzAfter.lotId === 'OFZ_RT', 'OFZ other fields intact after RT');
+
+  // Уже битая дата в backup → после import пустая (не "Invalid Date"); валидные соседи не страдают
+  h.importAll(JSON.stringify({
+    version: '1.0.0',
+    portfolio: {
+      positions: [
+        { ticker: 'SBERP', qty: 1, avgPrice: 180, buyDate: 'Invalid Date', lotId: 'SBERP_BAD' },
+        { ticker: 'OFZ26234', qty: 5, avgPrice: 90, buyDate: '2026-07-02', lotId: 'OFZ_OK' }
+      ],
+      sales: []
+    }
+  }));
+  const mixed = h.getPortfolio();
+  const bad = mixed.positions.find((p) => p.ticker === 'SBERP');
+  const ok = mixed.positions.find((p) => p.ticker === 'OFZ26234');
+  assert(bad && bad.buyDate === '', 'Invalid Date in backup → empty after import (not a stock-only bug)');
+  assert(ok && ok.buyDate === '2026-07-02', 'valid OFZ date survives same import as broken stock date');
+  assert(h.safeFormatPortfolioDate(bad.buyDate) === '—', 'UI shows — for empty SBERP buyDate');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + date normalize');
+console.log('OK  portfolio wave-0/1 + date normalize + export/import round-trip');
