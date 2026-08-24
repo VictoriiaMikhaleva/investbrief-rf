@@ -394,6 +394,12 @@
     });
     var pfCancelSaleBtn = document.getElementById('pfCancelSaleBtn');
     if (pfCancelSaleBtn) pfCancelSaleBtn.addEventListener('click', cancelPortfolioSale);
+    var pfSaleAllBtn = document.getElementById('pfSaleAllBtn');
+    if (pfSaleAllBtn) {
+      pfSaleAllBtn.addEventListener('click', function () {
+        if (typeof fillPortfolioSaleAllQty === 'function') fillPortfolioSaleAllQty();
+      });
+    }
     ['pfSaleQty', 'pfSalePrice'].forEach(function (id) {
       var el = document.getElementById(id);
       if (!el) return;

@@ -1542,6 +1542,32 @@
       kind: typeof isRuBondTicker === 'function' && isRuBondTicker(pos.ticker) ? 'bond' : 'stock'
     });
     showToast('Редактирование покупки: ' + pos.ticker);
+    scrollPortfolioEditFormIntoView(formPrefix || '');
+  }
+
+  /** Плавный скролл к форме редактирования + фокус на количестве. */
+  function scrollPortfolioEditFormIntoView(prefix) {
+    prefix = prefix == null ? '' : prefix;
+    var title = document.getElementById(pfFieldId(prefix, 'FormTitle'));
+    var form = title
+      ? title.closest('.portfolio-add-form') || title.closest('[data-pf-form]')
+      : document.querySelector('.portfolio-add-form');
+    if (form && typeof form.scrollIntoView === 'function') {
+      try {
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        form.scrollIntoView(true);
+      }
+    }
+    var focusEl = document.getElementById(pfFieldId(prefix, 'Qty')) ||
+      document.getElementById(pfFieldId(prefix, 'Avg'));
+    if (focusEl && typeof focusEl.focus === 'function') {
+      setTimeout(function () {
+        try { focusEl.focus({ preventScroll: true }); } catch (e2) {
+          try { focusEl.focus(); } catch (e3) { /* noop */ }
+        }
+      }, 280);
+    }
   }
 
 
@@ -1792,6 +1818,7 @@
     }
     if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
     if (commentEl) commentEl.value = '';
+    updatePortfolioSellAllBtn(totalQty);
     if (form) {
       form.hidden = false;
       form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1799,6 +1826,47 @@
       showToast('Форма продажи не загружена — обновите страницу (Ctrl+F5)');
     }
     updatePortfolioSalePreview();
+  }
+
+  function getPortfolioSellableQty(ticker) {
+    ticker = normalizeTicker(ticker || state.pfSaleTicker || '');
+    if (!ticker) return 0;
+    return findPortfolioLots(ticker).reduce(function (s, l) {
+      var q = Number(l.qty);
+      return s + (isFinite(q) && q > 0 ? q : 0);
+    }, 0);
+  }
+
+  function updatePortfolioSellAllBtn(totalQty) {
+    var btn = document.getElementById('pfSaleAllBtn');
+    if (!btn) return;
+    if (totalQty == null) totalQty = getPortfolioSellableQty();
+    var ok = isFinite(totalQty) && totalQty > 0;
+    btn.hidden = !ok;
+    btn.disabled = !ok;
+    if (ok) {
+      btn.setAttribute('data-pf-sell-all-qty', String(totalQty));
+      btn.title = 'Подставить весь остаток: ' + totalQty + ' шт.';
+    } else {
+      btn.removeAttribute('data-pf-sell-all-qty');
+      btn.title = '';
+    }
+  }
+
+  /** Только подставляет количество в форму продажи, не фиксирует сделку. */
+  function fillPortfolioSaleAllQty() {
+    var qtyEl = document.getElementById('pfSaleQty');
+    if (!qtyEl || !state.pfSaleTicker) return;
+    var totalQty = getPortfolioSellableQty(state.pfSaleTicker);
+    if (!(totalQty > 0)) {
+      updatePortfolioSellAllBtn(0);
+      return;
+    }
+    qtyEl.value = String(totalQty);
+    updatePortfolioSalePreview();
+    try { qtyEl.focus({ preventScroll: true }); } catch (e) {
+      try { qtyEl.focus(); } catch (e2) { /* noop */ }
+    }
   }
 
 
@@ -1811,8 +1879,12 @@
       var q = Number(l.qty);
       return isFinite(q) && q > 0;
     });
-    if (!lots.length) return;
+    if (!lots.length) {
+      updatePortfolioSellAllBtn(0);
+      return;
+    }
     var totalQty = lots.reduce(function (s, l) { return s + Number(l.qty); }, 0);
+    updatePortfolioSellAllBtn(totalQty);
     var agg = aggregatePortfolioLots(lots);
     var avgBefore = computeLotsWeightedAvg(lots);
     var captured = capturePortfolioSaleInput();
@@ -1869,6 +1941,7 @@
     if (priceEl) priceEl.value = '';
     if (dateEl) dateEl.value = '';
     if (commentEl) commentEl.value = '';
+    updatePortfolioSellAllBtn(0);
   }
 
 
@@ -2323,8 +2396,8 @@
   function buildPortfolioHistoryToggleBtn(ticker) {
     ticker = normalizeTicker(ticker);
     var open = !!(state.pfHistoryTickers && state.pfHistoryTickers[ticker]);
-    return '<button type="button" class="ghost small pf-history-toggle" data-pf-toggle-history="' +
-      escapeHtml(ticker) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+    return '<button type="button" class="small pf-history-toggle' + (open ? ' pf-history-toggle--open' : '') +
+      '" data-pf-toggle-history="' + escapeHtml(ticker) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
       (open ? 'Скрыть' : 'Подробнее') + '</button>';
   }
 
