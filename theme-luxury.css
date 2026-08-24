@@ -936,14 +936,38 @@ input:focus, select:focus, textarea:focus {
   display: none !important;
 }
 
+.pf-field-hint--ofz {
+  grid-column: 1 / -1;
+  max-width: 42rem;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.1rem;
+  margin-bottom: 0;
+  padding: 0.5rem 0.7rem 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--text);
+  background: color-mix(in srgb, #fffaf3 78%, var(--bronze-soft) 22%);
+  border-left: 3px solid var(--bronze);
+  border-radius: 0 10px 10px 0;
+}
+
+.pf-field-hint--ofz[hidden] {
+  display: none !important;
+}
+
 .pf-field-warn {
   display: block;
-  margin-top: 0.35rem;
+  grid-column: 1 / -1;
+  margin-top: 0.15rem;
   padding: 0.45rem 0.55rem;
   font-size: 0.76rem;
   line-height: 1.4;
   font-weight: 600;
-  max-width: 24rem;
+  max-width: 42rem;
+  width: 100%;
+  box-sizing: border-box;
   color: #8A5E2E;
   background: rgba(196, 138, 74, 0.12);
   border: 1px solid rgba(196, 138, 74, 0.28);
@@ -958,6 +982,18 @@ input:focus, select:focus, textarea:focus {
 
 /* Телефон: больше полезной ширины у карточных сеток (desktop/tablet без изменений) */
 @media (max-width: 640px) {
+  .pf-field-hint--ofz {
+    max-width: none;
+    margin-top: 0.05rem;
+    padding: 0.42rem 0.55rem 0.42rem 0.65rem;
+    font-size: 0.74rem;
+    line-height: 1.4;
+  }
+
+  .pf-field-warn {
+    max-width: none;
+  }
+
   .header {
     padding-left: 12px;
     padding-right: 12px;

@@ -1342,10 +1342,8 @@
 
   function updatePortfolioOfzPriceHint(ticker, item) {
     var hint = document.getElementById('pfAddOfzPriceHint');
-    var example = document.getElementById('pfAddOfzPriceExample');
     var isBond = isPortfolioFormBondTicker(ticker, item);
     if (hint) hint.hidden = !isBond;
-    if (example) example.hidden = !isBond;
     updatePortfolioOfzAvgWarn(ticker, item);
   }
 
@@ -1484,10 +1482,8 @@
     clearAllPortfolioForms();
     updatePortfolioFormChrome();
     var ofzHint = document.getElementById('pfAddOfzPriceHint');
-    var ofzExample = document.getElementById('pfAddOfzPriceExample');
     var ofzWarn = document.getElementById('pfAddOfzPriceWarn');
     if (ofzHint) ofzHint.hidden = true;
-    if (ofzExample) ofzExample.hidden = true;
     if (ofzWarn) ofzWarn.hidden = true;
     prefillPortfolioNewLotDefaults('', {});
   }
