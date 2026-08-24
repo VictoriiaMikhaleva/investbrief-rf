@@ -1280,6 +1280,91 @@
 
 
 
+  /** Сегодняшняя дата пользователя (локальная TZ), YYYY-MM-DD. Не toISOString. */
+  function localPortfolioTodayYmd() {
+    var d = new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  /**
+   * Чистая логика автоподстановки для новой позиции.
+   * editing → no-op; пустые поля → today / quote.price (акции ₽, ОФЗ % как в котировке).
+   */
+  function computePortfolioNewLotPrefill(opts) {
+    opts = opts || {};
+    if (opts.editing) {
+      return { skipped: true, buyDate: null, avgPrice: null };
+    }
+    var buyDate = null;
+    if (!opts.dateValue || String(opts.dateValue).trim() === '') {
+      var today = localPortfolioTodayYmd();
+      buyDate = typeof normalizePortfolioDate === 'function'
+        ? normalizePortfolioDate(today)
+        : today;
+    }
+    var avgPrice = null;
+    var avgEmpty = !opts.avgValue || String(opts.avgValue).trim() === '';
+    if (avgEmpty && opts.quotePrice != null && isFinite(Number(opts.quotePrice))) {
+      avgPrice = Number(opts.quotePrice);
+    }
+    return { skipped: false, buyDate: buyDate, avgPrice: avgPrice };
+  }
+
+  function updatePortfolioOfzPriceHint(ticker, item) {
+    var hint = document.getElementById('pfAddOfzPriceHint');
+    if (!hint) return;
+    var isBond = !!(item && (item.kind === 'bond' || item.type === 'bond'));
+    if (!isBond && typeof isRuBondTicker === 'function') {
+      isBond = !!isRuBondTicker(ticker);
+    }
+    hint.hidden = !isBond;
+  }
+
+  /** Автоподстановка даты/цены только для новой позиции; не затирает ручной ввод. */
+  function prefillPortfolioNewLotDefaults(prefix, opts) {
+    opts = opts || {};
+    if (state.pfEditLotId) {
+      return computePortfolioNewLotPrefill({ editing: true });
+    }
+    prefix = prefix == null ? '' : prefix;
+    var dateEl = document.getElementById(pfFieldId(prefix, 'Date'));
+    var avgEl = document.getElementById(pfFieldId(prefix, 'Avg'));
+    var plan = computePortfolioNewLotPrefill({
+      editing: false,
+      dateValue: dateEl ? dateEl.value : '',
+      avgValue: avgEl ? avgEl.value : '',
+      quotePrice: opts.quotePrice
+    });
+    if (plan.buyDate && dateEl && !String(dateEl.value || '').trim()) {
+      dateEl.value = plan.buyDate;
+    }
+    if (plan.avgPrice != null && avgEl && !String(avgEl.value || '').trim()) {
+      avgEl.value = String(plan.avgPrice);
+    }
+    return plan;
+  }
+
+  function onPortfolioAddTickerSelected(item) {
+    if (state.pfEditLotId) return;
+    var ticker = item && (item.ticker || item.secid);
+    ticker = typeof normalizeTicker === 'function' ? normalizeTicker(ticker) : String(ticker || '').trim().toUpperCase();
+    if (!ticker) return;
+    updatePortfolioOfzPriceHint(ticker, item);
+    prefillPortfolioNewLotDefaults('', {});
+    if (typeof fetchMoexQuote !== 'function') return;
+    fetchMoexQuote(ticker).then(function (q) {
+      if (state.pfEditLotId) return;
+      var price = q && q.price != null && isFinite(Number(q.price)) ? Number(q.price) : null;
+      if (price == null) return;
+      prefillPortfolioNewLotDefaults('', { quotePrice: price });
+    }).catch(function () { /* цена недоступна — поле не трогаем */ });
+  }
+
+
+
   function fillPortfolioForm(prefix, pos) {
     var tickerEl = document.getElementById(pfFieldId(prefix, 'Ticker'));
     if (tickerEl) tickerEl.value = pos.ticker || '';
@@ -1330,6 +1415,9 @@
     state.pfEditPrefix = formPrefix || '';
     fillAllPortfolioForms(pos);
     updatePortfolioFormChrome();
+    updatePortfolioOfzPriceHint(pos.ticker, {
+      kind: typeof isRuBondTicker === 'function' && isRuBondTicker(pos.ticker) ? 'bond' : 'stock'
+    });
     showToast('Редактирование покупки: ' + pos.ticker);
   }
 
@@ -1341,6 +1429,9 @@
     state.pfEditPrefix = '';
     clearAllPortfolioForms();
     updatePortfolioFormChrome();
+    var ofzHint = document.getElementById('pfAddOfzPriceHint');
+    if (ofzHint) ofzHint.hidden = true;
+    prefillPortfolioNewLotDefaults('', {});
   }
 
 

@@ -923,6 +923,15 @@ input:focus, select:focus, textarea:focus {
   max-width: 42rem;
 }
 
+.pf-field-hint {
+  display: block;
+  margin-top: 0.28rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  font-weight: 500;
+  max-width: 22rem;
+}
+
 /* panel-intro--one-line: см. правила .panel-intro.hint-frame > p выше */
 
 /* Телефон: больше полезной ширины у карточных сеток (desktop/tablet без изменений) */

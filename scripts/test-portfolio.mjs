@@ -297,7 +297,9 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__salePnl = getSaleRealizedPnl;' +
       '\nthis.__pricePlus = computePricePlusPayoutsPct;' +
       '\nthis.__remain = getRemainingCostBasis;' +
-      '\nthis.__totalRealized = getTotalRealizedPnl;',
+      '\nthis.__totalRealized = getTotalRealizedPnl;' +
+      '\nthis.__today = localPortfolioTodayYmd;' +
+      '\nthis.__prefill = computePortfolioNewLotPrefill;',
     sandbox,
     { timeout: 5000 }
   );
@@ -309,7 +311,9 @@ function loadPortfolioCalcHelpers() {
     getSaleRealizedPnl: sandbox.__salePnl,
     computePricePlusPayoutsPct: sandbox.__pricePlus,
     getRemainingCostBasis: sandbox.__remain,
-    getTotalRealizedPnl: sandbox.__totalRealized
+    getTotalRealizedPnl: sandbox.__totalRealized,
+    localPortfolioTodayYmd: sandbox.__today,
+    computePortfolioNewLotPrefill: sandbox.__prefill
   };
 }
 
@@ -553,9 +557,87 @@ const calc = loadPortfolioCalcHelpers();
   assert(storedAdd.positions[0].buyDate !== 'Invalid Date', 'never persist Invalid Date');
 }
 
+{
+  // Автоподстановка новой позиции (не edit)
+  const today = calc.localPortfolioTodayYmd();
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(today), 'local today is YYYY-MM-DD');
+  assert(today === h.normalizePortfolioDate(today), 'today normalizes to itself');
+  // не UTC-сдвиг: совпадает с локальными getFullYear/Month/Date
+  const d = new Date();
+  const localExpect =
+    d.getFullYear() +
+    '-' +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(d.getDate()).padStart(2, '0');
+  assert(today === localExpect, 'today uses local TZ not toISOString');
+
+  const stock = calc.computePortfolioNewLotPrefill({
+    editing: false,
+    dateValue: '',
+    avgValue: '',
+    quotePrice: 267.82
+  });
+  assert(stock.skipped === false, 'new stock not skipped');
+  assert(stock.buyDate === today, 'new stock gets today');
+  assert(stock.avgPrice === 267.82, 'new stock avg = quote ₽');
+
+  const ofz = calc.computePortfolioNewLotPrefill({
+    editing: false,
+    dateValue: '',
+    avgValue: '',
+    quotePrice: 95.5
+  });
+  assert(ofz.avgPrice === 95.5, 'new OFZ avg = % quote, not × face');
+  assert(ofz.avgPrice !== 95.5 * 1000, 'OFZ not multiplied by faceValue');
+
+  const noQuote = calc.computePortfolioNewLotPrefill({
+    editing: false,
+    dateValue: '',
+    avgValue: '',
+    quotePrice: null
+  });
+  assert(noQuote.buyDate === today, 'no quote still fills date');
+  assert(noQuote.avgPrice == null, 'no quote → do not set avg');
+
+  const manual = calc.computePortfolioNewLotPrefill({
+    editing: false,
+    dateValue: '2024-01-15',
+    avgValue: '180',
+    quotePrice: 267.82
+  });
+  assert(manual.buyDate == null, 'do not overwrite manual date');
+  assert(manual.avgPrice == null, 'do not overwrite manual avg');
+
+  const edit = calc.computePortfolioNewLotPrefill({
+    editing: true,
+    dateValue: '',
+    avgValue: '',
+    quotePrice: 999
+  });
+  assert(edit.skipped === true, 'edit mode skipped');
+  assert(edit.buyDate == null && edit.avgPrice == null, 'edit does not prefill date/price');
+
+  // сохранение даты новой позиции — YYYY-MM-DD в storage
+  h.setPortfolio({
+    positions: [{
+      ticker: 'SBER',
+      qty: 1,
+      avgPrice: stock.avgPrice,
+      buyDate: stock.buyDate,
+      lotId: 'PREFILL1'
+    }],
+    sales: [],
+    cashFlows: []
+  });
+  const savedPrefill = h.getPortfolio().positions[0];
+  assert(savedPrefill.buyDate === today, 'saved buyDate is YYYY-MM-DD');
+  assert(!/^\d{2}\.\d{2}\.\d{4}$/.test(savedPrefill.buyDate), 'storage is not DD.MM.YYYY');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + date normalize + export/import round-trip');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill');

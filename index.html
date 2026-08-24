@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru" class="us-market-unavailable">
 <head>
-  <!-- ibrf-asset-version: 202608240940 -->
+  <!-- ibrf-asset-version: 202608240954 -->
   <script>
     /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS и JS на мобильных. */
     (function () {
@@ -32,13 +32,13 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-  <link rel="manifest" href="./site.webmanifest?v=202608240940" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
+  <link rel="manifest" href="./site.webmanifest?v=202608240954" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
   <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, агент наблюдения, ОФЗ, дивиденды и обороты торгов." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=202608240940" />
-  <link rel="stylesheet" href="./theme-luxury.css?v=202608240940" />  <!-- Yandex.Metrika counter -->
+  <link rel="stylesheet" href="./styles.css?v=202608240954" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=202608240954" />  <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
       m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
@@ -642,8 +642,15 @@
                 </span>
               </label>
               <label>Количество<input id="pfAddQty" type="number" min="0" step="1" placeholder="10" /></label>
-              <label>Средняя цена<input id="pfAddAvg" type="number" min="0" step="0.01" placeholder="250" /></label>
-              <label>Дата покупки<input id="pfAddDate" type="date" min="1900-01-01" max="2100-12-31" /></label>
+              <label>Средняя цена
+                <input id="pfAddAvg" type="number" min="0" step="0.01" placeholder="250" />
+                <span class="pf-field-hint muted">Подставили текущую цену. Измените, если покупали по другой цене.</span>
+                <span class="pf-field-hint muted" id="pfAddOfzPriceHint" hidden>Для ОФЗ цена указывается в % от номинала.</span>
+              </label>
+              <label>Дата покупки
+                <input id="pfAddDate" type="date" min="1900-01-01" max="2100-12-31" />
+                <span class="pf-field-hint muted">По умолчанию — сегодняшняя дата. Измените, если покупка была раньше.</span>
+              </label>
               <label class="span-2">Комментарий<input id="pfAddComment" placeholder="Долгосрочная позиция" /></label>
             </div>
             <div class="pf-form-actions">
@@ -1087,16 +1094,16 @@
     </div>
   </div>
 
-  <script type="module" src="./firebase-init.mjs?v=202608240940"></script>
+  <script type="module" src="./firebase-init.mjs?v=202608240954"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="./nav-books.js?v=202608240940"></script>
-  <script src="./markets.js?v=202608240940"></script>
-  <script src="./storage.js?v=202608240940"></script>
-  <script src="./ui.js?v=202608240940"></script>
-  <script src="./news.js?v=202608240940"></script>
-  <script src="./moex.js?v=202608240940"></script>
-  <script src="./pif-articles.js?v=202608240940"></script>
-  <script src="./manual-data.js?v=202608240940"></script>  <script>
+  <script src="./nav-books.js?v=202608240954"></script>
+  <script src="./markets.js?v=202608240954"></script>
+  <script src="./storage.js?v=202608240954"></script>
+  <script src="./ui.js?v=202608240954"></script>
+  <script src="./news.js?v=202608240954"></script>
+  <script src="./moex.js?v=202608240954"></script>
+  <script src="./pif-articles.js?v=202608240954"></script>
+  <script src="./manual-data.js?v=202608240954"></script>  <script>
     /** Серверная аналитика: Firebase Function (prod) или /api/analytics при npm start */
     window.INVESTBRIEF_ANALYTICS_API = 'https://europe-west1-investor-brief-rf.cloudfunctions.net/getAnalytics';
     (function () {
@@ -1108,13 +1115,13 @@
       }
     })();
   </script>
-  <script src="./analytics-core.js?v=202608240940"></script>
-  <script src="./analytics.js?v=202608240940"></script>
-  <script src="./ofz.js?v=202608240940"></script>
-  <script src="./pif.js?v=202608240940"></script>
-  <script src="./portfolio.js?v=202608240940"></script>
-  <script src="./agent.js?v=202608240940"></script>
-  <script src="./watchdog.js?v=202608240940"></script>
-  <script src="./firebase-sync.js?v=202608240940"></script>
-  <script src="./app.js?v=202608240940"></script></body>
+  <script src="./analytics-core.js?v=202608240954"></script>
+  <script src="./analytics.js?v=202608240954"></script>
+  <script src="./ofz.js?v=202608240954"></script>
+  <script src="./pif.js?v=202608240954"></script>
+  <script src="./portfolio.js?v=202608240954"></script>
+  <script src="./agent.js?v=202608240954"></script>
+  <script src="./watchdog.js?v=202608240954"></script>
+  <script src="./firebase-sync.js?v=202608240954"></script>
+  <script src="./app.js?v=202608240954"></script></body>
 </html>

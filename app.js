@@ -216,7 +216,13 @@
     }
 
     setupTickerAutocomplete('tickerInput');
-    setupTickerAutocomplete('pfAddTicker');
+    setupTickerAutocomplete('pfAddTicker', {
+      onSelect: function (item) {
+        if (typeof onPortfolioAddTickerSelected === 'function') {
+          onPortfolioAddTickerSelected(item);
+        }
+      }
+    });
     if (typeof preloadOfzSearchCatalog === 'function') preloadOfzSearchCatalog();
     setupTickerAutocomplete('feedAsset', { onSelect: function () { syncFiltersFromUI(); } });
     setupTickerAutocomplete('alertRuleTicker');
