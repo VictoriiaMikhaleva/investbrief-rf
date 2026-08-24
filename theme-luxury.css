@@ -1520,108 +1520,232 @@ input:focus, select:focus, textarea:focus {
   cursor: not-allowed;
 }
 
-/* Волна 2.x: визуальная иерархия операций в «Подробнее» */
+/* Волна 2.x: luxury operation-cards в «Подробнее» */
 .pf-ticker-detail-summary {
-  border-left: 2px solid color-mix(in srgb, #9aa5b4 55%, #d5dae1 45%);
-  background: color-mix(in srgb, #f6f7f9 88%, #ffffff 12%);
+  border-left: 2px solid color-mix(in srgb, #9aa5b4 45%, #d8dde4 55%);
+  background: color-mix(in srgb, #f7f8fa 90%, #ffffff 10%);
+  box-shadow: none;
+}
+
+.pf-history-section--open-lots,
+.pf-history-section--sales {
+  margin-top: 0.55rem;
+}
+
+.pf-history-section--open-lots > .pf-ticker-detail-h,
+.pf-history-section--sales > .pf-ticker-detail-h,
+.pf-allocation-box .pf-alloc-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.35rem;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.pf-history-section--open-lots > .pf-ticker-detail-h::before,
+.pf-history-section--sales > .pf-ticker-detail-h::before,
+.pf-allocation-box .pf-alloc-title::before {
+  content: "";
+  width: 0.18rem;
+  height: 0.78rem;
+  border-radius: 99px;
+  flex: 0 0 auto;
 }
 
 .pf-history-section--open-lots > .pf-ticker-detail-h {
-  color: color-mix(in srgb, var(--accent) 72%, #4a5c52 28%);
+  color: color-mix(in srgb, var(--accent) 68%, #55665c 32%);
+}
+
+.pf-history-section--open-lots > .pf-ticker-detail-h::before {
+  background: color-mix(in srgb, var(--accent) 55%, #b7c9bd 45%);
 }
 
 .pf-history-section--sales > .pf-ticker-detail-h {
-  color: color-mix(in srgb, var(--bronze) 70%, #6d4f2a 30%);
+  color: color-mix(in srgb, var(--bronze) 62%, #6a5338 38%);
+}
+
+.pf-history-section--sales > .pf-ticker-detail-h::before {
+  background: color-mix(in srgb, var(--bronze) 58%, #d4b896 42%);
+}
+
+.pf-allocation-box .pf-alloc-title {
+  color: color-mix(in srgb, var(--text-muted) 80%, #7a8490 20%);
+  font-weight: 500;
+  font-size: 0.68rem;
+}
+
+.pf-allocation-box .pf-alloc-title::before {
+  height: 0.65rem;
+  background: color-mix(in srgb, #b0b8c2 55%, #d8dde4 45%);
 }
 
 .pf-op-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.08rem 0.38rem;
+  padding: 0.06rem 0.42rem;
   border-radius: 999px;
-  font-size: 0.64rem;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
   white-space: nowrap;
+  text-transform: lowercase;
+  box-shadow: none;
 }
 
 .pf-op-badge--buy {
-  color: color-mix(in srgb, var(--accent-hover) 78%, #2f4a37 22%);
-  background: color-mix(in srgb, var(--accent-soft) 70%, #ffffff 30%);
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, #d5e0d8 78%);
+  color: color-mix(in srgb, var(--accent-hover) 70%, #3d5346 30%);
+  background: color-mix(in srgb, var(--accent-soft) 45%, #ffffff 55%);
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, #e2ebe5 84%);
 }
 
 .pf-op-badge--sale {
-  color: color-mix(in srgb, #8a5a3a 72%, #5c4030 28%);
-  background: color-mix(in srgb, var(--bronze-soft) 55%, #fff8f2 45%);
-  border: 1px solid color-mix(in srgb, var(--bronze) 28%, #e8d5c4 72%);
+  color: color-mix(in srgb, #7d5840 68%, #5a4334 32%);
+  background: color-mix(in srgb, var(--bronze-soft) 40%, #fffaf5 60%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 18%, #efe2d4 82%);
 }
 
-.pf-stack-item.pf-open-lot {
-  background: color-mix(in srgb, var(--accent-soft) 38%, #ffffff 62%);
-  border: 1px solid color-mix(in srgb, var(--accent) 12%, rgba(23, 34, 51, 0.05) 88%);
-  border-left: 3px solid color-mix(in srgb, var(--accent) 42%, #c5d4cb 58%);
+/* Mobile / stack: operation cards */
+.pf-op-card,
+.pf-stack-item.pf-open-lot,
+.pf-stack-item.pf-sale-row {
+  padding: 0.5rem 0.6rem 0.5rem 0.7rem;
+  border-radius: 11px;
+  box-shadow: 0 1px 0 rgba(23, 34, 51, 0.02);
 }
 
-.pf-mini-table--open-lots {
+.pf-stack-item.pf-open-lot,
+.pf-op-card.pf-open-lot {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, #ffffff 88%, var(--accent-soft) 12%) 0%,
+    color-mix(in srgb, var(--accent-soft) 28%, #ffffff 72%) 100%);
+  border: 1px solid color-mix(in srgb, var(--accent) 10%, rgba(23, 34, 51, 0.045) 90%);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 38%, #c9d6ce 62%);
+}
+
+.pf-stack-item.pf-sale-row,
+.pf-op-card.pf-sale-row {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, #ffffff 86%, var(--bronze-soft) 14%) 0%,
+    color-mix(in srgb, var(--bronze-soft) 26%, #fffaf6 74%) 100%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 12%, rgba(23, 34, 51, 0.045) 88%);
+  border-left: 3px solid color-mix(in srgb, var(--bronze) 42%, #dcc4a4 58%);
+}
+
+.pf-stack-item.pf-sale-row .pf-stack-meta,
+.pf-stack-item.pf-open-lot .pf-stack-meta {
+  gap: 0.28rem 0.65rem;
+}
+
+.pf-stack-item.pf-sale-row .pf-row-actions,
+.pf-stack-item.pf-open-lot .pf-row-actions {
+  margin-top: 0.4rem;
+  padding-top: 0.28rem;
+  border-top: 1px solid rgba(23, 34, 51, 0.04);
+}
+
+/* Desktop mini-tables → card-rows */
+.pf-mini-table--open-lots,
+.pf-mini-table--sales {
+  width: 100%;
+  border: none;
+  background: transparent;
   border-collapse: separate;
-  border-spacing: 0;
-  overflow: hidden;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 12%, rgba(23, 34, 51, 0.05) 88%);
-  background: color-mix(in srgb, var(--accent-soft) 22%, #ffffff 78%);
+  border-spacing: 0 0.38rem;
+  overflow: visible;
 }
 
-.pf-mini-table--open-lots th,
-.pf-mini-table--open-lots td {
-  border-bottom-color: color-mix(in srgb, var(--accent) 8%, rgba(23, 34, 51, 0.04) 92%);
+.pf-mini-table--open-lots thead th,
+.pf-mini-table--sales thead th {
+  border: none;
+  background: transparent;
+  padding: 0.1rem 0.55rem 0.15rem;
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  opacity: 0.78;
+}
+
+.pf-mini-table--open-lots tbody tr.pf-open-lot-row td,
+.pf-mini-table--sales tbody tr.pf-sale-row td {
+  border: none;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  padding: 0.48rem 0.5rem;
+  vertical-align: middle;
+  background: transparent;
+}
+
+.pf-mini-table--open-lots tbody tr.pf-open-lot-row td {
+  background: color-mix(in srgb, var(--accent-soft) 24%, #ffffff 76%);
+  border-top-color: color-mix(in srgb, var(--accent) 8%, rgba(23, 34, 51, 0.03) 92%);
+  border-bottom-color: color-mix(in srgb, var(--accent) 8%, rgba(23, 34, 51, 0.03) 92%);
+}
+
+.pf-mini-table--sales tbody tr.pf-sale-row td {
+  background: color-mix(in srgb, var(--bronze-soft) 22%, #fffaf6 78%);
+  border-top-color: color-mix(in srgb, var(--bronze) 10%, rgba(23, 34, 51, 0.03) 90%);
+  border-bottom-color: color-mix(in srgb, var(--bronze) 10%, rgba(23, 34, 51, 0.03) 90%);
+}
+
+.pf-mini-table--open-lots tbody tr.pf-open-lot-row td:first-child,
+.pf-mini-table--sales tbody tr.pf-sale-row td:first-child {
+  border-left-width: 3px;
+  border-left-style: solid;
+  padding-left: 0.6rem;
+  border-radius: 10px 0 0 10px;
 }
 
 .pf-mini-table--open-lots tbody tr.pf-open-lot-row td:first-child {
-  border-left: 3px solid color-mix(in srgb, var(--accent) 42%, #c5d4cb 58%);
-  padding-left: 0.55rem;
-}
-
-.pf-stack-item.pf-sale-row {
-  background: color-mix(in srgb, var(--bronze-soft) 32%, #fffaf6 68%);
-  border: 1px solid color-mix(in srgb, var(--bronze) 16%, rgba(23, 34, 51, 0.05) 84%);
-  border-left: 3px solid color-mix(in srgb, var(--bronze) 48%, #d4b896 52%);
-}
-
-.pf-mini-table--sales {
-  border-collapse: separate;
-  border-spacing: 0;
-  overflow: hidden;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--bronze) 14%, rgba(23, 34, 51, 0.05) 86%);
-  background: color-mix(in srgb, var(--bronze-soft) 20%, #fffdfb 80%);
-}
-
-.pf-mini-table--sales th,
-.pf-mini-table--sales td {
-  border-bottom-color: color-mix(in srgb, var(--bronze) 10%, rgba(23, 34, 51, 0.04) 90%);
+  border-left-color: color-mix(in srgb, var(--accent) 38%, #c9d6ce 62%);
 }
 
 .pf-mini-table--sales tbody tr.pf-sale-row td:first-child {
-  border-left: 3px solid color-mix(in srgb, var(--bronze) 48%, #d4b896 52%);
-  padding-left: 0.5rem;
+  border-left-color: color-mix(in srgb, var(--bronze) 42%, #dcc4a4 58%);
+}
+
+.pf-mini-table--open-lots tbody tr.pf-open-lot-row td:last-child,
+.pf-mini-table--sales tbody tr.pf-sale-row td:last-child {
+  border-radius: 0 10px 10px 0;
+  border-right: 1px solid color-mix(in srgb, #c9d0d8 20%, rgba(23, 34, 51, 0.03) 80%);
+}
+
+.pf-mini-table--open-lots tbody tr.pf-open-lot-row td:first-child {
+  border-right: none;
 }
 
 .pf-alloc-box.pf-allocation-box,
 .pf-allocation-box {
-  margin-top: 0.35rem;
-  padding: 0.35rem 0.45rem;
-  background: color-mix(in srgb, #ffffff 82%, #f3f5f7 18%);
-  border: 1px solid color-mix(in srgb, #c9d0d8 35%, rgba(23, 34, 51, 0.06) 65%);
-  border-radius: 8px;
+  margin: 0.4rem 0 0.1rem;
+  padding: 0.38rem 0.5rem;
+  background: color-mix(in srgb, #ffffff 90%, #eef1f4 10%);
+  border: 1px solid color-mix(in srgb, #cfd5dc 28%, rgba(23, 34, 51, 0.04) 72%);
+  border-radius: 9px;
   box-shadow: none;
 }
 
+.pf-allocation-box .pf-mini-table--nested {
+  border: none;
+  background: transparent;
+}
+
+.pf-allocation-box .pf-mini-table--nested th,
+.pf-allocation-box .pf-mini-table--nested td {
+  border-bottom-color: rgba(23, 34, 51, 0.035);
+  padding: 0.22rem 0.35rem;
+  font-size: 0.72rem;
+}
+
 .pf-allocation-box .pf-stack-item--nested {
-  background: color-mix(in srgb, #f8f9fb 70%, #ffffff 30%);
-  border: 1px solid rgba(23, 34, 51, 0.035);
-  border-left: 2px solid color-mix(in srgb, #a8b2be 40%, #d8dde4 60%);
+  background: color-mix(in srgb, #f9fafb 78%, #ffffff 22%);
+  border: 1px solid rgba(23, 34, 51, 0.03);
+  border-left: 2px solid color-mix(in srgb, #b4bcc6 35%, #dce1e6 65%);
+  box-shadow: none;
 }
 
 .pf-closed-row > td {
@@ -1642,6 +1766,32 @@ input:focus, select:focus, textarea:focus {
 
 .pf-closed-row:hover > td {
   background: color-mix(in srgb, #e8eeea 60%, #f4f6f4 40%) !important;
+}
+
+@media (max-width: 699px) {
+  .pf-op-card,
+  .pf-stack-item.pf-open-lot,
+  .pf-stack-item.pf-sale-row {
+    padding: 0.45rem 0.55rem 0.45rem 0.6rem;
+    border-radius: 10px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .pf-stack-item.pf-sale-row .pf-stack-meta,
+  .pf-stack-item.pf-open-lot .pf-stack-meta {
+    gap: 0.22rem 0.55rem;
+    font-size: 0.76rem;
+  }
+
+  .pf-op-badge {
+    font-size: 0.58rem;
+    padding: 0.05rem 0.36rem;
+  }
+
+  .portfolio-card-detail .pf-ticker-detail {
+    overflow-x: hidden;
+  }
 }
 
 /* panel-intro--one-line: см. правила .panel-intro.hint-frame > p выше */

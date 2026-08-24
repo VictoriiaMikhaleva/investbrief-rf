@@ -2469,7 +2469,7 @@
     } else if (stack) {
       html += '<div class="pf-stack-list">';
       hist.openLots.forEach(function (lot) {
-        html += '<div class="pf-stack-item pf-open-lot">' +
+        html += '<div class="pf-stack-item pf-op-card pf-open-lot">' +
           '<div class="pf-stack-meta">' +
             '<span class="pf-op-badge pf-op-badge--buy">покупка</span>' +
             '<span><span class="lbl">Дата</span> ' + escapeHtml(formatPortfolioDate(lot)) + '</span>' +
@@ -2520,7 +2520,7 @@
           var pnlCls = pnl.amount != null && pnl.amount >= 0 ? 'pnl-pos' : 'pnl-neg';
           var buyLbl = formatPortfolioHistoryPrice(sale.buyPrice, sale.ticker, isBond, sale.currency);
           var sellLbl = formatPortfolioHistoryPrice(sale.salePrice, sale.ticker, isBond, sale.currency);
-          html += '<div class="pf-stack-item pf-sale-row">' +
+          html += '<div class="pf-stack-item pf-op-card pf-sale-row">' +
             '<div class="pf-stack-meta">' +
               '<span class="pf-op-badge pf-op-badge--sale">продажа</span>' +
               '<span><span class="lbl">Дата</span> ' + escapeHtml(formatPortfolioSaleDate(sale)) + '</span>' +
