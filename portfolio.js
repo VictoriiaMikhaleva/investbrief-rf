@@ -213,7 +213,7 @@
     el.innerHTML =
       '<div class="portfolio-totals-grid">' +
         '<div class="portfolio-total-card">' +
-          '<span class="portfolio-total-lbl">Остаток (рынок)</span>' +
+          '<span class="portfolio-total-lbl">Текущая стоимость</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(totalValue)) + '</span>' +
           (remainCost > 0 ? '<span class="portfolio-total-sub muted">вложено ' + escapeHtml(formatPortfolioRubAmount(remainCost)) + '</span>' : '') +
         '</div>' +
@@ -226,37 +226,37 @@
           : '') +
         (unrealized != null
           ? '<div class="portfolio-total-card">' +
-              '<span class="portfolio-total-lbl">Нереализовано</span>' +
+              '<span class="portfolio-total-lbl">Нереализованный результат</span>' +
               '<span class="portfolio-total-val ' + (unrealized >= 0 ? 'pnl-pos' : 'pnl-neg') + '">' + escapeHtml(formatSignedRubAmount(unrealized)) + '</span>' +
-              '<span class="portfolio-total-sub muted">остаток к вложенному</span>' +
+              '<span class="portfolio-total-sub muted">текущая стоимость минус вложено</span>' +
             '</div>'
           : '') +
         '<div class="portfolio-total-card">' +
-          '<span class="portfolio-total-lbl">Цена + выплаты</span>' +
+          '<span class="portfolio-total-lbl">С учётом выплат</span>' +
           '<span class="portfolio-total-val' + (pricePlusPayouts != null ? (pricePlusPayouts >= 0 ? ' pnl-pos' : ' pnl-neg') : '') + '">' +
             escapeHtml(pricePlusPayouts != null ? formatSignedPct(pricePlusPayouts, 2) : '—') +
           '</span>' +
-          '<span class="portfolio-total-sub muted">оценка на текущий остаток</span>' +
+          '<span class="portfolio-total-sub muted">оценка к вложенному</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Акции</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(stockValue)) + '</span>' +
-          '<span class="portfolio-total-sub muted">' + escapeHtml(stockShare.toFixed(1).replace('.', ',') + '% остатка') + '</span>' +
+          '<span class="portfolio-total-sub muted">' + escapeHtml(stockShare.toFixed(1).replace('.', ',') + '% портфеля') + '</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Облигации</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(bondValue)) + '</span>' +
-          '<span class="portfolio-total-sub muted">' + escapeHtml(bondShare.toFixed(1).replace('.', ',') + '% остатка') + '</span>' +
+          '<span class="portfolio-total-sub muted">' + escapeHtml(bondShare.toFixed(1).replace('.', ',') + '% портфеля') + '</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
-          '<span class="portfolio-total-lbl">История выплат 12 мес.</span>' +
+          '<span class="portfolio-total-lbl">Выплаты за 12 мес.</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.paid12m)) + '</span>' +
-          '<span class="portfolio-total-sub muted">по текущему количеству</span>' +
+          '<span class="portfolio-total-sub muted">история по текущему количеству</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Прогноз на 12 мес.</span>' +
           '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.forecast12m)) + '</span>' +
-          '<span class="portfolio-total-sub muted">по текущему количеству</span>' +
+          '<span class="portfolio-total-sub muted">расчёт по текущему количеству</span>' +
         '</div>' +
       '</div>';
   }
