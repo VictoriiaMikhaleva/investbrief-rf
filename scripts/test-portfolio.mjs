@@ -395,6 +395,12 @@ const calc = loadPortfolioCalcHelpers();
   assert(h.normalizePortfolioDate('Invalid D') === '', 'truncated Invalid → ""');
   assert(h.normalizePortfolioDate('2026-07-02') === '2026-07-02', 'valid YYYY-MM-DD kept');
   assert(h.normalizePortfolioDate('2026-02-30') === '', 'impossible calendar date → ""');
+  assert(h.normalizePortfolioDate('2026-08-32') === '', '32 Aug → ""');
+  assert(h.normalizePortfolioDate('32.08.2026') === '', '32.08.2026 DMY → ""');
+  assert(h.normalizePortfolioDate('20012-07-1') === '', '20012-07-1 → ""');
+  assert(h.normalizePortfolioDate('2026-7-1') === '2026-07-01', 'pad leading zeros → YYYY-MM-DD');
+  assert(h.normalizePortfolioDate('август') === '', 'garbage text → ""');
+  assert(h.normalizePortfolioDate('1800-01-01') === '', 'year before 1900 → ""');
   assert(h.safeFormatPortfolioDate('Invalid Date') === '—', 'safe format Invalid → —');
   assert(h.safeFormatPortfolioDate('') === '—', 'safe format empty → —');
   assert(h.safeFormatPortfolioDate(null) === '—', 'safe format null → —');
@@ -498,6 +504,53 @@ const calc = loadPortfolioCalcHelpers();
   assert(bad && bad.buyDate === '', 'Invalid Date in backup → empty after import (not a stock-only bug)');
   assert(ok && ok.buyDate === '2026-07-02', 'valid OFZ date survives same import as broken stock date');
   assert(h.safeFormatPortfolioDate(bad.buyDate) === '—', 'UI shows — for empty SBERP buyDate');
+}
+
+{
+  // Форма add/edit: в storage только YYYY-MM-DD или ""
+  function saveViaNormalize(rawBuyDate, editing) {
+    var coerced = h.normalizePortfolioDate(rawBuyDate);
+    if (editing) {
+      h.setPortfolio({
+        positions: [{ ticker: 'SBERP', qty: 1, avgPrice: 180, buyDate: '2024-01-15', lotId: 'EDIT1' }],
+        sales: [],
+        cashFlows: []
+      });
+      var pf = h.getPortfolio();
+      pf.positions[0].buyDate = coerced;
+      h.setPortfolio(pf);
+      return h.getPortfolio().positions[0].buyDate;
+    }
+    h.setPortfolio({
+      positions: [{
+        ticker: 'SBERP',
+        qty: 1,
+        avgPrice: 180,
+        buyDate: coerced,
+        lotId: 'ADD1'
+      }],
+      sales: [],
+      cashFlows: []
+    });
+    return h.getPortfolio().positions[0].buyDate;
+  }
+
+  assert(saveViaNormalize('', false) === '', 'form empty date → ""');
+  assert(saveViaNormalize('2026-08-32', false) === '', 'form 32 Aug → ""');
+  assert(saveViaNormalize('2026-7-1', false) === '2026-07-01', 'form without leading zero → padded');
+  assert(saveViaNormalize('20012-07-1', false) === '', 'form weird 20012-07-1 → ""');
+  assert(saveViaNormalize('Invalid Date', false) === '', 'form Invalid Date → ""');
+  assert(saveViaNormalize('не дата', false) === '', 'form garbage → ""');
+  assert(saveViaNormalize('2026-07-02', false) === '2026-07-02', 'form valid kept');
+
+  assert(saveViaNormalize('', true) === '', 'edit empty → ""');
+  assert(saveViaNormalize('20012-07-1', true) === '', 'edit weird → ""');
+  assert(saveViaNormalize('2026-07-02', true) === '2026-07-02', 'edit valid kept');
+
+  const storedAdd = JSON.parse(h.store[h.KEYS.portfolio]);
+  assert(storedAdd.positions[0].buyDate === '2026-07-02', 'persisted edit valid');
+  assert(storedAdd.positions[0].buyDate !== '20012-07-1', 'never persist 20012-07-1');
+  assert(storedAdd.positions[0].buyDate !== 'Invalid Date', 'never persist Invalid Date');
 }
 
 if (errors.length) {

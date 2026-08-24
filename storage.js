@@ -246,7 +246,7 @@
 
   /**
    * Дата портфеля → YYYY-MM-DD или "" (нет / битая / "Invalid Date").
-   * Не пишет в storage строку "Invalid Date"; для as-of позже: пустая = даты нет.
+   * Не пишет "Invalid Date" / "20012-07-1"; год 1900–2100; 32.08 → "".
    */
   function normalizePortfolioDate(value) {
     if (value == null) return '';
@@ -254,29 +254,23 @@
     if (!s) return '';
     if (/^invalid\b/i.test(s) || s === 'Invalid Date') return '';
 
-    var ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (ymd) {
-      var y = Number(ymd[1]);
-      var mo = Number(ymd[2]);
-      var d = Number(ymd[3]);
+    function fromParts(y, mo, d) {
       if (!isFinite(y) || !isFinite(mo) || !isFinite(d)) return '';
+      if (y < 1900 || y > 2100) return '';
+      if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
       var dt = new Date(Date.UTC(y, mo - 1, d));
       if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
-      return ymd[1] + '-' + ymd[2] + '-' + ymd[3];
+      return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
     }
+
+    // 2026-07-02 или 2026-7-1 → YYYY-MM-DD; 20012-07-1 не матчится (год ≠ 4 цифры до дефиса целиком)
+    var ymd = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (ymd) return fromParts(Number(ymd[1]), Number(ymd[2]), Number(ymd[3]));
 
     var dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-    if (dmy) {
-      var d2 = Number(dmy[1]);
-      var mo2 = Number(dmy[2]);
-      var y2 = Number(dmy[3]);
-      var dt2 = new Date(Date.UTC(y2, mo2 - 1, d2));
-      if (dt2.getUTCFullYear() !== y2 || dt2.getUTCMonth() !== mo2 - 1 || dt2.getUTCDate() !== d2) return '';
-      return y2 + '-' + String(mo2).padStart(2, '0') + '-' + String(d2).padStart(2, '0');
-    }
+    if (dmy) return fromParts(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]));
 
-    // Не парсим произвольный мусор через Date.parse — только явный ISO с временем
-    var isoTime = s.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+    var isoTime = s.match(/^(\d{4}-\d{1,2}-\d{1,2})[T\s]/);
     if (isoTime) return normalizePortfolioDate(isoTime[1]);
     return '';
   }

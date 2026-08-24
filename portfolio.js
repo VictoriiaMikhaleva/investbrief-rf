@@ -1038,11 +1038,15 @@
 
   function capturePortfolioFormInput(primaryPrefix) {
     var f = readPortfolioFormMerged(primaryPrefix);
+    var rawDate = String(f.buyDate || '').trim();
+    var buyDate = typeof normalizePortfolioDate === 'function'
+      ? normalizePortfolioDate(rawDate)
+      : '';
     return {
       ticker: f.ticker,
       qty: isFinite(f.qty) ? f.qty : null,
       avg: isFinite(f.avg) ? f.avg : null,
-      buyDate: String(f.buyDate || '').trim(),
+      buyDate: buyDate,
       comment: f.comment
     };
   }
@@ -1110,7 +1114,7 @@
     var avg = captured.avg;
     var buyDate = typeof normalizePortfolioDate === 'function'
       ? normalizePortfolioDate(captured.buyDate)
-      : String(captured.buyDate || '').trim();
+      : '';
     var comment = captured.comment;
     var hasQty = qty != null && isFinite(qty) && qty > 0;
     var hasAvg = avg != null && isFinite(avg) && avg > 0;
@@ -1656,10 +1660,14 @@
   function capturePortfolioSaleInput() {
     var qty = parseFloat(String((document.getElementById('pfSaleQty') || {}).value || '').replace(',', '.'));
     var price = parseFloat(String((document.getElementById('pfSalePrice') || {}).value || '').replace(',', '.'));
+    var rawDate = String((document.getElementById('pfSaleDate') || {}).value || '').trim();
+    var date = typeof normalizePortfolioDate === 'function'
+      ? normalizePortfolioDate(rawDate)
+      : '';
     return {
       qty: isFinite(qty) ? qty : null,
       price: isFinite(price) ? price : null,
-      date: String((document.getElementById('pfSaleDate') || {}).value || '').trim(),
+      date: date,
       comment: String((document.getElementById('pfSaleComment') || {}).value || '').trim()
     };
   }
