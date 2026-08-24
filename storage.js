@@ -205,7 +205,71 @@
     return 'SALE_' + t + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
   }
 
+  function newPortfolioCashFlowId() {
+    return 'CF_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+  }
 
+  function optionalNonNegNumber(value) {
+    var n = parseFloat(value);
+    if (!isFinite(n) || n < 0) return null;
+    return n;
+  }
+
+  function optionalPositiveNumber(value) {
+    var n = parseFloat(value);
+    if (!isFinite(n) || n <= 0) return null;
+    return n;
+  }
+
+  function optionalSource(value) {
+    var s = String(value == null ? '' : value).trim();
+    return s ? s.slice(0, 64) : '';
+  }
+
+  function normalizeCashFlow(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    var type = String(raw.type || '').trim().toLowerCase();
+    if (type !== 'deposit' && type !== 'withdraw') return null;
+    var amount = parseFloat(raw.amount);
+    if (!isFinite(amount) || amount <= 0) return null;
+    var currency = String(raw.currency || 'RUB').trim().toUpperCase() || 'RUB';
+    if (currency.length > 8) currency = currency.slice(0, 8);
+    return {
+      id: raw.id ? String(raw.id).slice(0, 80) : newPortfolioCashFlowId(),
+      type: type,
+      amount: amount,
+      currency: currency,
+      date: raw.date ? String(raw.date).slice(0, 10) : '',
+      comment: String(raw.comment || '').trim().slice(0, 500)
+    };
+  }
+
+  /**
+   * Мягкая нормализация портфеля (волна 0).
+   * Не пересчитывает цены, не объединяет лоты, не меняет смысл qty/avgPrice.
+   */
+  function normalizePortfolio(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return { positions: [], sales: [], cashFlows: [], schemaVersion: 1 };
+    }
+    var positions = Array.isArray(raw.positions)
+      ? raw.positions.map(normalizePosition).filter(Boolean)
+      : [];
+    var sales = Array.isArray(raw.sales)
+      ? raw.sales.map(normalizeSale).filter(Boolean)
+      : [];
+    var cashFlows = Array.isArray(raw.cashFlows)
+      ? raw.cashFlows.map(normalizeCashFlow).filter(Boolean)
+      : [];
+    var schemaVersion = Number(raw.schemaVersion);
+    if (!isFinite(schemaVersion) || schemaVersion < 1) schemaVersion = 1;
+    return {
+      positions: positions,
+      sales: sales,
+      cashFlows: cashFlows,
+      schemaVersion: Math.floor(schemaVersion)
+    };
+  }
 
   function normalizeSale(raw) {
     if (!raw || !raw.ticker) return null;
@@ -250,10 +314,12 @@
       currency: mk.currency
     };
     if (allocations.length) out.allocations = allocations;
+    var fee = optionalNonNegNumber(raw.fee);
+    if (fee != null) out.fee = fee;
+    var source = optionalSource(raw.source);
+    if (source) out.source = source;
     return out;
   }
-
-
 
   function normalizePosition(raw) {
     if (!raw || !raw.ticker) return null;
@@ -285,6 +351,12 @@
     };
     var dayChg = parseFloat(raw.dayChangePct);
     if (isFinite(dayChg)) out.dayChangePct = dayChg;
+    var fee = optionalNonNegNumber(raw.fee);
+    if (fee != null) out.fee = fee;
+    var faceValue = optionalPositiveNumber(raw.faceValue);
+    if (faceValue != null) out.faceValue = faceValue;
+    var source = optionalSource(raw.source);
+    if (source) out.source = source;
     return out;
   }
 
@@ -523,34 +595,27 @@
   function getPortfolio() {
     var p = loadJSON(KEYS.portfolio, null);
     if (!p || !Array.isArray(p.positions)) {
-      return { positions: [], sales: [] };
+      return { positions: [], sales: [], cashFlows: [], schemaVersion: 1 };
     }
     var needsPersist = false;
-    p.positions = p.positions.map(function (raw) {
+    (p.positions || []).forEach(function (raw) {
       if (raw && !raw.lotId) needsPersist = true;
-      return normalizePosition(raw);
-    }).filter(Boolean);
-    p.sales = (p.sales || []).map(normalizeSale).filter(Boolean);
+    });
+    var normalized = normalizePortfolio(p);
     if (needsPersist) {
-      saveJSON(KEYS.portfolio, p);
+      saveJSON(KEYS.portfolio, normalized);
     }
-    return p;
+    return normalized;
   }
 
-
-
   function setPortfolio(p) {
-    if (p && Array.isArray(p.positions)) {
-      p.positions = p.positions.map(normalizePosition).filter(function (pos) {
-        if (!pos) return false;
-        var q = Number(pos.qty);
-        return isFinite(q) && q > 1e-9;
-      });
-    }
-    if (p) {
-      p.sales = (p.sales || []).map(normalizeSale).filter(Boolean);
-    }
-    if (!saveJSON(KEYS.portfolio, p)) {
+    var normalized = normalizePortfolio(p || {});
+    normalized.positions = normalized.positions.filter(function (pos) {
+      if (!pos) return false;
+      var q = Number(pos.qty);
+      return isFinite(q) && q > 1e-9;
+    });
+    if (!saveJSON(KEYS.portfolio, normalized)) {
       var err = new Error('storage_quota');
       err.code = 'storage_quota';
       throw err;
@@ -630,6 +695,25 @@
       showToast('Не удалось загрузить файл. Проверьте, что это резервная копия ИнвестБрифа.');
       return;
     }
+
+    var portfolioNorm = null;
+    if (data.portfolio != null) {
+      try {
+        if (typeof data.portfolio !== 'object' || Array.isArray(data.portfolio)) {
+          throw new Error('invalid_portfolio');
+        }
+        portfolioNorm = normalizePortfolio(data.portfolio);
+        portfolioNorm.positions = portfolioNorm.positions.filter(function (pos) {
+          if (!pos) return false;
+          var q = Number(pos.qty);
+          return isFinite(q) && q > 1e-9;
+        });
+      } catch (e) {
+        showToast('Не удалось прочитать портфель в резервной копии. Текущие данные не изменены.');
+        return;
+      }
+    }
+
     if (data.profile) saveJSON(KEYS.profile, data.profile);
     if (data.watchlist) {
       var wl = data.watchlist;
@@ -649,7 +733,7 @@
     if (data.alerts) saveJSON(KEYS.alerts, data.alerts);
     if (data.digest) saveJSON(KEYS.digest, normalizeDigest(data.digest));
     if (data.consents) saveJSON(KEYS.consents, data.consents);
-    if (data.portfolio) saveJSON(KEYS.portfolio, data.portfolio);
+    if (portfolioNorm) saveJSON(KEYS.portfolio, portfolioNorm);
     if (data.filters) saveJSON(KEYS.filters, data.filters);
     if (data.marketTiles) saveJSON(KEYS.marketTiles, data.marketTiles);
     if (data.tickerNames) saveJSON(KEYS.tickerNames, data.tickerNames);
@@ -669,4 +753,10 @@
     if (typeof scheduleFirebaseSave === 'function') scheduleFirebaseSave();
   }
 
+  if (typeof window !== 'undefined') {
+    window.normalizePortfolio = normalizePortfolio;
+    window.normalizePosition = normalizePosition;
+    window.normalizeSale = normalizeSale;
+    window.normalizeCashFlow = normalizeCashFlow;
+  }
 
