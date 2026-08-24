@@ -524,52 +524,74 @@ input:focus, select:focus, textarea:focus {
   margin: 0 auto;
   width: 100%;
   max-width: 1080px;
-  flex: 0 0 100%;
-  padding: 0.75rem 2.5rem 1.1rem;
-  border-top: 1px solid rgba(23, 34, 51, 0.14);
+  flex: 0 0 auto;
+  align-self: stretch;
+  box-sizing: border-box;
+  padding: 0.55rem 1.5rem 0.7rem;
+  border: none;
+  border-top: 1px solid rgba(23, 34, 51, 0.1);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--text-muted);
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 0.72rem;
+  line-height: 1.4;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.28rem;
 }
 
 .app-footer-brand {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.35rem 0.6rem;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+  font-size: 0.72rem;
 }
 
 .app-footer-disclaimer,
 .app-footer-sources {
   margin: 0;
-  max-width: 46rem;
-  font-size: 0.74rem;
-  line-height: 1.45;
+  max-width: 40rem;
+  font-size: 0.68rem;
+  line-height: 1.4;
   color: var(--text-muted);
+  opacity: 0.92;
 }
 
 .app-footer-links {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.35rem 0.85rem;
-  font-size: 0.78rem;
+  gap: 0.15rem 0.75rem;
+  font-size: 0.72rem;
+  margin-top: 0.05rem;
 }
 
 .app-footer a {
-  color: var(--accent);
-  font-weight: 600;
+  color: color-mix(in srgb, var(--accent) 72%, var(--text-muted) 28%);
+  font-weight: 500;
   text-decoration: none;
 }
 
 .app-footer a:hover {
   color: var(--accent-hover);
   text-decoration: underline;
+}
+
+.legal-footer-wrap {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0.35rem 1.25rem 1.1rem;
+}
+
+.legal-footer-wrap .app-footer {
+  max-width: none;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .settings-about-legal {
@@ -622,8 +644,13 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 899px) {
   .app-footer {
     display: flex;
-    padding: 0.75rem 1rem 5.75rem;
-    font-size: 0.72rem;
+    padding: 0.5rem 1rem 5.4rem;
+    font-size: 0.7rem;
+  }
+
+  .app-footer-disclaimer,
+  .app-footer-sources {
+    font-size: 0.66rem;
   }
 
   .cookie-notice {
