@@ -782,6 +782,132 @@
     };
   }
 
+  /** UI-настройки портфеля (не часть portfolio JSON). */
+  var PF_UI_STORAGE_KEY = 'ibrf.portfolioUi.v1';
+
+  function getPortfolioUiSettings() {
+    try {
+      var raw = typeof localStorage !== 'undefined' ? localStorage.getItem(PF_UI_STORAGE_KEY) : null;
+      if (!raw) return { hiddenClosedTickers: [] };
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { hiddenClosedTickers: [] };
+      }
+      var list = Array.isArray(parsed.hiddenClosedTickers) ? parsed.hiddenClosedTickers : [];
+      var seen = {};
+      var cleaned = [];
+      list.forEach(function (t) {
+        var n = typeof normalizeTicker === 'function'
+          ? normalizeTicker(t)
+          : String(t || '').trim().toUpperCase();
+        if (!n || seen[n]) return;
+        seen[n] = true;
+        cleaned.push(n);
+      });
+      return { hiddenClosedTickers: cleaned };
+    } catch (e) {
+      return { hiddenClosedTickers: [] };
+    }
+  }
+
+  function setPortfolioUiSettings(next) {
+    var ui = getPortfolioUiSettings();
+    if (next && typeof next === 'object') {
+      if (Array.isArray(next.hiddenClosedTickers)) {
+        ui.hiddenClosedTickers = next.hiddenClosedTickers;
+      }
+    }
+    var seen = {};
+    ui.hiddenClosedTickers = (ui.hiddenClosedTickers || []).map(function (t) {
+      return typeof normalizeTicker === 'function'
+        ? normalizeTicker(t)
+        : String(t || '').trim().toUpperCase();
+    }).filter(function (t) {
+      if (!t || seen[t]) return false;
+      seen[t] = true;
+      return true;
+    });
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(PF_UI_STORAGE_KEY, JSON.stringify({
+          hiddenClosedTickers: ui.hiddenClosedTickers
+        }));
+      }
+    } catch (e) { /* quota / private mode */ }
+    return ui;
+  }
+
+  function hideClosedPortfolioTicker(ticker) {
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (!ticker) return getPortfolioUiSettings();
+    var ui = getPortfolioUiSettings();
+    if (ui.hiddenClosedTickers.indexOf(ticker) === -1) {
+      ui.hiddenClosedTickers.push(ticker);
+      setPortfolioUiSettings(ui);
+    }
+    return getPortfolioUiSettings();
+  }
+
+  function restoreClosedPortfolioTicker(ticker) {
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (!ticker) return getPortfolioUiSettings();
+    var ui = getPortfolioUiSettings();
+    ui.hiddenClosedTickers = ui.hiddenClosedTickers.filter(function (t) { return t !== ticker; });
+    return setPortfolioUiSettings(ui);
+  }
+
+  function isClosedPortfolioTickerHidden(ticker) {
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    return getPortfolioUiSettings().hiddenClosedTickers.indexOf(ticker) !== -1;
+  }
+
+  /**
+   * Закрытые позиции: openQty = 0 и есть sales[] по тикеру.
+   * Расчёты только через summarizeTickerHistory (без дублирования PnL).
+   */
+  function listClosedPortfolioPositions(positions, sales, bondMetaMap) {
+    bondMetaMap = bondMetaMap || {};
+    sales = sales || [];
+    var tickers = {};
+    sales.forEach(function (s) {
+      var t = typeof normalizeTicker === 'function'
+        ? normalizeTicker(s.ticker)
+        : String(s.ticker || '').trim().toUpperCase();
+      if (t) tickers[t] = true;
+    });
+    var out = [];
+    Object.keys(tickers).forEach(function (t) {
+      var hist = summarizeTickerHistory(t, positions, sales, bondMetaMap[t] || null);
+      if (hist.openQty > 1e-9) return;
+      if (!hist.sales.length) return;
+      var lastSaleDate = '';
+      hist.sales.forEach(function (s) {
+        var d = s && s.saleDate ? String(s.saleDate).slice(0, 10) : '';
+        if (d && d > lastSaleDate) lastSaleDate = d;
+      });
+      out.push({
+        ticker: t,
+        hist: hist,
+        lastSaleDate: lastSaleDate,
+        isBond: isPortfolioBondPosition({ ticker: t }),
+        hidden: isClosedPortfolioTickerHidden(t)
+      });
+    });
+    out.sort(function (a, b) {
+      if (a.lastSaleDate !== b.lastSaleDate) {
+        return a.lastSaleDate < b.lastSaleDate ? 1 : -1;
+      }
+      return a.ticker.localeCompare(b.ticker);
+    });
+    return out;
+  }
+
 
 
   function findPortfolioLots(ticker, positions) {
@@ -2209,6 +2335,38 @@
       renderPortfolioTableBody();
       return;
     }
+    var hideClosedBtn = e.target.closest('[data-pf-hide-closed]');
+    if (hideClosedBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      hideClosedPortfolioTicker(hideClosedBtn.getAttribute('data-pf-hide-closed'));
+      renderPortfolioTableBody();
+      return;
+    }
+    var restoreClosedBtn = e.target.closest('[data-pf-restore-closed]');
+    if (restoreClosedBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      restoreClosedPortfolioTicker(restoreClosedBtn.getAttribute('data-pf-restore-closed'));
+      renderPortfolioTableBody();
+      return;
+    }
+    var showHiddenClosedBtn = e.target.closest('[data-pf-show-hidden-closed]');
+    if (showHiddenClosedBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      state.pfShowHiddenClosed = true;
+      renderPortfolioTableBody();
+      return;
+    }
+    var collapseHiddenClosedBtn = e.target.closest('[data-pf-collapse-hidden-closed]');
+    if (collapseHiddenClosedBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      state.pfShowHiddenClosed = false;
+      renderPortfolioTableBody();
+      return;
+    }
     var expandBtn = e.target.closest('[data-pf-expand-lots]');
     if (expandBtn) {
       e.preventDefault();
@@ -2275,6 +2433,8 @@
     if (e.target.closest('.pf-ticker-detail-row')) return;
     if (e.target.closest('.portfolio-card-detail')) return;
     if (e.target.closest('.portfolio-card-actions')) return;
+    if (e.target.closest('.portfolio-closed-card-actions')) return;
+    if (e.target.closest('.portfolio-closed-card-detail')) return;
     var card = e.target.closest('.portfolio-card[data-chart-ticker]');
     if (card) {
       if (state.tab === 'watchlist') switchTab('portfolio');
@@ -2698,19 +2858,10 @@
   function buildPortfolioSectionRows(positions, sectionKind, bondMetaMap, sales) {
     bondMetaMap = bondMetaMap || {};
     sales = sales || [];
+    // Только открытые лоты (qty > 0). Полностью проданные — в блоке «Закрытые позиции».
     var groups = groupPortfolioLotsForTable(positions, sectionKind);
-    var tickerInSection = {};
-    groups.forEach(function (g) { tickerInSection[g.ticker] = true; });
-    sales.forEach(function (s) {
-      var t = normalizeTicker(s.ticker);
-      if (tickerInSection[t]) return;
-      var isBond = isPortfolioBondPosition({ ticker: t });
-      if (sectionKind === 'bonds' ? !isBond : isBond) return;
-      groups.push({ ticker: t, lots: [], salesOnly: true });
-      tickerInSection[t] = true;
-    });
     if (!groups.length) {
-      return '<tr class="pf-section-empty"><td colspan="' + PF_TABLE_COLS + '" class="muted">Нет позиций</td></tr>';
+      return '<tr class="pf-section-empty"><td colspan="' + PF_TABLE_COLS + '" class="muted">Нет открытых позиций</td></tr>';
     }
     var isBond = sectionKind === 'bonds';
     var sleeveTotal = 0;
@@ -2735,24 +2886,17 @@
       var hiddenCount = collapsible && !expanded ? lots.length - visibleLots.length : 0;
       var visibleRowSpan = visibleLots.length || 1;
 
-      if (lots.length) {
-        visibleLots.forEach(function (p, idx) {
-          html += buildPortfolioLotRow(p, group, {
-            isBond: isBond,
-            bondMetaMap: bondMetaMap,
-            sleeveTotal: sleeveTotal,
-            lotIndex: idx,
-            rowSpan: visibleRowSpan,
-            incomeRowSpan: visibleRowSpan,
-            showIncome: idx === 0
-          });
+      visibleLots.forEach(function (p, idx) {
+        html += buildPortfolioLotRow(p, group, {
+          isBond: isBond,
+          bondMetaMap: bondMetaMap,
+          sleeveTotal: sleeveTotal,
+          lotIndex: idx,
+          rowSpan: visibleRowSpan,
+          incomeRowSpan: visibleRowSpan,
+          showIncome: idx === 0
         });
-      } else if (group.salesOnly) {
-        html += '<tr class="pf-table-row pf-sales-only-head pf-closed-row" data-chart-ticker="' + escapeHtml(group.ticker) + '">' +
-          '<td class="ticker">' + escapeHtml(group.ticker) + '</td>' +
-          '<td colspan="' + (PF_TABLE_COLS - 2) + '" class="pf-closed-label muted">все продано · история в «Подробнее»</td>' +
-          '<td class="pf-row-actions">' + buildPortfolioHistoryToggleBtn(group.ticker) + '</td></tr>';
-      }
+      });
 
       tickerSales.forEach(function (sale) {
         html += buildPortfolioSaleRow(sale, group, {
@@ -2788,25 +2932,119 @@
 
   function buildPortfolioTableHtml(positions, bondMetaMap, sales) {
     sales = sales || [];
-    var hasLots = positions && positions.length;
-    var hasSales = sales.length > 0;
-    if (!hasLots && !hasSales) {
-      return '<tr><td colspan="' + PF_TABLE_COLS + '" class="muted">Портфель пуст — добавьте позицию выше</td></tr>';
+    var openStocks = groupPortfolioLotsForTable(positions, 'stocks');
+    var openBonds = groupPortfolioLotsForTable(positions, 'bonds');
+    if (!openStocks.length && !openBonds.length) {
+      var hasAnyData = (positions && positions.length) || sales.length;
+      return '<tr><td colspan="' + PF_TABLE_COLS + '" class="muted">' +
+        (hasAnyData
+          ? 'Нет открытых позиций — закрытые бумаги ниже'
+          : 'Портфель пуст — добавьте позицию выше') +
+        '</td></tr>';
     }
-    var stocks = (positions || []).filter(function (p) { return !isPortfolioBondPosition(p); });
-    var bonds = (positions || []).filter(isPortfolioBondPosition);
-    var stockSales = sales.filter(function (s) { return !isPortfolioBondPosition({ ticker: s.ticker }); });
-    var bondSales = sales.filter(function (s) { return isPortfolioBondPosition({ ticker: s.ticker }); });
     var html = '';
-    if (stocks.length || stockSales.length) {
+    if (openStocks.length) {
       html += '<tr class="pf-section-head"><th colspan="' + PF_TABLE_COLS + '">Акции · доля внутри класса</th></tr>';
       html += buildPortfolioSectionRows(positions, 'stocks', bondMetaMap, sales);
     }
-    if (bonds.length || bondSales.length) {
+    if (openBonds.length) {
       html += '<tr class="pf-section-head"><th colspan="' + PF_TABLE_COLS + '">Облигации (ОФЗ) · доля внутри класса</th></tr>';
       html += buildPortfolioSectionRows(positions, 'bonds', bondMetaMap, sales);
     }
     return html;
+  }
+
+  function buildPortfolioClosedCardHtml(item, positions, sales, bondMeta) {
+    var ticker = item.ticker;
+    var hist = item.hist;
+    var isBond = !!item.isBond;
+    var open = !!(state.pfHistoryTickers && state.pfHistoryTickers[ticker]);
+    var rCls = hist.realizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
+    var lastLbl = formatPortfolioSaleDate({ saleDate: item.lastSaleDate });
+    var actions = '<div class="portfolio-closed-card-actions pf-row-actions">' +
+      buildPortfolioHistoryToggleBtn(ticker) + ' ';
+    if (item.hidden) {
+      actions += '<button type="button" class="ghost small pf-btn pf-btn-restore-closed" data-pf-restore-closed="' +
+        escapeHtml(ticker) + '">Вернуть в список</button>';
+    } else {
+      actions += '<button type="button" class="ghost small pf-btn pf-btn-hide-closed" data-pf-hide-closed="' +
+        escapeHtml(ticker) + '">Скрыть из списка</button>';
+    }
+    actions += '</div>';
+    var detail = open
+      ? '<div class="portfolio-closed-card-detail portfolio-card-detail">' +
+          buildPortfolioTickerDetailHtml(ticker, positions, sales, bondMeta, isBond, { layout: 'stack' }) +
+        '</div>'
+      : '';
+    return '<div class="portfolio-closed-card' + (open ? ' portfolio-closed-card--open' : '') +
+      (item.hidden ? ' portfolio-closed-card--hidden' : '') +
+      '" data-pf-closed-ticker="' + escapeHtml(ticker) + '">' +
+      '<div class="ticker">' + escapeHtml(ticker) +
+        (item.hidden ? ' <span class="pf-closed-hidden-badge muted">скрыто</span>' : '') +
+      '</div>' +
+      '<div class="grid portfolio-closed-card-grid">' +
+        '<span>Продано всего</span><span>' + escapeHtml(String(hist.totalSoldQty)) + ' шт.</span>' +
+        '<span>Зафиксированный результат</span>' +
+          '<span class="' + rCls + '">' + escapeHtml(formatSignedRubAmount(hist.realizedPnlRub)) + '</span>' +
+        '<span>Последняя продажа</span><span>' + escapeHtml(lastLbl) + '</span>' +
+      '</div>' +
+      actions +
+      detail +
+      '</div>';
+  }
+
+  function buildPortfolioClosedSectionHtml(closedItems, positions, sales, bondMetaMap) {
+    closedItems = closedItems || [];
+    if (!closedItems.length) return '';
+    bondMetaMap = bondMetaMap || {};
+    var showHidden = !!state.pfShowHiddenClosed;
+    var hiddenCount = 0;
+    closedItems.forEach(function (c) { if (c.hidden) hiddenCount += 1; });
+    var visible = closedItems.filter(function (c) {
+      return showHidden ? true : !c.hidden;
+    });
+
+    var html = '<div class="portfolio-closed-head">' +
+      '<h3 class="portfolio-closed-title">Закрытые позиции</h3>' +
+      '<p class="muted portfolio-closed-desc">Бумаги, по которым весь остаток продан. История сделок сохраняется.</p>' +
+      '</div>';
+
+    if (hiddenCount > 0 && !showHidden) {
+      html += '<div class="portfolio-closed-toolbar">' +
+        '<button type="button" class="ghost small pf-btn pf-show-hidden-closed" data-pf-show-hidden-closed>' +
+        'Показать скрытые закрытые позиции' +
+        (hiddenCount > 1 ? ' (' + hiddenCount + ')' : '') +
+        '</button></div>';
+    } else if (hiddenCount > 0 && showHidden) {
+      html += '<div class="portfolio-closed-toolbar">' +
+        '<button type="button" class="ghost small pf-btn" data-pf-collapse-hidden-closed>' +
+        'Скрыть скрытые закрытые позиции</button></div>';
+    }
+
+    if (!visible.length) {
+      html += '<p class="muted portfolio-closed-empty">Все закрытые позиции скрыты из списка.</p>';
+      return html;
+    }
+
+    html += '<div class="portfolio-closed-list">';
+    visible.forEach(function (item) {
+      html += buildPortfolioClosedCardHtml(item, positions, sales, bondMetaMap[item.ticker] || null);
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderPortfolioClosedPositions(positions, sales, bondMetaMap) {
+    var section = document.getElementById('portfolioClosedSection');
+    if (!section) return;
+    var closedItems = listClosedPortfolioPositions(positions, sales, bondMetaMap);
+    if (!closedItems.length) {
+      section.hidden = true;
+      section.innerHTML = '';
+      return;
+    }
+    section.hidden = false;
+    section.innerHTML = buildPortfolioClosedSectionHtml(closedItems, positions, sales, bondMetaMap);
   }
 
   function buildPortfolioTableRows(positions) {
@@ -2829,11 +3067,21 @@
       renderPortfolioSummary([], {}, { paid12m: 0, forecast12m: 0 }, []);
       var cardsEmpty = document.getElementById('portfolioCards');
       if (cardsEmpty) cardsEmpty.innerHTML = '';
+      renderPortfolioClosedPositions([], [], {});
       return;
     }
 
+    renderPortfolioClosedPositions(positions, sales, {});
+
+    var closedSeed = listClosedPortfolioPositions(positions, sales, {});
+    var bondMetaSeed = (positions || []).slice();
+    closedSeed.forEach(function (c) {
+      if (!c.isBond) return;
+      bondMetaSeed.push({ ticker: c.ticker, qty: 0 });
+    });
+
     Promise.all([
-      loadPortfolioBondMetaMap(positions),
+      loadPortfolioBondMetaMap(bondMetaSeed),
       loadPortfolioIncomeTotals(positions)
     ]).then(function (parts) {
       if (renderId !== state.pfTableRenderId) return;
@@ -2847,6 +3095,7 @@
         if (tbody) tbody.innerHTML = html;
       });
       renderPortfolioSummary(positions, bondMetaMap, incomeTotals, sales);
+      renderPortfolioClosedPositions(positions, sales, bondMetaMap);
 
       var stockTotal = 0;
       var bondTotal = 0;
@@ -2869,6 +3118,7 @@
             var q = Number(lot.qty);
             return sum + (isFinite(q) && q > 0 ? q : 0);
           }, 0);
+          if (aggQty <= 1e-9) return;
           fetchFn(t, aggQty).then(function (cellHtml) {
             document.querySelectorAll('[data-pf-div-cell="' + t + '"]').forEach(function (cell) {
               cell.innerHTML = cellHtml;
@@ -2879,7 +3129,10 @@
 
       var cards = document.getElementById('portfolioCards');
       if (!cards) return;
-      var paperPositions = getPortfolioPaperPositions();
+      var paperPositions = getPortfolioPaperPositions().filter(function (p) {
+        var q = Number(p.qty);
+        return isFinite(q) && q > 1e-9;
+      });
       cards.innerHTML = paperPositions.map(function (p) {
         var isBond = isPortfolioBondPosition(p);
         var bondMeta = bondMetaMap[p.ticker] || null;

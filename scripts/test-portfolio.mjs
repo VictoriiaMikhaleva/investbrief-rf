@@ -254,6 +254,7 @@ const h = loadStorageHelpers();
 
 function loadPortfolioCalcHelpers() {
   const code = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const memStore = Object.create(null);
   const sandbox = {
     console,
     Date,
@@ -284,7 +285,14 @@ function loadPortfolioCalcHelpers() {
     state: {},
     Promise,
     setTimeout: () => {},
-    clearTimeout: () => {}
+    clearTimeout: () => {},
+    localStorage: {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(memStore, k) ? memStore[k] : null),
+      setItem: (k, v) => { memStore[k] = String(v); },
+      removeItem: (k) => { delete memStore[k]; },
+      clear: () => { Object.keys(memStore).forEach((k) => { delete memStore[k]; }); }
+    },
+    __memStore: memStore
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
@@ -303,7 +311,12 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__ofzWarn = shouldWarnOfzAvgLooksLikeRubles;' +
       '\nthis.__isFormBond = isPortfolioFormBondTicker;' +
       '\nthis.__summarize = summarizeTickerHistory;' +
-      '\nthis.__allocPnl = getSaleAllocationPnlRub;',
+      '\nthis.__allocPnl = getSaleAllocationPnlRub;' +
+      '\nthis.__listClosed = listClosedPortfolioPositions;' +
+      '\nthis.__getUi = getPortfolioUiSettings;' +
+      '\nthis.__setUi = setPortfolioUiSettings;' +
+      '\nthis.__hideClosed = hideClosedPortfolioTicker;' +
+      '\nthis.__restoreClosed = restoreClosedPortfolioTicker;',
     sandbox,
     { timeout: 5000 }
   );
@@ -321,7 +334,14 @@ function loadPortfolioCalcHelpers() {
     shouldWarnOfzAvgLooksLikeRubles: sandbox.__ofzWarn,
     isPortfolioFormBondTicker: sandbox.__isFormBond,
     summarizeTickerHistory: sandbox.__summarize,
-    getSaleAllocationPnlRub: sandbox.__allocPnl
+    getSaleAllocationPnlRub: sandbox.__allocPnl,
+    listClosedPortfolioPositions: sandbox.__listClosed,
+    getPortfolioUiSettings: sandbox.__getUi,
+    setPortfolioUiSettings: sandbox.__setUi,
+    hideClosedPortfolioTicker: sandbox.__hideClosed,
+    restoreClosedPortfolioTicker: sandbox.__restoreClosed,
+    localStorage: sandbox.localStorage,
+    memStore: memStore
   };
 }
 
@@ -833,9 +853,52 @@ const calc = loadPortfolioCalcHelpers();
   assert(Math.abs(ofzAlloc - 150) < 1e-6, 'OFZ alloc pnl 150₽ not 15₽');
 }
 
+{
+  // Волна 2.5: закрытые позиции + portfolioUi
+  const openPos = [{ ticker: 'SBER', qty: 10, avgPrice: 250, currentPrice: 280 }];
+  const openSales = [{ ticker: 'SBER', qty: 2, buyPrice: 240, salePrice: 270, saleDate: '2024-01-10' }];
+  const openClosed = calc.listClosedPortfolioPositions(openPos, openSales, {});
+  assert(openClosed.length === 0, 'openQty>0 not in closed');
+
+  const closedSales = [{
+    ticker: 'GAZP',
+    qty: 5,
+    buyPrice: 140,
+    salePrice: 160,
+    saleDate: '2024-06-01',
+    saleId: 's1'
+  }];
+  const closedList = calc.listClosedPortfolioPositions([], closedSales, {});
+  assert(closedList.length === 1 && closedList[0].ticker === 'GAZP', 'openQty=0 + sales → closed');
+  const hist = calc.summarizeTickerHistory('GAZP', [], closedSales);
+  const viaSale = calc.getSaleRealizedPnl(closedSales[0]).amount;
+  assert(Math.abs(closedList[0].hist.realizedPnlRub - hist.realizedPnlRub) < 1e-9, 'closed realized from summarize');
+  assert(Math.abs(closedList[0].hist.realizedPnlRub - viaSale) < 1e-9, 'closed realized via getSaleRealizedPnl');
+  assert(closedList[0].lastSaleDate === '2024-06-01', 'lastSaleDate from sales');
+
+  const salesCopy = JSON.parse(JSON.stringify(closedSales));
+  calc.localStorage.clear();
+  calc.hideClosedPortfolioTicker('GAZP');
+  assert(JSON.stringify(closedSales) === JSON.stringify(salesCopy), 'hide closed does not mutate sales[]');
+  const ui = calc.getPortfolioUiSettings();
+  assert(ui.hiddenClosedTickers.indexOf('GAZP') !== -1, 'GAZP in hiddenClosedTickers');
+  const afterHide = calc.listClosedPortfolioPositions([], closedSales, {});
+  assert(afterHide[0].hidden === true, 'closed item marked hidden');
+  calc.restoreClosedPortfolioTicker('gazp');
+  assert(calc.getPortfolioUiSettings().hiddenClosedTickers.indexOf('GAZP') === -1, 'restore removes from UI list');
+
+  calc.localStorage.setItem('ibrf.portfolioUi.v1', '{not-json');
+  const broken = calc.getPortfolioUiSettings();
+  assert(Array.isArray(broken.hiddenClosedTickers) && broken.hiddenClosedTickers.length === 0, 'broken ui → empty');
+  assert(calc.listClosedPortfolioPositions([], closedSales, {}).length === 1, 'broken ui does not break closed list');
+
+  calc.localStorage.setItem('ibrf.portfolioUi.v1', JSON.stringify({ hiddenClosedTickers: 'bad' }));
+  assert(calc.getPortfolioUiSettings().hiddenClosedTickers.length === 0, 'bad shape → empty hidden');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2 history');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5 history');
