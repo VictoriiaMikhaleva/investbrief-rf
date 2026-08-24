@@ -300,7 +300,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__totalRealized = getTotalRealizedPnl;' +
       '\nthis.__today = localPortfolioTodayYmd;' +
       '\nthis.__prefill = computePortfolioNewLotPrefill;' +
-      '\nthis.__ofzWarn = shouldWarnOfzAvgLooksLikeRubles;',
+      '\nthis.__ofzWarn = shouldWarnOfzAvgLooksLikeRubles;' +
+      '\nthis.__isFormBond = isPortfolioFormBondTicker;',
     sandbox,
     { timeout: 5000 }
   );
@@ -315,7 +316,8 @@ function loadPortfolioCalcHelpers() {
     getTotalRealizedPnl: sandbox.__totalRealized,
     localPortfolioTodayYmd: sandbox.__today,
     computePortfolioNewLotPrefill: sandbox.__prefill,
-    shouldWarnOfzAvgLooksLikeRubles: sandbox.__ofzWarn
+    shouldWarnOfzAvgLooksLikeRubles: sandbox.__ofzWarn,
+    isPortfolioFormBondTicker: sandbox.__isFormBond
   };
 }
 
@@ -646,6 +648,26 @@ const calc = loadPortfolioCalcHelpers();
   assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, 1112) === true, 'OFZ 1112: warn');
   assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, '') === false, 'OFZ empty: no warn');
   assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, null) === false, 'OFZ null: no warn');
+}
+
+{
+  // Подсказка ОФЗ в форме — только для облигаций
+  assert(calc.isPortfolioFormBondTicker('GAZP') === false, 'GAZP ticker → not bond');
+  assert(calc.isPortfolioFormBondTicker('SBER', { kind: 'stock' }) === false, 'SBER stock item → not bond');
+  assert(calc.isPortfolioFormBondTicker('PLZL', { type: 'stock' }) === false, 'PLZL type stock → not bond');
+  assert(calc.isPortfolioFormBondTicker('OFZ_26247') === true, 'OFZ ticker → bond');
+  assert(calc.isPortfolioFormBondTicker('OFZ_26247', { kind: 'bond' }) === true, 'OFZ bond item → bond');
+  assert(calc.isPortfolioFormBondTicker('SU26247RMFS0', { kind: 'fixed' }) === true, 'OFZ fixed kind → bond');
+  assert(calc.isPortfolioFormBondTicker('', { kind: 'stock' }) === false, 'empty+stock → not bond');
+  assert(calc.isPortfolioFormBondTicker('') === false, 'empty ticker → not bond');
+  assert(
+    calc.shouldWarnOfzAvgLooksLikeRubles(calc.isPortfolioFormBondTicker('GAZP'), 250) === false,
+    'stock price >200 → no OFZ warn'
+  );
+  assert(
+    calc.shouldWarnOfzAvgLooksLikeRubles(calc.isPortfolioFormBondTicker('OFZ_26247'), 1112) === true,
+    'OFZ price >200 → warn'
+  );
 }
 
 if (errors.length) {

@@ -1313,13 +1313,37 @@
     return { skipped: false, buyDate: buyDate, avgPrice: avgPrice };
   }
 
+  /**
+   * ОФЗ-подсказки в форме — только для облигаций.
+   * Явный kind/type stock|index → false; bond / купонные виды ОФЗ → true;
+   * иначе — isRuBondTicker / normalizeBondTickerInput.
+   */
+  function isPortfolioFormBondTicker(ticker, item) {
+    if (item) {
+      var k = item.kind || item.type;
+      if (k === 'stock' || k === 'index' || k === 'share' || k === 'etf') return false;
+      if (k === 'bond' || k === 'fixed' || k === 'indexed' || k === 'float') return true;
+    }
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (!ticker) {
+      var tickerEl = document.getElementById('pfAddTicker');
+      ticker = tickerEl ? String(tickerEl.value || '').trim() : '';
+      if (typeof normalizeTicker === 'function') ticker = normalizeTicker(ticker);
+    }
+    if (!ticker) return false;
+    if (typeof normalizeBondTickerInput === 'function') {
+      var bondQuick = normalizeBondTickerInput(ticker);
+      if (bondQuick) ticker = bondQuick;
+    }
+    return typeof isRuBondTicker === 'function' && !!isRuBondTicker(ticker);
+  }
+
   function updatePortfolioOfzPriceHint(ticker, item) {
     var hint = document.getElementById('pfAddOfzPriceHint');
     var example = document.getElementById('pfAddOfzPriceExample');
-    var isBond = !!(item && (item.kind === 'bond' || item.type === 'bond'));
-    if (!isBond && typeof isRuBondTicker === 'function') {
-      isBond = !!isRuBondTicker(ticker);
-    }
+    var isBond = isPortfolioFormBondTicker(ticker, item);
     if (hint) hint.hidden = !isBond;
     if (example) example.hidden = !isBond;
     updatePortfolioOfzAvgWarn(ticker, item);
@@ -1333,23 +1357,6 @@
     var n = Number(s);
     if (!isFinite(n)) return false;
     return n > 200;
-  }
-
-  function isPortfolioFormBondTicker(ticker, item) {
-    if (item && (item.kind === 'bond' || item.type === 'bond')) return true;
-    ticker = typeof normalizeTicker === 'function'
-      ? normalizeTicker(ticker)
-      : String(ticker || '').trim().toUpperCase();
-    if (!ticker) {
-      var tickerEl = document.getElementById('pfAddTicker');
-      ticker = tickerEl ? String(tickerEl.value || '').trim() : '';
-      if (typeof normalizeTicker === 'function') ticker = normalizeTicker(ticker);
-      if (typeof normalizeBondTickerInput === 'function') {
-        var bondQuick = normalizeBondTickerInput(ticker);
-        if (bondQuick) ticker = bondQuick;
-      }
-    }
-    return typeof isRuBondTicker === 'function' && !!isRuBondTicker(ticker);
   }
 
   function updatePortfolioOfzAvgWarn(ticker, item) {
@@ -1420,7 +1427,7 @@
     }
     var commentEl = document.getElementById(pfFieldId(prefix, 'Comment'));
     if (commentEl) commentEl.value = pos.comment || '';
-    if (!prefix) updatePortfolioOfzAvgWarn(pos.ticker);
+    if (!prefix) updatePortfolioOfzPriceHint(pos.ticker);
   }
 
 
@@ -1447,6 +1454,8 @@
     var hintEdit = document.getElementById('pfAddAvgHintEdit');
     if (hintNew) hintNew.hidden = editing;
     if (hintEdit) hintEdit.hidden = !editing;
+    var tickerEl = document.getElementById('pfAddTicker');
+    updatePortfolioOfzPriceHint(tickerEl ? tickerEl.value : '');
   }
 
 

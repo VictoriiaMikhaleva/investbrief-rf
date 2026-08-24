@@ -378,12 +378,14 @@
     }
     var pfAddTickerEl = document.getElementById('pfAddTicker');
     if (pfAddTickerEl) {
-      pfAddTickerEl.addEventListener('change', function () {
-        if (typeof updatePortfolioOfzPriceHint === 'function') {
-          updatePortfolioOfzPriceHint(pfAddTickerEl.value);
-        } else if (typeof updatePortfolioOfzAvgWarn === 'function') {
-          updatePortfolioOfzAvgWarn(pfAddTickerEl.value);
-        }
+      ['input', 'change', 'blur'].forEach(function (evt) {
+        pfAddTickerEl.addEventListener(evt, function () {
+          if (typeof updatePortfolioOfzPriceHint === 'function') {
+            updatePortfolioOfzPriceHint(pfAddTickerEl.value);
+          } else if (typeof updatePortfolioOfzAvgWarn === 'function') {
+            updatePortfolioOfzAvgWarn(pfAddTickerEl.value);
+          }
+        });
       });
     }
     var pfSaleBtn = document.getElementById('pfSaleBtn');
