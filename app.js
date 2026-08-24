@@ -203,6 +203,17 @@
       });
     });
 
+    /* Правовые .html-ссылки: не давать SPA/делегированным кликам сорвать навигацию */
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest('a[data-ibrf-doc], .app-footer-links a, .settings-about-legal a, .legal-nav a');
+      if (!a) return;
+      var href = a.getAttribute('href') || '';
+      if (!href || href === '#' || href.indexOf('javascript:') === 0) return;
+      if (!/\.html(?:[?#]|$)/i.test(href) && !a.getAttribute('data-ibrf-doc')) return;
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.stopPropagation();
+    }, true);
+
     var analyticsSubnav = document.getElementById('analyticsSubnav');
     if (analyticsSubnav) {
       analyticsSubnav.addEventListener('click', function (e) {

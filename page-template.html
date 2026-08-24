@@ -1,18 +1,34 @@
 ﻿<!doctype html>
 <html lang="ru">
 <head>
-  <!-- ibrf-asset-version: 202608241918 -->
+  <!-- ibrf-asset-version: 202608241924 -->
   <script>
     (function () {
+      var marker = 'investbrief-rf';
       var path = location.pathname || '/';
       if (!path.endsWith('/')) {
         var i = path.lastIndexOf('/');
         path = i >= 0 ? path.slice(0, i + 1) : '/';
       }
-      if (path.indexOf('investbrief-rf') !== -1) {
+      var root = path;
+      if (path.indexOf(marker) !== -1) {
+        var pos = path.indexOf(marker);
+        root = path.slice(0, pos + marker.length) + '/';
         var base = document.createElement('base');
-        base.href = path;
+        base.href = root;
         document.head.appendChild(base);
+      }
+      function resolveDocLinks() {
+        document.querySelectorAll('a[data-ibrf-doc]').forEach(function (a) {
+          var page = String(a.getAttribute('data-ibrf-doc') || '').replace(/^\.?\//, '');
+          if (!page) return;
+          a.setAttribute('href', root + page);
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', resolveDocLinks);
+      } else {
+        resolveDocLinks();
       }
     })();
   </script>
@@ -23,8 +39,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=202608241918" />
-  <link rel="stylesheet" href="theme-luxury.css?v=202608241918" />
+  <link rel="stylesheet" href="styles.css?v=202608241924" />
+  <link rel="stylesheet" href="theme-luxury.css?v=202608241924" />
   <style>
     .page-wrap {
       max-width: 52rem;
@@ -82,11 +98,11 @@
         <span>Создано Викторией Михалевой · контент, ИИ и цифровые проекты</span>
         <a href="https://www.content-system.ru/" target="_blank" rel="noopener noreferrer">content-system.ru</a>
       </div>
-      <p class="app-footer-disclaimer">InvestBrief не является инвестиционным советником, брокером или управляющей компанией и не даёт индивидуальных инвестиционных рекомендаций. Информация на сайте носит справочный и образовательный характер. Все решения пользователь принимает самостоятельно.</p>
+      <p class="app-footer-disclaimer">InvestBrief не является инвестиционным советником и не даёт индивидуальных рекомендаций. Информация справочная; решения пользователь принимает самостоятельно.</p>
       <nav class="app-footer-links" aria-label="Правовые ссылки">
-        <a href="legal.html">Правовая информация</a>
-        <a href="privacy.html">Политика конфиденциальности</a>
-        <a href="terms.html">Пользовательское соглашение</a>
+        <a href="legal.html" data-ibrf-doc="legal.html" target="_blank" rel="noopener noreferrer">Правовая информация</a>
+        <a href="privacy.html" data-ibrf-doc="privacy.html" target="_blank" rel="noopener noreferrer">Политика конфиденциальности</a>
+        <a href="terms.html" data-ibrf-doc="terms.html" target="_blank" rel="noopener noreferrer">Пользовательское соглашение</a>
       </nav>
     </footer>
   </div>

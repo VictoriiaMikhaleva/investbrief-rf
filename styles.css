@@ -956,9 +956,11 @@
       .main {
         flex: 0 0 auto;
         width: 100%;
+        /* Один отступ под fixed bottom-nav — не раздувать футер отдельным 5.4rem */
+        padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.55rem);
       }
       .content {
-        padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 0.5rem);
+        padding-bottom: 0.65rem;
       }
       .bottom-nav {
         height: auto;
