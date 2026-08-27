@@ -494,7 +494,10 @@
     if (portfolioClosedSection) portfolioClosedSection.addEventListener('click', handlePortfolioTableClick);
 
     var portfolioRecentSection = document.getElementById('portfolioRecentSection');
-    if (portfolioRecentSection) portfolioRecentSection.addEventListener('click', handlePortfolioTableClick);
+    if (portfolioRecentSection) {
+      portfolioRecentSection.addEventListener('click', handlePortfolioTableClick);
+      portfolioRecentSection.addEventListener('keydown', handlePortfolioRecentKeydown);
+    }
 
     var chartResizeTimer;
     window.addEventListener('resize', function () {

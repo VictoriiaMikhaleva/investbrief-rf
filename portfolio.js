@@ -2571,6 +2571,17 @@
     scrollPortfolioTickerIntoView(ticker, { retries: 4 });
   }
 
+  /** Enter/Space на фокусе всей карточки «Недавние операции». */
+  function handlePortfolioRecentKeydown(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest('button, a, input, select, textarea')) return;
+    var card = e.target.closest('.portfolio-recent-card[data-pf-open-history]');
+    if (!card || e.target !== card) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openPortfolioTickerDetailsFromRecent(card.getAttribute('data-pf-open-history'));
+  }
+
 
 
   function handlePortfolioTableClick(e) {
@@ -3349,15 +3360,15 @@
     var commentHtml = op.comment
       ? '<div class="portfolio-recent-comment muted">' + escapeHtml(op.comment) + '</div>'
       : '';
-    return '<div class="portfolio-recent-card pf-op-card ' + (isBuy ? 'pf-open-lot' : 'pf-sale-row') + zebra + '">' +
+    return '<div class="portfolio-recent-card portfolio-recent-card--interactive pf-op-card ' +
+      (isBuy ? 'pf-open-lot' : 'pf-sale-row') + zebra +
+      '" data-pf-open-history="' + escapeHtml(op.ticker) +
+      '" role="button" tabindex="0" aria-label="Подробнее по ' + escapeHtml(op.ticker) + '">' +
       '<div class="portfolio-recent-meta">' +
         '<span class="portfolio-recent-date">' + escapeHtml(dateLbl) + '</span>' +
-        '<button type="button" class="portfolio-recent-ticker pf-recent-open-history" data-pf-open-history="' +
-          escapeHtml(op.ticker) + '" title="Открыть подробнее по ' + escapeHtml(op.ticker) + '">' +
-          escapeHtml(op.ticker) + '</button>' +
+        '<span class="portfolio-recent-ticker pf-recent-open-history">' + escapeHtml(op.ticker) + '</span>' +
         badge +
-        '<button type="button" class="portfolio-recent-more" data-pf-open-history="' +
-          escapeHtml(op.ticker) + '">Подробнее</button>' +
+        '<span class="portfolio-recent-more">Подробнее</span>' +
       '</div>' +
       '<div class="portfolio-recent-kpis">' +
         '<span class="portfolio-recent-kpi"><span class="lbl">Кол-во</span> ' + escapeHtml(qtyLbl) + '</span>' +

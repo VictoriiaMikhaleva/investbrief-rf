@@ -2094,6 +2094,16 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   border-radius: 11px;
 }
 
+.portfolio-recent-card.portfolio-recent-card--interactive {
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease,
+    background 0.16s ease,
+    filter 0.16s ease;
+}
+
 .portfolio-recent-card.pf-zebra-a {
   box-shadow: 0 1px 0 rgba(23, 34, 51, 0.015);
 }
@@ -2101,6 +2111,63 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 .portfolio-recent-card.pf-zebra-b {
   filter: saturate(0.98);
   opacity: 0.985;
+}
+
+/* Hover/focus-магнит: вся карточка, sage/bronze сохранены */
+@media (hover: hover) and (pointer: fine) {
+  .portfolio-recent-card.portfolio-recent-card--interactive.pf-open-lot:hover,
+  .portfolio-recent-card.portfolio-recent-card--interactive.pf-open-lot:focus-within {
+    border-color: color-mix(in srgb, var(--accent) 22%, rgba(23, 34, 51, 0.06) 78%);
+    box-shadow:
+      0 1px 0 rgba(23, 34, 51, 0.02),
+      0 4px 14px color-mix(in srgb, var(--accent-soft) 55%, rgba(23, 34, 51, 0.04) 45%);
+    transform: translateY(-1px);
+    filter: none;
+    opacity: 1;
+    background: linear-gradient(180deg,
+      color-mix(in srgb, #ffffff 82%, var(--accent-soft) 18%) 0%,
+      color-mix(in srgb, var(--accent-soft) 34%, #ffffff 66%) 100%);
+  }
+
+  .portfolio-recent-card.portfolio-recent-card--interactive.pf-sale-row:hover,
+  .portfolio-recent-card.portfolio-recent-card--interactive.pf-sale-row:focus-within {
+    border-color: color-mix(in srgb, var(--bronze) 24%, rgba(23, 34, 51, 0.05) 76%);
+    box-shadow:
+      0 1px 0 rgba(23, 34, 51, 0.02),
+      0 4px 14px color-mix(in srgb, var(--bronze-soft) 50%, rgba(23, 34, 51, 0.04) 50%);
+    transform: translateY(-1px);
+    filter: none;
+    opacity: 1;
+    background: linear-gradient(180deg,
+      color-mix(in srgb, #ffffff 80%, var(--bronze-soft) 20%) 0%,
+      color-mix(in srgb, var(--bronze-soft) 32%, #fffaf6 68%) 100%);
+  }
+
+  .portfolio-recent-card.portfolio-recent-card--interactive:hover .portfolio-recent-more,
+  .portfolio-recent-card.portfolio-recent-card--interactive:focus-within .portfolio-recent-more {
+    color: color-mix(in srgb, var(--text) 48%, var(--accent) 52%);
+    text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+
+  .portfolio-recent-card.portfolio-recent-card--interactive.pf-sale-row:hover .portfolio-recent-more,
+  .portfolio-recent-card.portfolio-recent-card--interactive.pf-sale-row:focus-within .portfolio-recent-more {
+    color: color-mix(in srgb, var(--text) 55%, var(--bronze) 45%);
+    text-decoration-color: color-mix(in srgb, var(--bronze) 50%, transparent);
+  }
+}
+
+.portfolio-recent-card.portfolio-recent-card--interactive:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.portfolio-recent-card.portfolio-recent-card--interactive.pf-sale-row:focus-visible {
+  outline-color: color-mix(in srgb, var(--bronze) 48%, transparent);
+}
+
+.portfolio-recent-card.portfolio-recent-card--interactive:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 0 rgba(23, 34, 51, 0.03);
 }
 
 .portfolio-recent-meta {
@@ -2123,58 +2190,39 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   font-size: 0.92rem;
 }
 
-button.portfolio-recent-ticker.pf-recent-open-history {
-  appearance: none;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  font-weight: 600;
-  font-size: 0.92rem;
-  color: var(--text);
-  cursor: pointer;
+.portfolio-recent-card--interactive .portfolio-recent-ticker.pf-recent-open-history {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--accent-muted) 45%, transparent);
   text-underline-offset: 0.14em;
   text-decoration-thickness: 1px;
 }
 
-button.portfolio-recent-ticker.pf-recent-open-history:hover {
+.portfolio-recent-card--interactive:hover .portfolio-recent-ticker.pf-recent-open-history,
+.portfolio-recent-card--interactive:focus-within .portfolio-recent-ticker.pf-recent-open-history {
   color: color-mix(in srgb, var(--text) 82%, var(--accent) 18%);
   text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-button.portfolio-recent-ticker.pf-recent-open-history:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: 2px;
-  border-radius: 3px;
-}
-
 .portfolio-recent-more {
-  appearance: none;
-  background: none;
-  border: none;
-  padding: 0;
   margin: 0 0 0 auto;
-  font: inherit;
   font-size: 0.72rem;
   font-weight: 500;
   color: color-mix(in srgb, var(--text-muted) 70%, var(--accent) 30%);
-  cursor: pointer;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--accent-muted) 35%, transparent);
   text-underline-offset: 0.12em;
 }
 
-.portfolio-recent-more:hover {
-  color: color-mix(in srgb, var(--text) 55%, var(--accent) 45%);
+.portfolio-recent-more::after {
+  content: ' →';
+  text-decoration: none;
+  letter-spacing: -0.02em;
+  opacity: 0.75;
 }
 
-.portfolio-recent-more:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
-  outline-offset: 2px;
-  border-radius: 3px;
+.portfolio-recent-card--interactive:hover .portfolio-recent-more::after,
+.portfolio-recent-card--interactive:focus-within .portfolio-recent-more::after {
+  opacity: 1;
 }
 
 .portfolio-recent-kpis {
@@ -2229,6 +2277,18 @@ button.portfolio-recent-ticker.pf-recent-open-history:focus-visible {
   .portfolio-recent-card {
     overflow-wrap: anywhere;
     max-width: 100%;
+  }
+
+  .portfolio-recent-card.portfolio-recent-card--interactive:active.pf-open-lot {
+    background: linear-gradient(180deg,
+      color-mix(in srgb, #ffffff 84%, var(--accent-soft) 16%) 0%,
+      color-mix(in srgb, var(--accent-soft) 32%, #ffffff 68%) 100%);
+  }
+
+  .portfolio-recent-card.portfolio-recent-card--interactive:active.pf-sale-row {
+    background: linear-gradient(180deg,
+      color-mix(in srgb, #ffffff 82%, var(--bronze-soft) 18%) 0%,
+      color-mix(in srgb, var(--bronze-soft) 30%, #fffaf6 70%) 100%);
   }
 
   .portfolio-recent-meta {
