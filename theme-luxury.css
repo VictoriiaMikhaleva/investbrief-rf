@@ -1893,8 +1893,8 @@ table.portfolio-table tr.pf-ticker-group.pf-zebra-a > td {
 }
 
 table.portfolio-table tr.pf-ticker-group.pf-zebra-b > td {
-  /* greige / молочно-серый, без желтизны */
-  background: color-mix(in srgb, #e8e9e8 28%, #f7f7f6 72%);
+  /* лёгкий greige — ритм без «офисной» плотности */
+  background: #f3f3f1;
 }
 
 table.portfolio-table tr.pf-ticker-group-start > td {
@@ -1913,7 +1913,7 @@ table.portfolio-table tr.pf-ticker-group.pf-lot-row:hover > td {
 }
 
 table.portfolio-table tr.pf-ticker-group.pf-zebra-b.pf-lot-row:hover > td {
-  background: color-mix(in srgb, #e4e5e4 40%, var(--bg-glass) 60%);
+  background: color-mix(in srgb, #f3f3f1 55%, var(--bg-glass) 45%);
 }
 
 /* Компактная повторная шапка колонок (перед акциями / ОФЗ) */

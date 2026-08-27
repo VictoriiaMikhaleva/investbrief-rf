@@ -3113,7 +3113,6 @@
     var html = '';
     if (openStocks.length) {
       html += '<tr class="pf-section-head"><th colspan="' + PF_TABLE_COLS + '">Акции · доля внутри класса</th></tr>';
-      html += buildPortfolioColumnSubheadRow();
       html += buildPortfolioSectionRows(positions, 'stocks', bondMetaMap, sales);
     }
     if (openBonds.length) {
