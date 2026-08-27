@@ -3026,7 +3026,10 @@
     groups.forEach(function (group, groupIdx) {
       var lots = group.lots;
       var zebra = groupIdx % 2 === 0 ? ' pf-zebra-a' : ' pf-zebra-b';
-      var groupBase = ' pf-ticker-group' + zebra;
+      var groupBase = ' pf-ticker-group pf-card-group' + zebra;
+      if (groupIdx > 0) {
+        html += '<tr class="pf-card-gap" aria-hidden="true"><td colspan="' + PF_TABLE_COLS + '"></td></tr>';
+      }
       var tickerSales = sales.filter(function (s) { return normalizeTicker(s.ticker) === group.ticker; })
         .sort(function (a, b) {
           var da = a.saleDate || '';
@@ -3038,8 +3041,13 @@
       var visibleLots = collapsible && !expanded ? lots.slice(0, PF_LOT_COLLAPSE_THRESHOLD) : lots;
       var hiddenCount = collapsible && !expanded ? lots.length - visibleLots.length : 0;
       var visibleRowSpan = visibleLots.length || 1;
+      var hasDetail = !!(state.pfHistoryTickers && state.pfHistoryTickers[group.ticker]);
+      var hasToggle = hiddenCount > 0 || (collapsible && expanded);
+      var endKind = hasDetail ? 'detail' : (hasToggle ? 'toggle' : (tickerSales.length ? 'sale' : 'lot'));
 
       visibleLots.forEach(function (p, idx) {
+        var isPrimary = idx === 0;
+        var isEnd = endKind === 'lot' && idx === visibleLots.length - 1;
         html += buildPortfolioLotRow(p, group, {
           isBond: isBond,
           bondMetaMap: bondMetaMap,
@@ -3047,39 +3055,46 @@
           lotIndex: idx,
           rowSpan: visibleRowSpan,
           incomeRowSpan: visibleRowSpan,
-          showIncome: idx === 0,
-          groupClass: groupBase + (idx === 0 ? ' pf-ticker-group-start' : '')
+          showIncome: isPrimary,
+          groupClass: groupBase +
+            (isPrimary ? ' pf-ticker-group-start pf-lot-primary' : ' pf-lot-nested') +
+            (isEnd ? ' pf-ticker-group-end' : '')
         });
       });
 
-      tickerSales.forEach(function (sale) {
+      tickerSales.forEach(function (sale, sIdx) {
+        var isEnd = endKind === 'sale' && sIdx === tickerSales.length - 1;
         html += buildPortfolioSaleRow(sale, group, {
           isBond: isBond,
           bondMeta: bondMetaMap[group.ticker] || null,
-          groupClass: groupBase
+          groupClass: groupBase + (isEnd ? ' pf-ticker-group-end' : '')
         });
       });
 
       if (hiddenCount > 0) {
-        html += '<tr class="pf-lot-toggle-row' + groupBase + '"><td colspan="' + PF_TABLE_COLS + '">' +
+        html += '<tr class="pf-lot-toggle-row' + groupBase +
+          (endKind === 'toggle' ? ' pf-ticker-group-end' : '') +
+          '"><td colspan="' + PF_TABLE_COLS + '">' +
           '<button type="button" class="ghost small pf-lot-toggle" data-pf-expand-lots="' + escapeHtml(group.ticker) + '">' +
           'Показать ещё ' + hiddenCount + ' ' + (hiddenCount === 1 ? 'покупку' : (hiddenCount < 5 ? 'покупки' : 'покупок')) +
           '</button></td></tr>';
       } else if (collapsible && expanded) {
-        html += '<tr class="pf-lot-toggle-row' + groupBase + '"><td colspan="' + PF_TABLE_COLS + '">' +
+        html += '<tr class="pf-lot-toggle-row' + groupBase +
+          (endKind === 'toggle' ? ' pf-ticker-group-end' : '') +
+          '"><td colspan="' + PF_TABLE_COLS + '">' +
           '<button type="button" class="ghost small pf-lot-toggle" data-pf-collapse-lots="' + escapeHtml(group.ticker) + '">' +
           'Свернуть покупки ' + escapeHtml(group.ticker) +
           '</button></td></tr>';
       }
 
-      if (state.pfHistoryTickers && state.pfHistoryTickers[group.ticker]) {
+      if (hasDetail) {
         html += buildPortfolioTickerDetailRow(
           group.ticker,
           positions,
           sales,
           bondMetaMap[group.ticker] || null,
           isBond,
-          { groupClass: groupBase }
+          { groupClass: groupBase + (endKind === 'detail' ? ' pf-ticker-group-end' : '') }
         );
       }
     });

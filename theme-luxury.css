@@ -1878,7 +1878,7 @@ input:focus, select:focus, textarea:focus {
   font-size: 0.86rem;
 }
 
-/* Zebra / ритм основной таблицы портфеля (по группе тикера) */
+/* Card-table: группы тикеров как мягкие карточки (desktop table) */
 table.portfolio-table {
   border-collapse: separate;
   border-spacing: 0;
@@ -1888,35 +1888,110 @@ table.portfolio-table tr.pf-section-head th {
   border-bottom: none;
 }
 
-table.portfolio-table tr.pf-ticker-group.pf-zebra-a > td {
-  background: #ffffff;
+/* Zebra ослаблена: только едва заметный оттенок card-group */
+table.portfolio-table tr.pf-card-group.pf-zebra-a.pf-lot-row > td {
+  background: color-mix(in srgb, #ffffff 90%, var(--accent-soft) 10%);
 }
 
-table.portfolio-table tr.pf-ticker-group.pf-zebra-b > td {
-  /* лёгкий greige — ритм без «офисной» плотности */
-  background: #f3f3f1;
+table.portfolio-table tr.pf-card-group.pf-zebra-b.pf-lot-row > td {
+  background: color-mix(in srgb, #f7f7f6 88%, var(--accent-soft) 12%);
 }
 
+table.portfolio-table tr.pf-card-group > td {
+  border-bottom: none;
+  padding-top: 0.52rem;
+  padding-bottom: 0.52rem;
+  border-top-color: transparent;
+}
+
+table.portfolio-table tr.pf-card-group > td:first-child {
+  border-left: 1px solid color-mix(in srgb, #c9d0cb 42%, transparent);
+}
+
+table.portfolio-table tr.pf-card-group > td:last-child {
+  border-right: 1px solid color-mix(in srgb, #c9d0cb 42%, transparent);
+}
+
+/* Первая строка группы — «шапка» карточки */
 table.portfolio-table tr.pf-ticker-group-start > td {
-  border-top: 1px solid color-mix(in srgb, #cfd1cf 38%, transparent);
-  padding-top: 0.78rem;
+  padding-top: 0.72rem;
+  border-top: 1px solid color-mix(in srgb, #c9d0cb 48%, transparent);
 }
 
-table.portfolio-table tr.pf-ticker-group > td {
-  border-bottom-color: color-mix(in srgb, var(--border) 55%, transparent);
-  padding-top: 0.58rem;
-  padding-bottom: 0.58rem;
+table.portfolio-table tr.pf-ticker-group-start > td:first-child {
+  border-top-left-radius: 12px;
 }
 
-table.portfolio-table tr.pf-ticker-group.pf-lot-row:hover > td {
-  background: color-mix(in srgb, var(--bg-glass) 55%, #ffffff 45%);
+table.portfolio-table tr.pf-ticker-group-start > td:last-child {
+  border-top-right-radius: 12px;
 }
 
-table.portfolio-table tr.pf-ticker-group.pf-zebra-b.pf-lot-row:hover > td {
-  background: color-mix(in srgb, #f3f3f1 55%, var(--bg-glass) 45%);
+table.portfolio-table tr.pf-lot-primary > td {
+  background: color-mix(in srgb, #ffffff 82%, var(--accent-soft) 18%) !important;
 }
 
-/* Компактная повторная шапка колонок (перед акциями / ОФЗ) */
+table.portfolio-table tr.pf-lot-primary > td.ticker {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--text) 88%, #3d5346 12%);
+  vertical-align: middle;
+}
+
+table.portfolio-table tr.pf-lot-primary > td.ticker .market-badge {
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+/* Вложенные лоты — спокойнее, внутри той же карточки */
+table.portfolio-table tr.pf-lot-nested > td {
+  background: color-mix(in srgb, #fafbfa 86%, var(--accent-soft) 14%) !important;
+  padding-top: 0.42rem;
+  padding-bottom: 0.42rem;
+  color: color-mix(in srgb, var(--text) 92%, var(--text-muted) 8%);
+}
+
+table.portfolio-table tr.pf-lot-nested > td:first-child {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 22%, #c9d6ce 78%);
+  box-shadow: inset 0.55rem 0 0 color-mix(in srgb, #ffffff 70%, transparent);
+}
+
+table.portfolio-table tr.pf-lot-nested > td.pf-buy-price,
+table.portfolio-table tr.pf-lot-nested > td.pf-weight {
+  opacity: 0.92;
+}
+
+/* Низ карточки */
+table.portfolio-table tr.pf-ticker-group-end > td {
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid color-mix(in srgb, #c9d0cb 48%, transparent);
+}
+
+table.portfolio-table tr.pf-ticker-group-end > td:first-child {
+  border-bottom-left-radius: 12px;
+}
+
+table.portfolio-table tr.pf-ticker-group-end > td:last-child {
+  border-bottom-right-radius: 12px;
+}
+
+/* Воздух между карточками-группами */
+table.portfolio-table tr.pf-card-gap > td {
+  height: 0.55rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+/* Hover: лёгкий, не ломает карточку */
+table.portfolio-table tr.pf-card-group.pf-lot-row:hover > td {
+  background: color-mix(in srgb, var(--accent-soft) 22%, #ffffff 78%) !important;
+}
+
+table.portfolio-table tr.pf-card-group.pf-lot-nested:hover > td {
+  background: color-mix(in srgb, var(--accent-soft) 16%, #fafbfa 84%) !important;
+}
+
+/* Компактная повторная шапка колонок (перед ОФЗ) */
 table.portfolio-table tr.pf-col-subhead th {
   background: transparent;
   color: color-mix(in srgb, var(--text-muted) 90%, #5f6461 10%);
@@ -1936,23 +2011,45 @@ table.portfolio-table tr.pf-col-subhead th:last-child {
   width: 1%;
 }
 
-/* Продажи внутри таблицы сохраняют bronze, поверх zebra */
-table.portfolio-table tr.pf-sale-row > td {
-  background: color-mix(in srgb, var(--bronze-soft) 22%, #fffaf6 78%) !important;
-  border-top-color: color-mix(in srgb, var(--bronze) 10%, rgba(23, 34, 51, 0.03) 90%);
-  border-bottom-color: color-mix(in srgb, var(--bronze) 10%, rgba(23, 34, 51, 0.03) 90%);
+/* Продажи — bronze operation внутри карточки */
+table.portfolio-table tr.pf-sale-row.pf-card-group > td {
+  background: color-mix(in srgb, var(--bronze-soft) 24%, #fffaf6 76%) !important;
+  border-top: 1px solid color-mix(in srgb, var(--bronze) 12%, rgba(23, 34, 51, 0.03) 88%);
 }
 
-table.portfolio-table tr.pf-lot-toggle-row.pf-ticker-group > td {
-  padding-top: 0.35rem;
-  padding-bottom: 0.45rem;
+table.portfolio-table tr.pf-sale-row.pf-card-group > td:first-child {
+  border-left: 3px solid color-mix(in srgb, var(--bronze) 40%, #dcc4a4 60%);
+}
+
+table.portfolio-table tr.pf-lot-toggle-row.pf-card-group > td {
+  padding-top: 0.28rem;
+  padding-bottom: 0.4rem;
+  background: color-mix(in srgb, #ffffff 88%, var(--accent-soft) 12%);
   border-bottom: none;
 }
 
-table.portfolio-table tr.pf-ticker-detail-row.pf-ticker-group > td {
-  padding-top: 0.35rem;
+table.portfolio-table tr.pf-ticker-detail-row.pf-card-group > td {
+  padding-top: 0.3rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, #cfd1cf 30%, transparent);
+  background: color-mix(in srgb, #ffffff 90%, var(--accent-soft) 10%);
+  border-bottom: 1px solid color-mix(in srgb, #c9d0cb 42%, transparent);
+}
+
+/* Компактные действия в card-table */
+table.portfolio-table .pf-row-actions {
+  white-space: nowrap;
+}
+
+table.portfolio-table .pf-row-actions .pf-btn,
+table.portfolio-table .pf-row-actions .pf-history-toggle {
+  font-size: 0.72rem;
+  padding: 0.16rem 0.42rem;
+  line-height: 1.25;
+  margin-left: 0.12rem;
+}
+
+table.portfolio-table .pf-row-actions .pf-history-toggle {
+  font-weight: 600;
 }
 
 .portfolio-recent-section {
