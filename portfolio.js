@@ -3086,6 +3086,18 @@
     return html;
   }
 
+  function buildPortfolioColumnSubheadRow() {
+    var cols = [
+      'Тикер', 'Доля', 'Кол-во', 'Цена покупки', 'Ср. цена', 'Дата',
+      'Текущая', 'Доходн.', 'Погашение', 'Выплаты 12 мес.', 'Коммент.', ''
+    ];
+    return '<tr class="pf-col-subhead">' +
+      cols.map(function (label) {
+        return '<th scope="col">' + escapeHtml(label) + '</th>';
+      }).join('') +
+      '</tr>';
+  }
+
   function buildPortfolioTableHtml(positions, bondMetaMap, sales) {
     sales = sales || [];
     var openStocks = groupPortfolioLotsForTable(positions, 'stocks');
@@ -3101,10 +3113,12 @@
     var html = '';
     if (openStocks.length) {
       html += '<tr class="pf-section-head"><th colspan="' + PF_TABLE_COLS + '">Акции · доля внутри класса</th></tr>';
+      html += buildPortfolioColumnSubheadRow();
       html += buildPortfolioSectionRows(positions, 'stocks', bondMetaMap, sales);
     }
     if (openBonds.length) {
       html += '<tr class="pf-section-head"><th colspan="' + PF_TABLE_COLS + '">Облигации (ОФЗ) · доля внутри класса</th></tr>';
+      html += buildPortfolioColumnSubheadRow();
       html += buildPortfolioSectionRows(positions, 'bonds', bondMetaMap, sales);
     }
     return html;

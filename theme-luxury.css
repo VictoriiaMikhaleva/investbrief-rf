@@ -1893,11 +1893,12 @@ table.portfolio-table tr.pf-ticker-group.pf-zebra-a > td {
 }
 
 table.portfolio-table tr.pf-ticker-group.pf-zebra-b > td {
-  background: color-mix(in srgb, #f4f1ea 42%, #ffffff 58%);
+  /* greige / молочно-серый, без желтизны */
+  background: color-mix(in srgb, #e8e9e8 28%, #f7f7f6 72%);
 }
 
 table.portfolio-table tr.pf-ticker-group-start > td {
-  border-top: 1px solid color-mix(in srgb, #d9d2c6 35%, transparent);
+  border-top: 1px solid color-mix(in srgb, #cfd1cf 38%, transparent);
   padding-top: 0.78rem;
 }
 
@@ -1912,7 +1913,27 @@ table.portfolio-table tr.pf-ticker-group.pf-lot-row:hover > td {
 }
 
 table.portfolio-table tr.pf-ticker-group.pf-zebra-b.pf-lot-row:hover > td {
-  background: color-mix(in srgb, #efebe3 50%, var(--bg-glass) 50%);
+  background: color-mix(in srgb, #e4e5e4 40%, var(--bg-glass) 60%);
+}
+
+/* Компактная повторная шапка колонок (перед акциями / ОФЗ) */
+table.portfolio-table tr.pf-col-subhead th {
+  background: transparent;
+  color: color-mix(in srgb, var(--text-muted) 90%, #5f6461 10%);
+  font-family: var(--font-heading, inherit);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  line-height: 1.25;
+  text-transform: none;
+  padding: 0.32rem 0.75rem 0.38rem;
+  border-top: none;
+  border-bottom: 1px solid color-mix(in srgb, #cfd1cf 55%, transparent);
+  white-space: nowrap;
+}
+
+table.portfolio-table tr.pf-col-subhead th:last-child {
+  width: 1%;
 }
 
 /* Продажи внутри таблицы сохраняют bronze, поверх zebra */
@@ -1931,7 +1952,7 @@ table.portfolio-table tr.pf-lot-toggle-row.pf-ticker-group > td {
 table.portfolio-table tr.pf-ticker-detail-row.pf-ticker-group > td {
   padding-top: 0.35rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, #d9d2c6 28%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, #cfd1cf 30%, transparent);
 }
 
 .portfolio-recent-section {
