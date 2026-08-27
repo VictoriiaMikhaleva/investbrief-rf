@@ -1421,9 +1421,9 @@
       flex-direction: column;
       align-items: flex-start;
       width: 100%;
-      min-height: 34rem;
+      min-height: 0;
       box-sizing: border-box;
-      padding-bottom: 1.75rem;
+      padding-bottom: 0.75rem;
     }
     .portfolio-folder-section .hint-frame {
       margin-bottom: 1.5rem;
@@ -1436,9 +1436,9 @@
       justify-content: center;
       align-items: flex-end;
       width: 100%;
-      flex: 1;
-      min-height: 27rem;
-      padding: 0 0.25rem 1.25rem;
+      flex: 0 0 auto;
+      min-height: 0;
+      padding: 0 0.25rem 0.5rem;
       position: relative;
       overflow: visible;
       box-sizing: border-box;
@@ -1446,8 +1446,8 @@
     .portfolio-folder-stage {
       width: 100%;
       max-width: 100%;
-      min-height: 24rem;
-      padding-top: 5.5rem;
+      min-height: 0;
+      padding-top: 0.5rem;
       display: flex;
       align-items: flex-end;
       justify-content: center;
@@ -1457,7 +1457,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      transform: scale(1.55);
+      transform: scale(1);
       transform-origin: center bottom;
       max-width: 100%;
       width: 100%;
