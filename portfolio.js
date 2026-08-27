@@ -2672,7 +2672,8 @@
     var weightedAvgCell = lotIndex === 0
       ? '<td class="pf-weighted-avg" rowspan="' + (opts.rowSpan || 1) + '">' + escapeHtml(weightedAvg) + '</td>'
       : '';
-    return '<tr class="pf-table-row pf-lot-row' + editActive + '" data-chart-ticker="' + escapeHtml(group.ticker) + '" data-pf-lot="' + escapeHtml(p.lotId || '') + '">' +
+    return '<tr class="pf-table-row pf-lot-row' + editActive + (opts.groupClass || '') +
+      '" data-chart-ticker="' + escapeHtml(group.ticker) + '" data-pf-lot="' + escapeHtml(p.lotId || '') + '">' +
       tickerCell +
       '<td class="pf-weight">' + escapeHtml(weight) + '</td>' +
       '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
@@ -2960,8 +2961,9 @@
       '</div>';
   }
 
-  function buildPortfolioTickerDetailRow(ticker, positions, sales, bondMeta, isBond) {
-    return '<tr class="pf-ticker-detail-row">' +
+  function buildPortfolioTickerDetailRow(ticker, positions, sales, bondMeta, isBond, opts) {
+    opts = opts || {};
+    return '<tr class="pf-ticker-detail-row' + (opts.groupClass || '') + '">' +
       '<td colspan="' + PF_TABLE_COLS + '">' +
         buildPortfolioTickerDetailHtml(ticker, positions, sales, bondMeta, isBond) +
       '</td></tr>';
@@ -2984,7 +2986,8 @@
           (pnl.pct != null ? ' · ' + escapeHtml(formatSignedPct(pnl.pct, 2)) : '') +
         '</span>'
       : '<span class="muted">—</span>';
-    return '<tr class="pf-table-row pf-sale-row" data-pf-sale="' + escapeHtml(sale.saleId) + '">' +
+    return '<tr class="pf-table-row pf-sale-row' + (opts.groupClass || '') +
+      '" data-pf-sale="' + escapeHtml(sale.saleId) + '">' +
       '<td class="ticker pf-sale-lbl"><span class="pf-lot-marker">↳</span> продажа</td>' +
       '<td class="pf-weight muted">—</td>' +
       '<td class="pf-sale-qty">−' + escapeHtml(String(sale.qty)) + '</td>' +
@@ -3020,8 +3023,10 @@
     });
 
     var html = '';
-    groups.forEach(function (group) {
+    groups.forEach(function (group, groupIdx) {
       var lots = group.lots;
+      var zebra = groupIdx % 2 === 0 ? ' pf-zebra-a' : ' pf-zebra-b';
+      var groupBase = ' pf-ticker-group' + zebra;
       var tickerSales = sales.filter(function (s) { return normalizeTicker(s.ticker) === group.ticker; })
         .sort(function (a, b) {
           var da = a.saleDate || '';
@@ -3042,24 +3047,26 @@
           lotIndex: idx,
           rowSpan: visibleRowSpan,
           incomeRowSpan: visibleRowSpan,
-          showIncome: idx === 0
+          showIncome: idx === 0,
+          groupClass: groupBase + (idx === 0 ? ' pf-ticker-group-start' : '')
         });
       });
 
       tickerSales.forEach(function (sale) {
         html += buildPortfolioSaleRow(sale, group, {
           isBond: isBond,
-          bondMeta: bondMetaMap[group.ticker] || null
+          bondMeta: bondMetaMap[group.ticker] || null,
+          groupClass: groupBase
         });
       });
 
       if (hiddenCount > 0) {
-        html += '<tr class="pf-lot-toggle-row"><td colspan="' + PF_TABLE_COLS + '">' +
+        html += '<tr class="pf-lot-toggle-row' + groupBase + '"><td colspan="' + PF_TABLE_COLS + '">' +
           '<button type="button" class="ghost small pf-lot-toggle" data-pf-expand-lots="' + escapeHtml(group.ticker) + '">' +
           'Показать ещё ' + hiddenCount + ' ' + (hiddenCount === 1 ? 'покупку' : (hiddenCount < 5 ? 'покупки' : 'покупок')) +
           '</button></td></tr>';
       } else if (collapsible && expanded) {
-        html += '<tr class="pf-lot-toggle-row"><td colspan="' + PF_TABLE_COLS + '">' +
+        html += '<tr class="pf-lot-toggle-row' + groupBase + '"><td colspan="' + PF_TABLE_COLS + '">' +
           '<button type="button" class="ghost small pf-lot-toggle" data-pf-collapse-lots="' + escapeHtml(group.ticker) + '">' +
           'Свернуть покупки ' + escapeHtml(group.ticker) +
           '</button></td></tr>';
@@ -3071,7 +3078,8 @@
           positions,
           sales,
           bondMetaMap[group.ticker] || null,
-          isBond
+          isBond,
+          { groupClass: groupBase }
         );
       }
     });
@@ -3215,9 +3223,10 @@
     }, { bond: !!isBond });
   }
 
-  function buildRecentOperationCardHtml(op) {
+  function buildRecentOperationCardHtml(op, idx) {
     if (!op) return '';
     var isBuy = op.kind === 'buy';
+    var zebra = (idx % 2 === 0) ? ' pf-zebra-a' : ' pf-zebra-b';
     var badge = isBuy
       ? '<span class="pf-op-badge pf-op-badge--buy">покупка</span>'
       : '<span class="pf-op-badge pf-op-badge--sale">продажа</span>';
@@ -3242,7 +3251,7 @@
     var commentHtml = op.comment
       ? '<div class="portfolio-recent-comment muted">' + escapeHtml(op.comment) + '</div>'
       : '';
-    return '<div class="portfolio-recent-card pf-op-card ' + (isBuy ? 'pf-open-lot' : 'pf-sale-row') + '">' +
+    return '<div class="portfolio-recent-card pf-op-card ' + (isBuy ? 'pf-open-lot' : 'pf-sale-row') + zebra + '">' +
       '<div class="portfolio-recent-meta">' +
         '<span class="portfolio-recent-date">' + escapeHtml(dateLbl) + '</span>' +
         '<span class="ticker portfolio-recent-ticker">' + escapeHtml(op.ticker) + '</span>' +
@@ -3269,8 +3278,8 @@
       return html;
     }
     html += '<div class="portfolio-recent-list">';
-    ops.forEach(function (op) {
-      html += buildRecentOperationCardHtml(op);
+    ops.forEach(function (op, idx) {
+      html += buildRecentOperationCardHtml(op, idx);
     });
     html += '</div>';
     return html;
