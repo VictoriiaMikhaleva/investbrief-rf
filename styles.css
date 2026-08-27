@@ -85,14 +85,22 @@
     }
     button:hover { background: var(--accent-soft); border-color: var(--border-accent); }
     button.primary {
-      background: linear-gradient(165deg, var(--accent) 0%, var(--accent-hover) 100%);
-      border-color: var(--accent-hover);
-      color: #fff;
-      box-shadow: 0 4px 14px rgba(61, 92, 71, 0.25);
+      background: linear-gradient(165deg,
+        color-mix(in srgb, #6f9184 22%, var(--accent) 78%) 0%,
+        color-mix(in srgb, var(--accent) 70%, var(--accent-hover) 30%) 48%,
+        color-mix(in srgb, var(--accent-hover) 88%, #1a3f36 12%) 100%);
+      border-color: color-mix(in srgb, var(--bronze, #C48A4A) 28%, var(--accent-hover) 72%);
+      color: #f7faf8;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.2) inset,
+        0 6px 16px rgba(61, 92, 71, 0.18);
     }
     button.primary:hover {
-      background: linear-gradient(165deg, var(--accent-hover) 0%, #243828 100%);
-      border-color: var(--accent-hover);
+      background: linear-gradient(165deg,
+        color-mix(in srgb, #7fa092 26%, var(--accent) 74%) 0%,
+        color-mix(in srgb, var(--accent) 62%, var(--accent-hover) 38%) 52%,
+        color-mix(in srgb, var(--accent-hover) 82%, #16352e 18%) 100%);
+      border-color: color-mix(in srgb, var(--bronze, #C48A4A) 36%, var(--accent-hover) 64%);
     }
     button.danger { border-color: rgba(184, 92, 80, 0.35); color: var(--danger); background: rgba(184, 92, 80, 0.08); }
     input, select, textarea {
@@ -1008,10 +1016,10 @@
       align-items: flex-end;
       height: calc(var(--bottom-nav-h) + var(--safe-bottom));
       padding: 0.4rem 0.15rem var(--safe-bottom);
-      background: rgba(255, 252, 246, 0.94);
-      border-top: 1px solid var(--border);
+      background: color-mix(in srgb, #f7f8f6 88%, #ffffff 12%);
+      border-top: 1px solid color-mix(in srgb, #C48A4A 18%, var(--border) 82%);
       backdrop-filter: blur(14px);
-      box-shadow: 0 -8px 32px rgba(31, 30, 28, 0.06);
+      box-shadow: 0 -8px 28px rgba(31, 30, 28, 0.05);
       z-index: 500;
       perspective: 700px;
       touch-action: manipulation;
@@ -1088,7 +1096,8 @@
     }
     .book-nav--bottom.active {
       color: var(--accent);
-      background: transparent;
+      background: color-mix(in srgb, #ffffff 58%, rgba(196, 138, 74, 0.14) 42%);
+      border-radius: 12px;
     }
     .toast {
       position: fixed;
