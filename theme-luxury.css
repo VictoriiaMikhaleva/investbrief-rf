@@ -2123,6 +2123,60 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   font-size: 0.92rem;
 }
 
+button.portfolio-recent-ticker.pf-recent-open-history {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-muted) 45%, transparent);
+  text-underline-offset: 0.14em;
+  text-decoration-thickness: 1px;
+}
+
+button.portfolio-recent-ticker.pf-recent-open-history:hover {
+  color: color-mix(in srgb, var(--text) 82%, var(--accent) 18%);
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+button.portfolio-recent-ticker.pf-recent-open-history:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.portfolio-recent-more {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 0 auto;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--text-muted) 70%, var(--accent) 30%);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-muted) 35%, transparent);
+  text-underline-offset: 0.12em;
+}
+
+.portfolio-recent-more:hover {
+  color: color-mix(in srgb, var(--text) 55%, var(--accent) 45%);
+}
+
+.portfolio-recent-more:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 .portfolio-recent-kpis {
   display: flex;
   flex-wrap: wrap;

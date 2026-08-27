@@ -333,7 +333,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__setUi = setPortfolioUiSettings;' +
       '\nthis.__hideClosed = hideClosedPortfolioTicker;' +
       '\nthis.__restoreClosed = restoreClosedPortfolioTicker;' +
-      '\nthis.__collectRecent = collectRecentPortfolioOperations;',
+      '\nthis.__collectRecent = collectRecentPortfolioOperations;' +
+      '\nthis.__resolveNav = resolvePortfolioHistoryNavTarget;',
     sandbox,
     { timeout: 5000 }
   );
@@ -358,6 +359,7 @@ function loadPortfolioCalcHelpers() {
     hideClosedPortfolioTicker: sandbox.__hideClosed,
     restoreClosedPortfolioTicker: sandbox.__restoreClosed,
     collectRecentPortfolioOperations: sandbox.__collectRecent,
+    resolvePortfolioHistoryNavTarget: sandbox.__resolveNav,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -976,6 +978,19 @@ const calc = loadPortfolioCalcHelpers();
   const srcCopy = JSON.parse(JSON.stringify(positions));
   calc.collectRecentPortfolioOperations(positions, sales, { todayYmd: today });
   assert(JSON.stringify(positions) === JSON.stringify(srcCopy), 'helper does not mutate positions');
+
+  // Переход из «Недавних» → open / closed / closed-hidden
+  assert(calc.resolvePortfolioHistoryNavTarget('SBER', positions, sales).kind === 'open', 'SBER open nav');
+  assert(calc.resolvePortfolioHistoryNavTarget('LKOH', positions, sales).kind === 'closed', 'LKOH closed nav');
+  calc.hideClosedPortfolioTicker('LKOH');
+  assert(calc.resolvePortfolioHistoryNavTarget('LKOH', positions, sales).kind === 'closed-hidden', 'LKOH hidden closed nav');
+  assert(
+    calc.getPortfolioUiSettings().hiddenClosedTickers.indexOf('LKOH') !== -1,
+    'nav resolve does not clear hiddenClosedTickers'
+  );
+  calc.restoreClosedPortfolioTicker('LKOH');
+  assert(calc.resolvePortfolioHistoryNavTarget('XXXX', positions, sales).kind === 'none', 'unknown → none');
+  assert(calc.resolvePortfolioHistoryNavTarget('', positions, sales).kind === 'none', 'empty → none');
 }
 
 if (errors.length) {

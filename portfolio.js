@@ -2461,10 +2461,123 @@
 
 
 
+  /**
+   * Куда вести из «Недавних операций»: открытая / закрытая / скрытая закрытая.
+   * Не мутирует portfolio JSON и hiddenClosedTickers.
+   */
+  function resolvePortfolioHistoryNavTarget(ticker, positions, sales) {
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (!ticker) return { kind: 'none', ticker: '' };
+    var hist = summarizeTickerHistory(ticker, positions, sales, null);
+    if (hist.openQty > 1e-9) return { kind: 'open', ticker: ticker };
+    if (hist.sales && hist.sales.length) {
+      var hidden = typeof isClosedPortfolioTickerHidden === 'function'
+        ? isClosedPortfolioTickerHidden(ticker)
+        : false;
+      return { kind: hidden ? 'closed-hidden' : 'closed', ticker: ticker };
+    }
+    return { kind: 'none', ticker: ticker };
+  }
+
+  function findPortfolioTickerScrollTarget(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!ticker) return null;
+    var closed = document.querySelector(
+      '#portfolioClosedSection .portfolio-closed-card[data-pf-closed-ticker="' + ticker + '"]'
+    );
+    if (closed) return closed;
+
+    var cardsHost = document.getElementById('portfolioCards');
+    if (cardsHost) {
+      var cardsVisible = true;
+      try {
+        cardsVisible = window.getComputedStyle(cardsHost).display !== 'none';
+      } catch (e) { /* noop */ }
+      if (cardsVisible) {
+        var mobileCard = cardsHost.querySelector('.portfolio-card[data-chart-ticker="' + ticker + '"]');
+        if (mobileCard) return mobileCard;
+      }
+    }
+
+    var detailRow = document.querySelector(
+      '#portfolioTableBody tr.pf-ticker-detail-row[data-pf-detail-ticker="' + ticker + '"]'
+    );
+    if (detailRow) return detailRow;
+
+    var primary = document.querySelector(
+      '#portfolioTableBody tr.pf-lot-primary[data-chart-ticker="' + ticker + '"]'
+    );
+    if (primary) return primary;
+
+    return document.querySelector(
+      '#portfolioTableBody tr[data-chart-ticker="' + ticker + '"]'
+    );
+  }
+
+  function scrollPortfolioTickerIntoView(ticker, opts) {
+    opts = opts || {};
+    var left = opts.retries != null ? opts.retries : 3;
+    function attempt() {
+      var el = findPortfolioTickerScrollTarget(ticker);
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+      if (left > 0) {
+        left -= 1;
+        setTimeout(attempt, 140);
+      }
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(attempt);
+    } else {
+      setTimeout(attempt, 0);
+    }
+  }
+
+  /**
+   * Переход из «Недавних операций» → раскрыть «Подробнее» по тикеру и проскроллить.
+   * Не вызывает selectPortfolioTicker / не скроллит к аналитике.
+   */
+  function openPortfolioTickerDetailsFromRecent(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!ticker) return;
+
+    if (typeof switchTab === 'function' && state.tab && state.tab !== 'portfolio') {
+      switchTab('portfolio');
+    }
+
+    var positions = typeof getPortfolio === 'function' ? (getPortfolio().positions || []) : [];
+    var sales = typeof getPortfolio === 'function' ? (getPortfolio().sales || []) : [];
+    var nav = resolvePortfolioHistoryNavTarget(ticker, positions, sales);
+
+    if (nav.kind === 'none') {
+      if (typeof showToast === 'function') {
+        showToast('Позиция по ' + ticker + ' не найдена в портфеле');
+      }
+      return;
+    }
+
+    if (!state.pfHistoryTickers) state.pfHistoryTickers = {};
+    state.pfHistoryTickers[ticker] = true;
+
+    if (nav.kind === 'closed-hidden') {
+      state.pfShowHiddenClosed = true;
+    }
+
+    renderPortfolioTableBody();
+    scrollPortfolioTickerIntoView(ticker, { retries: 4 });
+  }
+
+
+
   function handlePortfolioTableClick(e) {
     // Action-кнопки / контролы внутри карточки: не открывать аналитику и не скроллить.
     var actionEl = e.target.closest(
       'button, a, input, select, textarea, label,' +
+      '[data-pf-open-history],' +
       '[data-pf-toggle-history], [data-pf-hide-closed], [data-pf-restore-closed],' +
       '[data-pf-show-hidden-closed], [data-pf-collapse-hidden-closed],' +
       '[data-pf-expand-lots], [data-pf-collapse-lots],' +
@@ -2475,6 +2588,13 @@
       '.pf-row-actions, .pf-lot-toggle-row, .pf-sale-row, .pf-ticker-detail-row'
     );
 
+    var openHistoryBtn = e.target.closest('[data-pf-open-history]');
+    if (openHistoryBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      openPortfolioTickerDetailsFromRecent(openHistoryBtn.getAttribute('data-pf-open-history'));
+      return;
+    }
     var historyBtn = e.target.closest('[data-pf-toggle-history]');
     if (historyBtn) {
       e.preventDefault();
@@ -2960,9 +3080,11 @@
 
   function buildPortfolioTickerDetailRow(ticker, positions, sales, bondMeta, isBond, opts) {
     opts = opts || {};
-    return '<tr class="pf-ticker-detail-row' + (opts.groupClass || '') + '">' +
+    var t = normalizeTicker(ticker);
+    return '<tr class="pf-ticker-detail-row' + (opts.groupClass || '') +
+      '" data-pf-detail-ticker="' + escapeHtml(t) + '">' +
       '<td colspan="' + PF_TABLE_COLS + '">' +
-        buildPortfolioTickerDetailHtml(ticker, positions, sales, bondMeta, isBond) +
+        buildPortfolioTickerDetailHtml(t, positions, sales, bondMeta, isBond) +
       '</td></tr>';
   }
 
@@ -3230,8 +3352,12 @@
     return '<div class="portfolio-recent-card pf-op-card ' + (isBuy ? 'pf-open-lot' : 'pf-sale-row') + zebra + '">' +
       '<div class="portfolio-recent-meta">' +
         '<span class="portfolio-recent-date">' + escapeHtml(dateLbl) + '</span>' +
-        '<span class="ticker portfolio-recent-ticker">' + escapeHtml(op.ticker) + '</span>' +
+        '<button type="button" class="portfolio-recent-ticker pf-recent-open-history" data-pf-open-history="' +
+          escapeHtml(op.ticker) + '" title="Открыть подробнее по ' + escapeHtml(op.ticker) + '">' +
+          escapeHtml(op.ticker) + '</button>' +
         badge +
+        '<button type="button" class="portfolio-recent-more" data-pf-open-history="' +
+          escapeHtml(op.ticker) + '">Подробнее</button>' +
       '</div>' +
       '<div class="portfolio-recent-kpis">' +
         '<span class="portfolio-recent-kpi"><span class="lbl">Кол-во</span> ' + escapeHtml(qtyLbl) + '</span>' +
