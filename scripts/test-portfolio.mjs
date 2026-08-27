@@ -255,6 +255,20 @@ const h = loadStorageHelpers();
 function loadPortfolioCalcHelpers() {
   const code = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
   const memStore = Object.create(null);
+  function normalizePortfolioDate(value) {
+    if (value == null) return '';
+    const s = String(value).trim();
+    if (!s || /^invalid\b/i.test(s)) return '';
+    const ymd = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (ymd) {
+      const y = Number(ymd[1]);
+      const mo = Number(ymd[2]);
+      const d = Number(ymd[3]);
+      if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+      return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    }
+    return '';
+  }
   const sandbox = {
     console,
     Date,
@@ -268,6 +282,8 @@ function loadPortfolioCalcHelpers() {
     parseInt,
     parseFloat,
     normalizeTicker: (t) => String(t || '').trim().toUpperCase(),
+    normalizePortfolioDate,
+    safeFormatPortfolioDate: (value) => normalizePortfolioDate(value) || '—',
     isRuBondTicker: (ticker) => {
       ticker = String(ticker || '').trim().toUpperCase();
       return ticker.indexOf('OFZ') >= 0 || (ticker.indexOf('SU') === 0 && ticker.length > 8);
@@ -316,7 +332,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__getUi = getPortfolioUiSettings;' +
       '\nthis.__setUi = setPortfolioUiSettings;' +
       '\nthis.__hideClosed = hideClosedPortfolioTicker;' +
-      '\nthis.__restoreClosed = restoreClosedPortfolioTicker;',
+      '\nthis.__restoreClosed = restoreClosedPortfolioTicker;' +
+      '\nthis.__collectRecent = collectRecentPortfolioOperations;',
     sandbox,
     { timeout: 5000 }
   );
@@ -340,6 +357,7 @@ function loadPortfolioCalcHelpers() {
     setPortfolioUiSettings: sandbox.__setUi,
     hideClosedPortfolioTicker: sandbox.__hideClosed,
     restoreClosedPortfolioTicker: sandbox.__restoreClosed,
+    collectRecentPortfolioOperations: sandbox.__collectRecent,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -896,9 +914,73 @@ const calc = loadPortfolioCalcHelpers();
   assert(calc.getPortfolioUiSettings().hiddenClosedTickers.length === 0, 'bad shape → empty hidden');
 }
 
+{
+  // Волна 2.6: недавние операции
+  const today = '2026-08-27';
+  const positions = [
+    { ticker: 'SBER', qty: 10, avgPrice: 250, buyDate: '2026-08-25', lotId: 'L1', comment: 'док' },
+    { ticker: 'GAZP', qty: 5, avgPrice: 140, buyDate: '2026-01-01', lotId: 'L2' }
+  ];
+  const sales = [
+    { ticker: 'SBER', qty: 2, buyPrice: 240, salePrice: 280, saleDate: '2026-08-26', saleId: 'S1' },
+    { ticker: 'LKOH', qty: 1, buyPrice: 7000, salePrice: 7100, saleDate: '2025-12-01', saleId: 'S2' }
+  ];
+  const recent = calc.collectRecentPortfolioOperations(positions, sales, { todayYmd: today, days: 7 });
+  assert(recent.some((o) => o.kind === 'buy' && o.ticker === 'SBER'), 'buy in 7d window');
+  assert(recent.some((o) => o.kind === 'sale' && o.ticker === 'SBER'), 'sale in 7d window');
+  assert(!recent.some((o) => o.ticker === 'GAZP'), 'old buy excluded from 7d');
+  assert(!recent.some((o) => o.ticker === 'LKOH'), 'old sale excluded from 7d');
+
+  const oldOnly = calc.collectRecentPortfolioOperations(
+    [{ ticker: 'GAZP', qty: 5, avgPrice: 140, buyDate: '2026-01-01', lotId: 'L2' }],
+    [{ ticker: 'LKOH', qty: 1, buyPrice: 7000, salePrice: 7100, saleDate: '2025-12-01', saleId: 'S2' }],
+    { todayYmd: today, days: 7, fallbackLimit: 5 }
+  );
+  assert(oldOnly.length === 2, 'fallback last ops when 7d empty');
+  assert(oldOnly[0].date >= oldOnly[1].date || !oldOnly[1].date, 'fallback sorted newest first');
+
+  assert(calc.collectRecentPortfolioOperations([], [], { todayYmd: today }).length === 0, 'empty → []');
+
+  const ordered = calc.collectRecentPortfolioOperations(positions, sales, { todayYmd: today, days: 7 });
+  for (let i = 1; i < ordered.length; i++) {
+    const a = ordered[i - 1].date || '';
+    const b = ordered[i].date || '';
+    if (a && b) assert(a >= b, 'sorted newest→oldest');
+  }
+
+  const saleOp = ordered.find((o) => o.kind === 'sale' && o.ticker === 'SBER');
+  const viaPnl = calc.getSaleRealizedPnl(sales[0]).amount;
+  assert(saleOp && Math.abs(saleOp.realizedPnlRub - viaPnl) < 1e-9, 'sale pnl via getSaleRealizedPnl');
+
+  const ofzOps = calc.collectRecentPortfolioOperations([], [{
+    ticker: 'OFZ_26238',
+    qty: 5,
+    buyPrice: 95,
+    salePrice: 98,
+    saleDate: '2026-08-20',
+    faceValue: 1000,
+    saleId: 'OFZ1'
+  }], { todayYmd: today, bondMetaMap: { OFZ_26238: { faceValue: 1000 } } });
+  assert(ofzOps.length === 1 && ofzOps[0].isBond === true, 'OFZ op flagged bond');
+  assert(Math.abs(ofzOps[0].realizedPnlRub - 150) < 1e-6, 'OFZ pnl 150₽');
+  assert(ofzOps[0].price === 98, 'OFZ sale price kept as %');
+
+  const badDates = calc.collectRecentPortfolioOperations(
+    [{ ticker: 'SBER', qty: 1, avgPrice: 100, buyDate: 'Invalid Date', lotId: 'B1' }],
+    [{ ticker: 'GAZP', qty: 1, buyPrice: 100, salePrice: 110, saleDate: '', saleId: 'B2' }],
+    { todayYmd: today, days: 7, fallbackLimit: 5 }
+  );
+  assert(badDates.length === 2, 'invalid dates still returned via fallback');
+  assert(badDates.every((o) => o.date === ''), 'invalid/empty dates → empty iso');
+
+  const srcCopy = JSON.parse(JSON.stringify(positions));
+  calc.collectRecentPortfolioOperations(positions, sales, { todayYmd: today });
+  assert(JSON.stringify(positions) === JSON.stringify(srcCopy), 'helper does not mutate positions');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5 history');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 history');

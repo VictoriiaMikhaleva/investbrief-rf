@@ -911,6 +911,139 @@
     return out;
   }
 
+  /**
+   * Read-only «Недавние операции»: покупки из positions[] + продажи из sales[].
+   * Не мутирует исходные данные, не создаёт transactions[].
+   * options: { days, fallbackLimit, todayYmd, bondMetaMap }
+   */
+  function collectRecentPortfolioOperations(positions, sales, options) {
+    options = options || {};
+    var days = options.days != null && isFinite(Number(options.days)) ? Math.max(0, Number(options.days)) : 7;
+    var fallbackLimit = options.fallbackLimit != null && isFinite(Number(options.fallbackLimit))
+      ? Math.max(0, Number(options.fallbackLimit))
+      : 5;
+    var bondMetaMap = options.bondMetaMap || {};
+    var todayYmd = options.todayYmd || localPortfolioTodayYmd();
+
+    function toIsoDate(raw) {
+      if (typeof normalizePortfolioDate === 'function') {
+        return normalizePortfolioDate(raw) || '';
+      }
+      var s = String(raw == null ? '' : raw).trim();
+      if (/^\d{4}-\d{1,2}-\d{1,2}/.test(s)) {
+        var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (!m) return '';
+        return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+      }
+      return '';
+    }
+
+    function shiftYmd(fromYmd, deltaDays) {
+      var parts = String(fromYmd || '').split('-');
+      if (parts.length < 3) return '';
+      var y = Number(parts[0]);
+      var mo = Number(parts[1]);
+      var d = Number(parts[2]);
+      if (!isFinite(y) || !isFinite(mo) || !isFinite(d)) return '';
+      var dt = new Date(Date.UTC(y, mo - 1, d));
+      if (!isFinite(dt.getTime())) return '';
+      dt.setUTCDate(dt.getUTCDate() + deltaDays);
+      return dt.getUTCFullYear() + '-' +
+        String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' +
+        String(dt.getUTCDate()).padStart(2, '0');
+    }
+
+    var cutoff = days > 0 ? shiftYmd(todayYmd, -days) : '';
+    var ops = [];
+    var seq = 0;
+
+    (positions || []).forEach(function (p, idx) {
+      if (!p) return;
+      var ticker = typeof normalizeTicker === 'function'
+        ? normalizeTicker(p.ticker)
+        : String(p.ticker || '').trim().toUpperCase();
+      if (!ticker) return;
+      var qty = Number(p.qty);
+      var price = Number(p.avgPrice);
+      ops.push({
+        kind: 'buy',
+        ticker: ticker,
+        date: toIsoDate(p.buyDate),
+        qty: isFinite(qty) ? qty : null,
+        price: isFinite(price) ? price : null,
+        buyPrice: isFinite(price) ? price : null,
+        salePrice: null,
+        realizedPnlRub: null,
+        comment: p.comment ? String(p.comment) : '',
+        isBond: isPortfolioBondPosition(p),
+        lotId: p.lotId ? String(p.lotId) : '',
+        saleId: '',
+        _seq: seq++,
+        _srcIdx: idx
+      });
+    });
+
+    (sales || []).forEach(function (s, idx) {
+      if (!s) return;
+      var ticker = typeof normalizeTicker === 'function'
+        ? normalizeTicker(s.ticker)
+        : String(s.ticker || '').trim().toUpperCase();
+      if (!ticker) return;
+      var qty = Number(s.qty);
+      var salePx = Number(s.salePrice);
+      var buyPx = Number(s.buyPrice);
+      var pnl = getSaleRealizedPnl(s, bondMetaMap[ticker] || null);
+      ops.push({
+        kind: 'sale',
+        ticker: ticker,
+        date: toIsoDate(s.saleDate),
+        qty: isFinite(qty) ? qty : null,
+        price: isFinite(salePx) ? salePx : null,
+        buyPrice: isFinite(buyPx) ? buyPx : null,
+        salePrice: isFinite(salePx) ? salePx : null,
+        realizedPnlRub: pnl && pnl.amount != null && isFinite(pnl.amount) ? pnl.amount : null,
+        comment: s.comment ? String(s.comment) : '',
+        isBond: isPortfolioBondPosition(s),
+        lotId: s.lotId ? String(s.lotId) : '',
+        saleId: s.saleId ? String(s.saleId) : '',
+        _seq: seq++,
+        _srcIdx: idx
+      });
+    });
+
+    ops.sort(function (a, b) {
+      var da = a.date || '';
+      var db = b.date || '';
+      if (!da && !db) return a._seq - b._seq;
+      if (!da) return 1;
+      if (!db) return -1;
+      if (da !== db) return da < db ? 1 : -1;
+      return a._seq - b._seq;
+    });
+
+    var recent = cutoff
+      ? ops.filter(function (op) { return op.date && op.date >= cutoff; })
+      : ops.slice();
+    var picked = recent.length ? recent : ops.slice(0, fallbackLimit);
+
+    return picked.map(function (op) {
+      return {
+        kind: op.kind,
+        ticker: op.ticker,
+        date: op.date,
+        qty: op.qty,
+        price: op.price,
+        buyPrice: op.buyPrice,
+        salePrice: op.salePrice,
+        realizedPnlRub: op.realizedPnlRub,
+        comment: op.comment,
+        isBond: !!op.isBond,
+        lotId: op.lotId,
+        saleId: op.saleId
+      };
+    });
+  }
+
 
 
   function findPortfolioLots(ticker, positions) {
@@ -3062,6 +3195,97 @@
     section.innerHTML = buildPortfolioClosedSectionHtml(closedItems, positions, sales, bondMetaMap);
   }
 
+  function formatRecentOperationDate(iso) {
+    if (!iso) return '—';
+    if (typeof safeFormatPortfolioDate === 'function') return safeFormatPortfolioDate(iso);
+    try {
+      var lbl = new Date(iso + 'T12:00:00').toLocaleDateString('ru-RU');
+      return lbl && !/invalid/i.test(lbl) ? lbl : '—';
+    } catch (e) {
+      return '—';
+    }
+  }
+
+  function formatRecentOperationPrice(price, isBond, ticker) {
+    if (price == null || !isFinite(Number(price))) return '—';
+    return formatPositionAvg({
+      avgPrice: Number(price),
+      currency: 'RUB',
+      ticker: ticker || ''
+    }, { bond: !!isBond });
+  }
+
+  function buildRecentOperationCardHtml(op) {
+    if (!op) return '';
+    var isBuy = op.kind === 'buy';
+    var badge = isBuy
+      ? '<span class="pf-op-badge pf-op-badge--buy">покупка</span>'
+      : '<span class="pf-op-badge pf-op-badge--sale">продажа</span>';
+    var qtyLbl = op.qty != null && isFinite(op.qty)
+      ? (isBuy ? String(op.qty) : '−' + String(op.qty)) + ' шт.'
+      : '—';
+    var priceLbl = formatRecentOperationPrice(op.price, op.isBond, op.ticker);
+    var dateLbl = formatRecentOperationDate(op.date);
+    var pnlHtml = '';
+    if (!isBuy) {
+      var rCls = op.realizedPnlRub != null && op.realizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
+      pnlHtml = '<span class="portfolio-recent-kpi"><span class="lbl">Результат</span> ' +
+        '<span class="' + (op.realizedPnlRub != null ? rCls : 'muted') + '">' +
+        escapeHtml(op.realizedPnlRub != null ? formatSignedRubAmount(op.realizedPnlRub) : '—') +
+        '</span></span>';
+    }
+    var buyPxHtml = '';
+    if (!isBuy && op.buyPrice != null && isFinite(op.buyPrice)) {
+      buyPxHtml = '<span class="portfolio-recent-kpi"><span class="lbl">Покупка</span> ' +
+        escapeHtml(formatRecentOperationPrice(op.buyPrice, op.isBond, op.ticker)) + '</span>';
+    }
+    var commentHtml = op.comment
+      ? '<div class="portfolio-recent-comment muted">' + escapeHtml(op.comment) + '</div>'
+      : '';
+    return '<div class="portfolio-recent-card pf-op-card ' + (isBuy ? 'pf-open-lot' : 'pf-sale-row') + '">' +
+      '<div class="portfolio-recent-meta">' +
+        '<span class="portfolio-recent-date">' + escapeHtml(dateLbl) + '</span>' +
+        '<span class="ticker portfolio-recent-ticker">' + escapeHtml(op.ticker) + '</span>' +
+        badge +
+      '</div>' +
+      '<div class="portfolio-recent-kpis">' +
+        '<span class="portfolio-recent-kpi"><span class="lbl">Кол-во</span> ' + escapeHtml(qtyLbl) + '</span>' +
+        '<span class="portfolio-recent-kpi"><span class="lbl">' + (isBuy ? 'Цена' : 'Продажа') + '</span> ' +
+          escapeHtml(priceLbl) + '</span>' +
+        buyPxHtml +
+        pnlHtml +
+      '</div>' +
+      commentHtml +
+      '</div>';
+  }
+
+  function buildPortfolioRecentSectionHtml(ops) {
+    var html = '<div class="portfolio-recent-head">' +
+      '<h3 class="portfolio-recent-title">Недавние операции</h3>' +
+      '<p class="muted portfolio-recent-desc">Покупки и продажи из вашего портфеля.</p>' +
+      '</div>';
+    if (!ops || !ops.length) {
+      html += '<p class="muted portfolio-recent-empty">Операций пока нет. Добавьте покупку или зафиксируйте продажу — они появятся здесь.</p>';
+      return html;
+    }
+    html += '<div class="portfolio-recent-list">';
+    ops.forEach(function (op) {
+      html += buildRecentOperationCardHtml(op);
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderPortfolioRecentOperations(positions, sales, bondMetaMap) {
+    var section = document.getElementById('portfolioRecentSection');
+    if (!section) return;
+    var ops = collectRecentPortfolioOperations(positions, sales, {
+      bondMetaMap: bondMetaMap || {}
+    });
+    section.hidden = false;
+    section.innerHTML = buildPortfolioRecentSectionHtml(ops);
+  }
+
   function buildPortfolioTableRows(positions) {
     return buildPortfolioTableHtml(positions, {});
   }
@@ -3083,10 +3307,12 @@
       var cardsEmpty = document.getElementById('portfolioCards');
       if (cardsEmpty) cardsEmpty.innerHTML = '';
       renderPortfolioClosedPositions([], [], {});
+      renderPortfolioRecentOperations([], [], {});
       return;
     }
 
     renderPortfolioClosedPositions(positions, sales, {});
+    renderPortfolioRecentOperations(positions, sales, {});
 
     var closedSeed = listClosedPortfolioPositions(positions, sales, {});
     var bondMetaSeed = (positions || []).slice();
@@ -3111,6 +3337,7 @@
       });
       renderPortfolioSummary(positions, bondMetaMap, incomeTotals, sales);
       renderPortfolioClosedPositions(positions, sales, bondMetaMap);
+      renderPortfolioRecentOperations(positions, sales, bondMetaMap);
 
       var stockTotal = 0;
       var bondTotal = 0;
