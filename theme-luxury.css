@@ -637,6 +637,90 @@ input:focus, select:focus, textarea:focus {
   outline-offset: 2px;
 }
 
+/* Аналитика: Акции/ОФЗ/ПИФы + горизонт IMOEX — явный metallic segment */
+.analytics-subnav.horizon-tabs,
+#imoexHorizonTabs.horizon-tabs,
+.analytics-price-horizon.horizon-tabs {
+  gap: 0.3rem;
+  padding: 0.28rem;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, #6a7f70 12%, var(--border) 88%);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, #f4f7f5 70%, #ffffff 30%) 0%,
+      color-mix(in srgb, #eef2f0 55%, #f7f8fa 45%) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75) inset;
+}
+
+.analytics-subnav.horizon-tabs button,
+#imoexHorizonTabs.horizon-tabs button,
+.analytics-price-horizon.horizon-tabs button {
+  border-radius: 10px;
+  min-height: 36px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.analytics-subnav.horizon-tabs button:hover,
+#imoexHorizonTabs.horizon-tabs button:hover,
+.analytics-price-horizon.horizon-tabs button:hover {
+  background: color-mix(in srgb, #e8eeea 50%, #ffffff 50%);
+  border-color: color-mix(in srgb, #6a7f70 18%, transparent);
+}
+
+.analytics-subnav.horizon-tabs button.active,
+#imoexHorizonTabs.horizon-tabs button.active,
+.analytics-price-horizon.horizon-tabs button.active {
+  color: #f4f7f5;
+  border: 1px solid color-mix(in srgb, var(--bronze) 42%, #8a9a8e 58%);
+  background:
+    radial-gradient(120% 90% at 50% -18%,
+      rgba(255, 255, 255, 0.24) 0%,
+      transparent 52%),
+    linear-gradient(175deg,
+      color-mix(in srgb, #8a9f92 34%, #5f7568 66%) 0%,
+      color-mix(in srgb, #6a7f70 52%, #4f6358 48%) 45%,
+      color-mix(in srgb, #55685c 70%, #3f5248 30%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 -1px 0 rgba(30, 42, 36, 0.14) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 55%, transparent),
+    0 3px 10px color-mix(in srgb, #3f5248 16%, rgba(23, 34, 51, 0.05) 84%);
+}
+
+/* Табы графика бумаги (Цена / Дивиденды / Оборот) */
+.security-chart-tabs button {
+  color: color-mix(in srgb, #45564c 45%, var(--text-muted) 55%);
+  background: color-mix(in srgb, #f6f8f7 75%, #ffffff 25%);
+  border: 1px solid color-mix(in srgb, #6a7f70 16%, var(--border) 84%);
+  box-shadow: none;
+}
+
+.security-chart-tabs button:hover {
+  color: color-mix(in srgb, #3f5248 70%, var(--text) 30%);
+  background: #f1f5f2;
+  border-color: color-mix(in srgb, #6a7f70 32%, var(--bronze) 12%);
+}
+
+.security-chart-tabs button.active {
+  color: #f4f7f5;
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--bronze) 40%, #8a9a8e 60%);
+  background:
+    radial-gradient(120% 90% at 50% -18%,
+      rgba(255, 255, 255, 0.22) 0%,
+      transparent 52%),
+    linear-gradient(175deg,
+      color-mix(in srgb, #8a9f92 32%, #5f7568 68%) 0%,
+      color-mix(in srgb, #6a7f70 52%, #4f6358 48%) 45%,
+      color-mix(in srgb, #55685c 68%, #3f5248 32%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.26) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 50%, transparent),
+    0 3px 10px color-mix(in srgb, #3f5248 14%, rgba(23, 34, 51, 0.05) 86%);
+}
+
 /* ╨в╨╕╨┐╨╛╨│╤А╨░╤Д╨╕╨║╨░ ╤З╨╕╤Б╨╡╨╗ тАФ ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨╖╨░╨╝╨╡╤В╨╜╨╡╨╡ ╨┐╨╛╨┤╨┐╨╕╤Б╨╡╨╣ */
 .macro-tile-val,
 .market-tile-price,
@@ -1331,11 +1415,6 @@ button.primary.brief-read-btn:active {
 .brief-checklist li { margin: 0.12rem 0; font-size: 0.84rem; color: var(--text-muted); }
 
 .security-chart-tabs { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.55rem 0 0.75rem; }
-.security-chart-tabs button.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
 .security-chart-tabs button.security-chart-tab--disabled,
 .security-chart-tabs button:disabled {
   opacity: 0.45;

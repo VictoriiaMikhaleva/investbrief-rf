@@ -431,6 +431,11 @@
     .analytics-subnav {
       margin-bottom: 1.1rem;
     }
+    .analytics-subnav.horizon-tabs {
+      gap: 0.3rem;
+      padding: 0.28rem;
+      border-radius: 14px;
+    }
     .analytics-subview[hidden] {
       display: none !important;
     }
