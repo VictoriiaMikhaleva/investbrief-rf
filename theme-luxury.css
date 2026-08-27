@@ -481,17 +481,24 @@ input:focus, select:focus, textarea:focus {
 .chart-canvas-wrap { background: #f7f8fb; border-color: var(--border); }
 .modal-overlay { background: rgba(17, 25, 38, 0.38); }
 
-/* Быстрый выбор бумаги — компактная luxury-карточка после сводки */
+/* Быстрый выбор бумаги — собранная luxury-карточка после сводки */
 #tab-portfolio .portfolio-folder-section {
   margin: 0.85rem 0 1rem;
   min-height: 0;
-  padding: 0.85rem 1rem 0.95rem;
-  border: 1px solid color-mix(in srgb, #c8d0c9 38%, transparent);
+  padding: 0.9rem 1.05rem 1.05rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #c8d0c9 78%);
+  border-radius: 14px;
   background:
+    radial-gradient(ellipse 70% 55% at 50% 72%,
+      color-mix(in srgb, var(--bronze-soft) 42%, transparent) 0%,
+      transparent 70%),
     linear-gradient(165deg,
-      color-mix(in srgb, #ffffff 88%, var(--accent-soft) 12%) 0%,
-      color-mix(in srgb, #f7f8f6 70%, var(--bronze-soft) 12%) 100%);
-  box-shadow: 0 1px 0 rgba(23, 34, 51, 0.02);
+      color-mix(in srgb, #ffffff 86%, var(--accent-soft) 14%) 0%,
+      color-mix(in srgb, #f7f8f6 68%, var(--bronze-soft) 18%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 1px 0 rgba(23, 34, 51, 0.02),
+    0 8px 22px color-mix(in srgb, var(--bronze-soft) 28%, rgba(23, 34, 51, 0.03) 72%);
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -499,7 +506,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .portfolio-folder-head {
-  margin: 0 0 0.55rem;
+  margin: 0 0 0.45rem;
   flex-shrink: 0;
 }
 
@@ -530,7 +537,7 @@ input:focus, select:focus, textarea:focus {
   width: 100%;
   flex: 0 0 auto;
   min-height: 0;
-  padding: 0.15rem 0 0.2rem;
+  padding: 0.1rem 0 0.15rem;
   overflow: visible;
 }
 
@@ -538,14 +545,14 @@ input:focus, select:focus, textarea:focus {
   width: 100%;
   max-width: 100%;
   min-height: 0;
-  padding-top: 0.35rem;
+  padding-top: 0.2rem;
   display: flex;
   align-items: flex-end;
   justify-content: center;
 }
 
 #tab-portfolio .pf-folder-scene {
-  transform: scale(1);
+  transform: scale(1.08);
   transform-origin: center bottom;
   width: 100%;
   max-width: 100%;
@@ -556,7 +563,7 @@ input:focus, select:focus, textarea:focus {
   justify-content: center;
   align-items: center;
   width: 100%;
-  min-height: 4.5rem;
+  min-height: 5rem;
   padding: 0.75rem 0.5rem;
 }
 
@@ -567,70 +574,79 @@ input:focus, select:focus, textarea:focus {
   line-height: 1.4;
 }
 
-/* Мягкая папка */
+/* Папка: крупнее + мягкий bronze-акцент */
 #tab-portfolio .pf-folder.folder {
-  margin-top: 0.35rem;
-  filter: saturate(0.92);
+  margin-top: 0.15rem;
+  filter: saturate(0.95);
   transition: transform 0.2s ease, filter 0.2s ease;
 }
 
 #tab-portfolio .pf-folder.folder:hover {
-  transform: translateY(-4px);
-  filter: saturate(1);
+  transform: translateY(-5px);
+  filter: saturate(1.02);
 }
 
 #tab-portfolio .pf-folder.folder.open {
-  transform: translateY(-4px);
+  transform: translateY(-5px);
 }
 
 #tab-portfolio .pf-folder .folder__back {
-  width: 88px;
-  height: 68px;
-  border-radius: 0 11px 11px 11px;
+  width: 112px;
+  height: 86px;
+  border-radius: 0 13px 13px 13px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 34%, transparent);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.12) inset,
-    0 6px 16px rgba(23, 34, 51, 0.1);
-  background: linear-gradient(160deg,
-    color-mix(in srgb, var(--folder-color, #6a7f70) 88%, #fff 12%) 0%,
-    var(--folder-back-color, #5a6e61) 100%);
+    0 1px 0 rgba(255, 255, 255, 0.16) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 55%, transparent),
+    0 10px 22px rgba(23, 34, 51, 0.12),
+    0 0 18px color-mix(in srgb, var(--bronze-soft) 45%, transparent);
+  background: linear-gradient(155deg,
+    color-mix(in srgb, var(--folder-color, #6a7f70) 78%, var(--bronze-soft) 22%) 0%,
+    color-mix(in srgb, var(--folder-back-color, #5a6e61) 88%, #4a5c52 12%) 100%);
 }
 
 #tab-portfolio .pf-folder .folder__back::after {
-  width: 28px;
-  height: 9px;
-  border-radius: 6px 6px 0 0;
-  background: var(--folder-back-color, #5a6e61);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset;
-}
-
-#tab-portfolio .pf-folder .folder__front {
-  border-radius: 6px 11px 11px 11px;
+  width: 34px;
+  height: 11px;
+  border-radius: 7px 7px 0 0;
   background: linear-gradient(180deg,
-    color-mix(in srgb, var(--folder-color, #6a7f70) 82%, #dfe6e1 18%) 0%,
-    var(--folder-color, #6a7f70) 100%);
+    color-mix(in srgb, var(--bronze) 28%, var(--folder-back-color, #5a6e61) 72%) 0%,
+    var(--folder-back-color, #5a6e61) 100%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 30%, transparent);
+  border-bottom: none;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.14) inset;
 }
 
+#tab-portfolio .pf-folder .folder__front {
+  border-radius: 7px 13px 13px 13px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--folder-color, #6a7f70) 72%, #e4ebe6 18%, var(--bronze-soft) 10%) 0%,
+    color-mix(in srgb, var(--folder-color, #6a7f70) 92%, var(--bronze) 8%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze) 16%, transparent);
+}
+
 #tab-portfolio .pf-folder .folder__front.right {
-  border-radius: 0 11px 11px 0;
+  border-radius: 0 13px 13px 0;
 }
 
 #tab-portfolio .pf-papers-strip {
-  margin-bottom: 0.45rem;
-  padding: 0.25rem 0.2rem 0.15rem;
-  gap: 0.45rem;
+  margin-bottom: 0.28rem;
+  padding: 0.2rem 0.15rem 0.08rem;
+  gap: 0.42rem;
 }
 
 #tab-portfolio .pf-papers-strip.is-open {
-  margin-bottom: 0.85rem;
-  min-height: 3.6rem;
+  margin-bottom: 0.55rem;
+  min-height: 3.5rem;
 }
 
 #tab-portfolio .pf-papers-strip .paper {
-  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, #f7f8f6 80%, var(--accent-soft) 20%) 100%);
-  border: 1px solid color-mix(in srgb, #c9d0cb 45%, transparent);
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, #f7f8f6 82%, var(--accent-soft) 18%) 100%);
+  border: 1px solid color-mix(in srgb, #c9d0cb 48%, transparent);
   border-radius: 10px;
-  box-shadow: 0 1px 0 rgba(23, 34, 51, 0.02);
+  box-shadow: 0 1px 0 rgba(23, 34, 51, 0.025);
   min-height: 3.35rem;
   transition:
     border-color 0.15s ease,
@@ -642,24 +658,25 @@ input:focus, select:focus, textarea:focus {
 #tab-portfolio .pf-papers-strip .paper:hover,
 #tab-portfolio .pf-papers-strip .paper:focus-visible {
   z-index: 5;
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--accent) 28%, rgba(23, 34, 51, 0.08) 72%);
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--bronze) 36%, var(--accent) 18%, rgba(23, 34, 51, 0.08) 46%);
   box-shadow:
     0 1px 0 rgba(23, 34, 51, 0.02),
-    0 5px 14px color-mix(in srgb, var(--accent-soft) 45%, rgba(23, 34, 51, 0.05) 55%);
+    0 6px 16px color-mix(in srgb, var(--bronze-soft) 40%, rgba(23, 34, 51, 0.05) 60%);
   outline: none;
 }
 
 #tab-portfolio .pf-papers-strip .paper.paper-active {
   z-index: 6;
-  border: 1.5px solid color-mix(in srgb, var(--bronze) 62%, #c4a574 38%);
-  padding: calc(0.38rem - 0.5px) calc(0.5rem - 0.5px);
+  border: 2px solid color-mix(in srgb, var(--bronze) 72%, #c4a574 28%);
+  padding: calc(0.38rem - 1px) calc(0.5rem - 1px);
   background: linear-gradient(180deg,
-    color-mix(in srgb, #ffffff 86%, var(--bronze-soft) 14%) 0%,
-    color-mix(in srgb, var(--bronze-soft) 22%, #fffaf6 78%) 100%);
+    color-mix(in srgb, #ffffff 82%, var(--bronze-soft) 18%) 0%,
+    color-mix(in srgb, var(--bronze-soft) 28%, #fffaf6 72%) 100%);
   box-shadow:
     0 1px 0 rgba(23, 34, 51, 0.02),
-    0 4px 12px color-mix(in srgb, var(--bronze-soft) 48%, rgba(23, 34, 51, 0.05) 52%);
+    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 55%, transparent),
+    0 5px 14px color-mix(in srgb, var(--bronze-soft) 55%, rgba(23, 34, 51, 0.05) 45%);
 }
 
 #tab-portfolio .portfolio-insights {
@@ -670,27 +687,33 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 899px) {
   #tab-portfolio .portfolio-folder-section {
     margin: 0.7rem 0 0.85rem;
-    padding: 0.75rem 0.8rem 0.8rem;
+    padding: 0.75rem 0.8rem 0.85rem;
     min-height: 0;
+    border-radius: 12px;
   }
 
   #tab-portfolio .portfolio-folder-host,
   #tab-portfolio .portfolio-folder-stage {
     min-height: 0;
-    padding-top: 0.2rem;
+    padding-top: 0.15rem;
   }
 
   #tab-portfolio .pf-folder-scene {
-    transform: scale(0.96);
+    transform: scale(1);
   }
 
   #tab-portfolio .pf-folder .folder__back {
-    width: 78px;
-    height: 60px;
+    width: 96px;
+    height: 74px;
+  }
+
+  #tab-portfolio .pf-folder .folder__back::after {
+    width: 30px;
+    height: 10px;
   }
 
   #tab-portfolio .pf-papers-strip.is-open {
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.42rem;
   }
 }
 
