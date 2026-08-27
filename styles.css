@@ -424,9 +424,9 @@
       font-size: 0.85rem;
     }
     .horizon-tabs button.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
+      background: linear-gradient(175deg, #6a7f70 0%, #55685c 100%);
+      border-color: color-mix(in srgb, var(--bronze, #C48A4A) 35%, #6a7f70 65%);
+      color: #f4f7f5;
     }
     .analytics-subnav {
       margin-bottom: 1.1rem;
@@ -2860,9 +2860,9 @@
       transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
     }
     .market-filter-tabs button.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
+      background: linear-gradient(175deg, #6a7f70 0%, #55685c 100%);
+      border-color: color-mix(in srgb, var(--bronze, #C48A4A) 35%, #6a7f70 65%);
+      color: #f4f7f5;
       font-weight: 600;
     }
     .market-filter-tabs button[hidden] {

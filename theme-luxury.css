@@ -570,18 +570,71 @@ input:focus, select:focus, textarea:focus {
   padding: 0 !important;
 }
 
-/* ╨в╨░╨▒╤Л ╨╕ ╤Д╨╕╨╗╤М╤В╤А╤Л */
+/* Табы и фильтры — metallic sage / bronze (не плоский accent) */
 .market-filter-tabs button,
 .horizon-tabs button {
-  background: #f4f6f9;
-  border-color: var(--border);
+  color: color-mix(in srgb, #45564c 45%, var(--text-muted) 55%);
+  background: color-mix(in srgb, #f6f8f7 75%, #ffffff 25%);
+  border: 1px solid color-mix(in srgb, #6a7f70 16%, var(--border) 84%);
+  box-shadow: none;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.market-filter-tabs button:hover,
+.horizon-tabs button:hover {
+  color: color-mix(in srgb, #3f5248 70%, var(--text) 30%);
+  background: #f1f5f2;
+  border-color: color-mix(in srgb, #6a7f70 32%, var(--bronze) 12%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
 }
 
 .market-filter-tabs button.active,
 .horizon-tabs button.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  color: #f4f7f5;
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--bronze) 40%, #8a9a8e 60%);
+  background:
+    radial-gradient(120% 90% at 50% -18%,
+      rgba(255, 255, 255, 0.22) 0%,
+      transparent 52%),
+    linear-gradient(175deg,
+      color-mix(in srgb, #8a9f92 32%, #5f7568 68%) 0%,
+      color-mix(in srgb, #6a7f70 52%, #4f6358 48%) 45%,
+      color-mix(in srgb, #55685c 68%, #3f5248 32%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.26) inset,
+    0 -1px 0 rgba(30, 42, 36, 0.14) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 50%, transparent),
+    0 3px 10px color-mix(in srgb, #3f5248 14%, rgba(23, 34, 51, 0.05) 86%);
+}
+
+.market-filter-tabs button.active:hover,
+.horizon-tabs button.active:hover {
+  color: #f4f7f5;
+  border-color: color-mix(in srgb, var(--bronze) 48%, #7d9084 52%);
+  filter: saturate(1.03);
+  transform: translateY(-0.5px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze) 18%, transparent),
+    0 4px 12px color-mix(in srgb, #3f5248 16%, rgba(23, 34, 51, 0.06) 84%);
+}
+
+.market-filter-tabs button.active:active,
+.horizon-tabs button.active:active {
+  transform: translateY(1px);
+  filter: none;
+}
+
+.market-filter-tabs button:focus-visible,
+.horizon-tabs button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bronze) 50%, #6a7f70 50%);
+  outline-offset: 2px;
 }
 
 /* ╨в╨╕╨┐╨╛╨│╤А╨░╤Д╨╕╨║╨░ ╤З╨╕╤Б╨╡╨╗ тАФ ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨╖╨░╨╝╨╡╤В╨╜╨╡╨╡ ╨┐╨╛╨┤╨┐╨╕╤Б╨╡╨╣ */
