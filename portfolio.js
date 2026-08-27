@@ -2665,9 +2665,10 @@
     var incomeCell = showIncome
       ? '<td class="pf-div-cell" rowspan="' + (opts.incomeRowSpan || 1) + '" data-pf-div-cell="' + escapeHtml(group.ticker) + '"><span class="muted">…</span></td>'
       : '';
+    // В основной таблице только быстрые действия; Изменить/Удалить — в «Подробнее».
     var sellActions = lotIndex === 0
       ? '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-sell-ticker="' + escapeHtml(group.ticker) + '">Продать</button> ' +
-        buildPortfolioHistoryToggleBtn(group.ticker) + ' '
+        buildPortfolioHistoryToggleBtn(group.ticker)
       : '';
     var weightedAvgCell = lotIndex === 0
       ? '<td class="pf-weighted-avg" rowspan="' + (opts.rowSpan || 1) + '">' + escapeHtml(weightedAvg) + '</td>'
@@ -2685,11 +2686,7 @@
       bondCols +
       incomeCell +
       '<td class="pf-comment">' + escapeHtml(p.comment || '—') + '</td>' +
-      '<td class="pf-row-actions">' +
-        sellActions +
-        '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-edit-lot="' + escapeHtml(p.lotId || '') + '">Изменить</button> ' +
-        '<button type="button" class="small pf-btn pf-btn-danger" data-pf-remove-lot="' + escapeHtml(p.lotId || '') + '">Удалить</button>' +
-      '</td></tr>';
+      '<td class="pf-row-actions">' + sellActions + '</td></tr>';
   }
 
 
@@ -2971,41 +2968,6 @@
 
 
 
-  function buildPortfolioSaleRow(sale, group, opts) {
-    opts = opts || {};
-    var isBond = opts.isBond;
-    var pnl = getSaleRealizedPnl(sale, opts.bondMeta || null);
-    var pnlCls = pnl.amount != null && pnl.amount >= 0 ? 'pnl-pos' : 'pnl-neg';
-    var buyLbl = sale.buyPrice != null && isFinite(Number(sale.buyPrice))
-      ? formatPositionAvg({ avgPrice: sale.buyPrice, currency: sale.currency, ticker: sale.ticker }, { bond: isBond })
-      : '—';
-    var sellLbl = formatPositionAvg({ avgPrice: sale.salePrice, currency: sale.currency, ticker: sale.ticker }, { bond: isBond });
-    var retCell = pnl.amount != null
-      ? '<span class="' + pnlCls + '" title="(цена продажи − ср. цена покупки) × кол-во">' +
-          escapeHtml(formatSignedRubAmount(pnl.amount)) +
-          (pnl.pct != null ? ' · ' + escapeHtml(formatSignedPct(pnl.pct, 2)) : '') +
-        '</span>'
-      : '<span class="muted">—</span>';
-    return '<tr class="pf-table-row pf-sale-row' + (opts.groupClass || '') +
-      '" data-pf-sale="' + escapeHtml(sale.saleId) + '">' +
-      '<td class="ticker pf-sale-lbl"><span class="pf-lot-marker">↳</span> продажа</td>' +
-      '<td class="pf-weight muted">—</td>' +
-      '<td class="pf-sale-qty">−' + escapeHtml(String(sale.qty)) + '</td>' +
-      '<td class="pf-buy-price muted">—</td>' +
-      '<td class="pf-weighted-avg" title="Ср. цена покупки на момент продажи">' + escapeHtml(buyLbl) + '</td>' +
-      '<td>' + escapeHtml(formatPortfolioSaleDate(sale)) + '</td>' +
-      '<td class="pf-sale-price" title="Цена продажи за акцию">' + escapeHtml(sellLbl) + '</td>' +
-      '<td>' + retCell + '</td>' +
-      '<td class="pf-bond-mat"><span class="muted">—</span></td>' +
-      '<td class="muted">—</td>' +
-      '<td class="pf-comment">' + escapeHtml(sale.comment || '—') + '</td>' +
-      '<td class="pf-row-actions">' +
-        '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId) + '">Отменить</button>' +
-      '</td></tr>';
-  }
-
-
-
   function buildPortfolioSectionRows(positions, sectionKind, bondMetaMap, sales) {
     bondMetaMap = bondMetaMap || {};
     sales = sales || [];
@@ -3030,12 +2992,7 @@
       if (groupIdx > 0) {
         html += '<tr class="pf-card-gap" aria-hidden="true"><td colspan="' + PF_TABLE_COLS + '"></td></tr>';
       }
-      var tickerSales = sales.filter(function (s) { return normalizeTicker(s.ticker) === group.ticker; })
-        .sort(function (a, b) {
-          var da = a.saleDate || '';
-          var db = b.saleDate || '';
-          return da < db ? 1 : (da > db ? -1 : 0);
-        });
+      // Продажи не дублируем в обзорной таблице — только в «Подробнее» / «Закрытые» / «Недавние».
       var expanded = state.pfExpandedTickers && state.pfExpandedTickers[group.ticker];
       var collapsible = lots.length > PF_LOT_COLLAPSE_THRESHOLD;
       var visibleLots = collapsible && !expanded ? lots.slice(0, PF_LOT_COLLAPSE_THRESHOLD) : lots;
@@ -3043,7 +3000,7 @@
       var visibleRowSpan = visibleLots.length || 1;
       var hasDetail = !!(state.pfHistoryTickers && state.pfHistoryTickers[group.ticker]);
       var hasToggle = hiddenCount > 0 || (collapsible && expanded);
-      var endKind = hasDetail ? 'detail' : (hasToggle ? 'toggle' : (tickerSales.length ? 'sale' : 'lot'));
+      var endKind = hasDetail ? 'detail' : (hasToggle ? 'toggle' : 'lot');
 
       visibleLots.forEach(function (p, idx) {
         var isPrimary = idx === 0;
@@ -3059,15 +3016,6 @@
           groupClass: groupBase +
             (isPrimary ? ' pf-ticker-group-start pf-lot-primary' : ' pf-lot-nested') +
             (isEnd ? ' pf-ticker-group-end' : '')
-        });
-      });
-
-      tickerSales.forEach(function (sale, sIdx) {
-        var isEnd = endKind === 'sale' && sIdx === tickerSales.length - 1;
-        html += buildPortfolioSaleRow(sale, group, {
-          isBond: isBond,
-          bondMeta: bondMetaMap[group.ticker] || null,
-          groupClass: groupBase + (isEnd ? ' pf-ticker-group-end' : '')
         });
       });
 
