@@ -1314,7 +1314,15 @@ input:focus, select:focus, textarea:focus {
   border-radius: 0 12px 12px 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, var(--bg-elevated) 100%);
   padding: 0.55rem 0.8rem 0.65rem;
-  max-width: 56rem;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+/* Desktop: панель «Подробнее» на всю ширину card-группы тикера */
+table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
+  width: 100%;
+  max-width: none;
 }
 
 .pf-ticker-detail-title {
@@ -2207,7 +2215,10 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
     padding: 0.05rem 0.36rem;
   }
 
-  .portfolio-card-detail .pf-ticker-detail {
+  .portfolio-card-detail .pf-ticker-detail,
+  .portfolio-closed-card-detail .pf-ticker-detail {
+    width: 100%;
+    max-width: 100%;
     overflow-x: hidden;
   }
 }
