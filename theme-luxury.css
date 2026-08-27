@@ -407,26 +407,62 @@ input:focus, select:focus, textarea:focus {
   border-color: rgba(23, 34, 51, 0.11);
 }
 
-/* ╨в╨╛╨┐-20 ╨┐╨╛ ╨╛╨▒╨╛╤А╨╛╤В╤Г: ╤Г╨▒╤А╨░╤В╤М ╨▒╨╡╨╢╨╡╨▓╤Л╨╣ tint, ╨▓╤Л╤А╨╛╨▓╨╜╤П╤В╤М ╤Б╨╛ ╤Б╨▓╨╡╤В╨╗╤Л╨╝╨╕ ╨║╨░╤А╤В╨╛╤З╨║╨░╨╝╨╕ */
+/* Панель «Объём торгов» — мягкая sage/bronze карточка */
+.imoex-market-panel {
+  border: 1px solid color-mix(in srgb, var(--bronze) 14%, #c8d0c9 86%);
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse 90% 70% at 12% 0%,
+      color-mix(in srgb, #8a9f92 10%, transparent) 0%,
+      transparent 55%),
+    linear-gradient(180deg, #fbfcfb 0%, var(--bg-panel) 48%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    var(--shadow-card);
+}
+
+.imoex-panel-title,
+.imoex-subtitle {
+  color: var(--text);
+  letter-spacing: -0.015em;
+}
+
+/* Топ-20 по обороту */
 .imoex-top-cards .quote-card {
   background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-left: 3px solid color-mix(in srgb, var(--accent) 35%, #d7dde6 65%);
+  border: 1px solid color-mix(in srgb, var(--accent) 10%, var(--border) 90%);
+  border-left: 3px solid color-mix(in srgb, #6a7f70 42%, #d7dde6 58%);
   box-shadow: var(--shadow-card);
   background-image: none;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease,
+    background 0.16s ease;
 }
 
 .imoex-top-cards .quote-card:hover {
-  border-color: rgba(23, 34, 51, 0.12);
-  border-left-color: color-mix(in srgb, var(--bronze) 55%, var(--accent) 45%);
+  border-color: color-mix(in srgb, var(--bronze) 22%, rgba(23, 34, 51, 0.12) 78%);
+  border-left-color: color-mix(in srgb, var(--bronze) 58%, #6a7f70 42%);
   box-shadow: var(--shadow-soft);
   transform: translateY(-1px);
-  background: var(--bg-panel);
+  background: #fcfdfc;
+}
+
+.imoex-top-cards .quote-card-wrap.analytics-selected .quote-card,
+.imoex-top-cards .quote-card-wrap.analytics-selected .quote-card:hover {
+  border-color: color-mix(in srgb, var(--bronze) 38%, #6a7f70 62%);
+  border-left-color: color-mix(in srgb, var(--bronze) 72%, #6a7f70 28%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 70%, transparent),
+    var(--shadow-soft);
+  background: color-mix(in srgb, #fffaf4 55%, var(--bg-panel) 45%);
+  transform: none;
 }
 
 .imoex-top-cards .quote-card-div-block,
 .imoex-top-cards .quote-card-div-block--compact {
-  border-top-color: rgba(23, 34, 51, 0.08);
+  border-top-color: rgba(23, 34, 51, 0.07);
 }
 
 .imoex-top-cards .quote-card-ticker {
@@ -572,8 +608,190 @@ input:focus, select:focus, textarea:focus {
   opacity: 0.92;
 }
 
-.imoex-vol-track { background: rgba(23, 34, 51, 0.06); }
-.imoex-vol-bar { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 70%, #8aab96) 0%, var(--accent) 100%); }
+/* Столбики объёма — metallic deep sage, спокойный фон */
+.imoex-vol-track {
+  background: color-mix(in srgb, #e8ece9 70%, #f4f6f8 30%);
+  border-radius: 8px 8px 3px 3px;
+  box-shadow: inset 0 1px 2px rgba(23, 34, 51, 0.04);
+}
+
+.imoex-vol-bar {
+  width: 68%;
+  border-radius: 6px 6px 2px 2px;
+  background:
+    linear-gradient(90deg,
+      rgba(255, 255, 255, 0.14) 0%,
+      transparent 42%,
+      transparent 58%,
+      rgba(30, 42, 36, 0.08) 100%),
+    linear-gradient(180deg,
+      color-mix(in srgb, #8a9f92 40%, #5f7568 60%) 0%,
+      color-mix(in srgb, #6a7f70 55%, #4f6358 45%) 42%,
+      color-mix(in srgb, #55685c 70%, #3f5248 30%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 2px 6px color-mix(in srgb, #3f5248 18%, transparent);
+}
+
+.imoex-vol-col--live .imoex-vol-bar {
+  background:
+    linear-gradient(90deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      transparent 45%,
+      rgba(30, 42, 36, 0.06) 100%),
+    linear-gradient(180deg,
+      color-mix(in srgb, #97ab9e 36%, #677c70 64%) 0%,
+      color-mix(in srgb, #6a7f70 50%, #4f6358 50%) 48%,
+      color-mix(in srgb, #4f6358 72%, #3a4b43 28%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.26) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 45%, transparent),
+    0 2px 7px color-mix(in srgb, #3f5248 16%, transparent);
+}
+
+.imoex-vol-col--live .imoex-vol-date {
+  color: color-mix(in srgb, #4f6358 70%, var(--text) 30%);
+}
+
+.imoex-vol-col:hover .imoex-vol-track {
+  background: color-mix(in srgb, #dde5e0 55%, #eef1f3 45%);
+}
+
+.imoex-vol-col:hover .imoex-vol-bar {
+  filter: brightness(1.05) saturate(1.04);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.26) inset,
+    0 3px 8px color-mix(in srgb, #3f5248 20%, transparent);
+}
+
+.imoex-vol-date {
+  color: var(--text-muted);
+}
+
+/* Новости / агент: единая система кнопок (sage / bronze) */
+.brief-read-btn.primary,
+button.primary.brief-read-btn {
+  min-height: 36px;
+  padding: 0.38rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #f4f7f5;
+  border: 1px solid color-mix(in srgb, var(--bronze) 28%, #8a9a8e 72%);
+  background:
+    radial-gradient(120% 90% at 50% -12%,
+      rgba(255, 255, 255, 0.2) 0%,
+      transparent 52%),
+    linear-gradient(175deg,
+      color-mix(in srgb, #97ab9e 30%, #6a7f70 70%) 0%,
+      color-mix(in srgb, #73887b 48%, #55685c 52%) 48%,
+      color-mix(in srgb, #5c7064 68%, #45564c 32%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.24) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 40%, transparent),
+    0 3px 10px color-mix(in srgb, #3f5248 14%, rgba(23, 34, 51, 0.05) 86%);
+}
+
+.brief-read-btn.primary:hover,
+button.primary.brief-read-btn:hover {
+  border-color: color-mix(in srgb, var(--bronze) 38%, #7d9084 62%);
+  transform: translateY(-1px);
+  filter: saturate(1.03);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 0 0 1px color-mix(in srgb, var(--bronze) 16%, transparent),
+    0 5px 12px color-mix(in srgb, #3f5248 16%, rgba(23, 34, 51, 0.06) 84%);
+}
+
+.brief-read-btn.primary:active,
+button.primary.brief-read-btn:active {
+  transform: translateY(1px);
+  filter: none;
+}
+
+.brief-source-link {
+  color: color-mix(in srgb, #55685c 55%, var(--text-muted) 45%);
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, #6a7f70 22%, transparent);
+  padding-bottom: 1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.brief-source-link:hover {
+  color: color-mix(in srgb, var(--bronze) 35%, #4f6358 65%);
+  border-bottom-color: color-mix(in srgb, var(--bronze) 40%, transparent);
+  text-decoration: none;
+}
+
+.agent-card-actions .agent-detail-btn,
+.agent-card-actions .agent-hide-btn {
+  min-height: 34px;
+  padding: 0.28rem 0.72rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background: color-mix(in srgb, #f7f9f8 70%, #ffffff 30%);
+  box-shadow: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.agent-card-actions .agent-detail-btn {
+  color: color-mix(in srgb, #3f5248 75%, var(--text) 25%);
+  border: 1px solid color-mix(in srgb, #6a7f70 38%, #c5ccd4 62%);
+}
+
+.agent-card-actions .agent-detail-btn:hover {
+  background: color-mix(in srgb, #eef3f0 65%, #ffffff 35%);
+  border-color: color-mix(in srgb, #6a7f70 52%, var(--bronze) 18%);
+  color: #33423a;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.65) inset;
+}
+
+.agent-card-actions .agent-hide-btn {
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, #9aa5b0 35%, var(--border) 65%);
+  background: transparent;
+}
+
+.agent-card-actions .agent-hide-btn:hover {
+  color: color-mix(in srgb, #4f6358 55%, var(--text-muted) 45%);
+  border-color: color-mix(in srgb, #6a7f70 28%, #b8c0c8 72%);
+  background: color-mix(in srgb, #f4f6f5 80%, transparent);
+  box-shadow: none;
+}
+
+.agent-card:has(.agent-card-expanded:not([hidden])) .agent-detail-btn {
+  color: color-mix(in srgb, #8A5E2E 70%, var(--text) 30%);
+  border-color: color-mix(in srgb, var(--bronze) 48%, #c8d0c9 52%);
+  background: color-mix(in srgb, #fff8f0 55%, #ffffff 45%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bronze-soft) 55%, transparent);
+}
+
+.agent-controls .ghost#agentConfigureBtn,
+.agent-controls button.ghost {
+  border: 1px solid color-mix(in srgb, #6a7f70 22%, var(--border) 78%);
+  background: color-mix(in srgb, #f7f9f8 50%, #ffffff 50%);
+  color: color-mix(in srgb, #45564c 60%, var(--text) 40%);
+  box-shadow: none;
+}
+
+.agent-controls .ghost#agentConfigureBtn:hover,
+.agent-controls button.ghost:hover {
+  border-color: color-mix(in srgb, var(--bronze) 28%, #6a7f70 40%);
+  background: #f3f6f4;
+}
+
+.agent-inline-link {
+  color: color-mix(in srgb, #55685c 60%, var(--accent) 40%);
+}
+
+.agent-inline-link:hover {
+  color: color-mix(in srgb, var(--bronze) 40%, #4f6358 60%);
+}
 
 .chart-canvas-wrap { background: #f7f8fb; border-color: var(--border); }
 .modal-overlay { background: rgba(17, 25, 38, 0.38); }

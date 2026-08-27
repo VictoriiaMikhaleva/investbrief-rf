@@ -538,11 +538,14 @@
       font-size: 0.85rem;
     }
     .brief-source-link {
-      color: var(--accent);
+      color: color-mix(in srgb, #55685c 50%, var(--text-muted) 50%);
       text-decoration: none;
       font-weight: 500;
     }
-    .brief-source-link:hover { text-decoration: underline; }
+    .brief-source-link:hover {
+      color: color-mix(in srgb, var(--bronze, #C48A4A) 35%, #4f6358 65%);
+      text-decoration: none;
+    }
     .brief-card[data-brief-id] { cursor: pointer; }
     .brief-card[data-brief-id]:focus-visible {
       outline: 2px solid var(--accent);
@@ -2313,8 +2316,8 @@
       .bar-chart-wrap canvas { cursor: default; }
     }
     .quote-card-wrap.analytics-selected .quote-card {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 1px var(--accent-soft);
+      border-color: color-mix(in srgb, var(--bronze, #C48A4A) 40%, var(--accent) 60%);
+      box-shadow: 0 0 0 1px var(--bronze-soft, rgba(196, 138, 74, 0.12));
     }
     .portfolio-insights { margin-top: 1rem; padding: 1rem; }
     .portfolio-insights-title { margin: 0 0 0.35rem; font-size: 1rem; }
@@ -2882,6 +2885,7 @@
     .imoex-market-panel {
       margin-top: 0.85rem;
       padding: 0.85rem 1rem;
+      border-radius: 16px;
     }
     .imoex-panel-title {
       margin: 0 0 0.35rem;
@@ -2907,11 +2911,11 @@
       padding: 0.25rem 0 0;
     }
     .imoex-vol-col--live .imoex-vol-bar {
-      background: linear-gradient(180deg, #5A8A68 0%, #3D5C47 100%);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      background: linear-gradient(180deg, #7d9487 0%, #55685c 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     }
     .imoex-vol-col--live .imoex-vol-date {
-      color: #3D5C47;
+      color: #4f6358;
       font-weight: 700;
     }
     @media (max-width: 760px) {
@@ -2945,11 +2949,11 @@
       transform: translateY(-3px);
     }
     .imoex-vol-col:hover .imoex-vol-track {
-      background: rgba(61, 92, 71, 0.18);
+      background: rgba(106, 127, 112, 0.12);
     }
     .imoex-vol-col:hover .imoex-vol-bar {
-      filter: brightness(1.12);
-      box-shadow: 0 2px 8px rgba(74, 115, 86, 0.35);
+      filter: brightness(1.06);
+      box-shadow: 0 2px 7px rgba(63, 82, 72, 0.22);
     }
     .imoex-vol-date {
       color: var(--text-muted);
@@ -2965,16 +2969,16 @@
       display: flex;
       align-items: flex-end;
       justify-content: center;
-      background: rgba(61, 92, 71, 0.1);
-      border-radius: 6px 6px 2px 2px;
+      background: #e9eeeb;
+      border-radius: 8px 8px 3px 3px;
       overflow: hidden;
       transition: background 0.22s ease;
     }
     .imoex-vol-bar {
-      width: 72%;
+      width: 68%;
       min-height: 3px;
-      background: linear-gradient(180deg, var(--bronze) 0%, var(--accent) 100%);
-      border-radius: 4px 4px 1px 1px;
+      background: linear-gradient(180deg, #7d9487 0%, #55685c 100%);
+      border-radius: 6px 6px 2px 2px;
       transition: height 0.35s ease, filter 0.22s ease, box-shadow 0.22s ease;
     }
     @media (prefers-reduced-motion: reduce) {
@@ -3782,6 +3786,10 @@
     .agent-card-actions .agent-hide-btn {
       pointer-events: auto;
       cursor: pointer;
+      min-height: 34px;
+      padding: 0.28rem 0.72rem;
+      font-size: 0.8rem;
+      border-radius: 999px;
     }
     .agent-card-expanded {
       margin-top: 0.65rem;
