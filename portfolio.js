@@ -412,14 +412,15 @@
     var scene = document.getElementById('portfolioFolderScene');
     if (!scene) return;
     var positions = getPortfolioPaperPositions();
-    var folderColor = '#3D5C47';
-    var backColor = darkenColor(folderColor, 0.08);
+    /* Мягкий sage — ближе к luxury/minimal портфеля */
+    var folderColor = '#6a7f70';
+    var backColor = '#5a6e61';
     var open = state.folderOpen;
 
     if (!positions.length) {
       scene.innerHTML =
-        '<div class="portfolio-folder-empty" style="display:flex;justify-content:center;align-items:center;width:100%;">' +
-          '<p class="muted hint-frame" style="padding:1rem;margin:0 auto;text-align:center;">Добавьте бумаги в портфель (кроме индекса IMOEX)</p>' +
+        '<div class="portfolio-folder-empty">' +
+          '<p class="muted portfolio-folder-empty-text">Добавьте бумаги в портфель (кроме индекса IMOEX)</p>' +
         '</div>';
       return;
     }
@@ -431,11 +432,11 @@
     var papersHtml = positions.map(function (p, i) {
       var tip = getPaperPnlTitle(p);
       var active = state.chartTicker === p.ticker ? ' paper-active' : '';
-      var bg = i % 3 === 0 ? darkenColor('#ffffff', 0.1) : (i % 3 === 1 ? darkenColor('#ffffff', 0.05) : '#ffffff');
       return (
         '<div class="paper paper-' + (i + 1) + active + '" data-ticker="' + escapeHtml(p.ticker) + '" ' +
-          'style="--paper-bg:' + bg + ';" role="button" tabindex="0" ' +
-          'aria-label="' + escapeHtml(p.ticker) + (tip ? ', ' + tip : '') + '">' +
+          'role="button" tabindex="0" ' +
+          'aria-label="' + escapeHtml(p.ticker) + (tip ? ', ' + tip : '') + '" ' +
+          'aria-pressed="' + (active ? 'true' : 'false') + '">' +
           '<span class="paper-ticker">' + escapeHtml(p.ticker) + '</span>' +
           '<span class="paper-pnl"' + (tip ? ' title="' + escapeHtml(tip) + '"' : '') + '>' +
             buildPaperPnlHtml(p) +
@@ -449,7 +450,9 @@
         papersHtml +
       '</div>' +
       '<div class="pf-folder folder' + (open ? ' open' : '') + '" id="portfolioFolder" ' +
-        'style="--folder-color:' + folderColor + ';--folder-back-color:' + backColor + '">' +
+        'style="--folder-color:' + folderColor + ';--folder-back-color:' + backColor + '" ' +
+        'role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '" ' +
+        'aria-label="' + (open ? 'Свернуть бумаги портфеля' : 'Открыть бумаги портфеля') + '">' +
         '<div class="folder__back">' +
           '<div class="folder__front"></div>' +
           '<div class="folder__front right"></div>' +

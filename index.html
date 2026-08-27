@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru" class="us-market-unavailable">
 <head>
-  <!-- ibrf-asset-version: 202608271741 -->
+  <!-- ibrf-asset-version: 202608271749 -->
   <script>
     /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS/JS и legal-ссылки. */
     (function () {
@@ -48,13 +48,13 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-  <link rel="manifest" href="./site.webmanifest?v=202608271741" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
+  <link rel="manifest" href="./site.webmanifest?v=202608271749" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
   <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, агент наблюдения, ОФЗ, дивиденды и обороты торгов." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=202608271741" />
-  <link rel="stylesheet" href="./theme-luxury.css?v=202608271741" />  <!-- Yandex.Metrika counter -->
+  <link rel="stylesheet" href="./styles.css?v=202608271749" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=202608271749" />  <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
       m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
@@ -700,33 +700,12 @@
 
           <div class="glass portfolio-totals-wrap" id="portfolioTotals" hidden aria-label="Сводка портфеля"></div>
 
-          <div class="glass table-wrap" data-pf-form="">
-            <table class="portfolio-table" id="portfolioTable">
-              <thead>
-                <tr>
-                  <th>Тикер</th>
-                  <th>Доля</th>
-                  <th>Кол-во</th>
-                  <th>Цена покупки</th>
-                  <th>Ср. цена</th>
-                  <th>Дата</th>
-                  <th>Текущая</th>
-                  <th>Доходн.</th>
-                  <th>Погашение</th>
-                  <th>Выплаты 12 мес.</th>
-                  <th>Коммент.</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="portfolioTableBody" class="portfolio-table-body"></tbody>
-            </table>
-          </div>
-          <div class="portfolio-cards" id="portfolioCards"></div>
-          <div class="glass portfolio-closed-section" id="portfolioClosedSection" hidden aria-label="Закрытые позиции"></div>
-          <div class="glass portfolio-recent-section" id="portfolioRecentSection" aria-label="Недавние операции"></div>
-
-          <div class="glass portfolio-folder-section">
-            <p class="muted hint-frame">Нажмите на папку, чтобы открыть портфель.<br>Выберите бумагу — ниже появится аналитика по позиции.<br>На карточке: сутки — за торговый день; портфель — к вашей средней цене.</p>
+          <div class="glass portfolio-folder-section" id="portfolioFolderSection" aria-label="Быстрый выбор бумаги">
+            <div class="portfolio-folder-head">
+              <h3 class="portfolio-folder-title">Быстрый выбор бумаги</h3>
+              <p class="muted portfolio-folder-desc">Нажмите на бумагу, чтобы открыть аналитику по позиции.</p>
+              <p class="muted portfolio-folder-note">На карточке: сутки — за торговый день; портфель — к вашей средней цене.</p>
+            </div>
             <div class="portfolio-folder-host" id="portfolioFolderHost">
               <div class="portfolio-folder-stage">
                 <div class="pf-folder-scene" id="portfolioFolderScene"></div>
@@ -768,6 +747,31 @@
               </div>
             </div>
           </section>
+
+          <div class="glass table-wrap" data-pf-form="">
+            <table class="portfolio-table" id="portfolioTable">
+              <thead>
+                <tr>
+                  <th>Тикер</th>
+                  <th>Доля</th>
+                  <th>Кол-во</th>
+                  <th>Цена покупки</th>
+                  <th>Ср. цена</th>
+                  <th>Дата</th>
+                  <th>Текущая</th>
+                  <th>Доходн.</th>
+                  <th>Погашение</th>
+                  <th>Выплаты 12 мес.</th>
+                  <th>Коммент.</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="portfolioTableBody" class="portfolio-table-body"></tbody>
+            </table>
+          </div>
+          <div class="portfolio-cards" id="portfolioCards"></div>
+          <div class="glass portfolio-closed-section" id="portfolioClosedSection" hidden aria-label="Закрытые позиции"></div>
+          <div class="glass portfolio-recent-section" id="portfolioRecentSection" aria-label="Недавние операции"></div>
 
           <button type="button" id="resetPortfolioBtn" class="danger" style="margin-top:0.5rem;">Очистить портфель</button>
         </section>
@@ -1144,16 +1148,16 @@
     </div>
   </div>
 
-  <script type="module" src="./firebase-init.mjs?v=202608271741"></script>
+  <script type="module" src="./firebase-init.mjs?v=202608271749"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="./nav-books.js?v=202608271741"></script>
-  <script src="./markets.js?v=202608271741"></script>
-  <script src="./storage.js?v=202608271741"></script>
-  <script src="./ui.js?v=202608271741"></script>
-  <script src="./news.js?v=202608271741"></script>
-  <script src="./moex.js?v=202608271741"></script>
-  <script src="./pif-articles.js?v=202608271741"></script>
-  <script src="./manual-data.js?v=202608271741"></script>  <script>
+  <script src="./nav-books.js?v=202608271749"></script>
+  <script src="./markets.js?v=202608271749"></script>
+  <script src="./storage.js?v=202608271749"></script>
+  <script src="./ui.js?v=202608271749"></script>
+  <script src="./news.js?v=202608271749"></script>
+  <script src="./moex.js?v=202608271749"></script>
+  <script src="./pif-articles.js?v=202608271749"></script>
+  <script src="./manual-data.js?v=202608271749"></script>  <script>
     /** Серверная аналитика: Firebase Function (prod) или /api/analytics при npm start */
     window.INVESTBRIEF_ANALYTICS_API = 'https://europe-west1-investor-brief-rf.cloudfunctions.net/getAnalytics';
     (function () {
@@ -1165,13 +1169,13 @@
       }
     })();
   </script>
-  <script src="./analytics-core.js?v=202608271741"></script>
-  <script src="./analytics.js?v=202608271741"></script>
-  <script src="./ofz.js?v=202608271741"></script>
-  <script src="./pif.js?v=202608271741"></script>
-  <script src="./portfolio.js?v=202608271741"></script>
-  <script src="./agent.js?v=202608271741"></script>
-  <script src="./watchdog.js?v=202608271741"></script>
-  <script src="./firebase-sync.js?v=202608271741"></script>
-  <script src="./app.js?v=202608271741"></script></body>
+  <script src="./analytics-core.js?v=202608271749"></script>
+  <script src="./analytics.js?v=202608271749"></script>
+  <script src="./ofz.js?v=202608271749"></script>
+  <script src="./pif.js?v=202608271749"></script>
+  <script src="./portfolio.js?v=202608271749"></script>
+  <script src="./agent.js?v=202608271749"></script>
+  <script src="./watchdog.js?v=202608271749"></script>
+  <script src="./firebase-sync.js?v=202608271749"></script>
+  <script src="./app.js?v=202608271749"></script></body>
 </html>
