@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <!-- ibrf-asset-version: 202608280834 -->
+  <script>
+    (function () {
+      var marker = 'investbrief-rf';
+      var path = location.pathname || '/';
+      if (path === '/' + marker) {
+        location.replace('/' + marker + '/' + location.search + location.hash);
+        return;
+      }
+      var root = '';
+      var pos = path.indexOf(marker);
+      if (pos !== -1) {
+        root = path.slice(0, pos + marker.length) + '/';
+        var base = document.createElement('base');
+        base.href = root;
+        document.head.appendChild(base);
+      } else {
+        var slash = path.lastIndexOf('/');
+        root = slash >= 0 ? path.slice(0, slash + 1) : '/';
+      }
+      function resolveDocLinks() {
+        document.querySelectorAll('a[data-ibrf-doc]').forEach(function (a) {
+          var page = String(a.getAttribute('data-ibrf-doc') || '').replace(/^\.?\//, '');
+          if (!page) return;
+          a.setAttribute('href', root + page);
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', resolveDocLinks);
+      } else {
+        resolveDocLinks();
+      }
+    })();
+  </script>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Страница не найдена — ИнвестБриф РФ</title>
+  <meta name="description" content="Страница не найдена." />
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=202608280834" />
+  <link rel="stylesheet" href="theme-luxury.css?v=202608280834" />
+  <style>
+    .legal-page { max-width: 42rem; margin: 0 auto; padding: 1.5rem 1.25rem 1.75rem; color: var(--text, #1F1E1C); }
+    .legal-page h1 { font-family: var(--font-heading); font-size: 1.65rem; margin: 0 0 0.35rem; color: var(--text, #1F1E1C); }
+    .legal-page p { line-height: 1.6; font-size: 0.95rem; color: var(--text-muted, #5C584F); }
+    .legal-back { display: inline-block; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="legal-page">
+    <a class="legal-back muted" href="index.html" data-ibrf-doc="index.html">← На главную</a>
+    <h1>Страница не найдена</h1>
+    <p>Запрошенный адрес не существует. Откройте приложение по прямой ссылке.</p>
+    <p class="muted" style="margin-top:2rem;"><a href="index.html" data-ibrf-doc="index.html">Вернуться в приложение</a></p>
+  </div>
+</body>
+</html>

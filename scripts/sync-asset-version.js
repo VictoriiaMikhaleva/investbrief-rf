@@ -12,7 +12,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const VERSION_FILE = path.join(ROOT, 'asset-version.json');
-const HTML_FILES = ['index.html', 'privacy.html', 'page-template.html', 'legal.html', 'terms.html'];
+const HTML_FILES = ['index.html', 'privacy.html', 'page-template.html', 'legal.html', 'terms.html', '404.html'];
 
 function pad2(n) {
   return String(n).padStart(2, '0');
