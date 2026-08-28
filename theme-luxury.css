@@ -2961,18 +2961,6 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   text-underline-offset: 0.12em;
 }
 
-.portfolio-recent-more::after {
-  content: ' тЖТ';
-  text-decoration: none;
-  letter-spacing: -0.02em;
-  opacity: 0.75;
-}
-
-.portfolio-recent-card--interactive:hover .portfolio-recent-more::after,
-.portfolio-recent-card--interactive:focus-within .portfolio-recent-more::after {
-  opacity: 1;
-}
-
 .portfolio-recent-kpis {
   display: flex;
   flex-wrap: wrap;
