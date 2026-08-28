@@ -1720,12 +1720,29 @@
     return chips;
   }
 
+  function articleMetaChipClass(text) {
+    var s = String(text || '');
+    if (s.indexOf('время прочтения/время ознакомления') === 0) {
+      return 'article-meta-chip article-meta-chip--read-time';
+    }
+    if (/риск/i.test(s) || s === 'Смешанный профиль') {
+      var riskCls = 'article-meta-chip article-meta-chip--risk';
+      if (/высок/i.test(s)) return riskCls + ' article-meta-chip--risk-high';
+      if (/умерен/i.test(s)) return riskCls + ' article-meta-chip--risk-moderate';
+      if (/средн/i.test(s)) return riskCls + ' article-meta-chip--risk-medium';
+      if (/низк|консерв/i.test(s)) return riskCls + ' article-meta-chip--risk-low';
+      return riskCls;
+    }
+    if (/\d/.test(s) && /лет/i.test(s)) {
+      return 'article-meta-chip article-meta-chip--horizon';
+    }
+    return 'article-meta-chip article-meta-chip--category';
+  }
+
   function renderArticleMetaChips(badges) {
     if (!badges || !badges.length) return '';
     return '<div class="article-meta">' + badges.map(function (b) {
-      var readCls = String(b).indexOf('время прочтения/время ознакомления') === 0
-        ? ' article-meta-chip--read-time' : '';
-      return '<span class="article-meta-chip' + readCls + '">' + escapeHtml(b) + '</span>';
+      return '<span class="' + articleMetaChipClass(b) + '">' + escapeHtml(b) + '</span>';
     }).join('') + '</div>';
   }
 

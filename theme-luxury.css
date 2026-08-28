@@ -1562,24 +1562,84 @@ button.primary.brief-read-btn:active {
 .article-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  margin: 0 0 0.65rem;
+  align-items: center;
+  gap: 0.28rem;
+  margin: 0 0 0.58rem;
 }
 .article-meta-chip {
   display: inline-flex;
   align-items: center;
-  padding: 0.2rem 0.5rem;
+  max-width: 100%;
+  padding: 0.12rem 0.44rem;
   border-radius: 999px;
-  background: rgba(31, 107, 92, 0.1);
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 600;
+  border: 1px solid rgba(90, 98, 92, 0.12);
+  background: color-mix(in srgb, #eef1ee 42%, var(--bg-panel) 58%);
+  color: #5c6560;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.article-meta-chip--category {
+  background: color-mix(in srgb, #e8eee9 38%, var(--bg-panel) 62%);
+  border-color: rgba(95, 117, 104, 0.1);
+  color: #5a6560;
+}
+.article-meta-chip--horizon {
+  background: #f6f6f5;
+  border-color: rgba(23, 34, 51, 0.07);
+  color: #6b6e72;
+}
+.article-meta-chip--risk {
+  background: #f4f2ef;
+  border-color: rgba(90, 98, 92, 0.12);
+  color: #6a635c;
+}
+.article-meta-chip--risk-low,
+.article-meta-chip--risk-moderate {
+  background: color-mix(in srgb, #e8eee9 42%, var(--bg-panel) 58%);
+  border-color: rgba(95, 117, 104, 0.16);
+  color: #5c6b62;
+}
+.article-meta-chip--risk-medium {
+  background: #f6ebe4;
+  border-color: rgba(154, 103, 88, 0.2);
+  color: #8a6d62;
+}
+.article-meta-chip--risk-high {
+  background: #f4e6dc;
+  border-color: rgba(154, 103, 88, 0.24);
+  color: var(--loss, #9A6758);
 }
 .article-meta-chip--read-time {
   max-width: 100%;
   white-space: normal;
-  line-height: 1.35;
-  border-radius: 10px;
+  line-height: 1.3;
+  border-radius: 8px;
+  padding: 0.12rem 0.46rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  background: #f7f1e8;
+  border-color: color-mix(in srgb, var(--bronze) 24%, transparent);
+  color: #8a6a48;
+}
+.article-meta-chip:hover {
+  background: color-mix(in srgb, #e8ece9 55%, var(--bg-panel) 45%);
+  border-color: rgba(90, 98, 92, 0.16);
+}
+.article-meta-chip--read-time:hover {
+  background: color-mix(in srgb, #f4eadc 82%, var(--bg-panel) 18%);
+  border-color: color-mix(in srgb, var(--bronze) 30%, transparent);
+  color: #7d5e3d;
+}
+.article-meta-chip--horizon:hover {
+  background: #eef0f0;
+  border-color: rgba(23, 34, 51, 0.12);
+}
+.article-meta-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bronze) 40%, #6a7f70 60%);
+  outline-offset: 1px;
 }
 
 .strategy-grid {
