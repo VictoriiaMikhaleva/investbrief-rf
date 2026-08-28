@@ -2,6 +2,19 @@
   var CHART_COLOR_AUTUMN = '#D4873B';
   var CHART_COLOR_AUTUMN_SOFT = 'rgba(212, 135, 59, 0.42)';
   var CHART_COLOR_FORECAST = '#4A7356';
+  var DIV_CHART_HIST = '#B88945';
+  var DIV_CHART_HIST_STROKE = '#9A7338';
+  var DIV_CHART_HIST_HOVER = '#A97A3B';
+  var DIV_CHART_FORECAST = '#526B56';
+  var DIV_CHART_FORECAST_STROKE = '#405544';
+  var DIV_CHART_FORECAST_HOVER = '#49604D';
+  var DIV_CHART_GRID = 'rgba(87, 98, 111, 0.10)';
+  var DIV_CHART_AXIS = '#6F7785';
+  var DIV_CHART_LABEL_BG = '#FFF8EA';
+  var DIV_CHART_LABEL_BORDER = 'rgba(154, 115, 56, 0.35)';
+  var DIV_CHART_LABEL_BG_FC = 'rgba(236, 243, 236, 0.95)';
+  var DIV_CHART_LABEL_BORDER_FC = 'rgba(64, 85, 68, 0.35)';
+  var DIV_CHART_LABEL_TEXT = '#2F3438';
   var CHART_LINE = '#B88952';
   var CHART_LINE_HOVER = '#C49A5C';
   var CHART_FILL = 'rgba(184, 149, 98, 0.18)';
@@ -9,6 +22,29 @@
   var CHART_AXIS = '#5C6560';
   var CHART_POINT_STROKE = '#f7f8f6';
   var CHART_HOVER_GUIDE = 'rgba(90, 98, 92, 0.28)';
+
+  function dividendBarChartOptions(extra) {
+    extra = extra || {};
+    return Object.assign({
+      color: DIV_CHART_HIST,
+      forecastColor: DIV_CHART_FORECAST,
+      colorHover: DIV_CHART_HIST_HOVER,
+      forecastHoverColor: DIV_CHART_FORECAST_HOVER,
+      barStroke: DIV_CHART_HIST_STROKE,
+      forecastStroke: DIV_CHART_FORECAST_STROKE,
+      gridColor: DIV_CHART_GRID,
+      axisColor: DIV_CHART_AXIS,
+      showGrid: true,
+      labelBg: DIV_CHART_LABEL_BG,
+      labelBorder: DIV_CHART_LABEL_BORDER,
+      forecastLabelBg: DIV_CHART_LABEL_BG_FC,
+      forecastLabelBorder: DIV_CHART_LABEL_BORDER_FC,
+      labelText: DIV_CHART_LABEL_TEXT,
+      ySuffix: '₽/акц.',
+      showValues: true,
+      compactBars: true
+    }, extra);
+  }
 
   function chartThemeColor(varName, fallback) {
     try {
@@ -694,7 +730,7 @@
     if (divCanvas && analytics.divYieldByYear && analytics.divYieldByYear.length) {
       drawMiniBarChart(divCanvas, analytics.divYieldByYear.map(function (y) {
         return { v: y.yieldPct != null && isFinite(y.yieldPct) ? y.yieldPct : 0 };
-      }), { color: CHART_COLOR_AUTUMN });
+      }), { color: DIV_CHART_HIST });
     }
     if (volCanvas && analytics.volumeByDay && analytics.volumeByDay.length) {
       drawMiniBarChart(volCanvas, analytics.volumeByDay, { color: '#6B7A5A' });
@@ -778,13 +814,7 @@
         metaEl.textContent = parts.join(' · ');
       }
       if (divCanvas) {
-        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
-          color: CHART_COLOR_AUTUMN,
-          forecastColor: CHART_COLOR_FORECAST,
-          ySuffix: '₽/акц.',
-          showValues: true,
-          compactBars: true
-        });
+        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), dividendBarChartOptions());
       }
       if (divNote) {
         divNote.innerHTML = typeof formatDividendChartInfoHtml === 'function'
@@ -977,8 +1007,9 @@
 
 
 
-  function drawBarValueLabel(ctx, text, cx, topY, plotWidth) {
+  function drawBarValueLabel(ctx, text, cx, topY, plotWidth, labelOpts) {
     if (!text) return;
+    labelOpts = labelOpts || {};
     ctx.save();
     ctx.font = '600 11px Manrope, Golos Text, sans-serif';
     var tw = ctx.measureText(text).width;
@@ -989,8 +1020,8 @@
     var maxPlotW = plotWidth || 320;
     var bx = Math.max(4, Math.min(cx - bw / 2, maxPlotW - bw - 4));
     var by = Math.max(4, topY - bh - 6);
-    ctx.fillStyle = 'rgba(255, 252, 248, 0.98)';
-    ctx.strokeStyle = CHART_COLOR_AUTUMN_SOFT;
+    ctx.fillStyle = labelOpts.bg || 'rgba(255, 252, 248, 0.98)';
+    ctx.strokeStyle = labelOpts.border || CHART_COLOR_AUTUMN_SOFT;
     ctx.lineWidth = 1;
     ctx.beginPath();
     if (ctx.roundRect) {
@@ -1000,7 +1031,7 @@
     }
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = '#1F1E1C';
+    ctx.fillStyle = labelOpts.text || '#1F1E1C';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, bx + bw / 2, by + bh / 2);
@@ -1146,18 +1177,39 @@
     }
     var color = options.color || CHART_COLOR_AUTUMN;
     var forecastColor = options.forecastColor || CHART_COLOR_FORECAST;
+    var axisColor = options.axisColor || '#6B6B6B';
     var barsMeta = [];
+
+    if (options.showGrid) {
+      ctx.save();
+      ctx.strokeStyle = options.gridColor || 'rgba(87, 98, 111, 0.10)';
+      ctx.lineWidth = 1;
+      for (var g = 0; g <= 4; g++) {
+        var gy = pad.t + (plotH * g) / 4;
+        ctx.beginPath();
+        ctx.moveTo(pad.l, gy);
+        ctx.lineTo(pad.l + plotW, gy);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     vals.forEach(function (v, i) {
       var isHover = i === hoverIndex;
+      var isForecastBar = !!(series[i].forecast || series[i].estimated);
       var lift = isHover ? 5 : 0;
       var bh = Math.max(3, (v / max) * plotH) * (isHover ? 1.06 : 1);
       var x = startX + i * (barW + barGap);
       var y = pad.t + plotH - bh - lift;
-      var barColor = series[i].forecast || series[i].estimated ? forecastColor : color;
+      var barColor = isForecastBar ? forecastColor : color;
+      if (isHover) {
+        barColor = isForecastBar
+          ? (options.forecastHoverColor || forecastColor)
+          : (options.colorHover || barColor);
+      }
       ctx.globalAlpha = hoverIndex >= 0 && !isHover ? 0.55 : 1;
       ctx.fillStyle = barColor;
-      if (isHover) {
+      if (isHover && !options.colorHover) {
         ctx.shadowColor = 'rgba(74, 115, 86, 0.35)';
         ctx.shadowBlur = 8;
         ctx.shadowOffsetY = 2;
@@ -1165,6 +1217,12 @@
       ctx.fillRect(x, y, barW, bh);
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
+      var barStroke = isForecastBar ? options.forecastStroke : options.barStroke;
+      if (barStroke) {
+        ctx.strokeStyle = barStroke;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, barW - 1), Math.max(0, bh - 1));
+      }
       ctx.globalAlpha = 1;
 
       barsMeta.push({ x: x, y: y, barW: barW, bh: bh, index: i, v: v });
@@ -1174,12 +1232,22 @@
         var valText = series[i].valueLabel != null
           ? String(series[i].valueLabel)
           : formatBarChartValue(v, options);
-        if (valText) drawBarValueLabel(ctx, valText, x + barW / 2, y, w);
+        if (valText) {
+          drawBarValueLabel(ctx, valText, x + barW / 2, y, w, {
+            bg: isForecastBar
+              ? (options.forecastLabelBg || options.labelBg)
+              : options.labelBg,
+            border: isForecastBar
+              ? (options.forecastLabelBorder || options.labelBorder)
+              : options.labelBorder,
+            text: options.labelText
+          });
+        }
       }
       if (options.showLabels !== false || (isHover && options.showLabels === false)) {
         var lbl = series[i].label || String(i + 1);
         if (isHover || options.showLabels !== false) {
-          ctx.fillStyle = isHover ? '#1F1E1C' : '#6B6B6B';
+          ctx.fillStyle = isHover ? '#2F3438' : axisColor;
           ctx.font = (isHover ? '600 ' : '') + (compact ? '10px' : '9px') + ' Golos Text, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'alphabetic';
@@ -1189,7 +1257,7 @@
     });
 
     if (options.ySuffix) {
-      ctx.fillStyle = '#6B6B6B';
+      ctx.fillStyle = axisColor;
       ctx.font = '10px Golos Text, sans-serif';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'alphabetic';
@@ -1634,13 +1702,7 @@
         metaEl.textContent = parts.join(' · ');
       }
       if (divCanvas) {
-        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
-          color: CHART_COLOR_AUTUMN,
-          forecastColor: CHART_COLOR_FORECAST,
-          ySuffix: '₽/акц.',
-          showValues: true,
-          compactBars: true
-        });
+        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), dividendBarChartOptions());
       }
       if (divNote) {
         divNote.innerHTML = (a.divYieldByYear && a.divYieldByYear.length)
@@ -2121,13 +2183,7 @@
           '<div class="insight-kpi"><span class="insight-kpi-lbl">История выплат 12 мес.</span><span class="insight-kpi-val">' + escapeHtml(paidTotal != null ? paidTotal.toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '—') + '</span></div>';
       }
       if (divCanvas) {
-        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), {
-          color: CHART_COLOR_AUTUMN,
-          forecastColor: CHART_COLOR_FORECAST,
-          ySuffix: '₽/акц.',
-          showValues: true,
-          compactBars: true
-        });
+        drawFullBarChart(divCanvas, buildDividendRubSeries(a.divYieldByYear, a.divForecast), dividendBarChartOptions());
       }
       if (divNote) {
         divNote.innerHTML = typeof formatDividendChartInfoHtml === 'function'
