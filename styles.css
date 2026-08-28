@@ -13,6 +13,7 @@
       --bronze: #D4873B;
       --bronze-soft: rgba(212, 135, 59, 0.16);
       --danger: #A34E44;
+      --loss: #9A6758;
       --success: #3D6B4A;
       --radius: 12px;
       --sidebar-w: 272px;
@@ -781,7 +782,7 @@
     table.portfolio-table th { color: var(--accent); font-family: var(--font-heading); font-weight: 600; }
     table.portfolio-table tr:hover td { background: var(--bg-glass); }
     .pnl-pos { color: var(--success); }
-    .pnl-neg { color: var(--danger); }
+    .pnl-neg { color: var(--loss); }
     .portfolio-cards { display: none; }
     @media (max-width: 699px) {
       .table-wrap { display: none; }
@@ -932,7 +933,7 @@
       background: color-mix(in srgb, #eef2ef 55%, #f7f8f7 45%);
     }
     .portfolio-totals-grid .pnl-pos { color: #3D5C47; }
-    .portfolio-totals-grid .pnl-neg { color: #A84848; }
+    .portfolio-totals-grid .pnl-neg { color: var(--loss); }
     .alert-rule {
       display: flex;
       flex-wrap: wrap;
@@ -1635,7 +1636,7 @@
       color: var(--text);
     }
     .pf-papers-strip .paper .paper-pnl-val.pnl-pos { color: var(--success); }
-    .pf-papers-strip .paper .paper-pnl-val.pnl-neg { color: var(--danger); }
+    .pf-papers-strip .paper .paper-pnl-val.pnl-neg { color: var(--loss); }
     .pf-papers-strip .paper:hover { z-index: 5; }
     .pf-papers-strip .paper.paper-active {
       z-index: 6;
@@ -3724,7 +3725,7 @@
     }
     .agent-metric { font-weight: 600; }
     .agent-change--up { color: #3d6b4a; }
-    .agent-change--down { color: #a04545; }
+    .agent-change--down { color: var(--loss); }
     .agent-signals-preview .agent-signal { margin-bottom: 0.55rem; }
     .agent-signal-titles {
       margin: 0;

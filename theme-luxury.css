@@ -15,6 +15,13 @@
   --accent-muted: rgba(31, 107, 92, 0.22);
   --bronze: #C48A4A;
   --bronze-soft: rgba(196, 138, 74, 0.12);
+  --chart-line: #B88952;
+  --chart-line-hover: #C49A5C;
+  --chart-fill: rgba(184, 149, 98, 0.18);
+  --chart-grid: rgba(106, 127, 112, 0.14);
+  --chart-axis: #5C6560;
+  --chart-hover-guide: rgba(90, 98, 92, 0.28);
+  --loss: #9A6758;
   --shadow-soft: 0 12px 32px rgba(20, 27, 40, 0.055);
   --shadow-card: 0 4px 16px rgba(20, 27, 40, 0.045);
   --radius: 16px;
@@ -743,6 +750,20 @@ input:focus, select:focus, textarea:focus {
 .quote-card-change {
   font-weight: 600;
   opacity: 0.92;
+}
+
+.pnl-neg,
+.index-change.pnl-neg,
+.quote-card-change.pnl-neg,
+.market-tile-change.pnl-neg,
+.agent-change--down {
+  color: var(--loss);
+}
+
+.chart-hover-tip {
+  background: rgba(38, 36, 32, 0.92);
+  border: 1px solid color-mix(in srgb, var(--bronze) 38%, transparent);
+  box-shadow: 0 6px 18px rgba(20, 27, 40, 0.18);
 }
 
 /* Столбики объёма — metallic deep sage, спокойный фон */

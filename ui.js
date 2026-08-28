@@ -2,6 +2,22 @@
   var CHART_COLOR_AUTUMN = '#D4873B';
   var CHART_COLOR_AUTUMN_SOFT = 'rgba(212, 135, 59, 0.42)';
   var CHART_COLOR_FORECAST = '#4A7356';
+  var CHART_LINE = '#B88952';
+  var CHART_LINE_HOVER = '#C49A5C';
+  var CHART_FILL = 'rgba(184, 149, 98, 0.18)';
+  var CHART_GRID = 'rgba(106, 127, 112, 0.14)';
+  var CHART_AXIS = '#5C6560';
+  var CHART_POINT_STROKE = '#f7f8f6';
+  var CHART_HOVER_GUIDE = 'rgba(90, 98, 92, 0.28)';
+
+  function chartThemeColor(varName, fallback) {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      return v || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
 
   function divAvg5yValHtml(analytics) {
     if (!analytics || analytics.divAvg5y == null || !isFinite(analytics.divAvg5y)) {
@@ -458,7 +474,7 @@
 
     if (!series || series.length < 2) {
       canvas._chartMeta = null;
-      ctx.fillStyle = '#6B6B6B';
+      ctx.fillStyle = chartThemeColor('--chart-axis', CHART_AXIS);
       ctx.font = '14px Golos Text, IBM Plex Sans, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Недостаточно данных', w / 2, h / 2);
@@ -501,8 +517,9 @@
       maxP: maxP
     };
 
-    ctx.strokeStyle = 'rgba(43, 43, 43, 0.08)';
+    ctx.strokeStyle = chartThemeColor('--chart-grid', CHART_GRID);
     ctx.lineWidth = 1;
+    var axisColor = chartThemeColor('--chart-axis', CHART_AXIS);
     for (var g = 0; g <= 4; g++) {
       var gy = pad.top + (plotH * g) / 4;
       ctx.beginPath();
@@ -510,15 +527,19 @@
       ctx.lineTo(pad.left + plotW, gy);
       ctx.stroke();
       var labelVal = maxP - ((maxP - minP) * g) / 4;
-      ctx.fillStyle = '#6B6B6B';
+      ctx.fillStyle = axisColor;
       ctx.font = '10px Inter, Manrope, sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(formatChartPrice(labelVal, options.ticker), pad.left - 8, gy + 3);
     }
 
-    var up = series[series.length - 1].price >= series[0].price;
-    var lineColor = up ? '#6B7A5A' : '#B85C50';
-    var fillTop = up ? 'rgba(107, 122, 90, 0.22)' : 'rgba(184, 92, 80, 0.16)';
+    var hoverIndex = options.hoverIndex;
+    var isHover = hoverIndex != null && hoverIndex >= 0 && hoverIndex < series.length;
+    var lineColor = chartThemeColor('--chart-line', CHART_LINE);
+    var pointColor = isHover
+      ? chartThemeColor('--chart-line-hover', CHART_LINE_HOVER)
+      : lineColor;
+    var fillTop = chartThemeColor('--chart-fill', CHART_FILL);
 
     ctx.beginPath();
     series.forEach(function (pt, idx) {
@@ -545,16 +566,13 @@
     ctx.lineJoin = 'round';
     ctx.stroke();
 
-    var hoverIndex = options.hoverIndex;
-    var endIdx = hoverIndex != null && hoverIndex >= 0 && hoverIndex < series.length
-      ? hoverIndex
-      : series.length - 1;
+    var endIdx = isHover ? hoverIndex : series.length - 1;
     var endPt = series[endIdx];
 
     if (hoverIndex != null && hoverIndex >= 0 && hoverIndex < series.length) {
       var hx = xAt(hoverIndex);
       ctx.save();
-      ctx.strokeStyle = 'rgba(43, 43, 43, 0.28)';
+      ctx.strokeStyle = chartThemeColor('--chart-hover-guide', CHART_HOVER_GUIDE);
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -565,16 +583,16 @@
       ctx.restore();
     }
 
-    ctx.fillStyle = lineColor;
-    ctx.strokeStyle = '#faf8f4';
-    ctx.lineWidth = hoverIndex != null ? 2 : 0;
+    ctx.fillStyle = pointColor;
+    ctx.strokeStyle = CHART_POINT_STROKE;
+    ctx.lineWidth = isHover ? 2 : 0;
     ctx.beginPath();
-    ctx.arc(xAt(endIdx), yAt(endPt.price), hoverIndex != null ? 5 : 4, 0, Math.PI * 2);
+    ctx.arc(xAt(endIdx), yAt(endPt.price), isHover ? 5 : 4, 0, Math.PI * 2);
     ctx.fill();
-    if (hoverIndex != null) ctx.stroke();
+    if (isHover) ctx.stroke();
 
     var labelIdx = pickChartAxisLabelIndices(series, options.horizon);
-    ctx.fillStyle = '#6B6B6B';
+    ctx.fillStyle = axisColor;
     ctx.font = (options.horizon === '5y' || options.horizon === 'year')
       ? '9px Inter, Manrope, sans-serif'
       : '10px Inter, Manrope, sans-serif';
