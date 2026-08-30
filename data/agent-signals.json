@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-08-29T21:59:52.684Z",
+  "updatedAt": "2026-08-30T00:06:08.467Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -254,8 +254,15 @@
         "insufficient": false,
         "currentPrice": 249.52,
         "dayChangePct": 0.17,
-        "signals": [],
-        "status": "Спокойно"
+        "signals": [
+          {
+            "id": "month-low",
+            "title": "Близко к нижней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
       },
       {
         "ticker": "SAFE",
