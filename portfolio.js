@@ -4371,18 +4371,102 @@
     if (block) block.classList.add('pf-asof-block--open');
   }
 
-  function buildPortfolioAsOfCardsHtml(items) {
-    return items.map(function (row) {
-      var note = (row.notes && row.notes.length) ? row.notes[0] : '';
-      return '<article class="pf-asof-card">' +
+  function ruCountWord(n, one, few, many) {
+    var abs = Math.abs(Number(n)) % 100;
+    var n1 = abs % 10;
+    if (abs > 10 && abs < 20) return many;
+    if (n1 === 1) return one;
+    if (n1 >= 2 && n1 <= 4) return few;
+    return many;
+  }
+
+  function asOfRowType(row) {
+    return row && (row.type === 'bond' || row.type === 'stock') ? row.type : '';
+  }
+
+  function asOfAllTypesKnown(items) {
+    return !!(items && items.length && items.every(function (row) {
+      return !!asOfRowType(row);
+    }));
+  }
+
+  function asOfRowNoteText(row) {
+    var notes = row && Array.isArray(row.notes) ? row.notes : [];
+    return notes.filter(function (n) {
+      var t = String(n || '').trim();
+      return t && t !== '—';
+    }).join('; ');
+  }
+
+  function asOfShouldShowNotes(items) {
+    return (items || []).some(function (row) {
+      if (row && row.hasIncompleteHistory) return true;
+      return !!asOfRowNoteText(row);
+    });
+  }
+
+  function sortAsOfItemsForDisplay(items) {
+    var copy = (items || []).slice();
+    if (!asOfAllTypesKnown(copy)) return copy;
+    copy.sort(function (a, b) {
+      var ga = asOfRowType(a) === 'bond' ? 1 : 0;
+      var gb = asOfRowType(b) === 'bond' ? 1 : 0;
+      if (ga !== gb) return ga - gb;
+      return String(a.ticker || '').localeCompare(String(b.ticker || ''), 'ru');
+    });
+    return copy;
+  }
+
+  function asOfShouldShowGroups(items) {
+    if (!asOfAllTypesKnown(items)) return false;
+    var hasStock = items.some(function (row) { return asOfRowType(row) === 'stock'; });
+    var hasBond = items.some(function (row) { return asOfRowType(row) === 'bond'; });
+    return hasStock && hasBond;
+  }
+
+  function buildPortfolioAsOfSummaryHtml(result, items) {
+    var dateLbl = formatAsOfDateDisplay(result && result.targetDate);
+    var n = (items || []).length;
+    var lead = 'На ' + dateLbl + ': ' + n + ' ' + ruCountWord(n, 'бумага', 'бумаги', 'бумаг') + ' в портфеле';
+    var classes = '';
+    if (n && asOfAllTypesKnown(items)) {
+      var stocks = items.filter(function (row) { return asOfRowType(row) === 'stock'; }).length;
+      var bonds = items.filter(function (row) { return asOfRowType(row) === 'bond'; }).length;
+      var parts = [];
+      if (stocks) parts.push(stocks + ' ' + ruCountWord(stocks, 'акция', 'акции', 'акций'));
+      if (bonds) parts.push(bonds + ' ОФЗ');
+      if (parts.length) classes = parts.join(' · ');
+    }
+    return '<p class="pf-asof-summary">' +
+      '<span class="pf-asof-summary-lead">' + escapeHtml(lead) + '</span>' +
+      (classes ? '<span class="pf-asof-summary-classes">' + escapeHtml(classes) + '</span>' : '') +
+    '</p>';
+  }
+
+  function asOfPaperCellHtml(row) {
+    var paper = '<span class="pf-asof-ticker">' + escapeHtml(row.ticker) + '</span>';
+    if (row.name && row.name !== row.ticker) {
+      paper += ' <span class="muted pf-asof-name">' + escapeHtml(row.name) + '</span>';
+    }
+    return paper;
+  }
+
+  function buildPortfolioAsOfCardsHtml(items, showNotes, showGroups) {
+    var html = '';
+    var lastGroup = '';
+    (items || []).forEach(function (row) {
+      var kind = asOfRowType(row);
+      if (showGroups && kind && kind !== lastGroup) {
+        lastGroup = kind;
+        html += '<p class="pf-asof-card-group">' + (kind === 'bond' ? 'ОФЗ' : 'Акции') + '</p>';
+      }
+      var note = showNotes ? asOfRowNoteText(row) : '';
+      html += '<article class="pf-asof-card' + (kind ? ' pf-asof-card--' + kind : '') + '">' +
         '<div class="pf-asof-card-head">' +
-          '<span class="pf-asof-card-ticker">' + escapeHtml(row.ticker) + '</span>' +
-          (row.name && row.name !== row.ticker
-            ? '<span class="muted pf-asof-card-name">' + escapeHtml(row.name) + '</span>'
-            : '') +
+          asOfPaperCellHtml(row) +
         '</div>' +
         '<div class="pf-asof-card-kpis">' +
-          '<span><span class="lbl">Кол-во на дату</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyAtDate)) + '</span>' +
+          '<span class="pf-asof-card-qty"><span class="lbl">Кол-во на дату</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyAtDate)) + '</span>' +
           '<span><span class="lbl">Куплено</span> ' + escapeHtml(formatAsOfQtyDisplay(row.boughtQtyUpToDate)) + '</span>' +
           '<span><span class="lbl">Продано</span> ' + escapeHtml(formatAsOfQtyDisplay(row.soldQtyUpToDate)) + '</span>' +
           '<span><span class="lbl">Первая покупка</span> ' + escapeHtml(formatAsOfDateDisplay(row.firstBuyDate)) + '</span>' +
@@ -4390,36 +4474,49 @@
         '</div>' +
         (note ? '<p class="muted pf-asof-card-note">' + escapeHtml(note) + '</p>' : '') +
       '</article>';
-    }).join('');
+    });
+    return html;
   }
 
   function buildPortfolioAsOfTableHtml(items) {
+    items = sortAsOfItemsForDisplay(items);
+    var showNotes = asOfShouldShowNotes(items);
+    var showGroups = asOfShouldShowGroups(items);
+    var colCount = showNotes ? 7 : 6;
+    var lastGroup = '';
     var rows = items.map(function (row) {
-      var note = (row.notes && row.notes.length) ? row.notes.join('; ') : '—';
-      var paper = escapeHtml(row.ticker);
-      if (row.name && row.name !== row.ticker) {
-        paper += ' <span class="muted">' + escapeHtml(row.name) + '</span>';
+      var kind = asOfRowType(row);
+      var html = '';
+      if (showGroups && kind && kind !== lastGroup) {
+        lastGroup = kind;
+        html += '<tr class="pf-asof-group"><td colspan="' + colCount + '">' +
+          (kind === 'bond' ? 'ОФЗ' : 'Акции') +
+        '</td></tr>';
       }
-      return '<tr>' +
-        '<td>' + paper + '</td>' +
-        '<td>' + escapeHtml(formatAsOfQtyDisplay(row.qtyAtDate)) + '</td>' +
+      html += '<tr class="pf-asof-row' + (kind ? ' pf-asof-row--' + kind : '') + '">' +
+        '<td class="pf-asof-td-paper">' + asOfPaperCellHtml(row) + '</td>' +
+        '<td class="pf-asof-td-qty">' + escapeHtml(formatAsOfQtyDisplay(row.qtyAtDate)) + '</td>' +
         '<td>' + escapeHtml(formatAsOfQtyDisplay(row.boughtQtyUpToDate)) + '</td>' +
         '<td>' + escapeHtml(formatAsOfQtyDisplay(row.soldQtyUpToDate)) + '</td>' +
         '<td>' + escapeHtml(formatAsOfDateDisplay(row.firstBuyDate)) + '</td>' +
         '<td>' + escapeHtml(formatAsOfDateDisplay(row.lastOperationDate)) + '</td>' +
-        '<td class="muted">' + escapeHtml(note) + '</td>' +
+        (showNotes
+          ? '<td class="muted pf-asof-td-note">' + escapeHtml(asOfRowNoteText(row) || '—') + '</td>'
+          : '') +
       '</tr>';
+      return html;
     }).join('');
     return '<div class="pf-asof-table-wrap">' +
-      '<table class="pf-asof-table">' +
+      '<table class="pf-asof-table' + (showNotes ? '' : ' pf-asof-table--no-notes') + '">' +
         '<thead><tr>' +
-          '<th>Бумага</th><th>Кол-во на дату</th><th>Куплено до даты</th><th>Продано до даты</th>' +
-          '<th>Первая покупка</th><th>Последняя операция</th><th>Примечание</th>' +
+          '<th>Бумага</th><th>Кол-во на дату</th><th>Куплено</th><th>Продано</th>' +
+          '<th>Первая покупка</th><th>Последняя операция</th>' +
+          (showNotes ? '<th>Примечание</th>' : '') +
         '</tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
       '</table>' +
     '</div>' +
-    '<div class="pf-asof-cards">' + buildPortfolioAsOfCardsHtml(items) + '</div>';
+    '<div class="pf-asof-cards">' + buildPortfolioAsOfCardsHtml(items, showNotes, showGroups) + '</div>';
   }
 
   function renderPortfolioAsOfResult(result, errorText) {
@@ -4444,11 +4541,13 @@
       warn.hidden = false;
       warn.textContent = 'Часть операций без корректной даты не включена в расчёт состава на дату.';
     }
-    if (!result.items || !result.items.length) {
-      out.innerHTML = '<p class="muted pf-asof-empty">На выбранную дату в портфеле не найдено открытых позиций.</p>';
+    var items = result.items || [];
+    if (!items.length) {
+      out.innerHTML = buildPortfolioAsOfSummaryHtml(result, []) +
+        '<p class="muted pf-asof-empty">На выбранную дату в портфеле не найдено открытых позиций.</p>';
       return;
     }
-    out.innerHTML = buildPortfolioAsOfTableHtml(result.items);
+    out.innerHTML = buildPortfolioAsOfSummaryHtml(result, items) + buildPortfolioAsOfTableHtml(items);
   }
 
   function showPortfolioAsOfComposition() {
