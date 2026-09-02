@@ -334,7 +334,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__hideClosed = hideClosedPortfolioTicker;' +
       '\nthis.__restoreClosed = restoreClosedPortfolioTicker;' +
       '\nthis.__collectRecent = collectRecentPortfolioOperations;' +
-      '\nthis.__resolveNav = resolvePortfolioHistoryNavTarget;',
+      '\nthis.__resolveNav = resolvePortfolioHistoryNavTarget;' +
+      '\nthis.__timeline = buildTickerOperationTimeline;',
     sandbox,
     { timeout: 5000 }
   );
@@ -360,6 +361,7 @@ function loadPortfolioCalcHelpers() {
     restoreClosedPortfolioTicker: sandbox.__restoreClosed,
     collectRecentPortfolioOperations: sandbox.__collectRecent,
     resolvePortfolioHistoryNavTarget: sandbox.__resolveNav,
+    buildTickerOperationTimeline: sandbox.__timeline,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -993,9 +995,179 @@ const calc = loadPortfolioCalcHelpers();
   assert(calc.resolvePortfolioHistoryNavTarget('', positions, sales).kind === 'none', 'empty → none');
 }
 
+{
+  // Волна 3.1: одна покупка акции без продаж
+  const positions = [
+    { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }
+  ];
+  const frozen = JSON.parse(JSON.stringify(positions));
+  const ops = calc.buildTickerOperationTimeline('SBER', positions, []);
+  assert(ops.length === 1 && ops[0].type === 'buy', 'single buy operation');
+  assert(ops[0].qty === 10 && ops[0].price === 250, 'qty/price from open lot');
+  assert(Math.abs(ops[0].amountRub - 2500) < 1e-9, 'stock amount qty×price');
+  assert(ops[0].remainingQtyAfter === 10, 'remaining after single buy = qty');
+  assert(ops[0].realizedPnlRub == null, 'buy has no realized pnl');
+  assert(JSON.stringify(positions) === JSON.stringify(frozen), 'timeline does not mutate positions');
+}
+
+{
+  // Волна 3.1: две покупки — хронология и нарастающий остаток
+  const ops = calc.buildTickerOperationTimeline('SBER', [
+    { ticker: 'SBER', lotId: 'S2', qty: 5, avgPrice: 280, buyDate: '2024-06-01' },
+    { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }
+  ], []);
+  assert(ops.length === 2 && ops[0].type === 'buy' && ops[1].type === 'buy', 'two buy ops');
+  assert(ops[0].lotId === 'S1' && ops[1].lotId === 'S2', 'older buy first');
+  assert(ops[0].remainingQtyAfter === 10, 'remaining after first buy');
+  assert(ops[1].remainingQtyAfter === 15, 'remaining grows after second buy');
+}
+
+{
+  // Волна 3.1: покупка + частичная продажа, лот не двоится
+  const positions = [
+    { ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 250, buyDate: '2024-01-15' }
+  ];
+  const sales = [{
+    saleId: 'SALE1',
+    ticker: 'SBER',
+    qty: 10,
+    buyPrice: 250,
+    salePrice: 280,
+    saleDate: '2025-06-01',
+    allocations: [
+      { lotId: 'S1', qty: 10, buyPrice: 250, buyDate: '2024-01-15' }
+    ]
+  }];
+  const ops = calc.buildTickerOperationTimeline('SBER', positions, sales);
+  const buys = ops.filter((o) => o.type === 'buy');
+  const sells = ops.filter((o) => o.type === 'sell');
+  assert(buys.length === 1 && sells.length === 1, 'one merged buy + one sell');
+  assert(buys[0].qty === 15, 'buy qty = remaining 5 + sold 10');
+  assert(ops[0].type === 'buy' && ops[1].type === 'sell', 'buy before sell');
+  assert(ops[0].remainingQtyAfter === 15, 'remaining after buy');
+  assert(ops[1].remainingQtyAfter === 5, 'remaining after partial sell');
+  assert(Math.abs(ops[1].realizedPnlRub - 300) < 1e-9, 'realized (280-250)*10');
+  assert(ops[1].realizedPnlPct != null && isFinite(ops[1].realizedPnlPct), 'sell pct present');
+  assert(Math.abs(ops[0].amountRub - 3750) < 1e-9, 'merged buy amount 15*250');
+  assert(Math.abs(ops[1].amountRub - 2800) < 1e-9, 'sell amount 10*280');
+}
+
+{
+  // Волна 3.1: частично проданный лот с изменённым avgPrice остатка — всё равно одна покупка
+  const positions = [
+    { ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 190, buyDate: '2024-01-15' }
+  ];
+  const sales = [{
+    saleId: 'SALE_ADJ',
+    ticker: 'SBER',
+    qty: 10,
+    buyPrice: 250,
+    salePrice: 280,
+    saleDate: '2025-06-01',
+    allocations: [
+      { lotId: 'S1', qty: 10, buyPrice: 250, buyDate: '2024-01-15' }
+    ]
+  }];
+  const ops = calc.buildTickerOperationTimeline('SBER', positions, sales);
+  const buys = ops.filter((o) => o.type === 'buy');
+  assert(buys.length === 1, 'adjusted remaining still one buy');
+  assert(buys[0].qty === 15, 'qty still remaining+sold');
+  assert(buys[0].price === 250, 'price from allocation (original buy), not adjusted remaining');
+}
+
+{
+  // Волна 3.1: полностью закрытая позиция — история из sales/allocations
+  const positions = [];
+  const sales = [{
+    saleId: 'P1',
+    ticker: 'PLZL',
+    qty: 4,
+    buyPrice: 10000,
+    salePrice: 11000,
+    saleDate: '2025-03-01',
+    allocations: [
+      { lotId: 'P0', qty: 4, buyPrice: 10000, buyDate: '2024-02-01' }
+    ]
+  }];
+  const ops = calc.buildTickerOperationTimeline('PLZL', positions, sales);
+  assert(ops.length === 2, 'closed: buy reconstructed + sell');
+  assert(ops[0].type === 'buy' && ops[0].qty === 4 && ops[0].lotId === 'P0', 'buy from allocation');
+  assert(ops[1].type === 'sell' && ops[1].saleId === 'P1', 'sell visible');
+  assert(ops[0].remainingQtyAfter === 4, 'remaining after reconstructed buy');
+  assert(ops[1].remainingQtyAfter === 0, 'fully sold remaining 0');
+  const closed = calc.listClosedPortfolioPositions(positions, sales, {});
+  assert(closed.length === 1 && closed[0].ticker === 'PLZL', 'ticker appears in closed positions');
+}
+
+{
+  // Волна 3.1: ОФЗ — цена %, сумма в ₽, avgPrice JSON не меняется
+  const positions = [
+    { ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95, buyDate: '2025-03-01', faceValue: 1000 }
+  ];
+  const frozenAvg = positions[0].avgPrice;
+  const bondMeta = { faceValue: 1000 };
+  const ops = calc.buildTickerOperationTimeline('OFZ_26238', positions, [], bondMeta);
+  assert(ops.length === 1 && ops[0].type === 'buy', 'OFZ one buy');
+  assert(ops[0].price === 95, 'OFZ price stays percent');
+  assert(Math.abs(ops[0].amountRub - 9500) < 1e-6, 'OFZ amount 10×95%×1000');
+  assert(ops[0].isBond === true, 'OFZ isBond');
+  assert(positions[0].avgPrice === frozenAvg && frozenAvg === 95, 'avgPrice JSON unchanged');
+
+  const sales = [{
+    saleId: 'OS1',
+    ticker: 'OFZ_26238',
+    qty: 4,
+    buyPrice: 95,
+    salePrice: 98,
+    saleDate: '2025-07-01',
+    faceValue: 1000,
+    allocations: [{ lotId: 'O1', qty: 4, buyPrice: 95, buyDate: '2025-03-01' }]
+  }];
+  const remainPos = [
+    { ticker: 'OFZ_26238', lotId: 'O1', qty: 6, avgPrice: 95, buyDate: '2025-03-01', faceValue: 1000 }
+  ];
+  const ofzOps = calc.buildTickerOperationTimeline('OFZ_26238', remainPos, sales, bondMeta);
+  assert(ofzOps[0].qty === 10 && Math.abs(ofzOps[0].amountRub - 9500) < 1e-6, 'OFZ merged buy amount');
+  assert(Math.abs(ofzOps[1].amountRub - 3920) < 1e-6, 'OFZ sell amount 4×98%×1000');
+  assert(Math.abs(ofzOps[1].realizedPnlRub - 120) < 1e-6, 'OFZ realized 4×3%×1000');
+  assert(remainPos[0].avgPrice === 95, 'OFZ remaining avgPrice unchanged');
+}
+
+{
+  // Волна 3.1: плохая/пустая дата — нет Invalid Date, операция не теряется
+  const ops = calc.buildTickerOperationTimeline('SBER', [
+    { ticker: 'SBER', lotId: 'B1', qty: 1, avgPrice: 100, buyDate: 'Invalid Date' },
+    { ticker: 'SBER', lotId: 'B2', qty: 2, avgPrice: 110, buyDate: '' },
+    { ticker: 'SBER', lotId: 'B3', qty: 3, avgPrice: 120, buyDate: '2024-01-01' }
+  ], []);
+  assert(ops.length === 3, 'bad dates still produce operations');
+  assert(ops[0].lotId === 'B3', 'valid date first');
+  assert(ops[0].date === '2024-01-01', 'valid iso kept');
+  assert(!ops[1].date, 'empty date → empty');
+  assert(!ops[2].date, 'invalid date → empty');
+  const blob = JSON.stringify(ops);
+  assert(blob.indexOf('Invalid Date') === -1, 'no Invalid Date in timeline');
+  assert(ops.every((o) => o.qty > 0), 'no operation lost');
+}
+
+{
+  // Волна 3.1: один день — покупка перед продажей
+  const ops = calc.buildTickerOperationTimeline('GAZP', [], [{
+    saleId: 'G1',
+    ticker: 'GAZP',
+    qty: 8,
+    buyPrice: 140,
+    salePrice: 160,
+    saleDate: '2024-06-01',
+    allocations: [{ lotId: 'G0', qty: 8, buyPrice: 140, buyDate: '2024-06-01' }]
+  }]);
+  assert(ops.length === 2 && ops[0].type === 'buy' && ops[1].type === 'sell', 'same-day buy before sell');
+  assert(ops[1].remainingQtyAfter === 0, 'same-day full close remaining 0');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 history');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline');

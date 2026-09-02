@@ -788,6 +788,331 @@
     };
   }
 
+  function timelineIsoDate(raw) {
+    if (typeof normalizePortfolioDate === 'function') {
+      return normalizePortfolioDate(raw) || '';
+    }
+    var s = String(raw == null ? '' : raw).trim();
+    if (!s || /^invalid\b/i.test(s) || s === 'Invalid Date') return '';
+    if (/^\d{4}-\d{1,2}-\d{1,2}/.test(s)) {
+      var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (!m) return '';
+      return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+    }
+    return '';
+  }
+
+  function timelinePriceKey(price) {
+    var n = Number(price);
+    if (!isFinite(n)) return '';
+    return String(Math.round(n * 1e6) / 1e6);
+  }
+
+  function computeTimelineAmountRub(ticker, qty, price, faceHint, bondMeta) {
+    var q = Number(qty);
+    var p = Number(price);
+    if (!isFinite(q) || q <= 0 || !isFinite(p) || p < 0) return null;
+    var entity = { ticker: ticker, qty: q, avgPrice: p };
+    if (faceHint != null && isFinite(Number(faceHint)) && Number(faceHint) > 0) {
+      entity.faceValue = Number(faceHint);
+    }
+    if (isPortfolioBondPosition(entity)) {
+      var rub = bondRubFromPct(p, q, resolveBondFaceValue(entity, bondMeta));
+      return rub != null ? rub : null;
+    }
+    return q * p;
+  }
+
+  /**
+   * Read-only хронология покупок/продаж по тикеру.
+   * Восстанавливает представление из positions + sales (включая allocations).
+   * Не мутирует JSON, не создаёт transactions[], не додумывает недостающие поля.
+   */
+  function buildTickerOperationTimeline(ticker, positions, sales, bondMeta) {
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (!ticker) return [];
+
+    var RECONSTRUCTED_NOTE = 'история восстановлена по доступным данным';
+    var isBond = isPortfolioBondPosition({ ticker: ticker });
+    var seq = 0;
+    var groups = [];
+    var groupByKey = {};
+
+    function fallbackBuyKey(date, price, source, face) {
+      var dk = date || '';
+      var pk = timelinePriceKey(price);
+      if (!dk && !pk) return '';
+      return 'fb:' + ticker + '|' + dk + '|' + pk + '|' + (source || '') + '|' +
+        (face != null && isFinite(Number(face)) ? String(Number(face)) : '');
+    }
+
+    function getOrCreateGroup(key, seed) {
+      seed = seed || {};
+      if (key && groupByKey[key]) return groupByKey[key];
+      var g = {
+        key: key || ('uniq:buy:' + seq),
+        lotId: seed.lotId ? String(seed.lotId) : '',
+        date: '',
+        source: '',
+        fee: null,
+        faceValue: null,
+        openQty: 0,
+        soldQty: 0,
+        remainingPrice: null,
+        allocParts: [],
+        quality: 'ok',
+        note: '',
+        _seq: seq++
+      };
+      groups.push(g);
+      if (key) groupByKey[key] = g;
+      return g;
+    }
+
+    function takeFace(entity) {
+      if (!entity) return null;
+      var f = entity.faceValue;
+      if (f != null && isFinite(Number(f)) && Number(f) > 0) return Number(f);
+      return null;
+    }
+
+    (positions || []).forEach(function (lot) {
+      if (!lot) return;
+      var t = typeof normalizeTicker === 'function'
+        ? normalizeTicker(lot.ticker)
+        : String(lot.ticker || '').toUpperCase();
+      if (t !== ticker) return;
+      var q = Number(lot.qty);
+      if (!isFinite(q) || q <= 1e-9) return;
+      var lotId = lot.lotId ? String(lot.lotId) : '';
+      var date = timelineIsoDate(lot.buyDate);
+      var price = Number(lot.avgPrice);
+      var source = lot.source ? String(lot.source) : '';
+      var face = takeFace(lot);
+      var key = lotId ? ('lot:' + lotId) : fallbackBuyKey(date, price, source, face);
+      var g = getOrCreateGroup(key, { lotId: lotId });
+      g.openQty += q;
+      if (lotId && !g.lotId) g.lotId = lotId;
+      if (date && !g.date) g.date = date;
+      if (source && !g.source) g.source = source;
+      if (g.fee == null && lot.fee != null && isFinite(Number(lot.fee))) g.fee = Number(lot.fee);
+      if (g.faceValue == null && face != null) g.faceValue = face;
+      if (isFinite(price)) g.remainingPrice = price;
+    });
+
+    (sales || []).forEach(function (sale) {
+      if (!sale) return;
+      var t = typeof normalizeTicker === 'function'
+        ? normalizeTicker(sale.ticker)
+        : String(sale.ticker || '').toUpperCase();
+      if (t !== ticker) return;
+      var saleFace = takeFace(sale);
+      if (sale.allocations && sale.allocations.length) {
+        sale.allocations.forEach(function (alloc) {
+          if (!alloc) return;
+          var aq = Number(alloc.qty);
+          if (!isFinite(aq) || aq <= 1e-9) return;
+          var lotId = alloc.lotId ? String(alloc.lotId) : '';
+          var date = timelineIsoDate(alloc.buyDate);
+          var price = Number(alloc.buyPrice);
+          var face = takeFace(alloc) != null ? takeFace(alloc) : saleFace;
+          var key = lotId ? ('lot:' + lotId) : fallbackBuyKey(date, price, '', face);
+          var g = getOrCreateGroup(key, { lotId: lotId });
+          g.soldQty += aq;
+          if (lotId && !g.lotId) g.lotId = lotId;
+          if (date && !g.date) g.date = date;
+          if (g.faceValue == null && face != null) g.faceValue = face;
+          g.allocParts.push({
+            qty: aq,
+            price: isFinite(price) ? price : null
+          });
+        });
+        return;
+      }
+      var saleLotId = sale.lotId ? String(sale.lotId) : '';
+      if (!saleLotId) return;
+      var sq = Number(sale.qty);
+      if (!isFinite(sq) || sq <= 1e-9) return;
+      var sDate = timelineIsoDate(sale.buyDate);
+      var sPrice = Number(sale.buyPrice);
+      var key = 'lot:' + saleLotId;
+      var g = getOrCreateGroup(key, { lotId: saleLotId });
+      g.soldQty += sq;
+      if (sDate && !g.date) g.date = sDate;
+      if (g.faceValue == null && saleFace != null) g.faceValue = saleFace;
+      if (isFinite(sPrice)) {
+        g.allocParts.push({ qty: sq, price: sPrice });
+      }
+    });
+
+    var ops = [];
+    groups.forEach(function (g) {
+      var qty = g.openQty + g.soldQty;
+      if (!(qty > 1e-9)) return;
+
+      var allocPrices = [];
+      var allocCost = 0;
+      var allocQty = 0;
+      g.allocParts.forEach(function (part) {
+        if (part.price == null || !isFinite(part.price)) return;
+        allocPrices.push(Math.round(part.price * 1e6) / 1e6);
+        allocCost += part.price * part.qty;
+        allocQty += part.qty;
+      });
+      var uniqueAlloc = [];
+      allocPrices.forEach(function (p) {
+        if (uniqueAlloc.indexOf(p) === -1) uniqueAlloc.push(p);
+      });
+
+      var price = null;
+      if (uniqueAlloc.length === 1) {
+        price = uniqueAlloc[0];
+      } else if (uniqueAlloc.length > 1) {
+        price = allocQty > 0 ? allocCost / allocQty : null;
+        g.quality = 'partial';
+        g.note = RECONSTRUCTED_NOTE;
+      } else if (g.remainingPrice != null && isFinite(g.remainingPrice)) {
+        price = g.remainingPrice;
+      }
+
+      if (!g.lotId || (g.key && g.key.indexOf('fb:') === 0)) {
+        g.quality = 'partial';
+        g.note = RECONSTRUCTED_NOTE;
+      }
+
+      var faceHint = g.faceValue;
+      ops.push({
+        type: 'buy',
+        date: g.date || '',
+        ticker: ticker,
+        qty: qty,
+        price: price,
+        amountRub: computeTimelineAmountRub(ticker, qty, price, faceHint, bondMeta),
+        fee: g.fee,
+        source: g.source || '',
+        lotId: g.lotId || '',
+        saleId: '',
+        realizedPnlRub: null,
+        realizedPnlPct: null,
+        remainingQtyAfter: null,
+        note: g.note || '',
+        quality: g.quality,
+        isBond: isBond,
+        _seq: g._seq
+      });
+    });
+
+    (sales || []).forEach(function (sale) {
+      if (!sale) return;
+      var t = typeof normalizeTicker === 'function'
+        ? normalizeTicker(sale.ticker)
+        : String(sale.ticker || '').toUpperCase();
+      if (t !== ticker) return;
+      var q = Number(sale.qty);
+      var salePx = Number(sale.salePrice);
+      var pnl = getSaleRealizedPnl(sale, bondMeta);
+      var fee = sale.fee != null && isFinite(Number(sale.fee)) ? Number(sale.fee) : null;
+      var faceHint = takeFace(sale);
+      ops.push({
+        type: 'sell',
+        date: timelineIsoDate(sale.saleDate),
+        ticker: ticker,
+        qty: isFinite(q) && q > 0 ? q : null,
+        price: isFinite(salePx) ? salePx : null,
+        amountRub: computeTimelineAmountRub(
+          ticker,
+          isFinite(q) && q > 0 ? q : null,
+          isFinite(salePx) ? salePx : null,
+          faceHint,
+          bondMeta
+        ),
+        fee: fee,
+        source: sale.source ? String(sale.source) : '',
+        lotId: sale.lotId ? String(sale.lotId) : '',
+        saleId: sale.saleId ? String(sale.saleId) : '',
+        realizedPnlRub: pnl && pnl.amount != null && isFinite(pnl.amount) ? pnl.amount : null,
+        realizedPnlPct: pnl && pnl.pct != null && isFinite(pnl.pct) ? pnl.pct : null,
+        remainingQtyAfter: null,
+        note: '',
+        quality: 'ok',
+        isBond: isBond,
+        _seq: seq++
+      });
+    });
+
+    ops.sort(function (a, b) {
+      var da = a.date || '';
+      var db = b.date || '';
+      if (!da && !db) {
+        if (a.type !== b.type) return a.type === 'buy' ? -1 : 1;
+        return a._seq - b._seq;
+      }
+      if (!da) return 1;
+      if (!db) return -1;
+      if (da !== db) return da < db ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'buy' ? -1 : 1;
+      return a._seq - b._seq;
+    });
+
+    var openQty = 0;
+    (positions || []).forEach(function (lot) {
+      if (!lot) return;
+      var t = typeof normalizeTicker === 'function'
+        ? normalizeTicker(lot.ticker)
+        : String(lot.ticker || '').toUpperCase();
+      if (t !== ticker) return;
+      var q = Number(lot.qty);
+      if (isFinite(q) && q > 0) openQty += q;
+    });
+
+    var remaining = 0;
+    var remainingOk = true;
+    ops.forEach(function (op) {
+      var q = Number(op.qty);
+      if (!remainingOk || op.qty == null || !isFinite(q) || q < 0) {
+        remainingOk = false;
+        return;
+      }
+      if (op.type === 'buy') remaining += q;
+      else remaining -= q;
+      if (remaining < -1e-6) remainingOk = false;
+    });
+    if (remainingOk && Math.abs(remaining - openQty) > 1e-6) remainingOk = false;
+
+    if (remainingOk) {
+      remaining = 0;
+      ops.forEach(function (op) {
+        var q = Number(op.qty);
+        if (op.type === 'buy') remaining += q;
+        else remaining -= q;
+        op.remainingQtyAfter = remaining;
+      });
+    }
+
+    return ops.map(function (op) {
+      return {
+        type: op.type,
+        date: op.date,
+        ticker: op.ticker,
+        qty: op.qty,
+        price: op.price,
+        amountRub: op.amountRub,
+        fee: op.fee,
+        source: op.source,
+        lotId: op.lotId,
+        saleId: op.saleId,
+        realizedPnlRub: op.realizedPnlRub,
+        realizedPnlPct: op.realizedPnlPct,
+        remainingQtyAfter: op.remainingQtyAfter,
+        note: op.note,
+        quality: op.quality,
+        isBond: op.isBond
+      };
+    });
+  }
+
   /** UI-настройки портфеля (не часть portfolio JSON). */
   var PF_UI_STORAGE_KEY = 'ibrf.portfolioUi.v1';
 
@@ -2875,16 +3200,123 @@
       (open ? 'Скрыть' : 'Подробнее') + '</button>';
   }
 
+  function formatTimelineOpDate(iso) {
+    if (typeof safeFormatPortfolioDate === 'function') return safeFormatPortfolioDate(iso);
+    return formatRecentOperationDate(iso);
+  }
+
+  function formatTimelineOpQty(qty, type) {
+    if (qty == null || !isFinite(Number(qty))) return '—';
+    var n = Number(qty);
+    var s = String(n);
+    return type === 'sell' ? '−' + s : s;
+  }
+
+  function formatTimelineOpResult(op) {
+    if (!op || op.type !== 'sell') return '—';
+    if (op.realizedPnlRub == null || !isFinite(op.realizedPnlRub)) return '—';
+    var text = formatSignedRubAmount(op.realizedPnlRub);
+    if (op.realizedPnlPct != null && isFinite(op.realizedPnlPct)) {
+      text += ' · ' + formatSignedPct(op.realizedPnlPct, 2);
+    }
+    return text;
+  }
+
+  function formatTimelineRemainingQty(qty) {
+    if (qty == null || !isFinite(Number(qty))) return '—';
+    return String(Number(qty));
+  }
+
+  function buildPortfolioTickerTimelineHtml(ops, ticker, isBond, stack) {
+    var html = '<div class="pf-ticker-detail-section pf-history-section--timeline">' +
+      '<h4 class="pf-ticker-detail-h">История операций</h4>';
+    if (!ops || !ops.length) {
+      html += '<p class="muted pf-ticker-detail-empty">Операций по этой бумаге пока нет.</p></div>';
+      return html;
+    }
+    if (stack) {
+      html += '<div class="pf-stack-list pf-timeline-cards">';
+      ops.forEach(function (op) {
+        var isBuy = op.type === 'buy';
+        var badge = isBuy
+          ? '<span class="pf-op-badge pf-op-badge--buy">Покупка</span>'
+          : '<span class="pf-op-badge pf-op-badge--sale">Продажа</span>';
+        var pnlCls = '';
+        if (!isBuy && op.realizedPnlRub != null && isFinite(op.realizedPnlRub)) {
+          pnlCls = op.realizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
+        }
+        html += '<div class="pf-stack-item pf-op-card pf-timeline-card ' +
+          (isBuy ? 'pf-open-lot' : 'pf-sale-row') + '">' +
+          '<div class="pf-timeline-card-head">' +
+            '<span class="pf-timeline-card-date">' + escapeHtml(formatTimelineOpDate(op.date)) + '</span>' +
+            badge +
+          '</div>' +
+          '<div class="pf-stack-meta pf-timeline-card-meta">' +
+            '<span><span class="lbl">Кол-во</span> ' + escapeHtml(formatTimelineOpQty(op.qty, op.type)) + '</span>' +
+            '<span><span class="lbl">Цена</span> ' +
+              escapeHtml(formatPortfolioHistoryPrice(op.price, ticker, isBond)) + '</span>' +
+            '<span><span class="lbl">Сумма</span> ' +
+              escapeHtml(formatPortfolioRubAmount(op.amountRub)) + '</span>' +
+          '</div>';
+        if (!isBuy) {
+          html += '<div class="pf-timeline-card-result ' + (pnlCls || 'muted') + '">' +
+            '<span class="lbl">Результат</span> ' + escapeHtml(formatTimelineOpResult(op)) +
+            '</div>';
+        }
+        html += '<div class="pf-timeline-card-remain muted">' +
+          '<span class="lbl">Остаток после операции</span> ' +
+          escapeHtml(formatTimelineRemainingQty(op.remainingQtyAfter)) +
+          '</div>';
+        if (op.note) {
+          html += '<div class="pf-timeline-note muted">' + escapeHtml(op.note) + '</div>';
+        }
+        html += '</div>';
+      });
+      html += '</div></div>';
+      return html;
+    }
+
+    html += '<div class="pf-timeline-table-wrap"><table class="pf-mini-table pf-mini-table--timeline"><thead><tr>' +
+      '<th>Дата</th><th>Операция</th><th>Кол-во</th><th>Цена</th><th>Сумма</th><th>Результат</th><th>Остаток после операции</th>' +
+      '</tr></thead><tbody>';
+    ops.forEach(function (op) {
+      var isBuy = op.type === 'buy';
+      var badge = isBuy
+        ? '<span class="pf-op-badge pf-op-badge--buy">Покупка</span>'
+        : '<span class="pf-op-badge pf-op-badge--sale">Продажа</span>';
+      var pnlCls = 'muted';
+      if (!isBuy && op.realizedPnlRub != null && isFinite(op.realizedPnlRub)) {
+        pnlCls = op.realizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
+      }
+      html += '<tr class="pf-timeline-row ' + (isBuy ? 'pf-timeline-row--buy' : 'pf-timeline-row--sell') + '">' +
+        '<td>' + escapeHtml(formatTimelineOpDate(op.date)) + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td>' + escapeHtml(formatTimelineOpQty(op.qty, op.type)) + '</td>' +
+        '<td>' + escapeHtml(formatPortfolioHistoryPrice(op.price, ticker, isBond)) + '</td>' +
+        '<td>' + escapeHtml(formatPortfolioRubAmount(op.amountRub)) + '</td>' +
+        '<td class="' + (isBuy ? 'muted' : pnlCls) + '">' + escapeHtml(formatTimelineOpResult(op)) + '</td>' +
+        '<td>' + escapeHtml(formatTimelineRemainingQty(op.remainingQtyAfter)) + '</td>' +
+        '</tr>';
+      if (op.note) {
+        html += '<tr class="pf-timeline-note-row"><td colspan="7" class="muted pf-timeline-note">' +
+          escapeHtml(op.note) + '</td></tr>';
+      }
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
   function buildPortfolioTickerDetailHtml(ticker, positions, sales, bondMeta, isBond, opts) {
     opts = opts || {};
     var stack = opts.layout === 'stack';
     var hist = summarizeTickerHistory(ticker, positions, sales, bondMeta);
+    var timeline = buildTickerOperationTimeline(ticker, positions, sales, bondMeta);
     var uCls = hist.unrealizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
     var rCls = hist.realizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
     var html = '<div class="pf-ticker-detail' + (stack ? ' pf-ticker-detail--stack' : '') + '">' +
       (stack ? '' : '<div class="pf-ticker-detail-title">Подробнее по ' + escapeHtml(hist.ticker) + '</div>') +
       (isBond
-        ? '<p class="pf-ticker-detail-note muted">Цены ОФЗ указаны в % от номинала.</p>'
+        ? '<p class="pf-ticker-detail-note muted">Цены ОФЗ указаны в % от номинала, суммы — в ₽.</p>'
         : '') +
       '<div class="pf-ticker-detail-summary">' +
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Остаток</span><span class="val">' +
@@ -2902,6 +3334,8 @@
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Зафиксированный результат</span>' +
           '<span class="val ' + rCls + '">' + escapeHtml(formatSignedRubAmount(hist.realizedPnlRub)) + '</span></div>' +
       '</div>';
+
+    html += buildPortfolioTickerTimelineHtml(timeline, hist.ticker, isBond, stack);
 
     html += '<div class="pf-ticker-detail-section pf-history-section--open-lots"><h4 class="pf-ticker-detail-h">Открытые покупки</h4>';
     if (!hist.openLots.length) {
