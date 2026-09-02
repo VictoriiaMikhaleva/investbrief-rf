@@ -1899,6 +1899,152 @@
     return ((rows || []).length === 1 ? one : many) + list + '.';
   }
 
+  function cmpExplainTickerListWithExtra(rows, limit) {
+    limit = limit || CMP_EXPLAIN_TICKER_LIMIT;
+    var copy = (rows || []).slice().sort(function (a, b) {
+      var aa = a && a.changeRub != null && isFinite(Number(a.changeRub)) ? Math.abs(Number(a.changeRub)) : -1;
+      var bb = b && b.changeRub != null && isFinite(Number(b.changeRub)) ? Math.abs(Number(b.changeRub)) : -1;
+      return bb - aa;
+    });
+    var names = [];
+    copy.forEach(function (row) {
+      var t = row && String(row.ticker || '').trim();
+      if (t && names.indexOf(t) < 0) names.push(t);
+    });
+    if (!names.length) return '';
+    if (names.length <= limit) return names.join(', ');
+    return names.slice(0, limit).join(', ') + ' и ещё ' + (names.length - limit);
+  }
+
+  function cmpExplainCollectTickers(portfolio, items) {
+    var seen = {};
+    var out = [];
+    function add(raw) {
+      var t = asOfNormTicker(raw);
+      if (!t || seen[t]) return;
+      seen[t] = true;
+      out.push(t);
+    }
+    (items || []).forEach(function (row) { add(row && row.ticker); });
+    (((portfolio && portfolio.positions) || [])).forEach(function (p) { add(p && p.ticker); });
+    (((portfolio && portfolio.sales) || [])).forEach(function (s) { add(s && s.ticker); });
+    return out;
+  }
+
+  function cmpExplainOpInPeriod(date, fromIso, toIso) {
+    if (!date || !fromIso || !toIso) return false;
+    return date > fromIso && date <= toIso;
+  }
+
+  function collectComparePeriodOperations(portfolio, fromDate, toDate, options) {
+    options = options || {};
+    var fromIso = timelineIsoDate(fromDate);
+    var toIso = timelineIsoDate(toDate);
+    var empty = { buys: [], sells: [], buyOps: [], sellOps: [], incomplete: false };
+    if (!fromIso || !toIso) return empty;
+    var positions = (portfolio && portfolio.positions) || [];
+    var sales = (portfolio && portfolio.sales) || [];
+    var bondMetaMap = options.bondMetaMap || {};
+    var incomplete = false;
+    var buyOps = [];
+    var sellOps = [];
+
+    cmpExplainCollectTickers(portfolio, options.items).forEach(function (ticker) {
+      var ops = buildTickerOperationTimeline(ticker, positions, sales, bondMetaMap[ticker] || null);
+      (ops || []).forEach(function (op) {
+        if (!op) return;
+        if (!op.date) {
+          incomplete = true;
+          return;
+        }
+        if (!cmpExplainOpInPeriod(op.date, fromIso, toIso)) return;
+        if (op.type === 'buy') buyOps.push(op);
+        else if (op.type === 'sell') sellOps.push(op);
+      });
+    });
+
+    function aggregate(raw) {
+      var byTicker = {};
+      var order = [];
+      (raw || []).forEach(function (op) {
+        var t = String(op.ticker || '').trim();
+        if (!t) return;
+        if (!byTicker[t]) {
+          byTicker[t] = { ticker: t, qty: 0, amountRub: 0, amountKnown: true, ops: [] };
+          order.push(t);
+        }
+        var rec = byTicker[t];
+        rec.ops.push(op);
+        var q = Number(op.qty);
+        if (isFinite(q) && q > 0) rec.qty += q;
+        var px = Number(op.price);
+        if (op.amountRub != null && isFinite(Number(op.amountRub)) && isFinite(px) && px > 0) {
+          rec.amountRub += Number(op.amountRub);
+        } else {
+          rec.amountKnown = false;
+        }
+      });
+      return order.map(function (t) {
+        var rec = byTicker[t];
+        rec.qty = asOfRoundQty(rec.qty);
+        rec.amountRub = rec.amountKnown ? asOfRoundRub(rec.amountRub) : null;
+        return rec;
+      }).sort(function (a, b) {
+        var aa = a.amountRub != null ? Math.abs(Number(a.amountRub)) : Number(a.qty) || 0;
+        var bb = b.amountRub != null ? Math.abs(Number(b.amountRub)) : Number(b.qty) || 0;
+        return bb - aa;
+      });
+    }
+
+    return {
+      buys: aggregate(buyOps),
+      sells: aggregate(sellOps),
+      buyOps: buyOps,
+      sellOps: sellOps,
+      incomplete: incomplete
+    };
+  }
+
+  function cmpExplainQtyPart(ticker, qty) {
+    var t = String(ticker || '').trim();
+    if (!t) return '';
+    if (qty != null && isFinite(Number(qty)) && Number(qty) > 0) {
+      return t + ' — ' + formatAsOfQtyDisplay(qty) + ' шт.';
+    }
+    return t;
+  }
+
+  function cmpExplainOpPart(row) {
+    var part = cmpExplainQtyPart(row.ticker, row.qty);
+    if (!part) return '';
+    if (row.amountRub != null && isFinite(Number(row.amountRub))) {
+      return part + ' на ' + cmpExplainRubAbs(row.amountRub);
+    }
+    return part;
+  }
+
+  function cmpExplainJoinLimited(parts, limit) {
+    limit = limit || CMP_EXPLAIN_TICKER_LIMIT;
+    parts = (parts || []).filter(Boolean);
+    if (!parts.length) return '';
+    if (parts.length <= limit) return parts.join('; ');
+    return parts.slice(0, limit).join('; ') + '; и ещё ' + (parts.length - limit);
+  }
+
+  function cmpExplainQtyDeltaParts(rows, direction) {
+    var copy = (rows || []).slice().sort(function (a, b) {
+      var aa = a && a.changeRub != null && isFinite(Number(a.changeRub)) ? Math.abs(Number(a.changeRub)) : Number(a && a.qtyTo) || 0;
+      var bb = b && b.changeRub != null && isFinite(Number(b.changeRub)) ? Math.abs(Number(b.changeRub)) : Number(b && b.qtyTo) || 0;
+      return bb - aa;
+    });
+    return copy.map(function (row) {
+      var delta = direction === 'add'
+        ? cmpExplainQty(row.qtyTo) - cmpExplainQty(row.qtyFrom)
+        : cmpExplainQty(row.qtyFrom) - cmpExplainQty(row.qtyTo);
+      return cmpExplainQtyPart(row.ticker, delta > CMP_EXPLAIN_EPS ? delta : null);
+    }).filter(Boolean);
+  }
+
   function cmpExplainClassifyItems(items) {
     var groups = {
       appeared: [],
@@ -1946,17 +2092,28 @@
   }
 
   /**
-   * Read-only краткий итог сравнения дат по уже готовым items.
-   * Не считает доходность и не разлагает рост на рынок / выплаты.
+   * Read-only краткий итог сравнения дат.
+   * Берёт готовые items и, если передан portfolio, операции из buildTickerOperationTimeline.
+   * Не считает доходность, дивиденды, купоны и не подставляет CLOSE/LAST вместо цены сделки.
    */
-  function buildPortfolioValueChangeExplanation(changeResult) {
+  function buildPortfolioValueChangeExplanation(changeResult, options) {
     changeResult = changeResult || {};
+    options = options || {};
     var items = changeResult.items || [];
+    var portfolio = options.portfolio || changeResult.portfolio || null;
+    var bondMetaMap = options.bondMetaMap || changeResult.bondMetaMap || {};
     var groups = cmpExplainClassifyItems(items);
+    var periodOps = collectComparePeriodOperations(portfolio, changeResult.fromDate, changeResult.toDate, {
+      items: items,
+      bondMetaMap: bondMetaMap
+    });
+    var hasPeriodBuys = periodOps.buys.length > 0;
+    var hasPeriodSells = periodOps.sells.length > 0;
+    var hasPeriodOperations = hasPeriodBuys || hasPeriodSells;
     var hasCompositionChanges = groups.appeared.length + groups.disappeared.length +
-      groups.qtyUp.length + groups.qtyDown.length > 0;
+      groups.qtyUp.length + groups.qtyDown.length > 0 || hasPeriodOperations;
     var hasPriceChanges = groups.priceUp.length + groups.priceDown.length > 0;
-    var hasOnlyPriceChanges = !hasCompositionChanges && hasPriceChanges;
+    var hasOnlyPriceChanges = !hasCompositionChanges && !hasPeriodOperations && hasPriceChanges;
     var warnings = [];
     var noteGap = (items || []).some(function (row) {
       return /нет цены|не поддерживается/i.test(String(row && row.note || ''));
@@ -1964,7 +2121,7 @@
     if (changeResult.isPartial || groups.unknown.length || noteGap) {
       warnings.push('Вывод неполный: по части бумаг нет цены на одну из дат.');
     }
-    if (changeResult.hasIncompleteHistory) {
+    if (changeResult.hasIncompleteHistory || periodOps.incomplete) {
       warnings.push('Часть операций без корректной даты не включена в расчёт.');
     }
 
@@ -1982,11 +2139,14 @@
         dominantReason = key;
       }
     });
-    if (best <= 0) {
-      dominantReason = groups.unknown.length ? 'unknown' : 'unchanged';
-    } else if (hasCompositionChanges && hasPriceChanges &&
-        scores['composition-add'] + scores['composition-remove'] > 0 &&
-        scores['price-up'] + scores['price-down'] > 0) {
+    if (hasPeriodBuys && !hasPeriodSells && scores['composition-add'] >= best) {
+      dominantReason = 'composition-add';
+    } else if (hasPeriodSells && !hasPeriodBuys && scores['composition-remove'] >= best) {
+      dominantReason = 'composition-remove';
+    }
+    if (best <= 0 && !hasPeriodOperations) {
+      dominantReason = groups.unknown.length || periodOps.incomplete ? 'unknown' : 'unchanged';
+    } else if ((hasCompositionChanges || hasPeriodOperations) && hasPriceChanges) {
       var compScore = scores['composition-add'] + scores['composition-remove'];
       var priceScore = scores['price-up'] + scores['price-down'];
       if (compScore > 0 && priceScore > 0 && Math.min(compScore, priceScore) / Math.max(compScore, priceScore) > 0.35) {
@@ -2009,90 +2169,108 @@
       bullets.push('Недостаточно данных для краткого итога.');
     }
 
-    var appearedPhrase = cmpExplainPhrase(groups.appeared, 'Появилась новая позиция: ', 'Появились новые позиции: ');
-    var qtyUpPhrase = cmpExplainPhrase(groups.qtyUp, 'Позиция увеличилась: ', 'Увеличились позиции: ');
-    var disappearedPhrase = cmpExplainPhrase(groups.disappeared, 'Позиция исчезла — была полностью продана: ', 'Позиции исчезли — были полностью проданы: ');
-    var qtyDownPhrase = cmpExplainPhrase(groups.qtyDown, 'Позиция уменьшилась: ', 'Уменьшились позиции: ');
-    var addedList = cmpExplainTickerList(groups.appeared.concat(groups.qtyUp));
-    var removedList = cmpExplainTickerList(groups.disappeared.concat(groups.qtyDown));
-    var priceDownList = cmpExplainTickerList(groups.priceDown);
-    var compositionLines = [];
-    if (appearedPhrase && qtyUpPhrase) {
-      compositionLines.push('Главный вклад дали новые или увеличенные позиции: ' + addedList + '.');
-    } else {
-      if (appearedPhrase) compositionLines.push(appearedPhrase);
-      if (qtyUpPhrase) compositionLines.push(qtyUpPhrase);
-    }
-    if (disappearedPhrase && qtyDownPhrase) {
-      compositionLines.push('Часть изменения связана с продажами или уменьшением позиций: ' + removedList + '.');
-    } else {
-      if (disappearedPhrase) compositionLines.push(disappearedPhrase);
-      if (qtyDownPhrase) compositionLines.push(qtyDownPhrase);
-    }
-    if (removedList && priceDownList && compositionLines.length >= 2) {
-      compositionLines = compositionLines.filter(function (line) {
-        return line !== disappearedPhrase && line !== qtyDownPhrase;
+    var addedRows = groups.appeared.concat(groups.qtyUp);
+    var removedRows = groups.disappeared.concat(groups.qtyDown);
+    var addedList = cmpExplainTickerListWithExtra(addedRows);
+    var removedList = cmpExplainTickerListWithExtra(removedRows);
+
+    function tickersSet(rows) {
+      var set = {};
+      (rows || []).forEach(function (row) {
+        var t = String(row && row.ticker || '').trim();
+        if (t) set[t] = true;
       });
-      compositionLines.push('Снижение частично связано с уменьшением ' + removedList +
-        ' и снижением оценки ' + priceDownList + '.');
+      return set;
+    }
+    var buySet = tickersSet(periodOps.buys);
+    var sellSet = tickersSet(periodOps.sells);
+
+    if (hasPeriodBuys) {
+      bullets.push('Покупки за период: ' + cmpExplainJoinLimited(periodOps.buys.map(cmpExplainOpPart)) + '.');
+      var extraAdds = addedRows.filter(function (row) {
+        return !buySet[String(row.ticker || '').trim()];
+      });
+      if (extraAdds.length) {
+        bullets.push('Куплены или увеличены позиции: ' + cmpExplainJoinLimited(cmpExplainQtyDeltaParts(extraAdds, 'add')) + '.');
+      }
+    } else if (addedRows.length) {
+      bullets.push('Куплены или увеличены позиции: ' + cmpExplainJoinLimited(cmpExplainQtyDeltaParts(addedRows, 'add')) + '.');
     }
 
-    if (hasOnlyPriceChanges) {
-      bullets.push('Состав портфеля между датами не менялся. Изменение связано с изменением цен бумаг.');
-      var leadSign = Number(changeRub) < 0 ? -1 : 1;
-      var leadRows = leadSign < 0 ? groups.priceDown : groups.priceUp;
-      if (!leadRows.length) leadRows = groups.priceDown.concat(groups.priceUp);
-      var leadList = cmpExplainTickerList(leadRows);
-      if (leadList) {
-        bullets.push((leadSign < 0
-          ? 'Основной вклад в снижение дали: '
-          : 'Основной вклад в рост оценки дали: ') + leadList + '.');
-      }
-    } else {
-      compositionLines.forEach(function (line) {
-        if (bullets.length < 3) bullets.push(line);
+    if (hasPeriodSells) {
+      bullets.push('Продажи за период: ' + cmpExplainJoinLimited(periodOps.sells.map(cmpExplainOpPart)) + '.');
+      var extraRemoves = removedRows.filter(function (row) {
+        return !sellSet[String(row.ticker || '').trim()];
       });
-      if (hasPriceChanges && bullets.length < 3) {
-        var priceList = cmpExplainTickerList(groups.priceUp.concat(groups.priceDown));
-        if (priceList) {
-          bullets.push('Выросла или снизилась оценка бумаг с тем же количеством: ' + priceList + '.');
-        }
+      if (extraRemoves.length) {
+        bullets.push('Проданы или уменьшены позиции: ' + cmpExplainJoinLimited(cmpExplainQtyDeltaParts(extraRemoves, 'remove')) + '.');
       }
-      if (hasCompositionChanges && bullets.length < 4) {
-        bullets.push('Покупки и продажи между датами тоже влияют на итоговую сумму.');
+    } else if (removedRows.length) {
+      bullets.push('Проданы или уменьшены позиции: ' + cmpExplainJoinLimited(cmpExplainQtyDeltaParts(removedRows, 'remove')) + '.');
+    }
+
+    var sameQtyPriceRows = groups.priceUp.concat(groups.priceDown);
+    if (hasOnlyPriceChanges) {
+      bullets.push('Состав портфеля между датами не менялся. Изменение связано с ценами закрытия бумаг.');
+      var priceTickers = cmpExplainTickerListWithExtra(sameQtyPriceRows);
+      if (priceTickers) {
+        bullets.push('По бумагам без изменения количества разница связана с ценой закрытия: ' + priceTickers + '.');
+      }
+    } else if (sameQtyPriceRows.length) {
+      var mixedPriceTickers = cmpExplainTickerListWithExtra(sameQtyPriceRows);
+      if (mixedPriceTickers) {
+        bullets.push('По бумагам без изменения количества разница связана с ценой закрытия: ' + mixedPriceTickers + '.');
       }
     }
 
     if (!bullets.length) {
       bullets.push('По таблице ниже видно детализацию по бумагам.');
     }
-    if (bullets.length > 4) bullets = bullets.slice(0, 4);
+
+    var footnote = hasPeriodOperations
+      ? 'Это сравнение стоимости, а не доходность: покупки и продажи внутри периода тоже меняют итоговую сумму.'
+      : 'Это не доходность, а сравнение стоимости портфеля между датами.';
 
     var summaryText = bullets[0] || '';
     if (hasOnlyPriceChanges) {
-      if (Number(changeRub) < 0 && cmpExplainTickerList(groups.priceDown)) {
-        summaryText = 'Стоимость портфеля снизилась. Основной вклад в снижение дали: ' +
-          cmpExplainTickerList(groups.priceDown) + '.';
-      } else {
-        summaryText = 'Состав портфеля между датами не менялся. Изменение связано с изменением цен бумаг.';
-      }
-    } else if (dominantReason === 'composition-add' && addedList) {
-      summaryText = 'Стоимость портфеля выросла в основном из-за изменения состава: появились или увеличились позиции ' + addedList + '.';
-    } else if (dominantReason === 'composition-remove' && removedList) {
-      summaryText = 'Стоимость портфеля снизилась. Часть изменения связана с продажами или уменьшением позиций: ' + removedList + '.';
+      summaryText = 'Состав портфеля между датами не менялся. Изменение связано с ценами закрытия бумаг.';
+    } else if (hasPeriodBuys && !hasPeriodSells) {
+      summaryText = 'Куплены или увеличены позиции: ' +
+        cmpExplainTickerListWithExtra(periodOps.buys.map(function (row) {
+          return { ticker: row.ticker, changeRub: row.amountRub };
+        })) + '.';
+    } else if (hasPeriodSells && !hasPeriodBuys) {
+      summaryText = 'Проданы или уменьшены позиции: ' +
+        cmpExplainTickerListWithExtra(periodOps.sells.map(function (row) {
+          return { ticker: row.ticker, changeRub: row.amountRub };
+        })) + '.';
+    } else if (hasPeriodBuys && hasPeriodSells) {
+      summaryText = 'За период были покупки и продажи.';
+    } else if (addedList && !removedList) {
+      summaryText = 'Куплены или увеличены позиции: ' + addedList + '.';
+    } else if (removedList && !addedList) {
+      summaryText = 'Проданы или уменьшены позиции: ' + removedList + '.';
     } else if (hasCompositionChanges) {
-      var mixedTickers = cmpExplainTickerList(items, 5);
+      var mixedTickers = cmpExplainTickerListWithExtra(items, 5);
       summaryText = 'Изменение стоимости связано и с составом портфеля, и с оценкой бумаг' +
         (mixedTickers ? ': ' + mixedTickers : '') + '.';
     }
+
+    var rawOpsCount = periodOps.buyOps.length + periodOps.sellOps.length;
+    var hiddenTickers = Math.max(0, periodOps.buys.length - CMP_EXPLAIN_TICKER_LIMIT) +
+      Math.max(0, periodOps.sells.length - CMP_EXPLAIN_TICKER_LIMIT);
 
     return {
       title: 'Что изменилось',
       summaryText: summaryText,
       bullets: bullets,
+      footnote: footnote,
       dominantReason: dominantReason,
       hasCompositionChanges: hasCompositionChanges,
       hasOnlyPriceChanges: hasOnlyPriceChanges,
+      hasPeriodOperations: hasPeriodOperations,
+      periodOps: periodOps,
+      showAllOperations: hiddenTickers > 0 || rawOpsCount > CMP_EXPLAIN_TICKER_LIMIT,
       warnings: asOfUniqueNotes([warnings])
     };
   }
@@ -5473,31 +5651,81 @@
     '<div class="pf-cmp-cards">' + buildPortfolioCompareDetailsCardsHtml(items) + '</div>';
   }
 
+  function insightLineKind(line) {
+    var s = String(line || '');
+    if (/^Покупки за период|^Куплены или увеличены/i.test(s)) return 'buy';
+    if (/^Продажи за период|^Проданы или уменьшены/i.test(s)) return 'sell';
+    if (/^Стоимость выросла/i.test(s)) return 'up';
+    if (/^Стоимость снизилась/i.test(s)) return 'down';
+    return '';
+  }
+
   function insightBulletHtml(line) {
+    var kind = insightLineKind(line);
     var escaped = escapeHtml(line);
-    var down = /снизил|снижени|уменьш|исчез|продаж/i.test(line);
-    var up = /вырос|появил|увелич|рост оценки/i.test(line);
-    var cls = '';
-    if (down && !up) cls = 'pf-cmp-insight-amt--down';
-    else if (up && !down) cls = 'pf-cmp-insight-amt--up';
-    if (!cls) return escaped;
-    return escaped.replace(/(\d[\d\u00a0\s]*[.,]\d{2}\s*₽)/g, '<span class="' + cls + '">$1</span>');
+    var cls = kind === 'buy' || kind === 'up' ? 'pf-cmp-insight-amt--up'
+      : (kind === 'sell' || kind === 'down' ? 'pf-cmp-insight-amt--down' : '');
+    if (cls) {
+      escaped = escaped.replace(/(\d[\d\u00a0\s]*[.,]\d{2}\s*₽)/g, '<span class="' + cls + '">$1</span>');
+    }
+    return '<li class="pf-cmp-insight-li' + (kind ? ' pf-cmp-insight-li--' + kind : '') + '">' +
+      escaped + '</li>';
+  }
+
+  function cmpExplainOpDetailLine(op) {
+    if (!op) return '';
+    var kind = op.type === 'sell' ? 'продажа' : 'покупка';
+    var date = formatAsOfDateDisplay(op.date);
+    var qty = op.qty != null && isFinite(Number(op.qty)) && Number(op.qty) > 0
+      ? formatAsOfQtyDisplay(op.qty) + ' шт.'
+      : '';
+    var line = (date && date !== '—' ? date + ' · ' : '') + kind + ' ' + String(op.ticker || '');
+    if (qty) line += ' — ' + qty;
+    if (op.amountRub != null && isFinite(Number(op.amountRub))) {
+      line += ' на ' + cmpExplainRubAbs(op.amountRub);
+    }
+    return line;
+  }
+
+  function buildPortfolioCompareInsightOpsHtml(expl) {
+    if (!expl || !expl.showAllOperations || !expl.periodOps) return '';
+    var ops = (expl.periodOps.buyOps || []).concat(expl.periodOps.sellOps || []).slice().sort(function (a, b) {
+      var da = a && a.date || '';
+      var db = b && b.date || '';
+      if (da !== db) return da < db ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'buy' ? -1 : 1;
+      return String(a.ticker || '').localeCompare(String(b.ticker || ''));
+    });
+    if (!ops.length) return '';
+    var rows = ops.map(function (op) {
+      var kind = op.type === 'sell' ? 'sell' : 'buy';
+      return '<li class="pf-cmp-insight-op pf-cmp-insight-op--' + kind + '">' +
+        escapeHtml(cmpExplainOpDetailLine(op)) + '</li>';
+    }).join('');
+    return '<details class="pf-cmp-insight-ops">' +
+      '<summary>Показать все операции за период</summary>' +
+      '<ul class="pf-cmp-insight-ops-list">' + rows + '</ul>' +
+    '</details>';
   }
 
   function buildPortfolioCompareInsightHtml(result) {
     if (typeof buildPortfolioValueChangeExplanation !== 'function') return '';
-    var expl = buildPortfolioValueChangeExplanation(result);
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    var expl = buildPortfolioValueChangeExplanation(result, { portfolio: pf });
     if (!expl) return '';
-    var items = (expl.bullets || []).map(function (line) {
-      return '<li>' + insightBulletHtml(line) + '</li>';
-    }).join('');
+    var items = (expl.bullets || []).map(insightBulletHtml).join('');
     var warn = (expl.warnings || []).map(function (line) {
       return '<p class="pf-cmp-insight-warn">' + escapeHtml(line) + '</p>';
     }).join('');
-    if (!items && !warn) return '';
+    var foot = expl.footnote
+      ? '<p class="pf-cmp-insight-foot">' + escapeHtml(expl.footnote) + '</p>'
+      : '';
+    if (!items && !warn && !foot) return '';
     return '<section class="pf-cmp-insight" aria-label="Что изменилось">' +
       '<h4 class="pf-cmp-insight-title">' + escapeHtml(expl.title || 'Что изменилось') + '</h4>' +
       (items ? '<ul class="pf-cmp-insight-list">' + items + '</ul>' : '') +
+      buildPortfolioCompareInsightOpsHtml(expl) +
+      foot +
       warn +
     '</section>';
   }

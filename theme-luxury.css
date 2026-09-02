@@ -4368,6 +4368,52 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   font-weight: 650;
 }
 
+#tab-portfolio .pf-cmp-insight-li--buy {
+  color: color-mix(in srgb, var(--accent) 42%, #3d4844 58%);
+}
+
+#tab-portfolio .pf-cmp-insight-li--sell {
+  color: color-mix(in srgb, #8a6a4e 62%, #5c4636 38%);
+}
+
+#tab-portfolio .pf-cmp-insight-ops {
+  margin: 0.38rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 78%, #4d5a54 22%);
+}
+
+#tab-portfolio .pf-cmp-insight-ops summary {
+  cursor: pointer;
+  list-style: none;
+  color: color-mix(in srgb, var(--text) 62%, var(--bronze) 38%);
+}
+
+#tab-portfolio .pf-cmp-insight-ops summary::-webkit-details-marker {
+  display: none;
+}
+
+#tab-portfolio .pf-cmp-insight-ops-list {
+  margin: 0.28rem 0 0;
+  padding: 0 0 0 0.95rem;
+}
+
+#tab-portfolio .pf-cmp-insight-op--buy {
+  color: color-mix(in srgb, var(--accent) 42%, #3d4844 58%);
+}
+
+#tab-portfolio .pf-cmp-insight-op--sell {
+  color: color-mix(in srgb, #8a6a4e 62%, #5c4636 38%);
+}
+
+#tab-portfolio .pf-cmp-insight-foot {
+  margin: 0.4rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 78%, #4d5a54 22%);
+  max-width: none;
+}
+
 #tab-portfolio .pf-cmp-empty {
   margin: 0.1rem 0 0;
   font-size: 0.84rem;

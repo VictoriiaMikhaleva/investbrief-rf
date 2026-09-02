@@ -1835,8 +1835,11 @@ function loadPriceAtDateHelpers() {
 }
 
 {
-  // Краткий итог сравнения дат — только по готовым items, без доходности.
-  const forbidden = /доходность|прибыльность|инвестиционный результат|чистая переоценка|вклад рынка/i;
+  // Краткий итог сравнения дат — items + операции периода, без доходности.
+  const forbidden = /прибыльность|инвестиционный результат|чистая переоценка|вклад рынка/i;
+  function norm(s) {
+    return String(s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ');
+  }
   function explain(items, extra) {
     extra = extra || {};
     return calc.buildPortfolioValueChangeExplanation(Object.assign({
@@ -1846,10 +1849,18 @@ function loadPriceAtDateHelpers() {
     }, extra));
   }
   function blob(expl) {
-    return [expl.summaryText].concat(expl.bullets || []).concat(expl.warnings || []).join(' ');
+    return [expl.summaryText].concat(expl.bullets || []).concat(expl.footnote || '').concat(expl.warnings || []).join(' ');
   }
   function item(ticker, qtyFrom, qtyTo, changeRub, extra) {
     return Object.assign({ ticker: ticker, qtyFrom: qtyFrom, qtyTo: qtyTo, changeRub: changeRub }, extra || {});
+  }
+  function noYieldExceptNegation(expl, label) {
+    const text = blob(expl);
+    assert(!forbidden.test(text), label + ': no yield words');
+    const stripped = text.replace(/не доходность/gi, '');
+    assert(!/доходность/i.test(stripped), label + ': доходность only as negation');
+    assert(!(expl.bullets || []).some((b) => /тоже влияют на итоговую сумму/i.test(b)),
+      label + ': no generic ops bullet');
   }
 
   const priceOnly = explain([
@@ -1859,26 +1870,26 @@ function loadPriceAtDateHelpers() {
   assert(priceOnly.hasOnlyPriceChanges === true, 'explain price-only: hasOnlyPriceChanges');
   assert(priceOnly.hasCompositionChanges === false, 'explain price-only: no composition');
   assert(/состав портфеля между датами не менялся/i.test(priceOnly.summaryText), 'explain price-only: summary состав');
-  assert(/изменен/i.test(priceOnly.summaryText) && /цен/i.test(priceOnly.summaryText), 'explain price-only: summary цены');
-  assert(priceOnly.bullets.some((b) => /SBER/.test(b)), 'explain price-only: ticker SBER');
-  assert(!forbidden.test(blob(priceOnly)), 'explain price-only: no yield words');
+  assert(/цен/i.test(priceOnly.summaryText), 'explain price-only: summary цены');
+  assert(priceOnly.bullets.some((b) => /SBER/.test(b) && /цен/i.test(b)), 'explain price-only: ticker SBER');
+  noYieldExceptNegation(priceOnly, 'explain price-only');
 
   const appeared = explain([item('PLZL', 0, 2, 3000)], { changeRub: 3000 });
   assert(appeared.hasCompositionChanges === true, 'explain appeared: composition');
-  assert(/появил/i.test(blob(appeared)) && /нов/i.test(blob(appeared)), 'explain appeared: новая позиция');
+  assert(/куплен/i.test(blob(appeared)) || /увелич/i.test(blob(appeared)), 'explain appeared: куплены/увеличены');
   assert(/PLZL/.test(blob(appeared)), 'explain appeared: ticker');
-  assert(!forbidden.test(blob(appeared)), 'explain appeared: no yield words');
+  noYieldExceptNegation(appeared, 'explain appeared');
 
   const gone = explain([item('SBER', 10, 0, -1000)], { changeRub: -1000 });
-  assert(/исчез/i.test(blob(gone)) || /полностью продан/i.test(blob(gone)), 'explain gone: исчезла / продана');
+  assert(/продан/i.test(blob(gone)) || /уменьш/i.test(blob(gone)), 'explain gone: проданы/уменьшены');
   assert(/SBER/.test(blob(gone)), 'explain gone: ticker');
 
   const qtyUp = explain([item('GAZP', 5, 12, 700)], { changeRub: 700 });
-  assert(/увеличил/i.test(blob(qtyUp)), 'explain qty up: увеличилась');
+  assert(/куплен/i.test(blob(qtyUp)) || /увелич/i.test(blob(qtyUp)), 'explain qty up: куплены/увеличены');
   assert(/GAZP/.test(blob(qtyUp)), 'explain qty up: ticker');
 
   const qtyDown = explain([item('OFZ_29027', 20, 8, -400)], { changeRub: -400 });
-  assert(/уменьшил/i.test(blob(qtyDown)), 'explain qty down: уменьшилась');
+  assert(/продан/i.test(blob(qtyDown)) || /уменьш/i.test(blob(qtyDown)), 'explain qty down: проданы/уменьшены');
   assert(/OFZ_29027/.test(blob(qtyDown)), 'explain qty down: ticker');
 
   const mixed = explain([
@@ -1893,21 +1904,148 @@ function loadPriceAtDateHelpers() {
   assert(mixed.hasCompositionChanges === true, 'explain mixed: composition');
   assert(/PLZL/.test(mixedText) && /OFZ_26248/.test(mixedText), 'explain mixed: add tickers');
   assert(/OFZ_29027/.test(mixedText), 'explain mixed: reduced ticker');
-  assert(mixed.bullets.length >= 2 && mixed.bullets.length <= 4, 'explain mixed: 2–4 bullets');
-  assert(!forbidden.test(mixedText), 'explain mixed: no yield words');
+  assert(mixed.bullets.length >= 2 && mixed.bullets.length <= 6, 'explain mixed: short bullets');
+  noYieldExceptNegation(mixed, 'explain mixed');
 
   const partial = explain([
     item('SBER', 10, 10, 100),
     item('GAZP', 5, 5, null, { status: 'missing' })
   ], { changeRub: 100, isPartial: true });
   assert(partial.warnings.some((w) => /неполный/i.test(w) && /нет цены/i.test(w)), 'explain partial: warning');
-  assert(!forbidden.test(blob(partial)), 'explain partial: no yield words');
+  noYieldExceptNegation(partial, 'explain partial');
 
   const unsupported = explain([
     item('XYZ', 1, 1, null, { status: 'unsupported' })
   ], { changeRub: null, isPartial: true });
   assert(unsupported.warnings.length > 0, 'explain unsupported: warning');
   assert(unsupported.dominantReason === 'unknown' || unsupported.hasOnlyPriceChanges === false, 'explain unsupported: not fake price');
+
+  const buyInPeriod = explain(
+    [item('PLZL', 0, 12, 14000)],
+    {
+      changeRub: 14000,
+      portfolio: {
+        positions: [{ ticker: 'PLZL', lotId: 'P1', qty: 12, avgPrice: 983, buyDate: '2024-01-15' }],
+        sales: []
+      }
+    }
+  );
+  const buyBlob = norm(blob(buyInPeriod));
+  assert(buyInPeriod.hasPeriodOperations === true, 'explain buy-in-period: has ops');
+  assert(/Покупки за период/i.test(buyBlob) && /PLZL/.test(buyBlob), 'explain buy-in-period: purchase line');
+  assert(/12 шт/.test(buyBlob) && /11\s*796/.test(buyBlob), 'explain buy-in-period: qty and trade amount');
+  assert(!/14\s*000/.test(buyBlob.replace(/Стоимость выросла на 14\s*000.*/, '')), 'explain buy-in-period: not CLOSE as trade amount');
+  noYieldExceptNegation(buyInPeriod, 'explain buy-in-period');
+
+  const sellInPeriod = explain(
+    [item('OFZ_29027', 12, 6, -5000)],
+    {
+      changeRub: -5000,
+      portfolio: {
+        positions: [{ ticker: 'OFZ_29027', lotId: 'O1', qty: 6, avgPrice: 84, buyDate: '2023-06-01' }],
+        sales: [{
+          saleId: 'S1', ticker: 'OFZ_29027', qty: 6, salePrice: 84.4, saleDate: '2024-01-20',
+          buyPrice: 84, buyDate: '2023-06-01',
+          allocations: [{ lotId: 'O1', qty: 6, buyPrice: 84, buyDate: '2023-06-01' }]
+        }]
+      }
+    }
+  );
+  const sellBlob = norm(blob(sellInPeriod));
+  assert(/Продажи за период/i.test(sellBlob) && /OFZ_29027/.test(sellBlob), 'explain sell-in-period: sale line');
+  assert(/6 шт/.test(sellBlob) && /5\s*064/.test(sellBlob), 'explain sell-in-period: qty and trade amount');
+  noYieldExceptNegation(sellInPeriod, 'explain sell-in-period');
+
+  const bothOps = explain(
+    [item('PLZL', 0, 12, 14000), item('OFZ_29027', 12, 6, -5000)],
+    {
+      changeRub: 9000,
+      portfolio: {
+        positions: [
+          { ticker: 'PLZL', lotId: 'P1', qty: 12, avgPrice: 983, buyDate: '2024-01-15' },
+          { ticker: 'OFZ_29027', lotId: 'O1', qty: 6, avgPrice: 84, buyDate: '2023-06-01' }
+        ],
+        sales: [{
+          saleId: 'S1', ticker: 'OFZ_29027', qty: 6, salePrice: 84.4, saleDate: '2024-01-20',
+          buyPrice: 84, allocations: [{ lotId: 'O1', qty: 6, buyPrice: 84, buyDate: '2023-06-01' }]
+        }]
+      }
+    }
+  );
+  const bothBlob = norm(blob(bothOps));
+  assert(/Покупки за период/i.test(bothBlob) && /Продажи за период/i.test(bothBlob), 'explain both: buy and sell lines');
+  assert(/PLZL/.test(bothBlob) && /OFZ_29027/.test(bothBlob), 'explain both: tickers');
+
+  const ofzBuy = explain(
+    [item('OFZ_26238', 0, 10, 9800)],
+    {
+      changeRub: 9800,
+      portfolio: {
+        positions: [{ ticker: 'OFZ_26238', lotId: 'B1', qty: 10, avgPrice: 95, buyDate: '2024-01-18', faceValue: 1000 }],
+        sales: []
+      }
+    }
+  );
+  const ofzBlob = norm(blob(ofzBuy));
+  assert(/Покупки за период/i.test(ofzBlob) && /OFZ_26238/.test(ofzBlob), 'explain ofz buy: line');
+  assert(/9\s*500/.test(ofzBlob), 'explain ofz buy: qty × % / 100 × face');
+  assert(!/9\s*800/.test(ofzBlob.replace(/Стоимость выросла на 9\s*800.*/, '')), 'explain ofz buy: not CLOSE amount');
+
+  const undated = explain(
+    [item('SBER', 0, 10, 2500)],
+    {
+      changeRub: 2500,
+      hasIncompleteHistory: true,
+      portfolio: {
+        positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '' }],
+        sales: []
+      }
+    }
+  );
+  assert(undated.periodOps && undated.periodOps.buys.length === 0, 'explain undated: not in period');
+  assert(undated.warnings.some((w) => /без корректной даты/i.test(w)), 'explain undated: incomplete note');
+  assert(!/Покупки за период/i.test(blob(undated)), 'explain undated: no dated purchase line');
+
+  const noPrice = explain(
+    [item('SBER', 0, 8, 2000)],
+    {
+      changeRub: 2000,
+      portfolio: {
+        positions: [{ ticker: 'SBER', lotId: 'S9', qty: 8, buyDate: '2024-01-12' }],
+        sales: []
+      }
+    }
+  );
+  const noPriceLine = (noPrice.bullets || []).find((b) => /Покупки за период/i.test(b)) || '';
+  assert(/SBER/.test(noPriceLine) && /8 шт/.test(noPriceLine), 'explain no-price: qty only');
+  assert(!/₽/.test(noPriceLine), 'explain no-price: no invented amount');
+
+  const onFromDate = explain(
+    [item('SBER', 10, 10, 50)],
+    {
+      changeRub: 50,
+      portfolio: {
+        positions: [{ ticker: 'SBER', lotId: 'S0', qty: 10, avgPrice: 250, buyDate: '2024-01-01' }],
+        sales: []
+      }
+    }
+  );
+  assert((onFromDate.periodOps.buys || []).length === 0, 'explain fromDate buy: not in open window');
+  assert(onFromDate.hasOnlyPriceChanges === true, 'explain fromDate buy: treated as price-only');
+
+  const manyPositions = [];
+  const manyItems = [];
+  for (let i = 1; i <= 7; i += 1) {
+    const t = 'T' + i;
+    manyPositions.push({ ticker: t, lotId: 'L' + i, qty: i, avgPrice: 100, buyDate: '2024-01-10' });
+    manyItems.push(item(t, 0, i, i * 100));
+  }
+  const many = explain(manyItems, { changeRub: 2800, portfolio: { positions: manyPositions, sales: [] } });
+  const manyBuy = (many.bullets || []).find((b) => /Покупки за период/i.test(b)) || '';
+  assert(/и ещё/.test(manyBuy), 'explain many: collapsed extra');
+  assert(many.showAllOperations === true, 'explain many: details flag');
+  const shownTickers = (manyBuy.match(/T\d/g) || []).length;
+  assert(shownTickers <= 5, 'explain many: at most 5 tickers in summary line');
 }
 
 if (errors.length) {
