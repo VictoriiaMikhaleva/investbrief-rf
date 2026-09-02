@@ -4556,6 +4556,12 @@
   }
 
   var pfAsOfShown = false;
+  var pfAsOfSeq = 0;
+  var PF_ASOF_BTN_IDLE = 'Показать состав';
+  var PF_ASOF_BTN_BUSY = 'Считаем…';
+  var PF_ASOF_BUSY_HINT = 'Подбираем цены закрытия на выбранную дату…';
+  var PF_ASOF_REFRESH_HINT = 'Обновляем расчёт…';
+  var PF_ASOF_ERROR = 'Не удалось рассчитать стоимость на дату. Попробуйте ещё раз.';
 
   function formatAsOfQtyDisplay(n) {
     if (n == null || !isFinite(Number(n))) return '—';
@@ -4725,8 +4731,8 @@
         '</div>' +
         '<div class="pf-asof-card-kpis">' +
           '<span class="pf-asof-card-qty"><span class="lbl">Кол-во на дату</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyAtDate)) + '</span>' +
-          '<span class="pf-asof-card-value"><span class="lbl">Стоимость на дату</span> ' + escapeHtml(formatAsOfValueDisplay(row)) + '</span>' +
-          '<span><span class="lbl">Цена на дату</span> ' + escapeHtml(formatAsOfClosePriceDisplay(row)) + '</span>' +
+          '<span class="pf-asof-card-value"><span class="lbl">Стоимость позиции на дату</span> ' + escapeHtml(formatAsOfValueDisplay(row)) + '</span>' +
+          '<span><span class="lbl">Цена за 1 шт. на дату</span> ' + escapeHtml(formatAsOfClosePriceDisplay(row)) + '</span>' +
           '<span><span class="lbl">Дата цены</span> ' + escapeHtml(formatAsOfDateDisplay(row.priceDate)) + '</span>' +
           '<span><span class="lbl">Куплено</span> ' + escapeHtml(formatAsOfQtyDisplay(row.boughtQtyUpToDate)) + '</span>' +
           '<span><span class="lbl">Продано</span> ' + escapeHtml(formatAsOfQtyDisplay(row.soldQtyUpToDate)) + '</span>' +
@@ -4776,7 +4782,9 @@
         '<thead><tr>' +
           '<th>Бумага</th><th>Кол-во на дату</th>' +
           '<th class="pf-asof-col-ops">Куплено</th><th class="pf-asof-col-ops">Продано</th>' +
-          '<th>Цена на дату</th><th>Дата цены</th><th>Стоимость на дату</th>' +
+          '<th class="pf-asof-th-price"><span class="pf-asof-th-full">Цена за 1 шт. на дату</span><span class="pf-asof-th-short">Цена за 1 шт.</span></th>' +
+          '<th>Дата цены</th>' +
+          '<th class="pf-asof-th-value"><span class="pf-asof-th-full">Стоимость позиции на дату</span><span class="pf-asof-th-short">Стоимость позиции</span></th>' +
           '<th class="pf-asof-col-hist">Первая покупка</th><th class="pf-asof-col-hist">Последняя операция</th>' +
           (showNotes ? '<th>Примечание</th>' : '') +
         '</tr></thead>' +
@@ -4785,6 +4793,35 @@
     '</div>' +
     '<div class="pf-asof-cards">' + buildPortfolioAsOfCardsHtml(items, showNotes, showGroups) + '</div>' +
     '<p class="muted pf-asof-foot">Оценка считается по цене закрытия на выбранную или ближайшую предыдущую торговую дату. Для облигаций — по чистой цене, без исторического НКД.</p>';
+  }
+
+  function setPortfolioAsOfBusy(on, refreshing) {
+    var btn = document.getElementById('pfAsOfBtn');
+    var status = document.getElementById('pfAsOfStatus');
+    var host = document.getElementById('pfAsOfResultHost');
+    var overlay = document.getElementById('pfAsOfOverlay');
+    var block = document.getElementById('portfolioAsOfBlock');
+    var overlayOn = !!(on && refreshing);
+    if (btn) {
+      btn.disabled = !!on;
+      btn.setAttribute('aria-busy', on ? 'true' : 'false');
+      btn.textContent = on ? PF_ASOF_BTN_BUSY : PF_ASOF_BTN_IDLE;
+    }
+    if (status) {
+      if (on) {
+        status.hidden = false;
+        status.textContent = overlayOn ? PF_ASOF_REFRESH_HINT : PF_ASOF_BUSY_HINT;
+      } else {
+        status.hidden = true;
+        status.textContent = '';
+      }
+    }
+    if (block) block.classList.toggle('pf-asof-block--busy', !!on);
+    if (host) {
+      host.classList.toggle('pf-asof-result-host--busy', overlayOn);
+      host.setAttribute('aria-busy', overlayOn ? 'true' : 'false');
+    }
+    if (overlay) overlay.hidden = !overlayOn;
   }
 
   function renderPortfolioAsOfResult(result, errorText) {
@@ -4834,17 +4871,27 @@
     var input = document.getElementById('pfAsOfDate');
     var raw = input ? String(input.value || '').trim() : '';
     var iso = timelineIsoDate(raw);
+    var seq = ++pfAsOfSeq;
     if (!iso) {
+      setPortfolioAsOfBusy(false);
       pfAsOfShown = true;
       renderPortfolioAsOfResult(null, 'Укажите корректную дату.');
       return Promise.resolve();
     }
+    var panel = document.getElementById('pfAsOfPanel');
+    var refreshing = !!(pfAsOfShown && panel && !panel.hidden && document.getElementById('pfAsOfResult') &&
+      document.getElementById('pfAsOfResult').innerHTML);
     var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
     pfAsOfShown = true;
+    setPortfolioAsOfBusy(true, refreshing);
     return buildPortfolioValueAtDate(pf, iso).then(function (result) {
+      if (seq !== pfAsOfSeq) return;
+      setPortfolioAsOfBusy(false);
       renderPortfolioAsOfResult(result);
     }).catch(function () {
-      renderPortfolioAsOfResult(null, 'Не удалось оценить портфель на выбранную дату.');
+      if (seq !== pfAsOfSeq) return;
+      setPortfolioAsOfBusy(false);
+      renderPortfolioAsOfResult(null, PF_ASOF_ERROR);
     });
   }
 

@@ -3605,6 +3605,56 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   box-shadow: none;
 }
 
+#tab-portfolio .pf-asof-btn:disabled {
+  opacity: 0.68;
+  cursor: wait;
+  pointer-events: none;
+}
+
+#tab-portfolio .pf-asof-status {
+  margin: 0.42rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 86%, #6a756c 14%);
+}
+
+#tab-portfolio .pf-asof-result-host {
+  position: relative;
+}
+
+#tab-portfolio .pf-asof-loading-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2.2rem 0.8rem 0.8rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, #ffffff 58%, transparent);
+  pointer-events: none;
+}
+
+#tab-portfolio .pf-asof-result-host--busy .pf-asof-loading-overlay {
+  display: flex;
+}
+
+#tab-portfolio .pf-asof-result-host--busy .pf-asof-result {
+  opacity: 0.46;
+}
+
+#tab-portfolio .pf-asof-loading-overlay span {
+  display: inline-block;
+  padding: 0.38rem 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text) 78%, #3d5348 22%);
+  background: color-mix(in srgb, #ffffff 88%, var(--accent-soft) 12%);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, #d5dbe2 78%);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px color-mix(in srgb, #1c2a24 8%, transparent);
+}
+
 #tab-portfolio .pf-asof-panel {
   margin-top: 0.75rem;
   padding-top: 0.7rem;
@@ -3679,6 +3729,17 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   padding: 0 0.5rem 0.08rem;
   border-bottom: none;
   white-space: nowrap;
+}
+
+#tab-portfolio .pf-asof-table .pf-asof-th-price,
+#tab-portfolio .pf-asof-table .pf-asof-th-value {
+  white-space: normal;
+  max-width: 8.2rem;
+  line-height: 1.25;
+}
+
+#tab-portfolio .pf-asof-th-short {
+  display: none;
 }
 
 #tab-portfolio .pf-asof-table th:first-child {
@@ -3843,6 +3904,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 #tab-portfolio .pf-asof-card-kpis .lbl {
   color: var(--text-muted);
   margin-right: 0.25rem;
+  white-space: normal;
+  line-height: 1.3;
 }
 
 #tab-portfolio .pf-asof-card-qty {
@@ -3858,6 +3921,20 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 @media (max-width: 1199px) {
   #tab-portfolio .pf-asof-col-ops {
     display: none;
+  }
+
+  #tab-portfolio .pf-asof-th-full {
+    display: none;
+  }
+
+  #tab-portfolio .pf-asof-th-short {
+    display: inline;
+  }
+
+  #tab-portfolio .pf-asof-table .pf-asof-th-price,
+  #tab-portfolio .pf-asof-table .pf-asof-th-value {
+    white-space: nowrap;
+    max-width: none;
   }
 }
 
