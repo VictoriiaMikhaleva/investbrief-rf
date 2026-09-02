@@ -4558,10 +4558,13 @@
   var pfAsOfShown = false;
   var pfAsOfSeq = 0;
   var PF_ASOF_BTN_IDLE = 'Показать состав';
-  var PF_ASOF_BTN_BUSY = 'Считаем…';
+  var PF_ASOF_BTN_BUSY = 'Считаю…';
   var PF_ASOF_BUSY_HINT = 'Подбираем цены закрытия на выбранную дату…';
   var PF_ASOF_REFRESH_HINT = 'Обновляем расчёт…';
   var PF_ASOF_ERROR = 'Не удалось рассчитать стоимость на дату. Попробуйте ещё раз.';
+  var PF_ASOF_EMPTY = 'На выбранную дату открытых позиций нет';
+  var PF_ASOF_BELOW = 'Ниже — состав и стоимость каждой позиции на выбранную дату.';
+  var PF_ASOF_FOOT = 'Оценка считается по цене закрытия на выбранную или ближайшую предыдущую торговую дату. Для облигаций — по чистой цене, без исторического НКД.';
 
   function formatAsOfQtyDisplay(n) {
     if (n == null || !isFinite(Number(n))) return '—';
@@ -4677,34 +4680,59 @@
     return hasStock && hasBond;
   }
 
-  function buildPortfolioAsOfSummaryHtml(result, items) {
+  function asOfMiniKpiHtml(lbl, val, extraClass) {
+    return '<div class="pf-asof-kpi pf-asof-kpi--mini' + (extraClass ? ' ' + extraClass : '') + '">' +
+      '<span class="pf-asof-kpi-lbl">' + escapeHtml(lbl) + '</span>' +
+      '<span class="pf-asof-kpi-val">' + escapeHtml(val) + '</span>' +
+    '</div>';
+  }
+
+  function buildPortfolioAsOfBoardHtml(result, items) {
+    items = items || [];
+    var n = items.length;
     var dateLbl = formatAsOfDateDisplay(result && result.targetDate);
-    var n = (items || []).length;
-    var papers = n + ' ' + ruCountWord(n, 'бумага', 'бумаги', 'бумаг');
-    var lead;
+    var dateSub = dateLbl && dateLbl !== '—' ? 'на ' + dateLbl : '';
+    var hasValue = !!(result && result.totalValueRub != null && isFinite(Number(result.totalValueRub)));
+    var mainClass = 'pf-asof-kpi pf-asof-kpi--main';
+    var lbl;
+    var val;
+    var sub;
     if (!n) {
-      lead = 'На ' + dateLbl + ': 0 бумаг в портфеле';
+      mainClass += ' pf-asof-kpi--empty';
+      lbl = 'Стоимость портфеля на дату';
+      val = PF_ASOF_EMPTY;
+      sub = dateSub;
     } else if (result && result.isPartial) {
-      lead = 'На ' + dateLbl + ': ' + papers + ' · оценено ' + formatPortfolioRubAmount(result.totalValueRub) +
-        ' · часть бумаг без цены';
-    } else if (result && result.totalValueRub != null && isFinite(Number(result.totalValueRub))) {
-      lead = 'На ' + dateLbl + ': ' + papers + ' · стоимость ' + formatPortfolioRubAmount(result.totalValueRub);
+      mainClass += ' pf-asof-kpi--partial';
+      lbl = 'Оценено на дату';
+      val = hasValue ? formatPortfolioRubAmount(result.totalValueRub) : '—';
+      sub = 'часть бумаг без цены';
     } else {
-      lead = 'На ' + dateLbl + ': ' + papers + ' в портфеле';
+      lbl = 'Стоимость портфеля на дату';
+      val = hasValue ? formatPortfolioRubAmount(result.totalValueRub) : '—';
+      sub = dateSub;
     }
-    var classes = '';
-    if (n && asOfAllTypesKnown(items)) {
-      var stocks = items.filter(function (row) { return asOfRowType(row) === 'stock'; }).length;
-      var bonds = items.filter(function (row) { return asOfRowType(row) === 'bond'; }).length;
-      var parts = [];
-      if (stocks) parts.push(stocks + ' ' + ruCountWord(stocks, 'акция', 'акции', 'акций'));
-      if (bonds) parts.push(bonds + ' ОФЗ');
-      if (parts.length) classes = parts.join(' · ');
+    var side = '';
+    if (n) {
+      side += asOfMiniKpiHtml('Бумаг', String(n));
+      if (asOfAllTypesKnown(items)) {
+        var stocks = items.filter(function (row) { return asOfRowType(row) === 'stock'; }).length;
+        var bonds = items.filter(function (row) { return asOfRowType(row) === 'bond'; }).length;
+        side += asOfMiniKpiHtml('Акции', String(stocks));
+        side += asOfMiniKpiHtml('ОФЗ', String(bonds));
+      }
+      var noPrice = Number((result && result.missingItemsCount) || 0) +
+        Number((result && result.unsupportedItemsCount) || 0);
+      if (noPrice > 0) side += asOfMiniKpiHtml('Без цены', String(noPrice), 'pf-asof-kpi--warn');
     }
-    return '<p class="pf-asof-summary">' +
-      '<span class="pf-asof-summary-lead">' + escapeHtml(lead) + '</span>' +
-      (classes ? '<span class="pf-asof-summary-classes">' + escapeHtml(classes) + '</span>' : '') +
-    '</p>';
+    return '<div class="pf-asof-board">' +
+      '<div class="' + mainClass + '">' +
+        '<span class="pf-asof-kpi-lbl">' + escapeHtml(lbl) + '</span>' +
+        '<span class="pf-asof-kpi-val">' + escapeHtml(val) + '</span>' +
+        (sub ? '<span class="pf-asof-kpi-sub">' + escapeHtml(sub) + '</span>' : '') +
+      '</div>' +
+      (side ? '<div class="pf-asof-kpis-side">' + side + '</div>' : '') +
+    '</div>';
   }
 
   function asOfPaperCellHtml(row) {
@@ -4791,8 +4819,7 @@
         '<tbody>' + rows + '</tbody>' +
       '</table>' +
     '</div>' +
-    '<div class="pf-asof-cards">' + buildPortfolioAsOfCardsHtml(items, showNotes, showGroups) + '</div>' +
-    '<p class="muted pf-asof-foot">Оценка считается по цене закрытия на выбранную или ближайшую предыдущую торговую дату. Для облигаций — по чистой цене, без исторического НКД.</p>';
+    '<div class="pf-asof-cards">' + buildPortfolioAsOfCardsHtml(items, showNotes, showGroups) + '</div>';
   }
 
   function setPortfolioAsOfBusy(on, refreshing) {
@@ -4851,19 +4878,21 @@
     if (result.isPartial && result.missingItemsCount > 0) {
       extra += '<p class="pf-asof-partial" role="status">Оценка рассчитана частично: по ' +
         escapeHtml(String(result.missingItemsCount)) + ' ' +
-        escapeHtml(result.missingItemsCount === 1 ? 'бумаге' : 'бумагам') +
+        escapeHtml(ruCountWord(result.missingItemsCount, 'бумаге', 'бумагам', 'бумагам')) +
         ' нет цены на выбранную дату.</p>';
     }
     if (result.unsupportedItemsCount > 0) {
       extra += '<p class="pf-asof-partial" role="status">Некоторые инструменты пока не поддерживаются для оценки на дату.</p>';
     }
+    var foot = '<p class="pf-asof-foot">' + escapeHtml(PF_ASOF_FOOT) + '</p>';
+    var below = items.length
+      ? '<p class="pf-asof-below">' + escapeHtml(PF_ASOF_BELOW) + '</p>'
+      : '';
     if (!items.length) {
-      out.innerHTML = buildPortfolioAsOfSummaryHtml(result, []) + extra +
-        '<p class="muted pf-asof-empty">На выбранную дату в портфеле не найдено открытых позиций.</p>' +
-        '<p class="muted pf-asof-foot">Оценка считается по цене закрытия на выбранную или ближайшую предыдущую торговую дату. Для облигаций — по чистой цене, без исторического НКД.</p>';
+      out.innerHTML = buildPortfolioAsOfBoardHtml(result, []) + extra + foot;
       return;
     }
-    out.innerHTML = buildPortfolioAsOfSummaryHtml(result, items) + extra + buildPortfolioAsOfTableHtml(items);
+    out.innerHTML = buildPortfolioAsOfBoardHtml(result, items) + extra + below + buildPortfolioAsOfTableHtml(items) + foot;
   }
 
   function showPortfolioAsOfComposition() {
