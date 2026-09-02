@@ -2283,7 +2283,8 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
 }
 
 .pf-history-section--timeline {
-  margin-top: 0.7rem;
+  margin-top: 0.95rem;
+  padding-top: 0.15rem;
 }
 
 .pf-history-section--open-lots > .pf-ticker-detail-h,
@@ -2329,18 +2330,26 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
 }
 
 .pf-history-section--timeline > .pf-ticker-detail-h {
-  color: color-mix(in srgb, var(--text) 82%, #5c675f 18%);
+  color: color-mix(in srgb, var(--text) 88%, #4e5854 12%);
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin: 0 0 0.48rem;
 }
 
 .pf-history-section--timeline > .pf-ticker-detail-h::before {
-  background: color-mix(in srgb, var(--accent) 28%, var(--bronze) 32%, #b8c0c8 40%);
+  width: 0.22rem;
+  height: 0.92rem;
+  background: color-mix(in srgb, var(--accent) 36%, var(--bronze) 28%, #9aa7b0 36%);
 }
 
 .pf-ticker-manage {
-  margin-top: 0.55rem;
-  border: none;
-  background: transparent;
+  margin-top: 0.8rem;
+  border: 1px solid color-mix(in srgb, #d5dbe2 42%, rgba(23, 34, 51, 0.04) 58%);
+  background: color-mix(in srgb, #f8f9fb 94%, #ffffff 6%);
+  border-radius: 10px;
   box-shadow: none;
+  padding: 0.08rem 0.28rem 0.12rem;
 }
 
 .pf-ticker-manage-summary {
@@ -2351,9 +2360,10 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
   gap: 0.5rem;
   width: 100%;
   box-sizing: border-box;
-  padding: 0.32rem 0.2rem 0.32rem 0.1rem;
+  padding: 0.38rem 0.35rem 0.38rem 0.28rem;
   border-radius: 8px;
   user-select: none;
+  background: transparent;
 }
 
 .pf-ticker-manage-summary::-webkit-details-marker,
@@ -2364,60 +2374,150 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
 
 .pf-ticker-manage-summary::before {
   content: "";
-  width: 0.38rem;
-  height: 0.38rem;
-  margin-top: 0.34rem;
+  width: 0.34rem;
+  height: 0.34rem;
+  margin-top: 0.32rem;
   flex: 0 0 auto;
-  border-right: 1.5px solid color-mix(in srgb, var(--text-muted) 58%, #8a939c 42%);
-  border-bottom: 1.5px solid color-mix(in srgb, var(--text-muted) 58%, #8a939c 42%);
+  border-right: 1.5px solid color-mix(in srgb, var(--text-muted) 50%, #9aa3ad 50%);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--text-muted) 50%, #9aa3ad 50%);
   transform: rotate(-45deg);
-  opacity: 0.65;
+  opacity: 0.55;
   transition: transform 0.15s ease;
 }
 
 .pf-ticker-manage[open] > .pf-ticker-manage-summary::before {
   transform: rotate(45deg);
-  margin-top: 0.26rem;
+  margin-top: 0.24rem;
 }
 
 .pf-ticker-manage-copy {
   display: flex;
   flex-direction: column;
-  gap: 0.06rem;
+  gap: 0.08rem;
   min-width: 0;
 }
 
 .pf-ticker-manage-title {
-  font-size: 0.74rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 500;
   letter-spacing: 0.01em;
-  color: color-mix(in srgb, var(--text) 70%, #6e7882 30%);
+  color: color-mix(in srgb, var(--text-muted) 55%, var(--text) 45%);
   line-height: 1.3;
 }
 
 .pf-ticker-manage-hint {
-  font-size: 0.66rem;
+  font-size: 0.63rem;
   font-weight: 400;
   line-height: 1.35;
+  color: color-mix(in srgb, var(--text-muted) 82%, #8a939e 18%);
 }
 
 .pf-ticker-manage-summary:hover {
-  background: color-mix(in srgb, #f5f6f8 88%, #ffffff 12%);
+  background: color-mix(in srgb, #eef0f3 55%, #ffffff 45%);
 }
 
 .pf-ticker-manage-summary:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--bronze) 35%, var(--accent) 20%, transparent 45%);
-  outline-offset: 2px;
+  outline: 2px solid color-mix(in srgb, var(--bronze) 28%, var(--accent) 16%, transparent 56%);
+  outline-offset: 1px;
 }
 
 .pf-ticker-manage-body {
-  margin-top: 0.2rem;
-  padding: 0.1rem 0 0.15rem;
+  margin-top: 0.08rem;
+  padding: 0.05rem 0.28rem 0.35rem;
 }
 
 .pf-ticker-manage .pf-history-section--open-lots,
 .pf-ticker-manage .pf-history-section--sales {
   margin-top: 0.42rem;
+}
+
+.pf-ticker-detail .pnl-pos {
+  color: color-mix(in srgb, #3d5c47 82%, #2c4536 18%);
+}
+
+.pf-ticker-detail .pnl-neg {
+  color: color-mix(in srgb, #8d6a58 74%, #6a5044 26%);
+}
+
+.pf-ticker-detail .muted,
+.pf-ticker-detail td.muted,
+.pf-ticker-detail .pf-timeline-card-remain {
+  color: var(--text-muted);
+}
+
+.pf-ticker-detail .pf-op-badge--buy {
+  color: color-mix(in srgb, var(--accent-hover) 62%, #4a5e52 38%);
+  background: color-mix(in srgb, var(--accent-soft) 28%, #ffffff 72%);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, #dce6e1 82%);
+}
+
+.pf-ticker-detail .pf-op-badge--sale {
+  color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
+  background: color-mix(in srgb, var(--bronze-soft) 28%, #fffaf6 72%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #eadccb 78%);
+}
+
+#tab-portfolio .pf-ticker-manage .pf-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+  align-items: center;
+}
+
+#tab-portfolio .pf-ticker-manage .pf-row-actions .pf-btn + .pf-btn {
+  margin-left: 0;
+}
+
+#tab-portfolio .pf-ticker-manage .pf-btn-edit {
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, #c5d0cb 78%);
+  background: color-mix(in srgb, #ffffff 92%, var(--accent-soft) 8%);
+  color: color-mix(in srgb, var(--accent-hover) 58%, #4a5c54 42%);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-ticker-manage .pf-btn-edit:hover {
+  border-color: color-mix(in srgb, var(--accent) 32%, #b7c4be 68%);
+  background: color-mix(in srgb, var(--accent-soft) 18%, #ffffff 82%);
+  color: color-mix(in srgb, var(--accent-hover) 70%, #3d5348 30%);
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-ticker-manage .pf-btn-cancel {
+  border: 1px solid color-mix(in srgb, var(--bronze) 26%, #ddd0c2 74%);
+  background: color-mix(in srgb, #ffffff 92%, var(--bronze-soft) 8%);
+  color: color-mix(in srgb, #7a5a42 68%, #5c5046 32%);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-ticker-manage .pf-btn-cancel:hover {
+  border-color: color-mix(in srgb, var(--bronze) 38%, #d4c4b2 62%);
+  background: color-mix(in srgb, var(--bronze-soft) 22%, #ffffff 78%);
+  color: color-mix(in srgb, #6e503a 72%, #4a4038 28%);
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-ticker-manage .pf-btn-danger {
+  border: 1px solid color-mix(in srgb, #a87868 36%, #e6d8d2 64%);
+  background: color-mix(in srgb, #ffffff 90%, #f4ece8 10%);
+  color: color-mix(in srgb, #8d6a58 78%, #5c443c 22%);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-ticker-manage .pf-btn-danger:hover {
+  border-color: color-mix(in srgb, #a87868 48%, #dcc8c0 52%);
+  background: color-mix(in srgb, #f6eeea 55%, #ffffff 45%);
+  color: color-mix(in srgb, #7d5c4e 80%, #4e3a34 20%);
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-ticker-manage .pf-btn-edit:focus-visible,
+#tab-portfolio .pf-ticker-manage .pf-btn-cancel:focus-visible,
+#tab-portfolio .pf-ticker-manage .pf-btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-muted) 12%, transparent);
 }
 
 .pf-allocation-box .pf-alloc-title {
@@ -2577,14 +2677,15 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
   border: none;
   background: transparent;
   border-collapse: separate;
-  border-spacing: 0 0.38rem;
+  border-spacing: 0 0.46rem;
   overflow: visible;
+  font-variant-numeric: tabular-nums;
 }
 
 .pf-mini-table--timeline thead th {
   border: none;
   background: transparent;
-  padding: 0.1rem 0.45rem 0.15rem;
+  padding: 0.12rem 0.5rem 0.22rem;
   font-size: 0.64rem;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -2597,41 +2698,46 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
   border: none;
   border-top: 1px solid transparent;
   border-bottom: 1px solid transparent;
-  padding: 0.48rem 0.45rem;
+  padding: 0.52rem 0.5rem;
   vertical-align: middle;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
 }
 
 .pf-mini-table--timeline tbody tr.pf-timeline-row--buy td {
-  background: color-mix(in srgb, var(--accent-soft) 22%, #ffffff 78%);
-  border-top-color: color-mix(in srgb, var(--accent) 8%, rgba(23, 34, 51, 0.03) 92%);
-  border-bottom-color: color-mix(in srgb, var(--accent) 8%, rgba(23, 34, 51, 0.03) 92%);
+  background: color-mix(in srgb, var(--accent-soft) 16%, #ffffff 84%);
+  border-top-color: color-mix(in srgb, var(--accent) 7%, rgba(23, 34, 51, 0.03) 93%);
+  border-bottom-color: color-mix(in srgb, var(--accent) 7%, rgba(23, 34, 51, 0.03) 93%);
 }
 
 .pf-mini-table--timeline tbody tr.pf-timeline-row--sell td {
-  background: color-mix(in srgb, var(--bronze-soft) 20%, #fffaf6 80%);
-  border-top-color: color-mix(in srgb, var(--bronze) 10%, rgba(23, 34, 51, 0.03) 90%);
-  border-bottom-color: color-mix(in srgb, var(--bronze) 10%, rgba(23, 34, 51, 0.03) 90%);
+  background: color-mix(in srgb, var(--bronze-soft) 16%, #fffaf6 84%);
+  border-top-color: color-mix(in srgb, var(--bronze) 9%, rgba(23, 34, 51, 0.03) 91%);
+  border-bottom-color: color-mix(in srgb, var(--bronze) 9%, rgba(23, 34, 51, 0.03) 91%);
 }
 
 .pf-mini-table--timeline tbody tr.pf-timeline-row td:first-child {
   border-left-width: 3px;
   border-left-style: solid;
-  padding-left: 0.6rem;
+  padding-left: 0.65rem;
   border-radius: 10px 0 0 10px;
+  color: color-mix(in srgb, var(--text) 72%, var(--text-muted) 28%);
+  font-weight: 500;
 }
 
 .pf-mini-table--timeline tbody tr.pf-timeline-row--buy td:first-child {
-  border-left-color: color-mix(in srgb, var(--accent) 38%, #c9d6ce 62%);
+  border-left-color: color-mix(in srgb, var(--accent) 42%, #c5d4cc 58%);
 }
 
 .pf-mini-table--timeline tbody tr.pf-timeline-row--sell td:first-child {
-  border-left-color: color-mix(in srgb, var(--bronze) 42%, #dcc4a4 58%);
+  border-left-color: color-mix(in srgb, var(--bronze) 48%, #dcc4a4 52%);
 }
 
 .pf-mini-table--timeline tbody tr.pf-timeline-row td:last-child {
   border-radius: 0 10px 10px 0;
-  border-right: 1px solid color-mix(in srgb, #c9d0d8 20%, rgba(23, 34, 51, 0.03) 80%);
+  border-right: 1px solid color-mix(in srgb, #c9d0d8 18%, rgba(23, 34, 51, 0.03) 82%);
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .pf-mini-table--timeline .pf-op-badge {
@@ -3295,7 +3401,7 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   .pf-ticker-manage-summary {
     min-height: 2.75rem;
     align-items: center;
-    padding: 0.48rem 0.4rem 0.48rem 0.2rem;
+    padding: 0.5rem 0.45rem 0.5rem 0.32rem;
     gap: 0.55rem;
   }
 
@@ -3308,11 +3414,33 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   }
 
   .pf-ticker-manage-title {
-    font-size: 0.78rem;
+    font-size: 0.74rem;
   }
 
   .pf-ticker-manage-hint {
-    font-size: 0.68rem;
+    font-size: 0.64rem;
+  }
+
+  .pf-ticker-detail .pf-op-badge {
+    font-size: 0.56rem;
+    padding: 0.04rem 0.32rem;
+  }
+
+  .pf-timeline-card-head {
+    gap: 0.35rem;
+  }
+
+  #tab-portfolio .pf-ticker-manage .pf-row-actions {
+    gap: 0.38rem;
+  }
+
+  #tab-portfolio .pf-ticker-manage .pf-btn {
+    min-height: 2rem;
+    padding: 0.28rem 0.55rem;
+  }
+
+  .pf-timeline-table-wrap {
+    overflow-x: hidden;
   }
 }
 
