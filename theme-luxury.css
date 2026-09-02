@@ -4134,21 +4134,56 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 #tab-portfolio .pf-cmp-head {
   display: flex;
   align-items: flex-start;
-  gap: 0.6rem;
+  gap: 0.7rem;
   margin: 0 0 0.58rem;
 }
 
 #tab-portfolio .pf-cmp-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #c5d0cb 78%);
-  background:
-    linear-gradient(135deg,
-      color-mix(in srgb, var(--accent-soft) 35%, #fff 65%) 0 48%,
-      color-mix(in srgb, var(--bronze-soft) 40%, #fff 60%) 52% 100%);
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 28%, #c5d0cb 72%);
+  background: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+#tab-portfolio .pf-cmp-icon svg {
+  display: block;
+  width: 1.28rem;
+  height: 1.28rem;
+}
+
+#tab-portfolio .pf-cmp-icon-cal {
+  stroke: color-mix(in srgb, var(--bronze) 52%, #6a5e4e 48%);
+  stroke-width: 1.15;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+#tab-portfolio .pf-cmp-icon-cal-body {
+  fill: #fff;
+}
+
+#tab-portfolio .pf-cmp-icon-cal-head {
+  fill: color-mix(in srgb, var(--bronze) 28%, #e8dcc8 72%);
+  stroke: none;
+}
+
+#tab-portfolio .pf-cmp-icon-cal circle {
+  stroke: none;
+  fill: color-mix(in srgb, var(--accent) 46%, #6a7f70 54%);
+}
+
+#tab-portfolio .pf-cmp-icon-arr {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 58%, #4d5a54 42%);
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #tab-portfolio .pf-cmp-copy {
