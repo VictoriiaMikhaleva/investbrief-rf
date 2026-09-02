@@ -2,12 +2,15 @@
   var CHART_COLOR_AUTUMN = '#D4873B';
   var CHART_COLOR_AUTUMN_SOFT = 'rgba(212, 135, 59, 0.42)';
   var CHART_COLOR_FORECAST = '#4A7356';
-  var DIV_CHART_HIST = '#B88945';
-  var DIV_CHART_HIST_STROKE = '#9A7338';
-  var DIV_CHART_HIST_HOVER = '#A97A3B';
-  var DIV_CHART_FORECAST = '#526B56';
-  var DIV_CHART_FORECAST_STROKE = '#405544';
-  var DIV_CHART_FORECAST_HOVER = '#49604D';
+  var DIV_CHART_HIST = '#9A7A56';
+  var DIV_CHART_HIST_STROKE = 'rgba(108, 84, 58, 0.32)';
+  var DIV_CHART_HIST_HOVER = '#A68860';
+  var DIV_CHART_FORECAST = '#5C7366';
+  var DIV_CHART_FORECAST_STROKE = 'rgba(52, 68, 60, 0.32)';
+  var DIV_CHART_FORECAST_HOVER = '#687E70';
+  var VOL_CHART_BAR = '#6A746C';
+  var VOL_CHART_BAR_HOVER = '#747E76';
+  var VOL_CHART_STROKE = 'rgba(70, 78, 74, 0.24)';
   var DIV_CHART_GRID = 'rgba(87, 98, 111, 0.10)';
   var DIV_CHART_AXIS = '#6F7785';
   var DIV_CHART_LABEL_BG = '#FFF8EA';
@@ -42,7 +45,23 @@
       labelText: DIV_CHART_LABEL_TEXT,
       ySuffix: '₽/акц.',
       showValues: true,
-      compactBars: true
+      compactBars: true,
+      barMetallic: 'bronze',
+      forecastMetallic: 'sage'
+    }, extra);
+  }
+
+  function volumeBarChartOptions(extra) {
+    extra = extra || {};
+    return Object.assign({
+      color: VOL_CHART_BAR,
+      colorHover: VOL_CHART_BAR_HOVER,
+      barStroke: VOL_CHART_STROKE,
+      barMetallic: 'sageMuted',
+      ySuffix: 'млрд ₽',
+      valueMode: 'bln',
+      showLabels: false,
+      showValues: false
     }, extra);
   }
 
@@ -53,6 +72,82 @@
     } catch (e) {
       return fallback;
     }
+  }
+
+  var BAR_METALLIC_FALLBACK = {
+    bronze: {
+      top: '#B89670', mid: '#9A7A56', bot: '#7A6048',
+      hi: 'rgba(255, 250, 244, 0.18)', edge: 'rgba(62, 46, 32, 0.12)',
+      hoverTop: '#C2A07A', hoverMid: '#A68860', hoverBot: '#866850'
+    },
+    sage: {
+      top: '#7E9588', mid: '#5C7366', bot: '#44564C',
+      hi: 'rgba(255, 255, 255, 0.14)', edge: 'rgba(28, 40, 34, 0.10)',
+      hoverTop: '#8AA092', hoverMid: '#687E70', hoverBot: '#4C6056'
+    },
+    sageMuted: {
+      top: '#8A938C', mid: '#6A746C', bot: '#545C56',
+      hi: 'rgba(255, 255, 255, 0.10)', edge: 'rgba(32, 38, 34, 0.08)',
+      hoverTop: '#949C96', hoverMid: '#747E76', hoverBot: '#5C6460'
+    }
+  };
+
+  function metallicBarPalette(kind) {
+    var key = kind === 'bronze' ? 'bronze' : (kind === 'sage' ? 'sage' : 'sageMuted');
+    var prefix = key === 'bronze' ? '--bar-bronze-' : (key === 'sage' ? '--bar-sage-' : '--bar-sage-muted-');
+    var fb = BAR_METALLIC_FALLBACK[key];
+    return {
+      top: chartThemeColor(prefix + 'top', fb.top),
+      mid: chartThemeColor(prefix + 'mid', fb.mid),
+      bot: chartThemeColor(prefix + 'bot', fb.bot),
+      hi: chartThemeColor(prefix + 'hi', fb.hi),
+      edge: chartThemeColor(prefix + 'edge', fb.edge),
+      hoverTop: chartThemeColor(prefix + 'hover-top', fb.hoverTop),
+      hoverMid: chartThemeColor(prefix + 'hover-mid', fb.hoverMid),
+      hoverBot: chartThemeColor(prefix + 'hover-bot', fb.hoverBot)
+    };
+  }
+
+  var _metallicPalCache = null;
+  function getMetallicBarPalette(kind) {
+    if (!_metallicPalCache) {
+      _metallicPalCache = {
+        bronze: metallicBarPalette('bronze'),
+        sage: metallicBarPalette('sage'),
+        sageMuted: metallicBarPalette('sageMuted')
+      };
+    }
+    return _metallicPalCache[kind] || _metallicPalCache.sageMuted;
+  }
+
+  function fillMetallicBar(ctx, x, y, barW, bh, kind, isHover) {
+    var pal = getMetallicBarPalette(kind);
+    var top = isHover ? pal.hoverTop : pal.top;
+    var mid = isHover ? pal.hoverMid : pal.mid;
+    var bot = isHover ? pal.hoverBot : pal.bot;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, barW, bh);
+    ctx.clip();
+    var vg = ctx.createLinearGradient(0, y, 0, y + bh);
+    vg.addColorStop(0, top);
+    vg.addColorStop(0.42, mid);
+    vg.addColorStop(1, bot);
+    ctx.fillStyle = vg;
+    ctx.fillRect(x, y, barW, bh);
+    if (barW >= 4) {
+      var hg = ctx.createLinearGradient(x, 0, x + barW, 0);
+      hg.addColorStop(0, pal.edge);
+      hg.addColorStop(0.48, 'rgba(255, 255, 255, 0.08)');
+      hg.addColorStop(1, pal.edge);
+      ctx.fillStyle = hg;
+      ctx.fillRect(x, y, barW, bh);
+    }
+    if (bh >= 8 && barW >= 3) {
+      ctx.fillStyle = pal.hi;
+      ctx.fillRect(x, y, barW, 1.25);
+    }
+    ctx.restore();
   }
 
   function divAvg5yValHtml(analytics) {
@@ -711,13 +806,12 @@
     var max = Math.max.apply(null, vals.concat([0.001]));
     var pad = { l: 2, r: 2, t: 4, b: 4 };
     var barW = Math.max(2, (w - pad.l - pad.r) / vals.length - 1);
-    var color = options.color || '#6B7A5A';
+    var metallicKind = options.barMetallic || 'sageMuted';
     vals.forEach(function (v, i) {
       var bh = Math.max(2, ((v / max) * (h - pad.t - pad.b)));
       var x = pad.l + i * (barW + 1);
       var y = h - pad.b - bh;
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, barW, bh);
+      fillMetallicBar(ctx, x, y, barW, bh, metallicKind, false);
     });
   }
 
@@ -730,10 +824,10 @@
     if (divCanvas && analytics.divYieldByYear && analytics.divYieldByYear.length) {
       drawMiniBarChart(divCanvas, analytics.divYieldByYear.map(function (y) {
         return { v: y.yieldPct != null && isFinite(y.yieldPct) ? y.yieldPct : 0 };
-      }), { color: DIV_CHART_HIST });
+      }), { color: DIV_CHART_HIST, barMetallic: 'bronze' });
     }
     if (volCanvas && analytics.volumeByDay && analytics.volumeByDay.length) {
-      drawMiniBarChart(volCanvas, analytics.volumeByDay, { color: '#6B7A5A' });
+      drawMiniBarChart(volCanvas, analytics.volumeByDay, { color: VOL_CHART_BAR, barMetallic: 'sageMuted' });
     }
   }
 
@@ -825,13 +919,7 @@
         divNote.className = 'analytics-chart-note div-chart-info';
       }
       if (volCanvas) {
-        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), {
-          color: '#6B7A5A',
-          ySuffix: 'млрд ₽',
-          valueMode: 'bln',
-          showLabels: false,
-          showValues: false
-        });
+        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), volumeBarChartOptions());
       }
       if (volNote) {
         volNote.textContent = (typeof formatVolumeFreshnessNote === 'function'
@@ -1175,8 +1263,6 @@
       var groupW = n * barW + barGap * Math.max(n - 1, 0);
       startX = pad.l + Math.max(0, (plotW - groupW) / 2);
     }
-    var color = options.color || CHART_COLOR_AUTUMN;
-    var forecastColor = options.forecastColor || CHART_COLOR_FORECAST;
     var axisColor = options.axisColor || '#6B6B6B';
     var barsMeta = [];
 
@@ -1201,22 +1287,11 @@
       var bh = Math.max(3, (v / max) * plotH) * (isHover ? 1.06 : 1);
       var x = startX + i * (barW + barGap);
       var y = pad.t + plotH - bh - lift;
-      var barColor = isForecastBar ? forecastColor : color;
-      if (isHover) {
-        barColor = isForecastBar
-          ? (options.forecastHoverColor || forecastColor)
-          : (options.colorHover || barColor);
-      }
+      var metallicKind = isForecastBar
+        ? (options.forecastMetallic || 'sage')
+        : (options.barMetallic || 'bronze');
       ctx.globalAlpha = hoverIndex >= 0 && !isHover ? 0.55 : 1;
-      ctx.fillStyle = barColor;
-      if (isHover && !options.colorHover) {
-        ctx.shadowColor = 'rgba(74, 115, 86, 0.35)';
-        ctx.shadowBlur = 8;
-        ctx.shadowOffsetY = 2;
-      }
-      ctx.fillRect(x, y, barW, bh);
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
+      fillMetallicBar(ctx, x, y, barW, bh, metallicKind, isHover);
       var barStroke = isForecastBar ? options.forecastStroke : options.barStroke;
       if (barStroke) {
         ctx.strokeStyle = barStroke;
@@ -1470,8 +1545,12 @@
     if (!canvas || !bond || !bond.coupons || !bond.coupons.length) return;
     if (typeof buildOfzCouponBarSeries !== 'function') return;
     drawFullBarChart(canvas, buildOfzCouponBarSeries(bond.coupons, bond.faceValue || 1000), {
-      color: CHART_COLOR_AUTUMN,
-      forecastColor: CHART_COLOR_FORECAST,
+      color: DIV_CHART_HIST,
+      forecastColor: DIV_CHART_FORECAST,
+      barMetallic: 'bronze',
+      forecastMetallic: 'sage',
+      barStroke: DIV_CHART_HIST_STROKE,
+      forecastStroke: DIV_CHART_FORECAST_STROKE,
       ySuffix: '₽',
       showValues: true,
       compactBars: true
@@ -1711,13 +1790,7 @@
         divNote.className = 'analytics-chart-note div-chart-info';
       }
       if (volCanvas) {
-        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), {
-          color: '#6B7A5A',
-          ySuffix: 'млрд ₽',
-          valueMode: 'bln',
-          showLabels: false,
-          showValues: false
-        });
+        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), volumeBarChartOptions());
       }
       if (volNote) {
         var volText = typeof formatVolumeFreshnessNote === 'function'
@@ -2192,13 +2265,7 @@
         divNote.className = 'analytics-chart-note div-chart-info';
       }
       if (volCanvas) {
-        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), {
-          color: '#6B7A5A',
-          ySuffix: 'млрд ₽',
-          valueMode: 'bln',
-          showLabels: false,
-          showValues: false
-        });
+        drawFullBarChart(volCanvas, buildVolumeBarSeries(a.volumeByDay), volumeBarChartOptions());
       }
       if (volNote) {
         volNote.textContent = typeof formatVolumeFreshnessNote === 'function'

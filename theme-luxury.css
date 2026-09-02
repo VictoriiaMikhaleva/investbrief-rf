@@ -21,6 +21,34 @@
   --chart-grid: rgba(106, 127, 112, 0.14);
   --chart-axis: #5C6560;
   --chart-hover-guide: rgba(90, 98, 92, 0.28);
+  /* Столбцы графиков — subtle metallic, без глянца */
+  --bar-bronze-top: #B89670;
+  --bar-bronze-mid: #9A7A56;
+  --bar-bronze-bot: #7A6048;
+  --bar-bronze-hi: rgba(255, 250, 244, 0.18);
+  --bar-bronze-edge: rgba(62, 46, 32, 0.12);
+  --bar-bronze-stroke: rgba(108, 84, 58, 0.32);
+  --bar-bronze-hover-top: #C2A07A;
+  --bar-bronze-hover-mid: #A68860;
+  --bar-bronze-hover-bot: #866850;
+  --bar-sage-top: #7E9588;
+  --bar-sage-mid: #5C7366;
+  --bar-sage-bot: #44564C;
+  --bar-sage-hi: rgba(255, 255, 255, 0.14);
+  --bar-sage-edge: rgba(28, 40, 34, 0.10);
+  --bar-sage-stroke: rgba(52, 68, 60, 0.32);
+  --bar-sage-hover-top: #8AA092;
+  --bar-sage-hover-mid: #687E70;
+  --bar-sage-hover-bot: #4C6056;
+  --bar-sage-muted-top: #8A938C;
+  --bar-sage-muted-mid: #6A746C;
+  --bar-sage-muted-bot: #545C56;
+  --bar-sage-muted-hi: rgba(255, 255, 255, 0.10);
+  --bar-sage-muted-edge: rgba(32, 38, 34, 0.08);
+  --bar-sage-muted-stroke: rgba(70, 78, 74, 0.24);
+  --bar-sage-muted-hover-top: #949C96;
+  --bar-sage-muted-hover-mid: #747E76;
+  --bar-sage-muted-hover-bot: #5C6460;
   --loss: #9A6758;
   --shadow-soft: 0 12px 32px rgba(20, 27, 40, 0.055);
   --shadow-card: 0 4px 16px rgba(20, 27, 40, 0.045);
@@ -778,33 +806,29 @@ input:focus, select:focus, textarea:focus {
   border-radius: 6px 6px 2px 2px;
   background:
     linear-gradient(90deg,
-      rgba(255, 255, 255, 0.14) 0%,
-      transparent 42%,
-      transparent 58%,
-      rgba(30, 42, 36, 0.08) 100%),
+      var(--bar-sage-muted-edge) 0%,
+      rgba(255, 255, 255, 0.08) 48%,
+      var(--bar-sage-muted-edge) 100%),
     linear-gradient(180deg,
-      color-mix(in srgb, #8a9f92 40%, #5f7568 60%) 0%,
-      color-mix(in srgb, #6a7f70 55%, #4f6358 45%) 42%,
-      color-mix(in srgb, #55685c 70%, #3f5248 30%) 100%);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.22) inset,
-    0 2px 6px color-mix(in srgb, #3f5248 18%, transparent);
+      var(--bar-sage-muted-top) 0%,
+      var(--bar-sage-muted-mid) 42%,
+      var(--bar-sage-muted-bot) 100%);
+  box-shadow: inset 0 1px 0 var(--bar-sage-muted-hi);
 }
 
 .imoex-vol-col--live .imoex-vol-bar {
   background:
     linear-gradient(90deg,
-      rgba(255, 255, 255, 0.16) 0%,
-      transparent 45%,
-      rgba(30, 42, 36, 0.06) 100%),
+      var(--bar-sage-muted-edge) 0%,
+      rgba(255, 255, 255, 0.10) 48%,
+      var(--bar-sage-muted-edge) 100%),
     linear-gradient(180deg,
-      color-mix(in srgb, #97ab9e 36%, #677c70 64%) 0%,
-      color-mix(in srgb, #6a7f70 50%, #4f6358 50%) 48%,
-      color-mix(in srgb, #4f6358 72%, #3a4b43 28%) 100%);
+      var(--bar-sage-muted-hover-top) 0%,
+      var(--bar-sage-muted-mid) 46%,
+      var(--bar-sage-muted-bot) 100%);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.26) inset,
-    0 0 0 1px color-mix(in srgb, var(--bronze-soft) 45%, transparent),
-    0 2px 7px color-mix(in srgb, #3f5248 16%, transparent);
+    inset 0 1px 0 var(--bar-sage-muted-hi),
+    0 0 0 1px var(--bar-sage-muted-stroke);
 }
 
 .imoex-vol-col--live .imoex-vol-date {
@@ -816,10 +840,8 @@ input:focus, select:focus, textarea:focus {
 }
 
 .imoex-vol-col:hover .imoex-vol-bar {
-  filter: brightness(1.05) saturate(1.04);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.26) inset,
-    0 3px 8px color-mix(in srgb, #3f5248 20%, transparent);
+  filter: brightness(1.03);
+  box-shadow: inset 0 1px 0 var(--bar-sage-muted-hi);
 }
 
 .imoex-vol-date {
