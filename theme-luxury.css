@@ -4319,6 +4319,55 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   white-space: nowrap;
 }
 
+#tab-portfolio .pf-cmp-insight {
+  margin: 0 0 0.7rem;
+  padding: 0.52rem 0.72rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, #d5dbe2 84%);
+  background: color-mix(in srgb, #ffffff 88%, var(--accent-soft) 12%);
+  max-width: none;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#tab-portfolio .pf-cmp-insight-title {
+  margin: 0 0 0.32rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: color-mix(in srgb, var(--text) 86%, #3d4844 14%);
+}
+
+#tab-portfolio .pf-cmp-insight-list {
+  margin: 0;
+  padding: 0 0 0 1.05rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--text) 78%, #4d5a54 22%);
+}
+
+#tab-portfolio .pf-cmp-insight-list li + li {
+  margin-top: 0.16rem;
+}
+
+#tab-portfolio .pf-cmp-insight-warn {
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
+}
+
+#tab-portfolio .pf-cmp-insight-amt--up {
+  color: color-mix(in srgb, var(--accent) 52%, #3d4844 48%);
+  font-weight: 650;
+}
+
+#tab-portfolio .pf-cmp-insight-amt--down {
+  color: color-mix(in srgb, #9a6a5c 68%, #5c4636 32%);
+  font-weight: 650;
+}
+
 #tab-portfolio .pf-cmp-empty {
   margin: 0.1rem 0 0;
   font-size: 0.84rem;
@@ -4429,6 +4478,15 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 
   #tab-portfolio .pf-cmp-explain {
     white-space: normal;
+  }
+
+  #tab-portfolio .pf-cmp-insight {
+    padding: 0.48rem 0.62rem 0.46rem;
+  }
+
+  #tab-portfolio .pf-cmp-insight-list {
+    padding-left: 0.95rem;
+    font-size: 0.76rem;
   }
 
   #tab-portfolio .pf-cmp-table-wrap {

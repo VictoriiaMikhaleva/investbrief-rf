@@ -1846,6 +1846,257 @@
     });
   }
 
+  var CMP_EXPLAIN_EPS = 1e-9;
+  var CMP_EXPLAIN_TICKER_LIMIT = 5;
+
+  function cmpExplainQty(n) {
+    var x = Number(n);
+    return isFinite(x) ? x : 0;
+  }
+
+  function cmpExplainAbsSum(rows) {
+    var sum = 0;
+    (rows || []).forEach(function (row) {
+      if (row && row.changeRub != null && isFinite(Number(row.changeRub))) {
+        sum += Math.abs(Number(row.changeRub));
+      }
+    });
+    return sum;
+  }
+
+  function cmpExplainTickerList(rows, limit) {
+    limit = limit || CMP_EXPLAIN_TICKER_LIMIT;
+    var copy = (rows || []).slice().sort(function (a, b) {
+      var aa = a && a.changeRub != null && isFinite(Number(a.changeRub)) ? Math.abs(Number(a.changeRub)) : -1;
+      var bb = b && b.changeRub != null && isFinite(Number(b.changeRub)) ? Math.abs(Number(b.changeRub)) : -1;
+      return bb - aa;
+    });
+    var names = [];
+    copy.forEach(function (row) {
+      if (names.length >= limit) return;
+      var t = row && String(row.ticker || '').trim();
+      if (t && names.indexOf(t) < 0) names.push(t);
+    });
+    return names.join(', ');
+  }
+
+  function cmpExplainRubAbs(n) {
+    var abs = Math.abs(Number(n));
+    if (!isFinite(abs)) return '';
+    return abs.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+  }
+
+  function cmpExplainHasUnknownPrice(row) {
+    if (!row) return true;
+    var st = String(row.status || '').toLowerCase();
+    if (st === 'missing' || st === 'unsupported' || st === 'partial') return true;
+    return row.changeRub == null || !isFinite(Number(row.changeRub));
+  }
+
+  function cmpExplainPhrase(rows, one, many) {
+    var list = cmpExplainTickerList(rows);
+    if (!list) return '';
+    return ((rows || []).length === 1 ? one : many) + list + '.';
+  }
+
+  function cmpExplainClassifyItems(items) {
+    var groups = {
+      appeared: [],
+      disappeared: [],
+      qtyUp: [],
+      qtyDown: [],
+      priceUp: [],
+      priceDown: [],
+      unknown: []
+    };
+    (items || []).forEach(function (row) {
+      if (!row) return;
+      var qtyFrom = cmpExplainQty(row.qtyFrom);
+      var qtyTo = cmpExplainQty(row.qtyTo);
+      var unknownPrice = cmpExplainHasUnknownPrice(row);
+      if (qtyFrom <= CMP_EXPLAIN_EPS && qtyTo > CMP_EXPLAIN_EPS) {
+        groups.appeared.push(row);
+        if (unknownPrice) groups.unknown.push(row);
+        return;
+      }
+      if (qtyFrom > CMP_EXPLAIN_EPS && qtyTo <= CMP_EXPLAIN_EPS) {
+        groups.disappeared.push(row);
+        if (unknownPrice) groups.unknown.push(row);
+        return;
+      }
+      if (qtyTo > qtyFrom + CMP_EXPLAIN_EPS && qtyFrom > CMP_EXPLAIN_EPS) {
+        groups.qtyUp.push(row);
+        if (unknownPrice) groups.unknown.push(row);
+        return;
+      }
+      if (qtyTo < qtyFrom - CMP_EXPLAIN_EPS && qtyTo > CMP_EXPLAIN_EPS) {
+        groups.qtyDown.push(row);
+        if (unknownPrice) groups.unknown.push(row);
+        return;
+      }
+      if (unknownPrice) {
+        groups.unknown.push(row);
+        return;
+      }
+      var ch = Number(row.changeRub);
+      if (ch > CMP_EXPLAIN_EPS) groups.priceUp.push(row);
+      else if (ch < -CMP_EXPLAIN_EPS) groups.priceDown.push(row);
+    });
+    return groups;
+  }
+
+  /**
+   * Read-only краткий итог сравнения дат по уже готовым items.
+   * Не считает доходность и не разлагает рост на рынок / выплаты.
+   */
+  function buildPortfolioValueChangeExplanation(changeResult) {
+    changeResult = changeResult || {};
+    var items = changeResult.items || [];
+    var groups = cmpExplainClassifyItems(items);
+    var hasCompositionChanges = groups.appeared.length + groups.disappeared.length +
+      groups.qtyUp.length + groups.qtyDown.length > 0;
+    var hasPriceChanges = groups.priceUp.length + groups.priceDown.length > 0;
+    var hasOnlyPriceChanges = !hasCompositionChanges && hasPriceChanges;
+    var warnings = [];
+    var noteGap = (items || []).some(function (row) {
+      return /нет цены|не поддерживается/i.test(String(row && row.note || ''));
+    });
+    if (changeResult.isPartial || groups.unknown.length || noteGap) {
+      warnings.push('Вывод неполный: по части бумаг нет цены на одну из дат.');
+    }
+    if (changeResult.hasIncompleteHistory) {
+      warnings.push('Часть операций без корректной даты не включена в расчёт.');
+    }
+
+    var scores = {
+      'composition-add': cmpExplainAbsSum(groups.appeared) + cmpExplainAbsSum(groups.qtyUp),
+      'composition-remove': cmpExplainAbsSum(groups.disappeared) + cmpExplainAbsSum(groups.qtyDown),
+      'price-up': cmpExplainAbsSum(groups.priceUp),
+      'price-down': cmpExplainAbsSum(groups.priceDown)
+    };
+    var dominantReason = 'unchanged';
+    var best = -1;
+    Object.keys(scores).forEach(function (key) {
+      if (scores[key] > best) {
+        best = scores[key];
+        dominantReason = key;
+      }
+    });
+    if (best <= 0) {
+      dominantReason = groups.unknown.length ? 'unknown' : 'unchanged';
+    } else if (hasCompositionChanges && hasPriceChanges &&
+        scores['composition-add'] + scores['composition-remove'] > 0 &&
+        scores['price-up'] + scores['price-down'] > 0) {
+      var compScore = scores['composition-add'] + scores['composition-remove'];
+      var priceScore = scores['price-up'] + scores['price-down'];
+      if (compScore > 0 && priceScore > 0 && Math.min(compScore, priceScore) / Math.max(compScore, priceScore) > 0.35) {
+        dominantReason = 'mixed';
+      }
+    }
+
+    var bullets = [];
+    var changeRub = changeResult.changeRub;
+    if (changeRub != null && isFinite(Number(changeRub))) {
+      var ch = Number(changeRub);
+      if (ch > CMP_EXPLAIN_EPS) {
+        bullets.push('Стоимость выросла на ' + cmpExplainRubAbs(ch) + '.');
+      } else if (ch < -CMP_EXPLAIN_EPS) {
+        bullets.push('Стоимость снизилась на ' + cmpExplainRubAbs(ch) + '.');
+      } else {
+        bullets.push('Итоговая стоимость не изменилась.');
+      }
+    } else if (changeResult.invalidDate) {
+      bullets.push('Недостаточно данных для краткого итога.');
+    }
+
+    var appearedPhrase = cmpExplainPhrase(groups.appeared, 'Появилась новая позиция: ', 'Появились новые позиции: ');
+    var qtyUpPhrase = cmpExplainPhrase(groups.qtyUp, 'Позиция увеличилась: ', 'Увеличились позиции: ');
+    var disappearedPhrase = cmpExplainPhrase(groups.disappeared, 'Позиция исчезла — была полностью продана: ', 'Позиции исчезли — были полностью проданы: ');
+    var qtyDownPhrase = cmpExplainPhrase(groups.qtyDown, 'Позиция уменьшилась: ', 'Уменьшились позиции: ');
+    var addedList = cmpExplainTickerList(groups.appeared.concat(groups.qtyUp));
+    var removedList = cmpExplainTickerList(groups.disappeared.concat(groups.qtyDown));
+    var priceDownList = cmpExplainTickerList(groups.priceDown);
+    var compositionLines = [];
+    if (appearedPhrase && qtyUpPhrase) {
+      compositionLines.push('Главный вклад дали новые или увеличенные позиции: ' + addedList + '.');
+    } else {
+      if (appearedPhrase) compositionLines.push(appearedPhrase);
+      if (qtyUpPhrase) compositionLines.push(qtyUpPhrase);
+    }
+    if (disappearedPhrase && qtyDownPhrase) {
+      compositionLines.push('Часть изменения связана с продажами или уменьшением позиций: ' + removedList + '.');
+    } else {
+      if (disappearedPhrase) compositionLines.push(disappearedPhrase);
+      if (qtyDownPhrase) compositionLines.push(qtyDownPhrase);
+    }
+    if (removedList && priceDownList && compositionLines.length >= 2) {
+      compositionLines = compositionLines.filter(function (line) {
+        return line !== disappearedPhrase && line !== qtyDownPhrase;
+      });
+      compositionLines.push('Снижение частично связано с уменьшением ' + removedList +
+        ' и снижением оценки ' + priceDownList + '.');
+    }
+
+    if (hasOnlyPriceChanges) {
+      bullets.push('Состав портфеля между датами не менялся. Изменение связано с изменением цен бумаг.');
+      var leadSign = Number(changeRub) < 0 ? -1 : 1;
+      var leadRows = leadSign < 0 ? groups.priceDown : groups.priceUp;
+      if (!leadRows.length) leadRows = groups.priceDown.concat(groups.priceUp);
+      var leadList = cmpExplainTickerList(leadRows);
+      if (leadList) {
+        bullets.push((leadSign < 0
+          ? 'Основной вклад в снижение дали: '
+          : 'Основной вклад в рост оценки дали: ') + leadList + '.');
+      }
+    } else {
+      compositionLines.forEach(function (line) {
+        if (bullets.length < 3) bullets.push(line);
+      });
+      if (hasPriceChanges && bullets.length < 3) {
+        var priceList = cmpExplainTickerList(groups.priceUp.concat(groups.priceDown));
+        if (priceList) {
+          bullets.push('Выросла или снизилась оценка бумаг с тем же количеством: ' + priceList + '.');
+        }
+      }
+      if (hasCompositionChanges && bullets.length < 4) {
+        bullets.push('Покупки и продажи между датами тоже влияют на итоговую сумму.');
+      }
+    }
+
+    if (!bullets.length) {
+      bullets.push('По таблице ниже видно детализацию по бумагам.');
+    }
+    if (bullets.length > 4) bullets = bullets.slice(0, 4);
+
+    var summaryText = bullets[0] || '';
+    if (hasOnlyPriceChanges) {
+      if (Number(changeRub) < 0 && cmpExplainTickerList(groups.priceDown)) {
+        summaryText = 'Стоимость портфеля снизилась. Основной вклад в снижение дали: ' +
+          cmpExplainTickerList(groups.priceDown) + '.';
+      } else {
+        summaryText = 'Состав портфеля между датами не менялся. Изменение связано с изменением цен бумаг.';
+      }
+    } else if (dominantReason === 'composition-add' && addedList) {
+      summaryText = 'Стоимость портфеля выросла в основном из-за изменения состава: появились или увеличились позиции ' + addedList + '.';
+    } else if (dominantReason === 'composition-remove' && removedList) {
+      summaryText = 'Стоимость портфеля снизилась. Часть изменения связана с продажами или уменьшением позиций: ' + removedList + '.';
+    } else if (hasCompositionChanges) {
+      var mixedTickers = cmpExplainTickerList(items, 5);
+      summaryText = 'Изменение стоимости связано и с составом портфеля, и с оценкой бумаг' +
+        (mixedTickers ? ': ' + mixedTickers : '') + '.';
+    }
+
+    return {
+      title: 'Что изменилось',
+      summaryText: summaryText,
+      bullets: bullets,
+      dominantReason: dominantReason,
+      hasCompositionChanges: hasCompositionChanges,
+      hasOnlyPriceChanges: hasOnlyPriceChanges,
+      warnings: asOfUniqueNotes([warnings])
+    };
+  }
+
 
   /** UI-настройки портфеля (не часть portfolio JSON). */
   var PF_UI_STORAGE_KEY = 'ibrf.portfolioUi.v1';
@@ -5222,6 +5473,35 @@
     '<div class="pf-cmp-cards">' + buildPortfolioCompareDetailsCardsHtml(items) + '</div>';
   }
 
+  function insightBulletHtml(line) {
+    var escaped = escapeHtml(line);
+    var down = /снизил|снижени|уменьш|исчез|продаж/i.test(line);
+    var up = /вырос|появил|увелич|рост оценки/i.test(line);
+    var cls = '';
+    if (down && !up) cls = 'pf-cmp-insight-amt--down';
+    else if (up && !down) cls = 'pf-cmp-insight-amt--up';
+    if (!cls) return escaped;
+    return escaped.replace(/(\d[\d\u00a0\s]*[.,]\d{2}\s*₽)/g, '<span class="' + cls + '">$1</span>');
+  }
+
+  function buildPortfolioCompareInsightHtml(result) {
+    if (typeof buildPortfolioValueChangeExplanation !== 'function') return '';
+    var expl = buildPortfolioValueChangeExplanation(result);
+    if (!expl) return '';
+    var items = (expl.bullets || []).map(function (line) {
+      return '<li>' + insightBulletHtml(line) + '</li>';
+    }).join('');
+    var warn = (expl.warnings || []).map(function (line) {
+      return '<p class="pf-cmp-insight-warn">' + escapeHtml(line) + '</p>';
+    }).join('');
+    if (!items && !warn) return '';
+    return '<section class="pf-cmp-insight" aria-label="Что изменилось">' +
+      '<h4 class="pf-cmp-insight-title">' + escapeHtml(expl.title || 'Что изменилось') + '</h4>' +
+      (items ? '<ul class="pf-cmp-insight-list">' + items + '</ul>' : '') +
+      warn +
+    '</section>';
+  }
+
   function renderPortfolioCompareResult(result, errorText) {
     var out = document.getElementById('pfCmpResult');
     var warn = document.getElementById('pfCmpWarn');
@@ -5263,6 +5543,7 @@
     '</div>';
     out.innerHTML = board + extra +
       '<p class="pf-cmp-explain">' + escapeHtml(PF_CMP_EXPLAIN) + '</p>' +
+      buildPortfolioCompareInsightHtml(result) +
       buildPortfolioCompareDetailsHtml(result.items || []);
   }
 

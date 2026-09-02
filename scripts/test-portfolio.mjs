@@ -338,7 +338,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__timeline = buildTickerOperationTimeline;' +
       '\nthis.__asOf = buildPortfolioCompositionAtDate;' +
       '\nthis.__asOfValue = buildPortfolioValueAtDate;' +
-      '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;',
+      '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
+      '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;',
     sandbox,
     { timeout: 5000 }
   );
@@ -368,6 +369,7 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioCompositionAtDate: sandbox.__asOf,
     buildPortfolioValueAtDate: sandbox.__asOfValue,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
+    buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -1832,9 +1834,85 @@ function loadPriceAtDateHelpers() {
   })();
 }
 
+{
+  // Краткий итог сравнения дат — только по готовым items, без доходности.
+  const forbidden = /доходность|прибыльность|инвестиционный результат|чистая переоценка|вклад рынка/i;
+  function explain(items, extra) {
+    extra = extra || {};
+    return calc.buildPortfolioValueChangeExplanation(Object.assign({
+      fromDate: '2024-01-01',
+      toDate: '2024-02-01',
+      items: items
+    }, extra));
+  }
+  function blob(expl) {
+    return [expl.summaryText].concat(expl.bullets || []).concat(expl.warnings || []).join(' ');
+  }
+  function item(ticker, qtyFrom, qtyTo, changeRub, extra) {
+    return Object.assign({ ticker: ticker, qtyFrom: qtyFrom, qtyTo: qtyTo, changeRub: changeRub }, extra || {});
+  }
+
+  const priceOnly = explain([
+    item('SBER', 10, 10, 150),
+    item('GAZP', 5, 5, 50)
+  ], { changeRub: 200 });
+  assert(priceOnly.hasOnlyPriceChanges === true, 'explain price-only: hasOnlyPriceChanges');
+  assert(priceOnly.hasCompositionChanges === false, 'explain price-only: no composition');
+  assert(/состав портфеля между датами не менялся/i.test(priceOnly.summaryText), 'explain price-only: summary состав');
+  assert(/изменен/i.test(priceOnly.summaryText) && /цен/i.test(priceOnly.summaryText), 'explain price-only: summary цены');
+  assert(priceOnly.bullets.some((b) => /SBER/.test(b)), 'explain price-only: ticker SBER');
+  assert(!forbidden.test(blob(priceOnly)), 'explain price-only: no yield words');
+
+  const appeared = explain([item('PLZL', 0, 2, 3000)], { changeRub: 3000 });
+  assert(appeared.hasCompositionChanges === true, 'explain appeared: composition');
+  assert(/появил/i.test(blob(appeared)) && /нов/i.test(blob(appeared)), 'explain appeared: новая позиция');
+  assert(/PLZL/.test(blob(appeared)), 'explain appeared: ticker');
+  assert(!forbidden.test(blob(appeared)), 'explain appeared: no yield words');
+
+  const gone = explain([item('SBER', 10, 0, -1000)], { changeRub: -1000 });
+  assert(/исчез/i.test(blob(gone)) || /полностью продан/i.test(blob(gone)), 'explain gone: исчезла / продана');
+  assert(/SBER/.test(blob(gone)), 'explain gone: ticker');
+
+  const qtyUp = explain([item('GAZP', 5, 12, 700)], { changeRub: 700 });
+  assert(/увеличил/i.test(blob(qtyUp)), 'explain qty up: увеличилась');
+  assert(/GAZP/.test(blob(qtyUp)), 'explain qty up: ticker');
+
+  const qtyDown = explain([item('OFZ_29027', 20, 8, -400)], { changeRub: -400 });
+  assert(/уменьшил/i.test(blob(qtyDown)), 'explain qty down: уменьшилась');
+  assert(/OFZ_29027/.test(blob(qtyDown)), 'explain qty down: ticker');
+
+  const mixed = explain([
+    item('PLZL', 0, 1, 2000),
+    item('OFZ_26248', 0, 10, 1500),
+    item('OFZ_26250', 5, 12, 900),
+    item('OFZ_29027', 15, 5, -600),
+    item('SBER', 10, 10, 120),
+    item('OFZ_26254', 8, 8, -80)
+  ], { changeRub: 3840 });
+  const mixedText = blob(mixed);
+  assert(mixed.hasCompositionChanges === true, 'explain mixed: composition');
+  assert(/PLZL/.test(mixedText) && /OFZ_26248/.test(mixedText), 'explain mixed: add tickers');
+  assert(/OFZ_29027/.test(mixedText), 'explain mixed: reduced ticker');
+  assert(mixed.bullets.length >= 2 && mixed.bullets.length <= 4, 'explain mixed: 2–4 bullets');
+  assert(!forbidden.test(mixedText), 'explain mixed: no yield words');
+
+  const partial = explain([
+    item('SBER', 10, 10, 100),
+    item('GAZP', 5, 5, null, { status: 'missing' })
+  ], { changeRub: 100, isPartial: true });
+  assert(partial.warnings.some((w) => /неполный/i.test(w) && /нет цены/i.test(w)), 'explain partial: warning');
+  assert(!forbidden.test(blob(partial)), 'explain partial: no yield words');
+
+  const unsupported = explain([
+    item('XYZ', 1, 1, null, { status: 'unsupported' })
+  ], { changeRub: null, isPartial: true });
+  assert(unsupported.warnings.length > 0, 'explain unsupported: warning');
+  assert(unsupported.dominantReason === 'unknown' || unsupported.hasOnlyPriceChanges === false, 'explain unsupported: not fake price');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain');
