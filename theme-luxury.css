@@ -2336,6 +2336,90 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
   background: color-mix(in srgb, var(--accent) 28%, var(--bronze) 32%, #b8c0c8 40%);
 }
 
+.pf-ticker-manage {
+  margin-top: 0.55rem;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pf-ticker-manage-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.32rem 0.2rem 0.32rem 0.1rem;
+  border-radius: 8px;
+  user-select: none;
+}
+
+.pf-ticker-manage-summary::-webkit-details-marker,
+.pf-ticker-manage-summary::marker {
+  display: none;
+  content: "";
+}
+
+.pf-ticker-manage-summary::before {
+  content: "";
+  width: 0.38rem;
+  height: 0.38rem;
+  margin-top: 0.34rem;
+  flex: 0 0 auto;
+  border-right: 1.5px solid color-mix(in srgb, var(--text-muted) 58%, #8a939c 42%);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--text-muted) 58%, #8a939c 42%);
+  transform: rotate(-45deg);
+  opacity: 0.65;
+  transition: transform 0.15s ease;
+}
+
+.pf-ticker-manage[open] > .pf-ticker-manage-summary::before {
+  transform: rotate(45deg);
+  margin-top: 0.26rem;
+}
+
+.pf-ticker-manage-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+  min-width: 0;
+}
+
+.pf-ticker-manage-title {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--text) 70%, #6e7882 30%);
+  line-height: 1.3;
+}
+
+.pf-ticker-manage-hint {
+  font-size: 0.66rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.pf-ticker-manage-summary:hover {
+  background: color-mix(in srgb, #f5f6f8 88%, #ffffff 12%);
+}
+
+.pf-ticker-manage-summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bronze) 35%, var(--accent) 20%, transparent 45%);
+  outline-offset: 2px;
+}
+
+.pf-ticker-manage-body {
+  margin-top: 0.2rem;
+  padding: 0.1rem 0 0.15rem;
+}
+
+.pf-ticker-manage .pf-history-section--open-lots,
+.pf-ticker-manage .pf-history-section--sales {
+  margin-top: 0.42rem;
+}
+
 .pf-allocation-box .pf-alloc-title {
   color: color-mix(in srgb, var(--text-muted) 80%, #7a8490 20%);
   font-weight: 500;
@@ -3206,6 +3290,29 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
+  }
+
+  .pf-ticker-manage-summary {
+    min-height: 2.75rem;
+    align-items: center;
+    padding: 0.48rem 0.4rem 0.48rem 0.2rem;
+    gap: 0.55rem;
+  }
+
+  .pf-ticker-manage-summary::before {
+    margin-top: 0;
+  }
+
+  .pf-ticker-manage[open] > .pf-ticker-manage-summary::before {
+    margin-top: -0.08rem;
+  }
+
+  .pf-ticker-manage-title {
+    font-size: 0.78rem;
+  }
+
+  .pf-ticker-manage-hint {
+    font-size: 0.68rem;
   }
 }
 

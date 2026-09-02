@@ -2924,7 +2924,8 @@
       '[data-pf-edit-lot], [data-pf-remove-lot],' +
       '.portfolio-card-actions, .portfolio-closed-card-actions,' +
       '.portfolio-card-detail, .portfolio-closed-card-detail,' +
-      '.pf-row-actions, .pf-lot-toggle-row, .pf-sale-row, .pf-ticker-detail-row'
+      '.pf-row-actions, .pf-lot-toggle-row, .pf-sale-row, .pf-ticker-detail-row,' +
+      '.pf-ticker-manage, .pf-ticker-manage-summary'
     );
 
     var openHistoryBtn = e.target.closest('[data-pf-open-history]');
@@ -3035,6 +3036,10 @@
       if (confirm('Удалить эту покупку из портфеля?')) {
         removePortfolioLot(lotId);
       }
+      return;
+    }
+    if (e.target.closest('summary, .pf-ticker-manage-summary')) {
+      e.stopPropagation();
       return;
     }
     if (actionEl) {
@@ -3337,6 +3342,15 @@
 
     html += buildPortfolioTickerTimelineHtml(timeline, hist.ticker, isBond, stack);
 
+    html += '<details class="pf-ticker-manage">' +
+      '<summary class="pf-ticker-manage-summary">' +
+        '<span class="pf-ticker-manage-copy">' +
+          '<span class="pf-ticker-manage-title">Управление лотами и продажами</span>' +
+          '<span class="pf-ticker-manage-hint muted">Редактирование покупок, удаление лотов и отмена продаж</span>' +
+        '</span>' +
+      '</summary>' +
+      '<div class="pf-ticker-manage-body">';
+
     html += '<div class="pf-ticker-detail-section pf-history-section--open-lots"><h4 class="pf-ticker-detail-h">Открытые покупки</h4>';
     if (!hist.openLots.length) {
       html += '<p class="muted pf-ticker-detail-empty">Открытых позиций по этой бумаге нет.</p>';
@@ -3479,7 +3493,7 @@
         html += '</tbody></table>';
       }
     }
-    html += '</div></div>';
+    html += '</div></div></details></div>';
     return html;
   }
 
