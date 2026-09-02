@@ -4139,7 +4139,7 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 }
 
 #tab-portfolio .pf-cmp-icon {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
@@ -4149,12 +4149,15 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   border: 1px solid color-mix(in srgb, var(--bronze) 28%, #c5d0cb 72%);
   background: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  line-height: 0;
 }
 
 #tab-portfolio .pf-cmp-icon svg {
   display: block;
   width: 1.56rem;
   height: 1.56rem;
+  overflow: visible;
+  flex-shrink: 0;
 }
 
 #tab-portfolio .pf-cmp-icon-cal {
