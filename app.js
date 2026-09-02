@@ -411,8 +411,12 @@
     });
     var pfAsOfDate = document.getElementById('pfAsOfDate');
     if (pfAsOfDate) {
+      pfAsOfDate.addEventListener('input', function () {
+        if (typeof syncPortfolioAsOfDateChip === 'function') syncPortfolioAsOfDateChip();
+      });
       pfAsOfDate.addEventListener('change', function () {
-        if (typeof showPortfolioAsOfComposition === 'function') showPortfolioAsOfComposition();
+        if (typeof syncPortfolioAsOfDateChip === 'function') syncPortfolioAsOfDateChip();
+        if (typeof refreshPortfolioAsOfIfShown === 'function') refreshPortfolioAsOfIfShown();
       });
     }
     var pfSaleAllBtn = document.getElementById('pfSaleAllBtn');

@@ -4346,10 +4346,29 @@
   function initPortfolioAsOfDateDefault() {
     var input = document.getElementById('pfAsOfDate');
     if (!input) return;
-    if (input.value && timelineIsoDate(input.value)) return;
+    if (input.value && timelineIsoDate(input.value)) {
+      syncPortfolioAsOfDateChip();
+      return;
+    }
     var today = localPortfolioTodayYmd();
     var iso = typeof normalizePortfolioDate === 'function' ? normalizePortfolioDate(today) : today;
     if (iso) input.value = iso;
+    syncPortfolioAsOfDateChip();
+  }
+
+  function syncPortfolioAsOfDateChip() {
+    var chip = document.getElementById('pfAsOfDateChip');
+    var input = document.getElementById('pfAsOfDate');
+    if (!chip) return;
+    var iso = input ? timelineIsoDate(input.value) : '';
+    chip.textContent = iso ? formatAsOfDateDisplay(iso) : '—';
+  }
+
+  function revealPortfolioAsOfPanel() {
+    var panel = document.getElementById('pfAsOfPanel');
+    var block = document.getElementById('portfolioAsOfBlock');
+    if (panel) panel.hidden = false;
+    if (block) block.classList.add('pf-asof-block--open');
   }
 
   function buildPortfolioAsOfCardsHtml(items) {
@@ -4406,6 +4425,8 @@
   function renderPortfolioAsOfResult(result, errorText) {
     var out = document.getElementById('pfAsOfResult');
     var warn = document.getElementById('pfAsOfWarn');
+    revealPortfolioAsOfPanel();
+    syncPortfolioAsOfDateChip();
     if (warn) {
       warn.hidden = true;
       warn.textContent = '';

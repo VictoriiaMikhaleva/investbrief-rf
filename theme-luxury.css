@@ -3466,123 +3466,158 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   }
 }
 
-/* Состав на дату — вторичный аналитический блок */
+/* Состав на дату — заметная аналитическая карточка, не тонкая строка */
 #tab-portfolio .pf-asof-block {
-  margin: 0.75rem 0 0.2rem;
-  padding: 0.2rem 0.7rem 0.35rem;
-  border: 1px solid color-mix(in srgb, #d5dbe2 42%, rgba(23, 34, 51, 0.04) 58%);
-  background: color-mix(in srgb, #f8f9fb 94%, #ffffff 6%);
-  box-shadow: none;
+  margin: 0.95rem 0 0.35rem;
+  padding: 0.9rem 1.05rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 20%, #c8d0c9 80%);
+  border-radius: 14px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 46%, var(--bronze) 26%);
+  background:
+    linear-gradient(180deg,
+      #ffffff 0%,
+      color-mix(in srgb, #f7f8f6 82%, var(--accent-soft) 12%, var(--bronze-soft) 6%) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.72) inset,
+    0 4px 16px rgba(23, 34, 51, 0.035);
+  overflow-x: hidden;
 }
 
-#tab-portfolio .pf-asof-summary {
-  list-style: none;
-  cursor: pointer;
+#tab-portfolio .pf-asof-head {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.42rem 0.15rem;
-  user-select: none;
+  gap: 0.7rem;
+  margin: 0 0 0.7rem;
 }
 
-#tab-portfolio .pf-asof-summary::-webkit-details-marker,
-#tab-portfolio .pf-asof-summary::marker {
-  display: none;
-  content: "";
-}
-
-#tab-portfolio .pf-asof-summary::before {
-  content: "";
-  width: 0.34rem;
-  height: 0.34rem;
-  margin-top: 0.32rem;
+#tab-portfolio .pf-asof-icon {
   flex: 0 0 auto;
-  border-right: 1.5px solid color-mix(in srgb, var(--text-muted) 50%, #9aa3ad 50%);
-  border-bottom: 1.5px solid color-mix(in srgb, var(--text-muted) 50%, #9aa3ad 50%);
-  transform: rotate(-45deg);
-  opacity: 0.55;
-}
-
-#tab-portfolio .pf-asof-block[open] > .pf-asof-summary::before {
-  transform: rotate(45deg);
-  margin-top: 0.24rem;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 28%, #c5d0cb 72%);
+  background:
+    radial-gradient(circle at 32% 62%, color-mix(in srgb, var(--accent) 42%, #6a7f70 58%) 0 1.35px, transparent 1.45px),
+    radial-gradient(circle at 50% 62%, color-mix(in srgb, var(--bronze) 38%, #8a7a62 62%) 0 1.35px, transparent 1.45px),
+    radial-gradient(circle at 68% 62%, color-mix(in srgb, var(--accent) 36%, #6a7f70 64%) 0 1.35px, transparent 1.45px),
+    radial-gradient(circle at 32% 78%, color-mix(in srgb, var(--text-muted) 35%, #9aa3ad 65%) 0 1.25px, transparent 1.35px),
+    radial-gradient(circle at 50% 78%, color-mix(in srgb, var(--text-muted) 35%, #9aa3ad 65%) 0 1.25px, transparent 1.35px),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--bronze) 22%, #e8dcc8 78%) 0 28%,
+      #ffffff 29% 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 #tab-portfolio .pf-asof-copy {
   display: flex;
   flex-direction: column;
-  gap: 0.06rem;
+  gap: 0.18rem;
   min-width: 0;
+  flex: 1;
+}
+
+#tab-portfolio .pf-asof-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
 }
 
 #tab-portfolio .pf-asof-title {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: color-mix(in srgb, var(--text) 78%, #4e5854 22%);
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: color-mix(in srgb, var(--text) 90%, #3d4844 10%);
 }
 
-#tab-portfolio .pf-asof-hint,
-#tab-portfolio .pf-asof-lead {
-  font-size: 0.68rem;
+#tab-portfolio .pf-asof-date-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: 0.08rem 0.48rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, #7a5a42 68%, #5c4636 32%);
+  background: color-mix(in srgb, var(--bronze-soft) 42%, #fffaf6 58%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #eadccb 78%);
+}
+
+#tab-portfolio .pf-asof-hint {
+  margin: 0;
+  font-size: 0.78rem;
   font-weight: 400;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 78%, #5c6560 22%);
+}
+
+#tab-portfolio .pf-asof-lead {
+  margin: 0.15rem 0 0;
+  font-size: 0.7rem;
   line-height: 1.4;
   color: color-mix(in srgb, var(--text-muted) 82%, #8a939e 18%);
 }
 
-#tab-portfolio .pf-asof-lead {
-  margin: 0 0 0.55rem;
-  font-size: 0.74rem;
-}
-
-#tab-portfolio .pf-asof-body {
-  padding: 0 0.1rem 0.45rem;
-}
-
-#tab-portfolio .pf-asof-controls {
+#tab-portfolio .pf-asof-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 0.45rem 0.65rem;
-  margin-bottom: 0.55rem;
+  gap: 0.5rem 0.7rem;
 }
 
 #tab-portfolio .pf-asof-date-label {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.22rem;
   font-size: 0.72rem;
   color: var(--text-muted);
+  min-width: 10.5rem;
 }
 
 #tab-portfolio .pf-asof-date-label input[type="date"] {
-  min-height: 2.1rem;
-  padding: 0.22rem 0.45rem;
-  border: 1px solid color-mix(in srgb, var(--bronze) 18%, #d5dbe2 82%);
-  border-radius: 8px;
+  min-height: 2.25rem;
+  padding: 0.28rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #d5dbe2 78%);
+  border-radius: 9px;
   background: #fff;
   color: var(--text);
-  font-size: 0.86rem;
+  font-size: 0.88rem;
 }
 
 #tab-portfolio .pf-asof-btn {
-  min-height: 2.1rem;
-  padding: 0.28rem 0.75rem;
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: color-mix(in srgb, var(--accent-hover) 55%, #4a5c54 45%);
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, #c5d0cb 78%);
-  background: color-mix(in srgb, #ffffff 92%, var(--accent-soft) 8%);
+  min-height: 2.25rem;
+  padding: 0.32rem 0.95rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent-hover) 62%, #3d5348 38%);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, #c5d0cb 72%);
+  border-radius: 9px;
+  background: color-mix(in srgb, #ffffff 86%, var(--accent-soft) 14%);
   box-shadow: none;
 }
 
 #tab-portfolio .pf-asof-btn:hover {
-  background: color-mix(in srgb, var(--accent-soft) 16%, #ffffff 84%);
+  background: color-mix(in srgb, var(--accent-soft) 22%, #ffffff 78%);
+  border-color: color-mix(in srgb, var(--accent) 38%, #b7c4be 62%);
   box-shadow: none;
 }
 
+#tab-portfolio .pf-asof-panel {
+  margin-top: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid color-mix(in srgb, var(--bronze) 12%, #e4e8ec 88%);
+}
+
+#tab-portfolio .pf-asof-block--open .pf-asof-panel {
+  display: block;
+}
+
 #tab-portfolio .pf-asof-warn {
-  margin: 0 0 0.5rem;
-  padding: 0.4rem 0.55rem;
+  margin: 0 0 0.55rem;
+  padding: 0.42rem 0.6rem;
   font-size: 0.74rem;
   line-height: 1.4;
   color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
@@ -3592,9 +3627,14 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 }
 
 #tab-portfolio .pf-asof-empty {
-  margin: 0.15rem 0 0;
-  font-size: 0.82rem;
+  margin: 0.1rem 0 0;
+  font-size: 0.84rem;
   line-height: 1.45;
+}
+
+#tab-portfolio .pf-asof-table-wrap {
+  width: 100%;
+  overflow-x: auto;
 }
 
 #tab-portfolio .pf-asof-table {
@@ -3661,13 +3701,12 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 }
 
 @media (max-width: 699px) {
-  #tab-portfolio .pf-asof-summary {
-    min-height: 2.75rem;
-    align-items: center;
+  #tab-portfolio .pf-asof-block {
+    padding: 0.85rem 0.85rem 0.9rem;
   }
 
-  #tab-portfolio .pf-asof-summary::before {
-    margin-top: 0;
+  #tab-portfolio .pf-asof-title {
+    font-size: 1rem;
   }
 
   #tab-portfolio .pf-asof-table-wrap {
@@ -3680,12 +3719,21 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
     gap: 0.45rem;
   }
 
-  #tab-portfolio .pf-asof-controls {
+  #tab-portfolio .pf-asof-toolbar {
+    flex-direction: column;
     align-items: stretch;
+    gap: 0.55rem;
   }
 
+  #tab-portfolio .pf-asof-date-label {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #tab-portfolio .pf-asof-date-label input[type="date"],
   #tab-portfolio .pf-asof-btn {
-    min-height: 2.4rem;
+    width: 100%;
+    min-height: 2.5rem;
   }
 }
 
