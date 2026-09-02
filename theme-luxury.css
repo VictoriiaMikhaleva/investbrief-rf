@@ -4116,6 +4116,351 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   }
 }
 
+/* Сравнение дат — спокойнее блока «Состав на дату» */
+#tab-portfolio .pf-cmp-block {
+  margin: 0.55rem 0 0.35rem;
+  padding: 0.78rem 0.95rem 0.82rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 14%, #d5dbe2 86%);
+  border-radius: 14px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 32%, var(--bronze) 20%);
+  background:
+    linear-gradient(180deg,
+      #ffffff 0%,
+      color-mix(in srgb, #f8f9f7 86%, var(--accent-soft) 14%) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  overflow-x: hidden;
+}
+
+#tab-portfolio .pf-cmp-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0 0 0.58rem;
+}
+
+#tab-portfolio .pf-cmp-icon {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #c5d0cb 78%);
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--accent-soft) 35%, #fff 65%) 0 48%,
+      color-mix(in srgb, var(--bronze-soft) 40%, #fff 60%) 52% 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+#tab-portfolio .pf-cmp-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+#tab-portfolio .pf-cmp-title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 1.25;
+  color: color-mix(in srgb, var(--text) 88%, #3d4844 12%);
+}
+
+#tab-portfolio .pf-cmp-hint {
+  margin: 0.14rem 0 0;
+  font-size: 0.76rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 80%, #5c6560 20%);
+}
+
+#tab-portfolio .pf-cmp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.65rem;
+}
+
+#tab-portfolio .pf-cmp-date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  min-width: 9.5rem;
+}
+
+#tab-portfolio .pf-cmp-date-label input[type="date"] {
+  min-height: 2.2rem;
+  padding: 0.26rem 0.48rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 20%, #d5dbe2 80%);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+#tab-portfolio .pf-cmp-btn {
+  min-height: 2.2rem;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent-hover) 58%, #3d5348 42%);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, #c5d0cb 76%);
+  border-radius: 9px;
+  background: color-mix(in srgb, #ffffff 88%, var(--accent-soft) 12%);
+}
+
+#tab-portfolio .pf-cmp-btn:hover {
+  background: color-mix(in srgb, var(--accent-soft) 20%, #ffffff 80%);
+  border-color: color-mix(in srgb, var(--accent) 34%, #b7c4be 66%);
+}
+
+#tab-portfolio .pf-cmp-btn:disabled {
+  opacity: 0.68;
+  cursor: wait;
+  pointer-events: none;
+}
+
+#tab-portfolio .pf-cmp-status {
+  margin: 0.38rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 86%, #6a756c 14%);
+}
+
+#tab-portfolio .pf-cmp-panel {
+  margin-top: 0.65rem;
+  padding-top: 0.62rem;
+  border-top: 1px solid color-mix(in srgb, var(--bronze) 10%, #e4e8ec 90%);
+}
+
+#tab-portfolio .pf-cmp-block--open .pf-cmp-panel {
+  display: block;
+}
+
+#tab-portfolio .pf-cmp-result {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+#tab-portfolio .pf-cmp-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0 0 0.55rem;
+}
+
+#tab-portfolio .pf-cmp-kpi {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.52rem 0.62rem 0.48rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, #d5dbe2 88%);
+  background: color-mix(in srgb, #ffffff 90%, var(--accent-soft) 10%);
+}
+
+#tab-portfolio .pf-cmp-kpi-lbl {
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--text-muted) 80%, #5c6560 20%);
+}
+
+#tab-portfolio .pf-cmp-kpi-val {
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--text) 88%, #3d5348 12%);
+}
+
+#tab-portfolio .pf-cmp-kpi-sub {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text-muted) 84%, #6a756c 16%);
+}
+
+#tab-portfolio .pf-cmp-kpi--up .pf-cmp-kpi-val,
+#tab-portfolio .pf-cmp-change--up {
+  color: color-mix(in srgb, var(--accent) 42%, #4a5e52 58%);
+}
+
+#tab-portfolio .pf-cmp-kpi--down .pf-cmp-kpi-val,
+#tab-portfolio .pf-cmp-change--down {
+  color: color-mix(in srgb, #8a5a48 62%, #6e4a40 38%);
+}
+
+#tab-portfolio .pf-cmp-kpi--zero .pf-cmp-kpi-val,
+#tab-portfolio .pf-cmp-change--zero {
+  color: color-mix(in srgb, var(--text) 78%, #6a756c 22%);
+}
+
+#tab-portfolio .pf-cmp-partial {
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.73rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
+  background: color-mix(in srgb, var(--bronze-soft) 28%, #fffaf6 72%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 18%, #eadccb 82%);
+  border-radius: 8px;
+}
+
+#tab-portfolio .pf-cmp-explain {
+  margin: 0 0 0.65rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--text-muted) 70%, #4d5a54 30%);
+}
+
+#tab-portfolio .pf-cmp-empty {
+  margin: 0.1rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+#tab-portfolio .pf-cmp-table-wrap {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+#tab-portfolio .pf-cmp-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 0.3rem;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+#tab-portfolio .pf-cmp-table th {
+  text-align: left;
+  font-size: 0.61rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--text-muted) 82%, #8a939e 18%);
+  padding: 0 0.45rem 0.08rem;
+  border-bottom: none;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+#tab-portfolio .pf-cmp-table td {
+  padding: 0.46rem 0.45rem;
+  border-top: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+  background: color-mix(in srgb, #ffffff 93%, var(--accent-soft) 7%);
+  vertical-align: middle;
+}
+
+#tab-portfolio .pf-cmp-table td:first-child,
+#tab-portfolio .pf-cmp-table th:first-child {
+  padding-left: 0.65rem;
+}
+
+#tab-portfolio .pf-cmp-table td:first-child {
+  border-left: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+  border-radius: 10px 0 0 10px;
+}
+
+#tab-portfolio .pf-cmp-table td:last-child {
+  padding-right: 0.65rem;
+  border-right: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+  border-radius: 0 10px 10px 0;
+  white-space: nowrap;
+  font-weight: 650;
+}
+
+#tab-portfolio .pf-cmp-ticker {
+  font-weight: 650;
+}
+
+#tab-portfolio .pf-cmp-table .pf-cmp-name {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 400;
+  margin-top: 0.06rem;
+}
+
+#tab-portfolio .pf-cmp-cards {
+  display: none;
+}
+
+#tab-portfolio .pf-cmp-card-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 899px) {
+  #tab-portfolio .pf-cmp-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 699px) {
+  #tab-portfolio .pf-cmp-block {
+    padding: 0.75rem 0.8rem 0.8rem;
+  }
+
+  #tab-portfolio .pf-cmp-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #tab-portfolio .pf-cmp-date-label,
+  #tab-portfolio .pf-cmp-date-label input[type="date"],
+  #tab-portfolio .pf-cmp-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #tab-portfolio .pf-cmp-btn {
+    min-height: 2.5rem;
+  }
+
+  #tab-portfolio .pf-cmp-kpi-val {
+    font-size: 1.22rem;
+  }
+
+  #tab-portfolio .pf-cmp-table-wrap {
+    display: none;
+  }
+
+  #tab-portfolio .pf-cmp-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+  }
+
+  #tab-portfolio .pf-cmp-card {
+    padding: 0.58rem 0.65rem;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 12%, #d5dbe2 88%);
+    background: #fff;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+  }
+
+  #tab-portfolio .pf-cmp-card-kpis {
+    display: flex;
+    flex-direction: column;
+    gap: 0.16rem;
+    font-size: 0.8rem;
+  }
+
+  #tab-portfolio .pf-cmp-card-kpis .lbl {
+    color: var(--text-muted);
+    margin-right: 0.25rem;
+  }
+
+  #tab-portfolio .pf-cmp-card-change {
+    font-weight: 650;
+  }
+}
+
 /* panel-intro--one-line: ╤Б╨╝. ╨┐╤А╨░╨▓╨╕╨╗╨░ .panel-intro.hint-frame > p ╨▓╤Л╤И╨╡ */
 
 /* ╨в╨╡╨╗╨╡╤Д╨╛╨╜: ╨▒╨╛╨╗╤М╤И╨╡ ╨┐╨╛╨╗╨╡╨╖╨╜╨╛╨╣ ╤И╨╕╤А╨╕╨╜╤Л ╤Г ╨║╨░╤А╤В╨╛╤З╨╜╤Л╤Е ╤Б╨╡╤В╨╛╨║ (desktop/tablet ╨▒╨╡╨╖ ╨╕╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╣) */

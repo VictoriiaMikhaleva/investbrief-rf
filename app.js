@@ -419,6 +419,10 @@
         if (typeof refreshPortfolioAsOfIfShown === 'function') refreshPortfolioAsOfIfShown();
       });
     }
+    var pfCmpBtn = document.getElementById('pfCmpBtn');
+    if (pfCmpBtn) pfCmpBtn.addEventListener('click', function () {
+      if (typeof showPortfolioValueCompare === 'function') showPortfolioValueCompare();
+    });
     var pfSaleAllBtn = document.getElementById('pfSaleAllBtn');
     if (pfSaleAllBtn) {
       pfSaleAllBtn.addEventListener('click', function () {

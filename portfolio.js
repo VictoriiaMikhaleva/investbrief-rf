@@ -1708,6 +1708,144 @@
     });
   }
 
+  function asOfUniqueNotes(lists) {
+    var out = [];
+    var seen = {};
+    (lists || []).forEach(function (list) {
+      (list || []).forEach(function (n) {
+        var t = String(n || '').trim();
+        if (!t || seen[t]) return;
+        seen[t] = true;
+        out.push(t);
+      });
+    });
+    return out;
+  }
+
+  /**
+   * Детализация сравнения: объединяет тикеры двух оценок.
+   * Нет позиции → qty/value 0; нет CLOSE → value/change null, без подстановки LAST.
+   */
+  function buildPortfolioValueChangeDetails(fromResult, toResult) {
+    var map = {};
+    var order = [];
+    function take(row, side) {
+      if (!row) return;
+      var ticker = String(row.ticker || '').trim();
+      if (!ticker) return;
+      var key = ticker.toUpperCase();
+      if (!map[key]) {
+        map[key] = {
+          ticker: ticker,
+          name: row.name || ticker,
+          type: row.type || '',
+          fromPresent: false,
+          toPresent: false,
+          qtyFrom: 0,
+          qtyTo: 0,
+          valueFrom: 0,
+          valueTo: 0,
+          notes: []
+        };
+        order.push(key);
+      }
+      var rec = map[key];
+      if (row.name && rec.name === rec.ticker) rec.name = row.name;
+      if (row.type && !rec.type) rec.type = row.type;
+      var ok = row.status === 'ok' && row.valueRub != null && isFinite(Number(row.valueRub));
+      var qty = row.qtyAtDate;
+      if (side === 'from') {
+        rec.fromPresent = true;
+        rec.qtyFrom = qty;
+        rec.valueFrom = ok ? Number(row.valueRub) : null;
+      } else {
+        rec.toPresent = true;
+        rec.qtyTo = qty;
+        rec.valueTo = ok ? Number(row.valueRub) : null;
+      }
+      if (row.status === 'missing') rec.notes.push(ASOF_MISSING_PRICE_NOTE);
+      if (row.status === 'unsupported') rec.notes.push(ASOF_UNSUPPORTED_NOTE);
+    }
+    ((fromResult && fromResult.items) || []).forEach(function (row) { take(row, 'from'); });
+    ((toResult && toResult.items) || []).forEach(function (row) { take(row, 'to'); });
+    return order.map(function (key) {
+      var rec = map[key];
+      if (!rec.fromPresent) {
+        rec.qtyFrom = 0;
+        rec.valueFrom = 0;
+      }
+      if (!rec.toPresent) {
+        rec.qtyTo = 0;
+        rec.valueTo = 0;
+      }
+      var canDiff = rec.valueFrom != null && rec.valueTo != null &&
+        isFinite(Number(rec.valueFrom)) && isFinite(Number(rec.valueTo));
+      return {
+        ticker: rec.ticker,
+        name: rec.name,
+        type: rec.type,
+        qtyFrom: rec.qtyFrom,
+        qtyTo: rec.qtyTo,
+        valueFrom: rec.valueFrom,
+        valueTo: rec.valueTo,
+        changeRub: canDiff ? asOfRoundRub(Number(rec.valueTo) - Number(rec.valueFrom)) : null,
+        note: asOfUniqueNotes([rec.notes]).join('; ')
+      };
+    });
+  }
+
+  /**
+   * Read-only сравнение оценочной стоимости между двумя датами.
+   * changeRub = to.totalValueRub − from.totalValueRub; не доходность и не разложение причин.
+   */
+  function buildPortfolioValueChangeBetweenDates(portfolio, fromDate, toDate, options) {
+    options = options || {};
+    var fromIso = timelineIsoDate(fromDate);
+    var toIso = timelineIsoDate(toDate);
+    var valueFn = typeof options.buildPortfolioValueAtDate === 'function'
+      ? options.buildPortfolioValueAtDate
+      : buildPortfolioValueAtDate;
+
+    return Promise.all([
+      Promise.resolve(valueFn(portfolio, fromDate, options)),
+      Promise.resolve(valueFn(portfolio, toDate, options))
+    ]).then(function (pair) {
+      var fromResult = pair[0] || {};
+      var toResult = pair[1] || {};
+      var invalidDate = !fromIso || !toIso || !!fromResult.invalidDate || !!toResult.invalidDate;
+      var fromValue = fromResult.totalValueRub;
+      var toValue = toResult.totalValueRub;
+      var changeRub = null;
+      var changePct = null;
+      if (!invalidDate && fromValue != null && toValue != null &&
+          isFinite(Number(fromValue)) && isFinite(Number(toValue))) {
+        changeRub = asOfRoundRub(Number(toValue) - Number(fromValue));
+        var fromNum = Number(fromValue);
+        if (fromNum !== 0) changePct = (changeRub / fromNum) * 100;
+      } else if (invalidDate) {
+        fromValue = fromResult.invalidDate || !fromIso ? null : fromValue;
+        toValue = toResult.invalidDate || !toIso ? null : toValue;
+      }
+      var notes = asOfUniqueNotes([fromResult.notes, toResult.notes]);
+      if (invalidDate) notes.push('Укажите корректные даты для сравнения.');
+      return {
+        fromDate: fromIso || '',
+        toDate: toIso || '',
+        fromValue: fromValue != null && isFinite(Number(fromValue)) ? Number(fromValue) : null,
+        toValue: toValue != null && isFinite(Number(toValue)) ? Number(toValue) : null,
+        changeRub: changeRub,
+        changePct: changePct,
+        isPartial: !!(fromResult.isPartial || toResult.isPartial),
+        invalidDate: !!invalidDate,
+        hasIncompleteHistory: !!(fromResult.hasIncompleteHistory || toResult.hasIncompleteHistory),
+        notes: notes,
+        items: invalidDate ? [] : buildPortfolioValueChangeDetails(fromResult, toResult),
+        fromResult: fromResult,
+        toResult: toResult
+      };
+    });
+  }
+
 
   /** UI-настройки портфеля (не часть portfolio JSON). */
   var PF_UI_STORAGE_KEY = 'ibrf.portfolioUi.v1';
@@ -4929,11 +5067,236 @@
     showPortfolioAsOfComposition();
   }
 
+  var PF_CMP_BTN_IDLE = 'Сравнить';
+  var PF_CMP_BTN_BUSY = 'Сравниваем…';
+  var PF_CMP_BUSY_HINT = 'Считаем стоимость портфеля на две даты…';
+  var PF_CMP_ERROR = 'Не удалось сравнить даты. Попробуйте ещё раз.';
+  var PF_CMP_EXPLAIN = 'Изменение включает не только движение цен, но и изменение состава портфеля между датами: покупки и продажи также влияют на итоговую сумму.';
+  var PF_CMP_PARTIAL = 'Сравнение рассчитано частично: по части бумаг нет цены на одну из дат.';
+  var PF_CMP_INCOMPLETE = 'Часть операций без корректной даты не включена в расчёт.';
+  var PF_CMP_ZERO_PCT = 'процент не рассчитан: на начальную дату стоимость 0 ₽';
+  var pfCmpSeq = 0;
+
+  function shiftPortfolioIsoByMonths(iso, months) {
+    var n = timelineIsoDate(iso);
+    if (!n) return '';
+    var y = Number(n.slice(0, 4));
+    var m = Number(n.slice(5, 7));
+    var d = Number(n.slice(8, 10));
+    m += Number(months) || 0;
+    while (m < 1) { m += 12; y -= 1; }
+    while (m > 12) { m -= 12; y += 1; }
+    var last = new Date(y, m, 0).getDate();
+    if (d > last) d = last;
+    return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  }
+
+  function initPortfolioCompareDatesDefault() {
+    var fromInput = document.getElementById('pfCmpFromDate');
+    var toInput = document.getElementById('pfCmpToDate');
+    if (!fromInput || !toInput) return;
+    var today = localPortfolioTodayYmd();
+    var toIso = typeof normalizePortfolioDate === 'function' ? normalizePortfolioDate(today) : today;
+    if (!toInput.value || !timelineIsoDate(toInput.value)) {
+      if (toIso) toInput.value = toIso;
+    }
+    if (!fromInput.value || !timelineIsoDate(fromInput.value)) {
+      var fromIso = shiftPortfolioIsoByMonths(toInput.value || toIso, -1);
+      if (fromIso) fromInput.value = fromIso;
+    }
+  }
+
+  function setPortfolioCompareBusy(on) {
+    var btn = document.getElementById('pfCmpBtn');
+    var status = document.getElementById('pfCmpStatus');
+    if (btn) {
+      btn.disabled = !!on;
+      btn.setAttribute('aria-busy', on ? 'true' : 'false');
+      btn.textContent = on ? PF_CMP_BTN_BUSY : PF_CMP_BTN_IDLE;
+    }
+    if (status) {
+      if (on) {
+        status.hidden = false;
+        status.textContent = PF_CMP_BUSY_HINT;
+      } else {
+        status.hidden = true;
+        status.textContent = '';
+      }
+    }
+  }
+
+  function revealPortfolioComparePanel() {
+    var panel = document.getElementById('pfCmpPanel');
+    var block = document.getElementById('portfolioCompareBlock');
+    if (panel) panel.hidden = false;
+    if (block) block.classList.add('pf-cmp-block--open');
+  }
+
+  function formatCmpPctDisplay(pct) {
+    if (pct == null || !isFinite(Number(pct))) return '';
+    var n = Number(pct);
+    var sign = n > 0 ? '+' : '';
+    return sign + n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+  }
+
+  function formatCmpSignedRub(val) {
+    if (typeof formatSignedRubAmount === 'function') return formatSignedRubAmount(val);
+    if (val == null || !isFinite(Number(val))) return '—';
+    var n = Number(val);
+    var sign = n > 0 ? '+' : '';
+    return sign + n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+  }
+
+  function cmpChangeTone(n) {
+    if (n == null || !isFinite(Number(n)) || Number(n) === 0) return 'zero';
+    return Number(n) > 0 ? 'up' : 'down';
+  }
+
+  function buildPortfolioCompareKpiHtml(lbl, val, sub, extraClass) {
+    return '<div class="pf-cmp-kpi' + (extraClass ? ' ' + extraClass : '') + '">' +
+      '<span class="pf-cmp-kpi-lbl">' + escapeHtml(lbl) + '</span>' +
+      '<span class="pf-cmp-kpi-val">' + escapeHtml(val) + '</span>' +
+      (sub ? '<span class="pf-cmp-kpi-sub">' + escapeHtml(sub) + '</span>' : '') +
+    '</div>';
+  }
+
+  function buildPortfolioCompareDetailsCardsHtml(items) {
+    return (items || []).map(function (row) {
+      var tone = cmpChangeTone(row.changeRub);
+      return '<article class="pf-cmp-card">' +
+        '<div class="pf-cmp-card-head">' +
+          '<span class="pf-cmp-ticker">' + escapeHtml(row.ticker) + '</span>' +
+          (row.name && row.name !== row.ticker
+            ? ' <span class="muted pf-cmp-name">' + escapeHtml(row.name) + '</span>'
+            : '') +
+        '</div>' +
+        '<div class="pf-cmp-card-kpis">' +
+          '<span><span class="lbl">Кол-во на начало</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyFrom)) + '</span>' +
+          '<span><span class="lbl">Стоимость на начало</span> ' +
+            escapeHtml(row.valueFrom == null ? '—' : formatPortfolioRubAmount(row.valueFrom)) + '</span>' +
+          '<span><span class="lbl">Кол-во на конец</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyTo)) + '</span>' +
+          '<span><span class="lbl">Стоимость на конец</span> ' +
+            escapeHtml(row.valueTo == null ? '—' : formatPortfolioRubAmount(row.valueTo)) + '</span>' +
+          '<span class="pf-cmp-card-change pf-cmp-change--' + tone + '"><span class="lbl">Изменение</span> ' +
+            escapeHtml(row.changeRub == null ? '—' : formatCmpSignedRub(row.changeRub)) + '</span>' +
+        '</div>' +
+        (row.note ? '<p class="muted pf-cmp-card-note">' + escapeHtml(row.note) + '</p>' : '') +
+      '</article>';
+    }).join('');
+  }
+
+  function buildPortfolioCompareDetailsHtml(items) {
+    items = items || [];
+    if (!items.length) {
+      return '<p class="muted pf-cmp-empty">На выбранных датах нет бумаг для детализации.</p>';
+    }
+    var rows = items.map(function (row) {
+      var tone = cmpChangeTone(row.changeRub);
+      return '<tr class="pf-cmp-row">' +
+        '<td class="pf-cmp-td-paper">' +
+          '<span class="pf-cmp-ticker">' + escapeHtml(row.ticker) + '</span>' +
+          (row.name && row.name !== row.ticker
+            ? '<span class="muted pf-cmp-name">' + escapeHtml(row.name) + '</span>'
+            : '') +
+        '</td>' +
+        '<td>' + escapeHtml(formatAsOfQtyDisplay(row.qtyFrom)) + '</td>' +
+        '<td>' + escapeHtml(row.valueFrom == null ? '—' : formatPortfolioRubAmount(row.valueFrom)) + '</td>' +
+        '<td>' + escapeHtml(formatAsOfQtyDisplay(row.qtyTo)) + '</td>' +
+        '<td>' + escapeHtml(row.valueTo == null ? '—' : formatPortfolioRubAmount(row.valueTo)) + '</td>' +
+        '<td class="pf-cmp-td-change pf-cmp-change--' + tone + '">' +
+          escapeHtml(row.changeRub == null ? '—' : formatCmpSignedRub(row.changeRub)) +
+        '</td>' +
+      '</tr>';
+    }).join('');
+    return '<div class="pf-cmp-table-wrap">' +
+      '<table class="pf-cmp-table">' +
+        '<thead><tr>' +
+          '<th>Бумага</th>' +
+          '<th>Кол-во на начало</th><th>Стоимость на начало</th>' +
+          '<th>Кол-во на конец</th><th>Стоимость на конец</th>' +
+          '<th>Изменение</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div class="pf-cmp-cards">' + buildPortfolioCompareDetailsCardsHtml(items) + '</div>';
+  }
+
+  function renderPortfolioCompareResult(result, errorText) {
+    var out = document.getElementById('pfCmpResult');
+    var warn = document.getElementById('pfCmpWarn');
+    revealPortfolioComparePanel();
+    if (warn) {
+      warn.hidden = true;
+      warn.textContent = '';
+    }
+    if (!out) return;
+    if (errorText) {
+      out.innerHTML = '<p class="muted pf-cmp-empty">' + escapeHtml(errorText) + '</p>';
+      return;
+    }
+    if (!result || result.invalidDate) {
+      out.innerHTML = '<p class="muted pf-cmp-empty">Укажите корректные даты.</p>';
+      return;
+    }
+    var extra = '';
+    if (result.hasIncompleteHistory) {
+      extra += '<p class="pf-cmp-partial" role="status">' + escapeHtml(PF_CMP_INCOMPLETE) + '</p>';
+    }
+    if (result.isPartial) {
+      extra += '<p class="pf-cmp-partial" role="status">' + escapeHtml(PF_CMP_PARTIAL) + '</p>';
+    }
+    var fromLbl = formatAsOfDateDisplay(result.fromDate);
+    var toLbl = formatAsOfDateDisplay(result.toDate);
+    var fromVal = result.fromValue == null ? '—' : formatPortfolioRubAmount(result.fromValue);
+    var toVal = result.toValue == null ? '—' : formatPortfolioRubAmount(result.toValue);
+    var changeVal = result.changeRub == null ? '—' : formatCmpSignedRub(result.changeRub);
+    var changeSub;
+    if (result.fromValue === 0) changeSub = PF_CMP_ZERO_PCT;
+    else if (result.changePct == null) changeSub = '';
+    else changeSub = formatCmpPctDisplay(result.changePct);
+    var tone = cmpChangeTone(result.changeRub);
+    var board = '<div class="pf-cmp-board">' +
+      buildPortfolioCompareKpiHtml('Стоимость на начало', fromVal, fromLbl) +
+      buildPortfolioCompareKpiHtml('Стоимость на конец', toVal, toLbl) +
+      buildPortfolioCompareKpiHtml('Изменение', changeVal, changeSub, 'pf-cmp-kpi--change pf-cmp-kpi--' + tone) +
+    '</div>';
+    out.innerHTML = board + extra +
+      '<p class="pf-cmp-explain">' + escapeHtml(PF_CMP_EXPLAIN) + '</p>' +
+      buildPortfolioCompareDetailsHtml(result.items || []);
+  }
+
+  function showPortfolioValueCompare() {
+    initPortfolioCompareDatesDefault();
+    var fromInput = document.getElementById('pfCmpFromDate');
+    var toInput = document.getElementById('pfCmpToDate');
+    var fromRaw = fromInput ? String(fromInput.value || '').trim() : '';
+    var toRaw = toInput ? String(toInput.value || '').trim() : '';
+    var seq = ++pfCmpSeq;
+    if (!timelineIsoDate(fromRaw) || !timelineIsoDate(toRaw)) {
+      setPortfolioCompareBusy(false);
+      renderPortfolioCompareResult(null, 'Укажите корректные даты.');
+      return Promise.resolve();
+    }
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    setPortfolioCompareBusy(true);
+    return buildPortfolioValueChangeBetweenDates(pf, fromRaw, toRaw).then(function (result) {
+      if (seq !== pfCmpSeq) return;
+      setPortfolioCompareBusy(false);
+      renderPortfolioCompareResult(result);
+    }).catch(function () {
+      if (seq !== pfCmpSeq) return;
+      setPortfolioCompareBusy(false);
+      renderPortfolioCompareResult(null, PF_CMP_ERROR);
+    });
+  }
+
   function renderPortfolio() {
     if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
       Markets.renderBriefingMarketTabs('portfolioMarketTabs');
     }
     initPortfolioAsOfDateDefault();
+    initPortfolioCompareDatesDefault();
     renderPortfolioTableBody();
     renderPortfolioFolder();
     renderPortfolioChart();

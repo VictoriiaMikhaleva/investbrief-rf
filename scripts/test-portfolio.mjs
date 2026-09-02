@@ -337,7 +337,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__resolveNav = resolvePortfolioHistoryNavTarget;' +
       '\nthis.__timeline = buildTickerOperationTimeline;' +
       '\nthis.__asOf = buildPortfolioCompositionAtDate;' +
-      '\nthis.__asOfValue = buildPortfolioValueAtDate;',
+      '\nthis.__asOfValue = buildPortfolioValueAtDate;' +
+      '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;',
     sandbox,
     { timeout: 5000 }
   );
@@ -366,6 +367,7 @@ function loadPortfolioCalcHelpers() {
     buildTickerOperationTimeline: sandbox.__timeline,
     buildPortfolioCompositionAtDate: sandbox.__asOf,
     buildPortfolioValueAtDate: sandbox.__asOfValue,
+    buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -1668,9 +1670,171 @@ function loadPriceAtDateHelpers() {
   })();
 }
 
+{
+  // Волна 3.5: сравнение стоимости между датами — mock, без сети
+  function mockValueAt(date, total, extra) {
+    extra = extra || {};
+    return {
+      targetDate: date,
+      invalidDate: !!extra.invalidDate,
+      totalValueRub: extra.invalidDate ? null : total,
+      pricedValueRub: extra.invalidDate ? null : total,
+      isPartial: !!extra.isPartial,
+      hasIncompleteHistory: !!extra.hasIncompleteHistory,
+      notes: extra.notes || [],
+      items: extra.items || []
+    };
+  }
+  function mockByDate(map) {
+    return function (portfolio, date) {
+      const iso = String(date || '').slice(0, 10);
+      const row = map[iso] || map[date];
+      if (!row) return Promise.resolve(mockValueAt(iso, 0, { invalidDate: true }));
+      return Promise.resolve(row);
+    };
+  }
+  const frozenStore35 = JSON.stringify(calc.memStore);
+
+  await (async () => {
+    const grew = await calc.buildPortfolioValueChangeBetweenDates(
+      { positions: [], sales: [] },
+      '2024-01-01',
+      '2024-02-01',
+      { buildPortfolioValueAtDate: mockByDate({
+        '2024-01-01': mockValueAt('2024-01-01', 1000),
+        '2024-02-01': mockValueAt('2024-02-01', 1200)
+      }) }
+    );
+    assert(!grew.invalidDate, 'change up: valid');
+    assert(grew.fromValue === 1000 && grew.toValue === 1200, 'change up: values');
+    assert(grew.changeRub === 200, 'change up: +200');
+    assert(Math.abs(grew.changePct - 20) < 1e-9, 'change up: +20%');
+
+    const down = await calc.buildPortfolioValueChangeBetweenDates(
+      { positions: [], sales: [] },
+      '2024-01-01',
+      '2024-02-01',
+      { buildPortfolioValueAtDate: mockByDate({
+        '2024-01-01': mockValueAt('2024-01-01', 1000),
+        '2024-02-01': mockValueAt('2024-02-01', 800)
+      }) }
+    );
+    assert(down.changeRub === -200, 'change down: -200');
+    assert(Math.abs(down.changePct - (-20)) < 1e-9, 'change down: -20%');
+
+    const fromZero = await calc.buildPortfolioValueChangeBetweenDates(
+      { positions: [], sales: [] },
+      '2024-01-01',
+      '2024-02-01',
+      { buildPortfolioValueAtDate: mockByDate({
+        '2024-01-01': mockValueAt('2024-01-01', 0),
+        '2024-02-01': mockValueAt('2024-02-01', 1000)
+      }) }
+    );
+    assert(fromZero.changeRub === 1000, 'from 0: changeRub 1000');
+    assert(fromZero.changePct == null, 'from 0: changePct null');
+
+    const partial = await calc.buildPortfolioValueChangeBetweenDates(
+      { positions: [], sales: [] },
+      '2024-01-01',
+      '2024-02-01',
+      { buildPortfolioValueAtDate: mockByDate({
+        '2024-01-01': mockValueAt('2024-01-01', 1000),
+        '2024-02-01': mockValueAt('2024-02-01', 1100, { isPartial: true })
+      }) }
+    );
+    assert(partial.isPartial === true, 'partial: isPartial true');
+
+    const bad = await calc.buildPortfolioValueChangeBetweenDates(
+      { positions: [], sales: [] },
+      'not-a-date',
+      '2024-02-01',
+      { buildPortfolioValueAtDate: mockByDate({
+        '2024-02-01': mockValueAt('2024-02-01', 1000)
+      }) }
+    );
+    assert(bad.invalidDate === true, 'bad date: invalidDate');
+    assert(bad.changeRub == null && bad.changePct == null, 'bad date: no invented change');
+
+    const emptyBoth = await calc.buildPortfolioValueChangeBetweenDates(
+      { positions: [], sales: [] },
+      '2024-01-01',
+      '2024-02-01',
+      { buildPortfolioValueAtDate: mockByDate({
+        '2024-01-01': mockValueAt('2024-01-01', 0),
+        '2024-02-01': mockValueAt('2024-02-01', 0)
+      }) }
+    );
+    assert(emptyBoth.fromValue === 0 && emptyBoth.toValue === 0, 'empty both: 0 and 0');
+    assert(emptyBoth.changeRub === 0, 'empty both: changeRub 0');
+    assert(emptyBoth.changePct == null, 'empty both: changePct null');
+
+    function priceOk(price) {
+      return {
+        status: 'ok',
+        price: price,
+        priceDate: '2024-06-01',
+        priceType: 'close',
+        unit: 'rub'
+      };
+    }
+    function mockMap(map) {
+      return function (ticker) {
+        const row = map[String(ticker || '').toUpperCase()];
+        return Promise.resolve(row || { status: 'missing', price: null, priceDate: null });
+      };
+    }
+
+    const appeared = await calc.buildPortfolioValueChangeBetweenDates({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 100, buyDate: '2024-06-01' }],
+      sales: []
+    }, '2024-01-01', '2024-07-01', {
+      getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100) })
+    });
+    const appRow = (appeared.items || []).find((x) => x.ticker === 'SBER');
+    assert(appRow, 'appeared: row exists');
+    assert(appRow.qtyFrom === 0 && appRow.valueFrom === 0, 'appeared: start 0');
+    assert(appRow.qtyTo === 10 && appRow.valueTo === 1000, 'appeared: end > 0');
+    assert(appRow.changeRub === 1000, 'appeared: change from 0');
+
+    const gone = await calc.buildPortfolioValueChangeBetweenDates({
+      positions: [],
+      sales: [{
+        saleId: 'SALE1', ticker: 'SBER', qty: 10, buyPrice: 100, salePrice: 120, saleDate: '2024-05-01',
+        allocations: [{ lotId: 'S1', qty: 10, buyPrice: 100, buyDate: '2024-01-15' }]
+      }]
+    }, '2024-04-01', '2024-06-01', {
+      getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100) })
+    });
+    const goneRow = (gone.items || []).find((x) => x.ticker === 'SBER');
+    assert(goneRow, 'gone: row exists');
+    assert(goneRow.qtyFrom === 10 && goneRow.valueFrom === 1000, 'gone: start > 0');
+    assert(goneRow.qtyTo === 0 && goneRow.valueTo === 0, 'gone: end 0');
+    assert(goneRow.changeRub === -1000, 'gone: change to 0');
+
+    const missingOne = await calc.buildPortfolioValueChangeBetweenDates({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 100, buyDate: '2024-01-15' }],
+      sales: []
+    }, '2024-04-01', '2024-06-01', {
+      getInstrumentPriceAtDate: function (ticker, date) {
+        if (String(date).slice(0, 10) === '2024-06-01') {
+          return Promise.resolve({ status: 'missing', price: null, last: 999, currentPrice: 999 });
+        }
+        return Promise.resolve(priceOk(100));
+      }
+    });
+    const missRow = (missingOne.items || []).find((x) => x.ticker === 'SBER');
+    assert(missingOne.isPartial === true, 'missing one: isPartial');
+    assert(missRow && missRow.valueFrom === 1000, 'missing one: from priced');
+    assert(missRow.valueTo == null, 'missing one: to not invented');
+    assert(missRow.changeRub == null, 'missing one: paper change not invented');
+    assert(JSON.stringify(calc.memStore) === frozenStore35, 'change helper does not write localStorage');
+  })();
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change');
