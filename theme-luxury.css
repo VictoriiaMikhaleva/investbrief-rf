@@ -4313,8 +4313,10 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 #tab-portfolio .pf-cmp-explain {
   margin: 0 0 0.65rem;
   font-size: 0.76rem;
-  line-height: 1.45;
+  line-height: 1.35;
   color: color-mix(in srgb, var(--text-muted) 70%, #4d5a54 30%);
+  max-width: none;
+  white-space: nowrap;
 }
 
 #tab-portfolio .pf-cmp-empty {
@@ -4423,6 +4425,10 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 
   #tab-portfolio .pf-cmp-kpi-val {
     font-size: 1.22rem;
+  }
+
+  #tab-portfolio .pf-cmp-explain {
+    white-space: normal;
   }
 
   #tab-portfolio .pf-cmp-table-wrap {
