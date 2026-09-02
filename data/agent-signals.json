@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-09-02T20:10:50.412Z",
+  "updatedAt": "2026-09-02T22:38:13.457Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -21,8 +21,8 @@
       "ROSN",
       "YDEX",
       "VTBR",
-      "SBRB",
       "MAGN",
+      "SBRB",
       "SAFE",
       "SNGSP"
     ],
@@ -37,8 +37,8 @@
         "ticker": "AKMM",
         "name": "AKMM ETF",
         "insufficient": false,
-        "currentPrice": 176.72,
-        "dayChangePct": 0.03,
+        "currentPrice": 176.73,
+        "dayChangePct": 0.04,
         "signals": [
           {
             "id": "month-high",
@@ -53,8 +53,8 @@
         "ticker": "SBER",
         "name": "Сбербанк",
         "insufficient": false,
-        "currentPrice": 273.74,
-        "dayChangePct": 0.56,
+        "currentPrice": 274.28,
+        "dayChangePct": 0.76,
         "signals": [],
         "status": "Спокойно"
       },
@@ -78,8 +78,8 @@
         "ticker": "GAZP",
         "name": "ГАЗПРОМ ао",
         "insufficient": false,
-        "currentPrice": 87.89,
-        "dayChangePct": 1.3,
+        "currentPrice": 87.93,
+        "dayChangePct": 1.35,
         "signals": [],
         "status": "Спокойно"
       },
@@ -87,8 +87,8 @@
         "ticker": "OZON",
         "name": "Озон",
         "insufficient": false,
-        "currentPrice": 2391,
-        "dayChangePct": 2.53,
+        "currentPrice": 2393,
+        "dayChangePct": 2.62,
         "signals": [
           {
             "id": "week-up",
@@ -103,8 +103,8 @@
         "ticker": "LKOH",
         "name": "ЛУКОЙЛ",
         "insufficient": false,
-        "currentPrice": 4788,
-        "dayChangePct": 1.52,
+        "currentPrice": 4786.5,
+        "dayChangePct": 1.48,
         "signals": [
           {
             "id": "week-up",
@@ -125,8 +125,8 @@
         "ticker": "GMKN",
         "name": "ГМКНорНик",
         "insufficient": false,
-        "currentPrice": 129.04,
-        "dayChangePct": 2.74,
+        "currentPrice": 129.2,
+        "dayChangePct": 2.87,
         "signals": [
           {
             "id": "month-high",
@@ -141,15 +141,9 @@
         "ticker": "PLZL",
         "name": "Полюс",
         "insufficient": false,
-        "currentPrice": 989.4,
-        "dayChangePct": 1.02,
+        "currentPrice": 994,
+        "dayChangePct": 1.49,
         "signals": [
-          {
-            "id": "week-down",
-            "title": "Снижение за неделю",
-            "reasons": [],
-            "checklist": []
-          },
           {
             "id": "month-low",
             "title": "Близко к нижней границе месяца",
@@ -163,8 +157,8 @@
         "ticker": "T",
         "name": "Т-Техно ао",
         "insufficient": false,
-        "currentPrice": 254.46,
-        "dayChangePct": 0.52,
+        "currentPrice": 254.62,
+        "dayChangePct": 0.58,
         "signals": [],
         "status": "Спокойно"
       },
@@ -172,8 +166,8 @@
         "ticker": "SBMM",
         "name": "SBMM ETF",
         "insufficient": false,
-        "currentPrice": 19.3025,
-        "dayChangePct": 0.04,
+        "currentPrice": 19.302,
+        "dayChangePct": 0.03,
         "signals": [
           {
             "id": "month-high",
@@ -204,8 +198,8 @@
         "ticker": "NVTK",
         "name": "Новатэк ао",
         "insufficient": false,
-        "currentPrice": 976.2,
-        "dayChangePct": 1.93,
+        "currentPrice": 976,
+        "dayChangePct": 1.91,
         "signals": [],
         "status": "Спокойно"
       },
@@ -213,8 +207,8 @@
         "ticker": "AFLT",
         "name": "Аэрофлот",
         "insufficient": false,
-        "currentPrice": 31.07,
-        "dayChangePct": 1.47,
+        "currentPrice": 31.04,
+        "dayChangePct": 1.37,
         "signals": [
           {
             "id": "month-low",
@@ -229,8 +223,8 @@
         "ticker": "ROSN",
         "name": "Роснефть",
         "insufficient": false,
-        "currentPrice": 319,
-        "dayChangePct": 0.71,
+        "currentPrice": 319.1,
+        "dayChangePct": 0.74,
         "signals": [],
         "status": "Спокойно"
       },
@@ -238,8 +232,8 @@
         "ticker": "YDEX",
         "name": "ЯНДЕКС",
         "insufficient": false,
-        "currentPrice": 3577.5,
-        "dayChangePct": 1.5,
+        "currentPrice": 3581,
+        "dayChangePct": 1.6,
         "signals": [],
         "status": "Спокойно"
       },
@@ -247,18 +241,24 @@
         "ticker": "VTBR",
         "name": "ВТБ ао",
         "insufficient": false,
-        "currentPrice": 51.81,
-        "dayChangePct": 1.3,
+        "currentPrice": 51.85,
+        "dayChangePct": 1.38,
         "signals": [],
         "status": "Спокойно"
       },
       {
-        "ticker": "SBRB",
-        "name": "SBRB ETF",
+        "ticker": "MAGN",
+        "name": "ММК",
         "insufficient": false,
-        "currentPrice": 19.026,
-        "dayChangePct": 0.08,
+        "currentPrice": 22.68,
+        "dayChangePct": 2.53,
         "signals": [
+          {
+            "id": "week-up",
+            "title": "Рост за неделю",
+            "reasons": [],
+            "checklist": []
+          },
           {
             "id": "month-high",
             "title": "Близко к верхней границе месяца",
@@ -269,18 +269,12 @@
         "status": "Зона внимания"
       },
       {
-        "ticker": "MAGN",
-        "name": "ММК",
+        "ticker": "SBRB",
+        "name": "SBRB ETF",
         "insufficient": false,
-        "currentPrice": 22.69,
-        "dayChangePct": 2.58,
+        "currentPrice": 19.026,
+        "dayChangePct": 0.08,
         "signals": [
-          {
-            "id": "week-up",
-            "title": "Рост за неделю",
-            "reasons": [],
-            "checklist": []
-          },
           {
             "id": "month-high",
             "title": "Близко к верхней границе месяца",
@@ -310,8 +304,8 @@
         "ticker": "SNGSP",
         "name": "Сургнфгз-п",
         "insufficient": false,
-        "currentPrice": 41.985,
-        "dayChangePct": 0.18,
+        "currentPrice": 42,
+        "dayChangePct": 0.21,
         "signals": [],
         "status": "Спокойно"
       }
