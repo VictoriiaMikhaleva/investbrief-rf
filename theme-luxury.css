@@ -3659,7 +3659,7 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 
 #tab-portfolio .pf-asof-table-wrap {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 #tab-portfolio .pf-asof-table {
@@ -3721,9 +3721,41 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   margin-top: 0.08rem;
 }
 
-#tab-portfolio .pf-asof-table .pf-asof-td-qty {
+#tab-portfolio .pf-asof-table .pf-asof-td-value {
   font-weight: 650;
   color: color-mix(in srgb, var(--text) 86%, #3d5348 14%);
+  white-space: nowrap;
+}
+
+#tab-portfolio .pf-asof-table .pf-asof-td-price,
+#tab-portfolio .pf-asof-table .pf-asof-td-pdate {
+  white-space: nowrap;
+}
+
+#tab-portfolio .pf-asof-table .pf-asof-row--muted td {
+  color: color-mix(in srgb, var(--text) 72%, var(--text-muted) 28%);
+}
+
+#tab-portfolio .pf-asof-partial {
+  margin: 0 0 0.55rem;
+  padding: 0.42rem 0.6rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
+  background: color-mix(in srgb, var(--bronze-soft) 28%, #fffaf6 72%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 18%, #eadccb 82%);
+  border-radius: 8px;
+}
+
+#tab-portfolio .pf-asof-foot {
+  margin: 0.65rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 82%, #8a939e 18%);
+}
+
+#tab-portfolio .pf-asof-card-value {
+  font-weight: 650;
 }
 
 #tab-portfolio .pf-asof-table .pf-asof-td-note {
@@ -3821,6 +3853,28 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   margin: 0.4rem 0 0;
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+@media (max-width: 1199px) {
+  #tab-portfolio .pf-asof-col-ops {
+    display: none;
+  }
+}
+
+@media (max-width: 999px) {
+  #tab-portfolio .pf-asof-col-hist {
+    display: none;
+  }
+
+  #tab-portfolio .pf-asof-table {
+    font-size: 0.76rem;
+  }
+
+  #tab-portfolio .pf-asof-table--no-notes td.pf-asof-td-value {
+    border-right: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+    border-radius: 0 10px 10px 0;
+    padding-right: 0.7rem;
+  }
 }
 
 @media (max-width: 699px) {

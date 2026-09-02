@@ -336,7 +336,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__collectRecent = collectRecentPortfolioOperations;' +
       '\nthis.__resolveNav = resolvePortfolioHistoryNavTarget;' +
       '\nthis.__timeline = buildTickerOperationTimeline;' +
-      '\nthis.__asOf = buildPortfolioCompositionAtDate;',
+      '\nthis.__asOf = buildPortfolioCompositionAtDate;' +
+      '\nthis.__asOfValue = buildPortfolioValueAtDate;',
     sandbox,
     { timeout: 5000 }
   );
@@ -364,6 +365,7 @@ function loadPortfolioCalcHelpers() {
     resolvePortfolioHistoryNavTarget: sandbox.__resolveNav,
     buildTickerOperationTimeline: sandbox.__timeline,
     buildPortfolioCompositionAtDate: sandbox.__asOf,
+    buildPortfolioValueAtDate: sandbox.__asOfValue,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -1501,9 +1503,174 @@ function loadPriceAtDateHelpers() {
   })();
 }
 
+{
+  // Волна 3.4: стоимость портфеля на дату — mock цен, без сети
+  function priceOk(price, extra) {
+    extra = extra || {};
+    return {
+      status: 'ok',
+      price: price,
+      priceDate: extra.priceDate || '2024-06-01',
+      priceType: 'close',
+      unit: extra.unit || 'rub',
+      source: extra.source || 'moex-iss-history-shares'
+    };
+  }
+  function mockMap(map) {
+    return function (ticker) {
+      const row = map[String(ticker || '').toUpperCase()];
+      return Promise.resolve(row || { status: 'missing', price: null, priceDate: null });
+    };
+  }
+  const frozenStore = JSON.stringify(calc.memStore);
+
+  await (async () => {
+    const one = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
+      sales: []
+    }, '2024-06-01', { getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100) }) });
+    assert(!one.invalidDate, 'value: valid date');
+    assert(one.items.length === 1 && one.items[0].qtyAtDate === 10, 'value: one share qty');
+    assert(one.items[0].status === 'ok' && one.items[0].valueRub === 1000, 'value: 10×100=1000');
+    assert(one.totalValueRub === 1000 && one.pricedValueRub === 1000, 'value: total 1000');
+    assert(one.missingValueRub == null, 'value: missingValueRub not invented');
+    assert(!one.isPartial && one.pricedItemsCount === 1, 'value: fully priced');
+
+    const two = await calc.buildPortfolioValueAtDate({
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' },
+        { ticker: 'GAZP', lotId: 'G1', qty: 4, avgPrice: 140, buyDate: '2024-02-01' }
+      ],
+      sales: []
+    }, '2024-06-01', { getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100), GAZP: priceOk(50) }) });
+    assert(two.totalValueRub === 1200, 'value: 1000+200=1200');
+    assert(two.pricedItemsCount === 2 && !two.isPartial, 'value: two priced');
+
+    const soldBefore = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 250, buyDate: '2024-01-15' }],
+      sales: [{
+        saleId: 'SALE1', ticker: 'SBER', qty: 5, buyPrice: 250, salePrice: 280, saleDate: '2024-05-01',
+        allocations: [{ lotId: 'S1', qty: 5, buyPrice: 250, buyDate: '2024-01-15' }]
+      }]
+    }, '2024-06-01', { getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100) }) });
+    assert(soldBefore.items[0].qtyAtDate === 5 && soldBefore.totalValueRub === 500, 'value: sale before date uses qty 5');
+
+    const soldAfter = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 250, buyDate: '2024-01-15' }],
+      sales: [{
+        saleId: 'SALE1', ticker: 'SBER', qty: 5, buyPrice: 250, salePrice: 280, saleDate: '2025-06-01',
+        allocations: [{ lotId: 'S1', qty: 5, buyPrice: 250, buyDate: '2024-01-15' }]
+      }]
+    }, '2024-12-01', { getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100, { priceDate: '2024-12-01' }) }) });
+    assert(soldAfter.items[0].qtyAtDate === 10 && soldAfter.totalValueRub === 1000, 'value: sale after date ignored');
+
+    const ofz = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000 }],
+      sales: []
+    }, '2024-06-01', {
+      getInstrumentPriceAtDate: mockMap({
+        OFZ_26238: priceOk(95, { unit: 'pct-of-face-value', source: 'moex-iss-history-bonds' })
+      })
+    });
+    assert(ofz.items[0].unit === 'pct-of-face-value', 'ofz value: unit pct');
+    assert(ofz.items[0].valueRub === 9500, 'ofz value: 10×95%×1000=9500');
+    assert(ofz.totalValueRub === 9500, 'ofz value: total 9500');
+    assert(String(ofz.items[0].note).indexOf('НКД') >= 0, 'ofz value: clean-price note');
+
+    const bpif = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'AKMM', lotId: 'A1', qty: 20, avgPrice: 10, buyDate: '2024-01-10' }],
+      sales: []
+    }, '2024-06-01', { getInstrumentPriceAtDate: mockMap({ AKMM: priceOk(12.5) }) });
+    assert(bpif.items[0].unit === 'rub' && bpif.items[0].valueRub === 250, 'bpif value: 20×12.5=250');
+
+    const weekend = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
+      sales: []
+    }, '2024-06-09', {
+      getInstrumentPriceAtDate: mockMap({ SBER: priceOk(280, { priceDate: '2024-06-07' }) })
+    });
+    assert(weekend.items[0].priceDate === '2024-06-07', 'weekend value: previous priceDate');
+    assert(weekend.items[0].priceDate < weekend.targetDate, 'weekend value: priceDate before target');
+    assert(String(weekend.items[0].note).indexOf('07.06.2024') >= 0, 'weekend value: previous close note');
+    assert(weekend.totalValueRub === 2800, 'weekend value: 10×280');
+
+    const mixed = await calc.buildPortfolioValueAtDate({
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' },
+        { ticker: 'GAZP', lotId: 'G1', qty: 4, avgPrice: 140, buyDate: '2024-02-01' }
+      ],
+      sales: []
+    }, '2024-06-01', {
+      getInstrumentPriceAtDate: mockMap({
+        SBER: priceOk(100),
+        GAZP: { status: 'missing', price: null, priceDate: null }
+      })
+    });
+    assert(mixed.items.find((x) => x.ticker === 'GAZP').status === 'missing', 'missing: status');
+    assert(mixed.items.find((x) => x.ticker === 'GAZP').valueRub == null, 'missing: valueRub null');
+    assert(mixed.totalValueRub === 1000, 'missing: total only priced');
+    assert(mixed.isPartial === true && mixed.missingItemsCount === 1, 'missing: isPartial');
+
+    const unsup = await calc.buildPortfolioValueAtDate({
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' },
+        { ticker: 'FUNDX', lotId: 'F1', qty: 3, avgPrice: 10, buyDate: '2024-02-01' }
+      ],
+      sales: []
+    }, '2024-06-01', {
+      getInstrumentPriceAtDate: mockMap({
+        SBER: priceOk(100),
+        FUNDX: { status: 'unsupported', price: null }
+      })
+    });
+    assert(unsup.items.find((x) => x.ticker === 'FUNDX').status === 'unsupported', 'unsupported: status');
+    assert(unsup.items.find((x) => x.ticker === 'FUNDX').valueRub == null, 'unsupported: no value');
+    assert(unsup.isPartial === true && unsup.unsupportedItemsCount === 1, 'unsupported: isPartial');
+    assert(unsup.totalValueRub === 1000, 'unsupported: total only priced');
+
+    const empty = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-06-01' }],
+      sales: []
+    }, '2024-01-15', { getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100) }) });
+    assert(empty.items.length === 0 && empty.totalValueRub === 0, 'empty composition: total 0');
+    assert(!empty.isPartial, 'empty composition: not partial');
+
+    const bad = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
+      sales: []
+    }, 'not-a-date', { getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100) }) });
+    assert(bad.invalidDate === true && bad.items.length === 0, 'bad date: invalidDate');
+    assert(bad.totalValueRub == null, 'bad date: total null');
+    assert(String(bad.targetDate || '').indexOf('Invalid') === -1, 'bad date: no Invalid Date');
+
+    const incomplete = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 3, avgPrice: 250, buyDate: '2024-01-15' }],
+      sales: [{
+        saleId: 'X', ticker: 'SBER', qty: 1, buyPrice: 250, salePrice: 260, saleDate: '',
+        allocations: [{ lotId: 'S1', qty: 1, buyPrice: 250, buyDate: '2024-01-15' }]
+      }]
+    }, '2025-01-01', { getInstrumentPriceAtDate: mockMap({ SBER: priceOk(100, { priceDate: '2024-12-30' }) }) });
+    assert(incomplete.hasIncompleteHistory === true, 'incomplete: flagged');
+    assert(incomplete.items.length === 1 && incomplete.items[0].qtyAtDate === 4, 'incomplete: qty not reduced by undated sale');
+    assert(incomplete.totalValueRub === 400, 'incomplete: still values remaining qty');
+
+    const noLast = await calc.buildPortfolioValueAtDate({
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, currentPrice: 999, buyDate: '2024-01-15' }],
+      sales: []
+    }, '2024-06-01', {
+      getInstrumentPriceAtDate: function (ticker, date, meta) {
+        assert(meta && !meta.currentPrice && !meta.avgPrice, 'price meta has no live/avg');
+        return Promise.resolve({ status: 'missing', price: null, last: 999, currentPrice: 999 });
+      }
+    });
+    assert(noLast.items[0].status === 'missing' && noLast.items[0].valueRub == null, 'no LAST/avg substitute');
+    assert(JSON.stringify(calc.memStore) === frozenStore, 'value helper does not write localStorage');
+  })();
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date');

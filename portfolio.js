@@ -1478,6 +1478,237 @@
     };
   }
 
+  var ASOF_PREV_CLOSE_NOTE_PREFIX = 'Использована цена закрытия на ближайшую предыдущую торговую дату: ';
+  var ASOF_OFZ_CLEAN_NOTE = 'без исторического НКД';
+  var ASOF_MISSING_PRICE_NOTE = 'Нет цены закрытия на дату';
+  var ASOF_UNSUPPORTED_NOTE = 'Инструмент пока не поддерживается';
+
+  function asOfRoundRub(n) {
+    if (n == null || !isFinite(Number(n))) return null;
+    return Math.round(Number(n) * 100) / 100;
+  }
+
+  function asOfIsoToRu(iso) {
+    var n = timelineIsoDate(iso);
+    if (!n || n.length < 10) return '';
+    return n.slice(8, 10) + '.' + n.slice(5, 7) + '.' + n.slice(0, 4);
+  }
+
+  function asOfFaceValueForItem(item, bondMeta) {
+    var lots = item && item.openLotsAtDate ? item.openLotsAtDate : [];
+    var i;
+    for (i = 0; i < lots.length; i++) {
+      var fromLot = asOfTakeFace(lots[i]);
+      if (fromLot) return resolveBondFaceValue({ ticker: item.ticker, faceValue: fromLot }, bondMeta);
+    }
+    return resolveBondFaceValue({ ticker: item && item.ticker }, bondMeta);
+  }
+
+  function asOfPriceMetaForItem(item) {
+    var meta = {};
+    if (item && item.type === 'bond') {
+      meta.type = 'ofz';
+      meta.board = 'TQOB';
+    } else if (item && item.type === 'stock') {
+      meta.type = 'stock';
+    }
+    return meta;
+  }
+
+  function asOfFetchPriceAtDate(ticker, targetDate, meta, options) {
+    if (options && typeof options.getInstrumentPriceAtDate === 'function') {
+      return Promise.resolve(options.getInstrumentPriceAtDate(ticker, targetDate, meta, options));
+    }
+    var priceOpts = {};
+    if (options && options.historyByTicker && options.historyByTicker[ticker]) {
+      priceOpts.history = options.historyByTicker[ticker];
+    }
+    if (typeof getInstrumentPriceAtDate === 'function') {
+      return Promise.resolve(getInstrumentPriceAtDate(ticker, targetDate, meta, priceOpts));
+    }
+    return Promise.resolve({
+      ticker: ticker,
+      requestedDate: targetDate,
+      price: null,
+      priceDate: null,
+      status: 'missing',
+      note: ASOF_MISSING_PRICE_NOTE
+    });
+  }
+
+  function asOfValueFromPrice(item, priceRes, faceValue) {
+    var qty = Number(item && item.qtyAtDate);
+    var status = priceRes && priceRes.status ? String(priceRes.status) : 'missing';
+    if (status === 'invalid-date') status = 'missing';
+    var price = priceRes && priceRes.price != null ? Number(priceRes.price) : null;
+    var unit = priceRes && priceRes.unit ? String(priceRes.unit) : '';
+    var isBond = !!(item && item.type === 'bond');
+    var valueRub = null;
+
+    if (status === 'ok' && price != null && isFinite(price) && qty > 0) {
+      if (isBond) {
+        if (unit === 'pct-of-face-value') {
+          valueRub = bondRubFromPct(price, qty, faceValue);
+        } else {
+          status = 'missing';
+        }
+      } else if (unit === 'rub' || !unit) {
+        valueRub = qty * price;
+      } else if (unit === 'pct-of-face-value') {
+        status = 'missing';
+      }
+    }
+
+    if (status === 'ok' && (valueRub == null || !isFinite(valueRub))) {
+      status = 'missing';
+      valueRub = null;
+    }
+    if (status === 'ok') valueRub = asOfRoundRub(valueRub);
+    else valueRub = null;
+
+    return { status: status, valueRub: valueRub, price: status === 'ok' ? price : null, unit: unit };
+  }
+
+  /**
+   * Read-only оценка портфеля на дату (qty × CLOSE / % номинала).
+   * Не пишет в JSON, не использует LAST, live-хвост и цену покупки.
+   */
+  function buildPortfolioValueAtDate(portfolio, targetDate, options) {
+    options = options || {};
+    var iso = timelineIsoDate(targetDate);
+    var empty = {
+      targetDate: iso,
+      invalidDate: !iso,
+      totalValueRub: iso ? 0 : null,
+      pricedValueRub: iso ? 0 : null,
+      missingValueRub: null,
+      pricedItemsCount: 0,
+      missingItemsCount: 0,
+      unsupportedItemsCount: 0,
+      hasIncompleteHistory: false,
+      isPartial: false,
+      notes: [],
+      items: []
+    };
+    if (!iso) return Promise.resolve(empty);
+
+    var composition = options.composition;
+    if (!composition) {
+      composition = buildPortfolioCompositionAtDate(portfolio, iso, options);
+    }
+    if (!composition || composition.invalidDate) {
+      empty.invalidDate = true;
+      empty.totalValueRub = null;
+      empty.pricedValueRub = null;
+      empty.targetDate = composition && composition.targetDate ? composition.targetDate : iso;
+      return Promise.resolve(empty);
+    }
+
+    var bondMetaMap = options.bondMetaMap || {};
+    var sourceItems = composition.items || [];
+    if (!sourceItems.length) {
+      return Promise.resolve({
+        targetDate: iso,
+        invalidDate: false,
+        totalValueRub: 0,
+        pricedValueRub: 0,
+        missingValueRub: null,
+        pricedItemsCount: 0,
+        missingItemsCount: 0,
+        unsupportedItemsCount: 0,
+        hasIncompleteHistory: !!composition.hasIncompleteHistory,
+        isPartial: false,
+        notes: (composition.notes || []).slice(),
+        items: []
+      });
+    }
+
+    var jobs = sourceItems.map(function (compItem) {
+      var ticker = compItem.ticker;
+      var meta = asOfPriceMetaForItem(compItem);
+      var bondMeta = bondMetaMap[ticker] || null;
+      var faceValue = (compItem.type === 'bond') ? asOfFaceValueForItem(compItem, bondMeta) : null;
+      return asOfFetchPriceAtDate(ticker, iso, meta, options).then(function (priceRes) {
+        priceRes = priceRes || {};
+        var mapped = asOfValueFromPrice(compItem, priceRes, faceValue);
+        var notes = [];
+        (compItem.notes || []).forEach(function (n) {
+          if (n && notes.indexOf(n) < 0) notes.push(n);
+        });
+        if (mapped.status === 'ok' && priceRes.priceDate && priceRes.priceDate !== iso) {
+          var ru = asOfIsoToRu(priceRes.priceDate);
+          notes.push(ASOF_PREV_CLOSE_NOTE_PREFIX + (ru || priceRes.priceDate));
+        }
+        if (mapped.status === 'ok' && compItem.type === 'bond') {
+          notes.push(ASOF_OFZ_CLEAN_NOTE);
+        }
+        if (mapped.status === 'missing') notes.push(ASOF_MISSING_PRICE_NOTE);
+        if (mapped.status === 'unsupported') notes.push(ASOF_UNSUPPORTED_NOTE);
+
+        return {
+          ticker: ticker,
+          name: compItem.name || ticker,
+          type: compItem.type || '',
+          market: compItem.market || '',
+          qtyAtDate: compItem.qtyAtDate,
+          boughtQtyUpToDate: compItem.boughtQtyUpToDate,
+          soldQtyUpToDate: compItem.soldQtyUpToDate,
+          firstBuyDate: compItem.firstBuyDate,
+          lastOperationDate: compItem.lastOperationDate,
+          openLotsAtDate: compItem.openLotsAtDate,
+          hasIncompleteHistory: !!compItem.hasIncompleteHistory,
+          price: mapped.price,
+          priceDate: mapped.status === 'ok' ? (priceRes.priceDate || null) : null,
+          priceType: mapped.status === 'ok' ? (priceRes.priceType || 'close') : null,
+          unit: mapped.status === 'ok' ? (mapped.unit || priceRes.unit || null) : (priceRes.unit || null),
+          faceValue: faceValue,
+          valueRub: mapped.valueRub,
+          status: mapped.status,
+          note: notes.join('; '),
+          notes: notes
+        };
+      });
+    });
+
+    return Promise.all(jobs).then(function (items) {
+      var priced = 0;
+      var missing = 0;
+      var unsupported = 0;
+      var total = 0;
+      items.forEach(function (row) {
+        if (row.status === 'ok') {
+          priced += 1;
+          total += Number(row.valueRub) || 0;
+        } else if (row.status === 'unsupported') unsupported += 1;
+        else missing += 1;
+      });
+      total = asOfRoundRub(total);
+      var notes = (composition.notes || []).slice();
+      if (missing > 0) {
+        notes.push('Оценка рассчитана частично: по ' + missing + ' ' +
+          (missing === 1 ? 'бумаге' : 'бумагам') + ' нет цены на выбранную дату');
+      }
+      if (unsupported > 0) {
+        notes.push('Некоторые инструменты пока не поддерживаются для оценки на дату');
+      }
+      return {
+        targetDate: iso,
+        invalidDate: false,
+        totalValueRub: total,
+        pricedValueRub: total,
+        missingValueRub: null,
+        pricedItemsCount: priced,
+        missingItemsCount: missing,
+        unsupportedItemsCount: unsupported,
+        hasIncompleteHistory: !!composition.hasIncompleteHistory,
+        isPartial: (missing + unsupported) > 0,
+        notes: notes,
+        items: items
+      };
+    });
+  }
+
+
   /** UI-настройки портфеля (не часть portfolio JSON). */
   var PF_UI_STORAGE_KEY = 'ibrf.portfolioUi.v1';
 
@@ -4391,7 +4622,8 @@
   }
 
   function asOfRowNoteText(row) {
-    var notes = row && Array.isArray(row.notes) ? row.notes : [];
+    var notes = row && Array.isArray(row.notes) ? row.notes.slice() : [];
+    if (!notes.length && row && row.note) notes = [row.note];
     return notes.filter(function (n) {
       var t = String(n || '').trim();
       return t && t !== '—';
@@ -4400,9 +4632,24 @@
 
   function asOfShouldShowNotes(items) {
     return (items || []).some(function (row) {
-      if (row && row.hasIncompleteHistory) return true;
+      if (!row) return false;
+      if (row.hasIncompleteHistory) return true;
+      if (row.status === 'missing' || row.status === 'unsupported') return true;
       return !!asOfRowNoteText(row);
     });
+  }
+
+  function formatAsOfClosePriceDisplay(row) {
+    if (!row || row.status !== 'ok' || row.price == null || !isFinite(Number(row.price))) return '—';
+    var n = Number(row.price);
+    var num = n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (row.unit === 'pct-of-face-value') return num + '%';
+    return num + ' ₽';
+  }
+
+  function formatAsOfValueDisplay(row) {
+    if (!row || row.status !== 'ok' || row.valueRub == null || !isFinite(Number(row.valueRub))) return '—';
+    return formatPortfolioRubAmount(row.valueRub);
   }
 
   function sortAsOfItemsForDisplay(items) {
@@ -4427,7 +4674,18 @@
   function buildPortfolioAsOfSummaryHtml(result, items) {
     var dateLbl = formatAsOfDateDisplay(result && result.targetDate);
     var n = (items || []).length;
-    var lead = 'На ' + dateLbl + ': ' + n + ' ' + ruCountWord(n, 'бумага', 'бумаги', 'бумаг') + ' в портфеле';
+    var papers = n + ' ' + ruCountWord(n, 'бумага', 'бумаги', 'бумаг');
+    var lead;
+    if (!n) {
+      lead = 'На ' + dateLbl + ': 0 бумаг в портфеле';
+    } else if (result && result.isPartial) {
+      lead = 'На ' + dateLbl + ': ' + papers + ' · оценено ' + formatPortfolioRubAmount(result.totalValueRub) +
+        ' · часть бумаг без цены';
+    } else if (result && result.totalValueRub != null && isFinite(Number(result.totalValueRub))) {
+      lead = 'На ' + dateLbl + ': ' + papers + ' · стоимость ' + formatPortfolioRubAmount(result.totalValueRub);
+    } else {
+      lead = 'На ' + dateLbl + ': ' + papers + ' в портфеле';
+    }
     var classes = '';
     if (n && asOfAllTypesKnown(items)) {
       var stocks = items.filter(function (row) { return asOfRowType(row) === 'stock'; }).length;
@@ -4467,6 +4725,9 @@
         '</div>' +
         '<div class="pf-asof-card-kpis">' +
           '<span class="pf-asof-card-qty"><span class="lbl">Кол-во на дату</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyAtDate)) + '</span>' +
+          '<span class="pf-asof-card-value"><span class="lbl">Стоимость на дату</span> ' + escapeHtml(formatAsOfValueDisplay(row)) + '</span>' +
+          '<span><span class="lbl">Цена на дату</span> ' + escapeHtml(formatAsOfClosePriceDisplay(row)) + '</span>' +
+          '<span><span class="lbl">Дата цены</span> ' + escapeHtml(formatAsOfDateDisplay(row.priceDate)) + '</span>' +
           '<span><span class="lbl">Куплено</span> ' + escapeHtml(formatAsOfQtyDisplay(row.boughtQtyUpToDate)) + '</span>' +
           '<span><span class="lbl">Продано</span> ' + escapeHtml(formatAsOfQtyDisplay(row.soldQtyUpToDate)) + '</span>' +
           '<span><span class="lbl">Первая покупка</span> ' + escapeHtml(formatAsOfDateDisplay(row.firstBuyDate)) + '</span>' +
@@ -4482,7 +4743,7 @@
     items = sortAsOfItemsForDisplay(items);
     var showNotes = asOfShouldShowNotes(items);
     var showGroups = asOfShouldShowGroups(items);
-    var colCount = showNotes ? 7 : 6;
+    var colCount = showNotes ? 10 : 9;
     var lastGroup = '';
     var rows = items.map(function (row) {
       var kind = asOfRowType(row);
@@ -4493,13 +4754,17 @@
           (kind === 'bond' ? 'ОФЗ' : 'Акции') +
         '</td></tr>';
       }
-      html += '<tr class="pf-asof-row' + (kind ? ' pf-asof-row--' + kind : '') + '">' +
+      html += '<tr class="pf-asof-row' + (kind ? ' pf-asof-row--' + kind : '') +
+        (row.status === 'missing' || row.status === 'unsupported' ? ' pf-asof-row--muted' : '') + '">' +
         '<td class="pf-asof-td-paper">' + asOfPaperCellHtml(row) + '</td>' +
         '<td class="pf-asof-td-qty">' + escapeHtml(formatAsOfQtyDisplay(row.qtyAtDate)) + '</td>' +
-        '<td>' + escapeHtml(formatAsOfQtyDisplay(row.boughtQtyUpToDate)) + '</td>' +
-        '<td>' + escapeHtml(formatAsOfQtyDisplay(row.soldQtyUpToDate)) + '</td>' +
-        '<td>' + escapeHtml(formatAsOfDateDisplay(row.firstBuyDate)) + '</td>' +
-        '<td>' + escapeHtml(formatAsOfDateDisplay(row.lastOperationDate)) + '</td>' +
+        '<td class="pf-asof-col-ops">' + escapeHtml(formatAsOfQtyDisplay(row.boughtQtyUpToDate)) + '</td>' +
+        '<td class="pf-asof-col-ops">' + escapeHtml(formatAsOfQtyDisplay(row.soldQtyUpToDate)) + '</td>' +
+        '<td class="pf-asof-td-price">' + escapeHtml(formatAsOfClosePriceDisplay(row)) + '</td>' +
+        '<td class="pf-asof-td-pdate">' + escapeHtml(formatAsOfDateDisplay(row.priceDate)) + '</td>' +
+        '<td class="pf-asof-td-value">' + escapeHtml(formatAsOfValueDisplay(row)) + '</td>' +
+        '<td class="pf-asof-col-hist">' + escapeHtml(formatAsOfDateDisplay(row.firstBuyDate)) + '</td>' +
+        '<td class="pf-asof-col-hist">' + escapeHtml(formatAsOfDateDisplay(row.lastOperationDate)) + '</td>' +
         (showNotes
           ? '<td class="muted pf-asof-td-note">' + escapeHtml(asOfRowNoteText(row) || '—') + '</td>'
           : '') +
@@ -4509,14 +4774,17 @@
     return '<div class="pf-asof-table-wrap">' +
       '<table class="pf-asof-table' + (showNotes ? '' : ' pf-asof-table--no-notes') + '">' +
         '<thead><tr>' +
-          '<th>Бумага</th><th>Кол-во на дату</th><th>Куплено</th><th>Продано</th>' +
-          '<th>Первая покупка</th><th>Последняя операция</th>' +
+          '<th>Бумага</th><th>Кол-во на дату</th>' +
+          '<th class="pf-asof-col-ops">Куплено</th><th class="pf-asof-col-ops">Продано</th>' +
+          '<th>Цена на дату</th><th>Дата цены</th><th>Стоимость на дату</th>' +
+          '<th class="pf-asof-col-hist">Первая покупка</th><th class="pf-asof-col-hist">Последняя операция</th>' +
           (showNotes ? '<th>Примечание</th>' : '') +
         '</tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
       '</table>' +
     '</div>' +
-    '<div class="pf-asof-cards">' + buildPortfolioAsOfCardsHtml(items, showNotes, showGroups) + '</div>';
+    '<div class="pf-asof-cards">' + buildPortfolioAsOfCardsHtml(items, showNotes, showGroups) + '</div>' +
+    '<p class="muted pf-asof-foot">Оценка считается по цене закрытия на выбранную или ближайшую предыдущую торговую дату. Для облигаций — по чистой цене, без исторического НКД.</p>';
   }
 
   function renderPortfolioAsOfResult(result, errorText) {
@@ -4542,12 +4810,23 @@
       warn.textContent = 'Часть операций без корректной даты не включена в расчёт состава на дату.';
     }
     var items = result.items || [];
+    var extra = '';
+    if (result.isPartial && result.missingItemsCount > 0) {
+      extra += '<p class="pf-asof-partial" role="status">Оценка рассчитана частично: по ' +
+        escapeHtml(String(result.missingItemsCount)) + ' ' +
+        escapeHtml(result.missingItemsCount === 1 ? 'бумаге' : 'бумагам') +
+        ' нет цены на выбранную дату.</p>';
+    }
+    if (result.unsupportedItemsCount > 0) {
+      extra += '<p class="pf-asof-partial" role="status">Некоторые инструменты пока не поддерживаются для оценки на дату.</p>';
+    }
     if (!items.length) {
-      out.innerHTML = buildPortfolioAsOfSummaryHtml(result, []) +
-        '<p class="muted pf-asof-empty">На выбранную дату в портфеле не найдено открытых позиций.</p>';
+      out.innerHTML = buildPortfolioAsOfSummaryHtml(result, []) + extra +
+        '<p class="muted pf-asof-empty">На выбранную дату в портфеле не найдено открытых позиций.</p>' +
+        '<p class="muted pf-asof-foot">Оценка считается по цене закрытия на выбранную или ближайшую предыдущую торговую дату. Для облигаций — по чистой цене, без исторического НКД.</p>';
       return;
     }
-    out.innerHTML = buildPortfolioAsOfSummaryHtml(result, items) + buildPortfolioAsOfTableHtml(items);
+    out.innerHTML = buildPortfolioAsOfSummaryHtml(result, items) + extra + buildPortfolioAsOfTableHtml(items);
   }
 
   function showPortfolioAsOfComposition() {
@@ -4558,12 +4837,15 @@
     if (!iso) {
       pfAsOfShown = true;
       renderPortfolioAsOfResult(null, 'Укажите корректную дату.');
-      return;
+      return Promise.resolve();
     }
     var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
-    var result = buildPortfolioCompositionAtDate(pf, iso);
     pfAsOfShown = true;
-    renderPortfolioAsOfResult(result);
+    return buildPortfolioValueAtDate(pf, iso).then(function (result) {
+      renderPortfolioAsOfResult(result);
+    }).catch(function () {
+      renderPortfolioAsOfResult(null, 'Не удалось оценить портфель на выбранную дату.');
+    });
   }
 
   function refreshPortfolioAsOfIfShown() {
