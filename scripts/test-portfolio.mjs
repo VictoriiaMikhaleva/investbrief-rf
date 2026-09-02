@@ -1349,9 +1349,161 @@ const calc = loadPortfolioCalcHelpers();
   assert(String(mixed.items[0].lastOperationDate).indexOf('Invalid') === -1, 'no Invalid Date in output');
 }
 
+function loadPriceAtDateHelpers() {
+  const coreCode = fs.readFileSync(path.join(__dirname, '..', 'analytics-core.js'), 'utf8');
+  const helperCode = fs.readFileSync(path.join(__dirname, '..', 'price-at-date.js'), 'utf8');
+  const memStore = Object.create(null);
+  let setPortfolioCalls = 0;
+  const sandbox = {
+    console,
+    Date,
+    Math,
+    Number,
+    String,
+    Array,
+    Object,
+    JSON,
+    isFinite,
+    parseInt,
+    parseFloat,
+    Promise,
+    normalizeTicker: (t) => String(t || '').trim().toUpperCase(),
+    normalizePortfolioDate: (value) => {
+      if (value == null) return '';
+      const s = String(value).trim();
+      if (!s || /^invalid\b/i.test(s) || s === 'Invalid Date') return '';
+      const ymd = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (!ymd) return '';
+      const y = Number(ymd[1]);
+      const mo = Number(ymd[2]);
+      const d = Number(ymd[3]);
+      if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+      return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    },
+    isRuBondTicker: (ticker) => {
+      ticker = String(ticker || '').trim().toUpperCase();
+      return ticker.indexOf('OFZ') >= 0 || (ticker.indexOf('SU') === 0 && ticker.length > 8);
+    },
+    isIndexQuoteTicker: (ticker) => {
+      ticker = String(ticker || '').trim().toUpperCase();
+      return ticker === 'IMOEX' || ticker === 'INDEX';
+    },
+    Markets: { isUsTicker: () => false },
+    getPortfolio: () => ({ positions: [{ ticker: 'SBER', qty: 1, avgPrice: 250, currentPrice: 300 }], sales: [], cashFlows: [], schemaVersion: 1 }),
+    setPortfolio: () => { setPortfolioCalls += 1; },
+    localStorage: {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(memStore, k) ? memStore[k] : null),
+      setItem: (k, v) => { memStore[k] = String(v); },
+      removeItem: (k) => { delete memStore[k]; }
+    },
+    __memStore: memStore,
+    get setPortfolioCalls() { return setPortfolioCalls; }
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(coreCode, sandbox, { timeout: 5000 });
+  vm.runInNewContext(helperCode, sandbox, { timeout: 5000 });
+  return sandbox;
+}
+
+{
+  // Волна 3.3: цена инструмента на дату — helper, без сети
+  const sb = loadPriceAtDateHelpers();
+  const priceAt = sb.getInstrumentPriceAtDate;
+  const histShare = [
+    { date: '2024-06-07', close: 280.5, value: 1e9 },
+    { date: '2024-06-10', close: 282, value: 1.1e9 }
+  ];
+  const histBond = [
+    { date: '2024-06-07', close: 95.4 },
+    { date: '2024-06-10', close: 96.1 }
+  ];
+  const frozenPf = JSON.stringify(sb.getPortfolio());
+  const frozenStore = JSON.stringify(sb.__memStore);
+
+  await (async () => {
+    const exact = await priceAt('SBER', '2024-06-10', { type: 'stock' }, { history: histShare });
+    assert(exact.status === 'ok', 'share exact: status ok');
+    assert(exact.priceDate === '2024-06-10', 'share exact: priceDate = targetDate');
+    assert(exact.requestedDate === '2024-06-10', 'share exact: requestedDate');
+    assert(exact.price === 282, 'share exact: CLOSE');
+    assert(exact.priceType === 'close' && exact.unit === 'rub' && exact.currency === 'RUB', 'share exact: close/rub');
+    assert(exact.source === 'moex-iss-history-shares', 'share exact: source');
+
+    const notAfter = await priceAt('SBER', '2024-06-07', { type: 'stock' }, { history: histShare });
+    assert(notAfter.priceDate === '2024-06-07' && notAfter.price === 280.5, 'share: never pick later CLOSE');
+
+    const weekend = await priceAt('SBER', '2024-06-09', { type: 'stock' }, { history: histShare });
+    assert(weekend.status === 'ok', 'share weekend: status ok');
+    assert(weekend.priceDate === '2024-06-07', 'share weekend: previous CLOSE');
+    assert(weekend.price === 280.5, 'share weekend: previous price');
+    assert(weekend.priceDate <= weekend.requestedDate, 'share weekend: not after target');
+
+    const none = await priceAt('SBER', '2024-01-01', { type: 'stock' }, { history: histShare });
+    assert(none.status === 'missing', 'share no close: missing');
+    assert(none.price == null && none.priceDate == null, 'share no close: no price');
+    assert(String(none.note).indexOf('Нет цены закрытия') >= 0, 'share no close: note');
+
+    const bpif = await priceAt('AKMM', '2024-06-10', { type: 'bpif' }, { history: histShare });
+    assert(bpif.status === 'ok' && bpif.unit === 'rub', 'bpif: unit rub');
+    assert(bpif.source === 'moex-iss-history-shares', 'bpif: shares history source');
+
+    const ofzExact = await priceAt('OFZ_26238', '2024-06-10', { type: 'ofz' }, { history: histBond });
+    assert(ofzExact.status === 'ok', 'ofz exact: ok');
+    assert(ofzExact.unit === 'pct-of-face-value', 'ofz exact: unit pct');
+    assert(ofzExact.priceType === 'close' && ofzExact.price === 96.1, 'ofz exact: CLOSE percent');
+    assert(ofzExact.source === 'moex-iss-history-bonds', 'ofz exact: bonds source');
+
+    const ofzWeekend = await priceAt('SU26238RMFS4', '2024-06-09', { type: 'bond', board: 'TQOB' }, { history: histBond });
+    assert(ofzWeekend.status === 'ok' && ofzWeekend.priceDate === '2024-06-07', 'ofz weekend: previous CLOSE');
+    assert(ofzWeekend.price === 95.4, 'ofz weekend: previous pct');
+
+    const ofzMissing = await priceAt('OFZ_26238', '2023-01-01', {
+      type: 'ofz',
+      currentPrice: 98.5,
+      avgPrice: 95
+    }, {
+      history: histBond,
+      last: 99,
+      livePrice: 99,
+      currentPrice: 99
+    });
+    assert(ofzMissing.status === 'missing', 'ofz missing: missing');
+    assert(ofzMissing.price == null, 'ofz missing: no LAST/current/avg substitute');
+    assert(String(ofzMissing.note).indexOf('Нет цены закрытия') >= 0, 'ofz missing: note');
+
+    const pif = await priceAt('FUNDX', '2024-06-10', {
+      type: 'pif',
+      sharePrice: 1234,
+      shareDate: '2024-06-10'
+    }, { history: [] });
+    assert(pif.status === 'unsupported', 'plain pif: unsupported');
+    assert(pif.price == null, 'plain pif: no UK sharePrice');
+
+    const badDate = await priceAt('SBER', 'Invalid Date', { type: 'stock' }, { history: histShare });
+    assert(badDate.status === 'invalid-date', 'bad date: invalid-date');
+    assert(String(badDate.requestedDate).indexOf('Invalid') === -1, 'bad date: no Invalid Date in requestedDate');
+    assert(String(badDate.note).indexOf('Invalid Date') === -1, 'bad date: no Invalid Date in note');
+    const badDate2 = await priceAt('SBER', 'not-a-date', { type: 'stock' }, { history: histShare });
+    assert(badDate2.status === 'invalid-date', 'not-a-date: invalid-date');
+
+    let fetchCalls = 0;
+    await priceAt('SBER', '2024-06-10', { type: 'stock' }, {
+      history: histShare,
+      fetchJson: () => { fetchCalls += 1; throw new Error('should not fetch'); }
+    });
+    assert(fetchCalls === 0, 'injected history skips ISS fetch');
+
+    assert(JSON.stringify(sb.getPortfolio()) === frozenPf, 'price helper does not mutate getPortfolio()');
+    assert(JSON.stringify(sb.__memStore) === frozenStore, 'price helper does not write localStorage');
+    assert(sb.setPortfolioCalls === 0, 'price helper does not call setPortfolio');
+    assert(!Object.prototype.hasOwnProperty.call(sb.__memStore, 'ibrf.portfolio'), 'no ibrf.portfolio key');
+  })();
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date');

@@ -773,6 +773,7 @@
     getLastDividendPaymentDate: getLastDividendPaymentDate,
     monthsSinceIsoDate: monthsSinceIsoDate,
     computeDividendForecast12m: computeDividendForecast12m,
+    nearestCloseOnOrBefore: nearestCloseOnOrBefore,
     computeTotalReturn12m: computeTotalReturn12m,
     computeYearlyDividendYields: computeYearlyDividendYields,
     buildDividendDisplayYears: buildDividendDisplayYears,
