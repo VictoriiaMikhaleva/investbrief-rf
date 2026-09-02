@@ -405,6 +405,16 @@
     });
     var pfCancelSaleBtn = document.getElementById('pfCancelSaleBtn');
     if (pfCancelSaleBtn) pfCancelSaleBtn.addEventListener('click', cancelPortfolioSale);
+    var pfAsOfBtn = document.getElementById('pfAsOfBtn');
+    if (pfAsOfBtn) pfAsOfBtn.addEventListener('click', function () {
+      if (typeof showPortfolioAsOfComposition === 'function') showPortfolioAsOfComposition();
+    });
+    var pfAsOfDate = document.getElementById('pfAsOfDate');
+    if (pfAsOfDate) {
+      pfAsOfDate.addEventListener('change', function () {
+        if (typeof showPortfolioAsOfComposition === 'function') showPortfolioAsOfComposition();
+      });
+    }
     var pfSaleAllBtn = document.getElementById('pfSaleAllBtn');
     if (pfSaleAllBtn) {
       pfSaleAllBtn.addEventListener('click', function () {

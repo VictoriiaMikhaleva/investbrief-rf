@@ -3466,6 +3466,229 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   }
 }
 
+/* Состав на дату — вторичный аналитический блок */
+#tab-portfolio .pf-asof-block {
+  margin: 0.75rem 0 0.2rem;
+  padding: 0.2rem 0.7rem 0.35rem;
+  border: 1px solid color-mix(in srgb, #d5dbe2 42%, rgba(23, 34, 51, 0.04) 58%);
+  background: color-mix(in srgb, #f8f9fb 94%, #ffffff 6%);
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-asof-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.42rem 0.15rem;
+  user-select: none;
+}
+
+#tab-portfolio .pf-asof-summary::-webkit-details-marker,
+#tab-portfolio .pf-asof-summary::marker {
+  display: none;
+  content: "";
+}
+
+#tab-portfolio .pf-asof-summary::before {
+  content: "";
+  width: 0.34rem;
+  height: 0.34rem;
+  margin-top: 0.32rem;
+  flex: 0 0 auto;
+  border-right: 1.5px solid color-mix(in srgb, var(--text-muted) 50%, #9aa3ad 50%);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--text-muted) 50%, #9aa3ad 50%);
+  transform: rotate(-45deg);
+  opacity: 0.55;
+}
+
+#tab-portfolio .pf-asof-block[open] > .pf-asof-summary::before {
+  transform: rotate(45deg);
+  margin-top: 0.24rem;
+}
+
+#tab-portfolio .pf-asof-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+  min-width: 0;
+}
+
+#tab-portfolio .pf-asof-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text) 78%, #4e5854 22%);
+}
+
+#tab-portfolio .pf-asof-hint,
+#tab-portfolio .pf-asof-lead {
+  font-size: 0.68rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 82%, #8a939e 18%);
+}
+
+#tab-portfolio .pf-asof-lead {
+  margin: 0 0 0.55rem;
+  font-size: 0.74rem;
+}
+
+#tab-portfolio .pf-asof-body {
+  padding: 0 0.1rem 0.45rem;
+}
+
+#tab-portfolio .pf-asof-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.45rem 0.65rem;
+  margin-bottom: 0.55rem;
+}
+
+#tab-portfolio .pf-asof-date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+#tab-portfolio .pf-asof-date-label input[type="date"] {
+  min-height: 2.1rem;
+  padding: 0.22rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 18%, #d5dbe2 82%);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+#tab-portfolio .pf-asof-btn {
+  min-height: 2.1rem;
+  padding: 0.28rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--accent-hover) 55%, #4a5c54 45%);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, #c5d0cb 78%);
+  background: color-mix(in srgb, #ffffff 92%, var(--accent-soft) 8%);
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-asof-btn:hover {
+  background: color-mix(in srgb, var(--accent-soft) 16%, #ffffff 84%);
+  box-shadow: none;
+}
+
+#tab-portfolio .pf-asof-warn {
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
+  background: color-mix(in srgb, var(--bronze-soft) 35%, #fffaf6 65%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #eadccb 78%);
+  border-radius: 8px;
+}
+
+#tab-portfolio .pf-asof-empty {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+#tab-portfolio .pf-asof-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+#tab-portfolio .pf-asof-table th {
+  text-align: left;
+  font-size: 0.64rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 0.28rem 0.4rem 0.35rem 0;
+  border-bottom: 1px solid color-mix(in srgb, #d5dbe2 55%, transparent);
+}
+
+#tab-portfolio .pf-asof-table td {
+  padding: 0.42rem 0.4rem 0.42rem 0;
+  border-bottom: 1px solid color-mix(in srgb, #e8ecf0 80%, transparent);
+  vertical-align: top;
+}
+
+#tab-portfolio .pf-asof-cards {
+  display: none;
+}
+
+#tab-portfolio .pf-asof-card {
+  padding: 0.55rem 0.6rem;
+  border: 1px solid color-mix(in srgb, #d5dbe2 40%, transparent);
+  border-radius: 10px;
+  background: #fff;
+}
+
+#tab-portfolio .pf-asof-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.55rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+}
+
+#tab-portfolio .pf-asof-card-ticker {
+  font-weight: 650;
+  font-size: 0.9rem;
+}
+
+#tab-portfolio .pf-asof-card-kpis {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  font-size: 0.8rem;
+}
+
+#tab-portfolio .pf-asof-card-kpis .lbl {
+  color: var(--text-muted);
+  margin-right: 0.25rem;
+}
+
+#tab-portfolio .pf-asof-card-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 699px) {
+  #tab-portfolio .pf-asof-summary {
+    min-height: 2.75rem;
+    align-items: center;
+  }
+
+  #tab-portfolio .pf-asof-summary::before {
+    margin-top: 0;
+  }
+
+  #tab-portfolio .pf-asof-table-wrap {
+    display: none;
+  }
+
+  #tab-portfolio .pf-asof-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  #tab-portfolio .pf-asof-controls {
+    align-items: stretch;
+  }
+
+  #tab-portfolio .pf-asof-btn {
+    min-height: 2.4rem;
+  }
+}
+
 /* panel-intro--one-line: ╤Б╨╝. ╨┐╤А╨░╨▓╨╕╨╗╨░ .panel-intro.hint-frame > p ╨▓╤Л╤И╨╡ */
 
 /* ╨в╨╡╨╗╨╡╤Д╨╛╨╜: ╨▒╨╛╨╗╤М╤И╨╡ ╨┐╨╛╨╗╨╡╨╖╨╜╨╛╨╣ ╤И╨╕╤А╨╕╨╜╤Л ╤Г ╨║╨░╤А╤В╨╛╤З╨╜╤Л╤Е ╤Б╨╡╤В╨╛╨║ (desktop/tablet ╨▒╨╡╨╖ ╨╕╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╣) */

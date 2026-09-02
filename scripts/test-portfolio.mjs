@@ -335,7 +335,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__restoreClosed = restoreClosedPortfolioTicker;' +
       '\nthis.__collectRecent = collectRecentPortfolioOperations;' +
       '\nthis.__resolveNav = resolvePortfolioHistoryNavTarget;' +
-      '\nthis.__timeline = buildTickerOperationTimeline;',
+      '\nthis.__timeline = buildTickerOperationTimeline;' +
+      '\nthis.__asOf = buildPortfolioCompositionAtDate;',
     sandbox,
     { timeout: 5000 }
   );
@@ -362,6 +363,7 @@ function loadPortfolioCalcHelpers() {
     collectRecentPortfolioOperations: sandbox.__collectRecent,
     resolvePortfolioHistoryNavTarget: sandbox.__resolveNav,
     buildTickerOperationTimeline: sandbox.__timeline,
+    buildPortfolioCompositionAtDate: sandbox.__asOf,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -1165,9 +1167,191 @@ const calc = loadPortfolioCalcHelpers();
   assert(ops[1].remainingQtyAfter === 0, 'same-day full close remaining 0');
 }
 
+{
+  // Волна 3.2: состав на дату — одна покупка до даты
+  const positions = [
+    { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }
+  ];
+  const frozen = JSON.stringify(positions);
+  const r = calc.buildPortfolioCompositionAtDate({ positions: positions, sales: [] }, '2024-06-01');
+  assert(!r.invalidDate, 'valid target date');
+  assert(r.items.length === 1 && r.items[0].ticker === 'SBER', 'one paper in composition');
+  assert(r.items[0].qtyAtDate === 10, 'qtyAtDate = buy qty');
+  assert(r.items[0].boughtQtyUpToDate === 10 && r.items[0].soldQtyUpToDate === 0, 'bought/sold');
+  assert(r.items[0].firstBuyDate === '2024-01-15', 'first buy date');
+  assert(r.items[0].openLotsAtDate.length === 1, 'one open lot at date');
+  assert(r.items[0].openLotsAtDate[0].qtyAtDate === 10, 'lot qty at date');
+  assert(r.items[0].valueAtDate == null && r.items[0].marketValue == null, 'no value-on-date field');
+  assert(JSON.stringify(positions) === frozen, 'as-of helper does not mutate positions');
+}
+
+{
+  // Волна 3.2: покупка после даты — бумаги нет
+  const r = calc.buildPortfolioCompositionAtDate({
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-06-01' }],
+    sales: []
+  }, '2024-01-15');
+  assert(r.items.length === 0, 'buy after date → not in composition');
+}
+
+{
+  // Волна 3.2: две покупки до даты — сумма qty
+  const r = calc.buildPortfolioCompositionAtDate({
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' },
+      { ticker: 'SBER', lotId: 'S2', qty: 5, avgPrice: 280, buyDate: '2024-03-01' }
+    ],
+    sales: []
+  }, '2024-06-01');
+  assert(r.items.length === 1 && r.items[0].qtyAtDate === 15, 'two buys sum qty');
+  assert(r.items[0].openLotsAtDate.length === 2, 'two lots at date');
+}
+
+{
+  // Волна 3.2: продажа до даты уменьшает qty
+  const positions = [
+    { ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 250, buyDate: '2024-01-15' }
+  ];
+  const sales = [{
+    saleId: 'SALE1',
+    ticker: 'SBER',
+    qty: 5,
+    buyPrice: 250,
+    salePrice: 280,
+    saleDate: '2024-05-01',
+    allocations: [{ lotId: 'S1', qty: 5, buyPrice: 250, buyDate: '2024-01-15' }]
+  }];
+  const r = calc.buildPortfolioCompositionAtDate({ positions: positions, sales: sales }, '2024-06-01');
+  assert(r.items.length === 1 && r.items[0].qtyAtDate === 5, 'qty after sale before date');
+  assert(r.items[0].boughtQtyUpToDate === 10 && r.items[0].soldQtyUpToDate === 5, 'bought 10 sold 5');
+}
+
+{
+  // Волна 3.2: продажа после даты не уменьшает qty
+  const r = calc.buildPortfolioCompositionAtDate({
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 250, buyDate: '2024-01-15' }],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 5,
+      buyPrice: 250,
+      salePrice: 280,
+      saleDate: '2025-06-01',
+      allocations: [{ lotId: 'S1', qty: 5, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  }, '2024-12-01');
+  assert(r.items.length === 1 && r.items[0].qtyAtDate === 10, 'sale after date ignored');
+  assert(r.items[0].soldQtyUpToDate === 0, 'sold qty up to date is 0');
+}
+
+{
+  // Волна 3.2: полностью закрыта до даты — нет в составе
+  const r = calc.buildPortfolioCompositionAtDate({
+    positions: [],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'PLZL',
+      qty: 4,
+      buyPrice: 100,
+      salePrice: 200,
+      saleDate: '2024-08-30',
+      allocations: [{ lotId: 'P1', qty: 4, buyPrice: 100, buyDate: '2024-01-01' }]
+    }]
+  }, '2024-12-01');
+  assert(r.items.length === 0, 'fully closed before date → absent');
+}
+
+{
+  // Волна 3.2: полностью закрыта после даты — бумага есть
+  const r = calc.buildPortfolioCompositionAtDate({
+    positions: [],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'PLZL',
+      qty: 4,
+      buyPrice: 100,
+      salePrice: 200,
+      saleDate: '2025-08-30',
+      allocations: [{ lotId: 'P1', qty: 4, buyPrice: 100, buyDate: '2024-01-01' }]
+    }]
+  }, '2025-01-01');
+  assert(r.items.length === 1 && r.items[0].ticker === 'PLZL', 'closed after date → still held');
+  assert(r.items[0].qtyAtDate === 4, 'qty before closing sale');
+}
+
+{
+  // Волна 3.2: частичная продажа с allocations — остаток по лоту
+  const r = calc.buildPortfolioCompositionAtDate({
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 250, buyDate: '2024-01-15' }],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 10,
+      buyPrice: 250,
+      salePrice: 280,
+      saleDate: '2025-06-01',
+      allocations: [{ lotId: 'S1', qty: 10, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  }, '2025-07-01');
+  assert(r.items.length === 1 && r.items[0].qtyAtDate === 5, 'partial alloc remainder 5');
+  assert(r.items[0].openLotsAtDate.length === 1, 'one lot remains');
+  assert(r.items[0].openLotsAtDate[0].lotId === 'S1', 'same lotId, not invented');
+  assert(r.items[0].openLotsAtDate[0].originalQty === 15, 'original 15');
+  assert(r.items[0].openLotsAtDate[0].soldQtyUpToDate === 10, 'sold 10 via allocations');
+  assert(r.items[0].openLotsAtDate[0].qtyAtDate === 5, 'lot remainder 5');
+}
+
+{
+  // Волна 3.2: ОФЗ — qty, avgPrice остаётся %, стоимость не считается
+  const r = calc.buildPortfolioCompositionAtDate({
+    positions: [{
+      ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000
+    }],
+    sales: []
+  }, '2024-12-01');
+  assert(r.items.length === 1 && r.items[0].qtyAtDate === 10, 'OFZ qty');
+  assert(r.items[0].type === 'bond', 'OFZ type bond');
+  assert(r.items[0].openLotsAtDate[0].avgPrice === 95.4, 'avgPrice stays percent');
+  assert(r.items[0].openLotsAtDate[0].faceValue === 1000, 'faceValue kept');
+  assert(r.items[0].valueAtDate == null && r.items[0].costRub == null, 'OFZ as-of has no value');
+}
+
+{
+  // Волна 3.2: пустая / плохая дата операции
+  const r = calc.buildPortfolioCompositionAtDate({
+    positions: [
+      { ticker: 'GAZP', lotId: 'G1', qty: 8, avgPrice: 140, buyDate: '' },
+      { ticker: 'GAZP', lotId: 'G2', qty: 2, avgPrice: 150, buyDate: 'Invalid Date' }
+    ],
+    sales: []
+  }, '2025-01-01');
+  assert(r.hasIncompleteHistory === true, 'incomplete history flagged');
+  assert(r.items.length === 0, 'undated buys not included');
+  const badTarget = calc.buildPortfolioCompositionAtDate({
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 1, buyDate: '2024-01-01' }],
+    sales: []
+  }, 'not-a-date');
+  assert(badTarget.invalidDate === true && badTarget.items.length === 0, 'bad target date → no calc');
+  const mixed = calc.buildPortfolioCompositionAtDate({
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 3, avgPrice: 250, buyDate: '2024-01-15' }],
+    sales: [{
+      saleId: 'X',
+      ticker: 'SBER',
+      qty: 1,
+      buyPrice: 250,
+      salePrice: 260,
+      saleDate: '',
+      allocations: [{ lotId: 'S1', qty: 1, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  }, '2025-01-01');
+  assert(mixed.hasIncompleteHistory === true, 'undated sale flags incomplete');
+  assert(mixed.items.length === 1 && mixed.items[0].qtyAtDate === 4, 'undated sale excluded, qty not reduced');
+  assert(String(mixed.items[0].lastOperationDate).indexOf('Invalid') === -1, 'no Invalid Date in output');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of');
