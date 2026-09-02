@@ -2214,12 +2214,12 @@
       bullets.push('Состав портфеля между датами не менялся. Изменение связано с ценами закрытия бумаг.');
       var priceTickers = cmpExplainTickerListWithExtra(sameQtyPriceRows);
       if (priceTickers) {
-        bullets.push('По бумагам без изменения количества разница связана с ценой закрытия: ' + priceTickers + '.');
+        bullets.push('По бумагам без изменения количества разница связана с изменением биржевой цены на выбранные даты: ' + priceTickers + '.');
       }
     } else if (sameQtyPriceRows.length) {
       var mixedPriceTickers = cmpExplainTickerListWithExtra(sameQtyPriceRows);
       if (mixedPriceTickers) {
-        bullets.push('По бумагам без изменения количества разница связана с ценой закрытия: ' + mixedPriceTickers + '.');
+        bullets.push('По бумагам без изменения количества разница связана с изменением биржевой цены на выбранные даты: ' + mixedPriceTickers + '.');
       }
     }
 
@@ -2227,9 +2227,7 @@
       bullets.push('По таблице ниже видно детализацию по бумагам.');
     }
 
-    var footnote = hasPeriodOperations
-      ? 'Это сравнение стоимости, а не доходность: покупки и продажи внутри периода тоже меняют итоговую сумму.'
-      : 'Это не доходность, а сравнение стоимости портфеля между датами.';
+    var footnote = 'Это сравнение стоимости портфеля между датами. Оно учитывает и изменение цен бумаг, и сделки внутри периода.';
 
     var summaryText = bullets[0] || '';
     if (hasOnlyPriceChanges) {
