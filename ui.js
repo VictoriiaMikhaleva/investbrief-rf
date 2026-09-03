@@ -742,27 +742,45 @@
     minW = minW || 200;
     minH = minH || 100;
     if (!canvas) return { w: minW, h: minH };
+    var wrap = canvas.parentElement;
+    var w = 0;
+    var h = 0;
+    if (wrap) {
+      var wrapRect = wrap.getBoundingClientRect();
+      w = wrap.clientWidth || wrapRect.width;
+      h = wrap.clientHeight || wrapRect.height;
+    }
     var rect = canvas.getBoundingClientRect();
-    var w = rect.width;
-    var h = rect.height;
+    if (w < 100) w = rect.width;
+    if (h < 40) h = rect.height;
     if (w < 100) {
       var section = canvas.closest('.analytics-detail, .security-analytics-charts, #securityAnalyticsSection, .modal--analytics');
       if (section) {
-        var sw = section.getBoundingClientRect().width;
+        var sw = section.clientWidth || section.getBoundingClientRect().width;
         if (sw >= 100) w = Math.max(sw - 32, minW);
       }
     }
-    if (h < 40) {
-      var wrap = canvas.parentElement;
-      if (wrap) {
-        var wrapH = wrap.clientHeight || parseFloat(getComputedStyle(wrap).height);
-        if (wrapH >= 40) h = wrapH;
-      }
+    if (h < 40 && wrap) {
+      var wrapH = wrap.clientHeight || parseFloat(getComputedStyle(wrap).height);
+      if (wrapH >= 40) h = wrapH;
     }
     return {
       w: Math.max(w > 0 ? w : minW, minW),
       h: Math.max(h > 0 ? h : minH, minH)
     };
+  }
+
+  function applyChartCanvasBackingStore(canvas, w, h) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = Math.max(1, w);
+    h = Math.max(1, h);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: w, h: h, dpr: dpr, ctx: ctx };
   }
 
   function buildVolumeBarSeries(volumeByDay) {
@@ -1155,11 +1173,23 @@
       parent.classList.add('bar-chart-wrap');
     }
 
-    function pickBar(clientX) {
+    function pickBar(clientX, clientY) {
       var st = canvas._barChartState;
       if (!st || !st.bars.length) return -1;
       var rect = canvas.getBoundingClientRect();
-      var mx = clientX - rect.left;
+      if (rect.width <= 0 || rect.height <= 0) return -1;
+      if (clientX < rect.left || clientX > rect.right) return -1;
+      if (clientY != null && (clientY < rect.top || clientY > rect.bottom)) return -1;
+      var logicalW = st.w || rect.width;
+      var mx = (clientX - rect.left) * (logicalW / rect.width);
+      var plotLeft = st.plotLeft != null ? st.plotLeft : 0;
+      var plotRight = st.plotRight != null ? st.plotRight : logicalW;
+      if (mx < plotLeft || mx > plotRight) return -1;
+      if (st.stretch && st.slotW > 0 && st.startX != null) {
+        var idx = Math.floor((mx - st.startX) / st.slotW);
+        if (idx < 0 || idx >= st.bars.length) return -1;
+        return idx;
+      }
       var i;
       for (i = 0; i < st.bars.length; i++) {
         var b = st.bars[i];
@@ -1193,23 +1223,25 @@
     }
 
     var wrap = parent || canvas.parentElement;
-    (wrap || canvas).addEventListener('mousemove', function (e) {
-      setHover(pickBar(e.clientX));
+    var hoverRoot = wrap || canvas;
+    hoverRoot.addEventListener('mousemove', function (e) {
+      setHover(pickBar(e.clientX, e.clientY));
     });
-    (wrap || canvas).addEventListener('mouseleave', function () {
+    hoverRoot.addEventListener('mouseleave', function () {
       setHover(-1);
     });
-    canvas.addEventListener('touchstart', function (e) {
-      if (e.touches.length) setHover(pickBar(e.touches[0].clientX));
+    hoverRoot.addEventListener('touchstart', function (e) {
+      if (e.touches.length) setHover(pickBar(e.touches[0].clientX, e.touches[0].clientY));
     }, { passive: true });
-    canvas.addEventListener('touchmove', function (e) {
-      if (e.touches.length) {
-        e.preventDefault();
-        setHover(pickBar(e.touches[0].clientX));
-      }
+    hoverRoot.addEventListener('touchmove', function (e) {
+      if (!e.touches.length) return;
+      var t = e.touches[0];
+      var hit = pickBar(t.clientX, t.clientY);
+      if (hit >= 0) e.preventDefault();
+      setHover(hit);
     }, { passive: false });
-    canvas.addEventListener('touchend', function () { setHover(-1); });
-    canvas.addEventListener('touchcancel', function () { setHover(-1); });
+    hoverRoot.addEventListener('touchend', function () { setHover(-1); });
+    hoverRoot.addEventListener('touchcancel', function () { setHover(-1); });
   }
 
 
@@ -1220,14 +1252,11 @@
     var prevHover = options._redraw && canvas._barChartState ? canvas._barChartState.hover : -1;
     var hoverIndex = options.hoverIndex != null ? options.hoverIndex : prevHover;
 
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var size = chartCanvasSize(canvas, 200, 100);
-    var w = size.w;
-    var h = size.h;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    var ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var backing = applyChartCanvasBackingStore(canvas, size.w, size.h);
+    var w = backing.w;
+    var h = backing.h;
+    var ctx = backing.ctx;
     ctx.clearRect(0, 0, w, h);
     if (!series || !series.length) {
       canvas._barChartState = null;
@@ -1254,7 +1283,11 @@
     var barW;
     var startX;
     if (stretchBars) {
-      barW = Math.max(1, (plotW - barGap * Math.max(n - 1, 0)) / Math.max(n, 1));
+      barW = (plotW - barGap * Math.max(n - 1, 0)) / Math.max(n, 1);
+      if (!(barW > 0) || barW < 1) {
+        barGap = 0;
+        barW = plotW / Math.max(n, 1);
+      }
       startX = pad.l;
     } else {
       var maxBarW = compact ? 48 : (n > 14 ? 28 : 40);
@@ -1263,6 +1296,7 @@
       var groupW = n * barW + barGap * Math.max(n - 1, 0);
       startX = pad.l + Math.max(0, (plotW - groupW) / 2);
     }
+    var slotW = barW + barGap;
     var axisColor = options.axisColor || '#6B6B6B';
     var barsMeta = [];
 
@@ -1280,12 +1314,17 @@
       ctx.restore();
     }
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad.l, 0, Math.max(0, plotW), h);
+    ctx.clip();
+
     vals.forEach(function (v, i) {
       var isHover = i === hoverIndex;
       var isForecastBar = !!(series[i].forecast || series[i].estimated);
       var lift = isHover ? 5 : 0;
       var bh = Math.max(3, (v / max) * plotH) * (isHover ? 1.06 : 1);
-      var x = startX + i * (barW + barGap);
+      var x = startX + i * slotW;
       var y = pad.t + plotH - bh - lift;
       var metallicKind = isForecastBar
         ? (options.forecastMetallic || 'sage')
@@ -1293,7 +1332,7 @@
       ctx.globalAlpha = hoverIndex >= 0 && !isHover ? 0.55 : 1;
       fillMetallicBar(ctx, x, y, barW, bh, metallicKind, isHover);
       var barStroke = isForecastBar ? options.forecastStroke : options.barStroke;
-      if (barStroke) {
+      if (barStroke && barW >= 1.5) {
         ctx.strokeStyle = barStroke;
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, barW - 1), Math.max(0, bh - 1));
@@ -1330,6 +1369,7 @@
         }
       }
     });
+    ctx.restore();
 
     if (options.ySuffix) {
       ctx.fillStyle = axisColor;
@@ -1347,7 +1387,14 @@
       series: series,
       baseOptions: baseOptions,
       bars: barsMeta,
-      hover: hoverIndex
+      hover: hoverIndex,
+      w: w,
+      h: h,
+      plotLeft: pad.l,
+      plotRight: pad.l + plotW,
+      startX: startX,
+      slotW: slotW,
+      stretch: stretchBars
     };
     if (!options._redraw) {
       bindBarChartMagnet(canvas);
@@ -1472,25 +1519,27 @@
 
   function redrawSecurityChartTab(tab) {
     requestAnimationFrame(function () {
-      if (tab === 'price') {
-        var priceCanvas = document.getElementById('analyticsPriceChart');
-        var meta = priceCanvas && priceCanvas._chartMeta;
-        if (priceCanvas && meta) {
-          drawPriceChart(priceCanvas, meta.series, { ticker: meta.ticker, horizon: meta.horizon });
+      requestAnimationFrame(function () {
+        if (tab === 'price') {
+          var priceCanvas = document.getElementById('analyticsPriceChart');
+          var meta = priceCanvas && priceCanvas._chartMeta;
+          if (priceCanvas && meta) {
+            drawPriceChart(priceCanvas, meta.series, { ticker: meta.ticker, horizon: meta.horizon });
+          }
+        } else if (tab === 'dividends') {
+          var divCanvas = document.getElementById('analyticsDivChart');
+          var divSt = divCanvas && divCanvas._barChartState;
+          if (divCanvas && divSt) {
+            drawFullBarChart(divCanvas, divSt.series, Object.assign({}, divSt.baseOptions, { _redraw: true }));
+          }
+        } else if (tab === 'volume') {
+          var volCanvas = document.getElementById('analyticsVolChart');
+          var volSt = volCanvas && volCanvas._barChartState;
+          if (volCanvas && volSt) {
+            drawFullBarChart(volCanvas, volSt.series, Object.assign({}, volSt.baseOptions, { _redraw: true }));
+          }
         }
-      } else if (tab === 'dividends') {
-        var divCanvas = document.getElementById('analyticsDivChart');
-        var divSt = divCanvas && divCanvas._barChartState;
-        if (divCanvas && divSt) {
-          drawFullBarChart(divCanvas, divSt.series, Object.assign({}, divSt.baseOptions, { _redraw: true }));
-        }
-      } else if (tab === 'volume') {
-        var volCanvas = document.getElementById('analyticsVolChart');
-        var volSt = volCanvas && volCanvas._barChartState;
-        if (volCanvas && volSt) {
-          drawFullBarChart(volCanvas, volSt.series, Object.assign({}, volSt.baseOptions, { _redraw: true }));
-        }
-      }
+      });
     });
   }
 

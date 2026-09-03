@@ -833,17 +833,21 @@
     .chart-canvas-wrap {
       position: relative;
       width: 100%;
+      max-width: 100%;
       height: 220px;
       margin-top: 0.5rem;
       border-radius: var(--radius);
       overflow: hidden;
       background: var(--bg);
       border: 1px solid var(--border);
+      box-sizing: border-box;
     }
     .chart-canvas-wrap canvas {
       display: block;
       width: 100%;
+      max-width: 100%;
       height: 100%;
+      box-sizing: border-box;
       cursor: crosshair;
     }
     .chart-hover-tip {
@@ -2258,8 +2262,10 @@
     }
     .analytics-chart-wrap canvas {
       display: block;
-      width: 100% !important;
-      height: 100% !important;
+      width: 100%;
+      max-width: 100%;
+      height: 100%;
+      box-sizing: border-box;
     }
     #portfolioPurchaseCandlesPanel .chart-canvas-wrap {
       min-height: 13rem;
@@ -2279,6 +2285,8 @@
     }
     .bar-chart-wrap canvas {
       cursor: crosshair;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     .bar-chart-hover-tip {
       position: absolute;
@@ -2761,9 +2769,11 @@
       min-height: 100px;
     }
     .security-chart-wrap canvas {
-      width: 100% !important;
+      width: 100%;
+      max-width: 100%;
       height: 140px;
       display: block;
+      box-sizing: border-box;
     }
     .security-chart-wrap--vol {
       min-height: 13rem;
