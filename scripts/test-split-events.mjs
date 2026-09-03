@@ -23,10 +23,13 @@ const catalog = JSON.parse(
 const events = SplitEvents.parseSplitEventsCatalog(catalog);
 
 assert(catalog.version === 1, 'catalog version 1');
-assert(Array.isArray(catalog.events) && catalog.events.length >= 1, 'catalog has events');
-assert(events.length >= 1 && events[0].ticker === 'T', 'parsed T event');
-assert(events[0].effectiveDate === '2026-04-17' && events[0].ratio === 10, 'T date/ratio');
-assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
+assert(Array.isArray(catalog.events) && catalog.events.length >= 8, 'catalog has confirmed events');
+assert(events.length >= 8, 'parsed events count');
+const tEv = events.find((e) => e.ticker === 'T');
+assert(tEv && tEv.effectiveDate === '2026-04-17' && tEv.ratio === 10, 'T date/ratio');
+assert(tEv.aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
+assert(/Т-Технолог/.test(tEv.name || ''), 'T name preserved');
+assert(events.filter((e) => e.ticker === 'T').length === 1, 'T not duplicated');
 
 {
   const byT = SplitEvents.getSplitEventsForTicker('T', events);
@@ -37,6 +40,12 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
   assert(byAlias.length === 1 && byAlias[0].ticker === 'T', 'alias TCSG finds T');
   assert(byCase.length === 1, 'ticker case-insensitive');
   assert(unknown.length === 0, 'unknown ticker empty');
+  const covered = ['T', 'TCSG', 'GMKN', 'TRNFP', 'PLZL', 'GEMA', 'URKZ', 'KOGK', 'ROLO'];
+  covered.forEach((ticker) => {
+    const list = SplitEvents.getSplitEventsForTicker(ticker, events);
+    assert(list.length === 1, 'getSplitEventsForTicker ' + ticker + ' (got ' + list.length + ')');
+  });
+  assert(SplitEvents.getSplitEventsForTicker('XXXX', events).length === 0, 'unknown XXXX empty');
 }
 
 {
@@ -78,6 +87,25 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
   assert(after == null, 'period after 2026-04-18 → null');
   assert(unknown == null, 'unknown ticker period → null');
   assert(bad == null, 'invalid dates → null');
+  assert(
+    SplitEvents.findSplitEventInPeriod('GMKN', '2024-01-01', '2024-12-31', events) &&
+      SplitEvents.findSplitEventInPeriod('GMKN', '2024-01-01', '2024-12-31', events).effectiveDate === '2024-04-08',
+    'GMKN period finds 2024-04-08'
+  );
+  assert(SplitEvents.findSplitEventInPeriod('GMKN', '2024-04-09', '2026-09-03', events) == null, 'GMKN after split empty');
+  assert(
+    SplitEvents.findSplitEventInPeriod('TRNFP', '2024-01-01', '2024-03-01', events) &&
+      SplitEvents.findSplitEventInPeriod('TRNFP', '2024-01-01', '2024-03-01', events).effectiveDate === '2024-02-21',
+    'TRNFP period finds 2024-02-21'
+  );
+  assert(SplitEvents.findSplitEventInPeriod('TRNFP', '2024-02-22', '2026-09-03', events) == null, 'TRNFP after split empty');
+  assert(
+    SplitEvents.findSplitEventInPeriod('PLZL', '2025-01-01', '2025-06-01', events) &&
+      SplitEvents.findSplitEventInPeriod('PLZL', '2025-01-01', '2025-06-01', events).effectiveDate === '2025-03-27',
+    'PLZL period finds 2025-03-27'
+  );
+  assert(SplitEvents.findSplitEventInPeriod('PLZL', '2025-03-28', '2026-09-03', events) == null, 'PLZL after split empty');
+  assert(SplitEvents.findSplitEventInPeriod('TCSG', '2026-01-01', '2026-05-01', events).ticker === 'T', 'alias TCSG in period');
 }
 
 {
@@ -107,6 +135,13 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
   assert(after === 1, 'T after split factor = 1');
   assert(unknown === 1, 'unknown ticker factor = 1');
   assert(bad === 1, 'invalid dates factor = 1');
+  assert(SplitEvents.getSplitAdjustmentFactor('GMKN', '2024-04-07', '2024-04-09', events) === 100, 'GMKN factor 100');
+  assert(SplitEvents.getSplitAdjustmentFactor('TRNFP', '2024-02-20', '2024-02-22', events) === 100, 'TRNFP factor 100');
+  assert(SplitEvents.getSplitAdjustmentFactor('PLZL', '2025-03-26', '2025-03-28', events) === 10, 'PLZL factor 10');
+  assert(SplitEvents.getSplitAdjustmentFactor('T', '2026-04-16', '2026-04-18', events) === 10, 'T factor 10');
+  assert(SplitEvents.getSplitAdjustmentFactor('GMKN', '2024-04-09', '2026-09-03', events) === 1, 'GMKN after split factor 1');
+  assert(SplitEvents.getSplitAdjustmentFactor('PLZL', '2025-03-28', '2026-09-03', events) === 1, 'PLZL after split factor 1');
+  assert(SplitEvents.getSplitAdjustmentFactor('SBER', '2024-01-01', '2026-09-03', events) === 1, 'unknown ticker factor 1');
 }
 
 {
@@ -138,6 +173,21 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
   near(unknown, 250.5, 'unknown ticker unchanged');
   near(yearEnd, 3280, 'T 328 on 2025-12-30 → 3280');
   near(pre, 3196, 'T 319.6 on 2026-04-10 → 3196');
+  near(
+    SplitEvents.restoreRawPriceFromAdjustedForSplits('GMKN', 150, '2024-04-01', '2024-04-10', events),
+    15000,
+    'GMKN 150 → 15000'
+  );
+  near(
+    SplitEvents.restoreRawPriceFromAdjustedForSplits('TRNFP', 1200, '2024-02-01', '2024-02-22', events),
+    120000,
+    'TRNFP 1200 → 120000'
+  );
+  near(
+    SplitEvents.restoreRawPriceFromAdjustedForSplits('PLZL', 1900, '2025-03-01', '2025-03-28', events),
+    19000,
+    'PLZL 1900 → 19000'
+  );
 }
 
 {
@@ -212,6 +262,40 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
   near(sber.pct, 10, 'SBER without split ≈ +10% as before');
   assert(!sber.splitAdjusted, 'SBER is not splitAdjusted');
   assert(noOpts && noOpts.pct != null && noOpts.pct < -80, 'no options → old formula ~-90%');
+}
+
+{
+  const chartFrom = '2021-09-01';
+  const chartTo = '2026-09-04';
+  ['T', 'GMKN', 'TRNFP', 'PLZL'].forEach((ticker) => {
+    const ev = SplitEvents.findSplitEventInPeriod(ticker, chartFrom, chartTo, events);
+    assert(ev && ev.ticker === ticker, ticker + ': 5y chart period shows scale toggle');
+  });
+  assert(SplitEvents.findSplitEventInPeriod('SBER', chartFrom, chartTo, events) == null, 'SBER 5y: no toggle');
+
+  function trCase(ticker, asOf, oldClose, newClose, expectedPct) {
+    const asOfDate = new Date(asOf + 'T12:00:00');
+    const history = [
+      { date: asOfDate.getFullYear() - 1 + '-01-15', close: oldClose, value: 1 },
+      { date: asOf.slice(0, 8) + '01', close: newClose, value: 1 }
+    ];
+    const raw = Core.computeTotalReturn12m([], history, new Date(asOfDate), {});
+    const adj = Core.computeTotalReturn12m([], history, new Date(asOfDate), { ticker: ticker, splitEvents: events });
+    assert(raw && raw.pct != null && raw.pct < -80, ticker + ' raw 12m stays crash %');
+    assert(adj && adj.splitAdjusted === true, ticker + ' 12m marked splitAdjusted');
+    assert(Math.abs(adj.pct - expectedPct) < 0.05, ticker + ' adjusted 12m ≈ ' + expectedPct + '% (got ' + adj.pct + ')');
+    const hidden = SplitEvents.formatTotalReturn12mView(ticker, asOf, raw, events);
+    assert(hidden && hidden.mode === 'hidden' && hidden.text === 'сплит', ticker + ' unadjusted UI fallback «сплит»');
+    assert(!/-9/.test(hidden.text), ticker + ' fallback has no raw %');
+    const shown = SplitEvents.formatTotalReturn12mView(ticker, asOf, adj, events);
+    assert(shown && shown.mode === 'adjusted' && isFinite(shown.pct), ticker + ' adjusted UI shows number');
+    assert(!/-89/.test(String(shown.pct)) && !/-99/.test(String(shown.pct)), ticker + ' adjusted UI not −90/−99');
+  }
+
+  trCase('T', '2026-09-03', 3000, 300, 0);
+  trCase('GMKN', '2025-04-01', 15000, 150, 0);
+  trCase('TRNFP', '2025-02-21', 120000, 1200, 0);
+  trCase('PLZL', '2026-03-27', 19000, 1900, 0);
 }
 
 {

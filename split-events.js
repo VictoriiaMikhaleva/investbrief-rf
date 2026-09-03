@@ -99,6 +99,7 @@
         aliases.push(al);
       });
       out.push({
+        name: raw.name ? String(raw.name).trim() : '',
         ticker: ticker,
         aliases: aliases,
         isin: raw.isin ? String(raw.isin).trim() : '',
@@ -106,7 +107,8 @@
         ratio: ratio,
         type: splitEventType(raw),
         note: raw.note ? String(raw.note) : '',
-        source: raw.source ? String(raw.source) : ''
+        source: raw.source ? String(raw.source) : '',
+        sourceUrl: raw.sourceUrl ? String(raw.sourceUrl).trim() : (raw.sourceRef ? String(raw.sourceRef).trim() : '')
       });
     }
     return out;
