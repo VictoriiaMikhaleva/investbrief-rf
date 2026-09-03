@@ -1735,6 +1735,280 @@
     };
   }
 
+  var TWP_NO_FIRST_BUY_WARNING = 'дата первой покупки неизвестна';
+  var TWP_UNDATED_OPS_WARNING = 'есть операции без корректной даты';
+  var TWP_MISSING_BUY_AMOUNT_WARNING = 'нет суммы покупки';
+  var TWP_MISSING_SALE_AMOUNT_WARNING = 'нет суммы продажи';
+  var TWP_MISSING_MARKET_PRICE_WARNING = 'нет текущей цены остатка';
+  var TWP_NOTES = [
+    'справочный результат по данным портфеля',
+    'с учётом найденных выплат',
+    'дивиденды по дате отсечки, купоны по дате купона; без налогов, комиссий и НКД'
+  ];
+
+  function twpEmptyResult(ticker, fromIso, toIso) {
+    return {
+      ticker: ticker || '',
+      fromDate: fromIso || '',
+      toDate: toIso || '',
+      purchaseCostRub: 0,
+      saleProceedsRub: 0,
+      realizedPnlRub: 0,
+      currentMarketValueRub: 0,
+      payoutsRub: 0,
+      dividendsRub: 0,
+      couponsRub: 0,
+      resultWithoutPayoutsRub: 0,
+      resultWithPayoutsRub: 0,
+      returnWithoutPayoutsPct: null,
+      returnWithPayoutsPct: null,
+      openQty: 0,
+      isClosed: true,
+      isPartial: false,
+      warnings: [],
+      notes: TWP_NOTES.slice()
+    };
+  }
+
+  function twpSumOpAmounts(ops, type) {
+    var sum = 0;
+    var seen = false;
+    var missing = false;
+    (ops || []).forEach(function (op) {
+      if (!op || op.type !== type) return;
+      seen = true;
+      var px = Number(op.price);
+      if (!isFinite(px) || !(px > 0) || op.amountRub == null || !isFinite(Number(op.amountRub))) {
+        missing = true;
+        return;
+      }
+      sum += Number(op.amountRub);
+    });
+    return {
+      seen: seen,
+      missing: missing,
+      value: missing ? null : (asOfRoundRub(sum) || 0)
+    };
+  }
+
+  function twpSumRealizedPnl(ops) {
+    var sum = 0;
+    var seen = false;
+    var missing = false;
+    (ops || []).forEach(function (op) {
+      if (!op || op.type !== 'sell') return;
+      seen = true;
+      if (op.realizedPnlRub == null || !isFinite(Number(op.realizedPnlRub))) {
+        missing = true;
+        return;
+      }
+      sum += Number(op.realizedPnlRub);
+    });
+    if (!seen) return 0;
+    if (missing) return null;
+    return asOfRoundRub(sum) || 0;
+  }
+
+  function twpOpenMarketValue(ticker, positions, bondMeta) {
+    var openQty = 0;
+    var value = 0;
+    var missingPrice = false;
+    (positions || []).forEach(function (lot) {
+      if (!lot || asOfNormTicker(lot.ticker) !== ticker) return;
+      var q = Number(lot.qty);
+      if (!isFinite(q) || q <= 1e-9) return;
+      openQty += q;
+      var price = Number(lot.currentPrice);
+      if (!isFinite(price) || !(price > 0)) {
+        missingPrice = true;
+        return;
+      }
+      var mv = getPositionMarketValue(lot, bondMeta);
+      if (mv == null || !isFinite(mv)) {
+        missingPrice = true;
+        return;
+      }
+      value += mv;
+    });
+    openQty = asOfRoundQty(openQty);
+    if (!(openQty > 1e-9)) {
+      return { openQty: 0, value: 0, missingPrice: false };
+    }
+    if (missingPrice) {
+      return { openQty: openQty, value: null, missingPrice: true };
+    }
+    return { openQty: openQty, value: asOfRoundRub(value) || 0, missingPrice: false };
+  }
+
+  function twpResultRub(saleProceeds, marketValue, purchaseCost, payoutsRub) {
+    if (saleProceeds == null || !isFinite(Number(saleProceeds))) return null;
+    if (marketValue == null || !isFinite(Number(marketValue))) return null;
+    if (purchaseCost == null || !isFinite(Number(purchaseCost))) return null;
+    var extra = payoutsRub == null || !isFinite(Number(payoutsRub)) ? 0 : Number(payoutsRub);
+    var result = Number(saleProceeds) + Number(marketValue) + extra - Number(purchaseCost);
+    if (!isFinite(result)) return null;
+    return asOfRoundRub(result);
+  }
+
+  function twpReturnPct(resultRub, purchaseCost) {
+    if (resultRub == null || !isFinite(Number(resultRub))) return null;
+    if (purchaseCost == null || !isFinite(Number(purchaseCost)) || !(Number(purchaseCost) > 0)) return null;
+    return Number(resultRub) / Number(purchaseCost) * 100;
+  }
+
+  function twpResolveBondMeta(ticker, options) {
+    if (options && options.bondMeta) return options.bondMeta;
+    var map = options && options.bondMetaMap;
+    if (!map || !ticker) return null;
+    return map[ticker] || map[asOfNormTicker(ticker)] || null;
+  }
+
+  /**
+   * Read-only справочный результат по тикеру с учётом найденных выплат.
+   * Не мутирует JSON, не считает XIRR/TWR/MWR, налоги, комиссии, НКД, прогноз и cashFlows.
+   *
+   * Будущая подсказка UI «Как считается»:
+   * Акции: текущая стоимость остатка + сумма продаж + дивиденды за период владения − сумма покупок.
+   * ОФЗ: текущая стоимость остатка + сумма продаж + купоны за период владения − сумма покупок.
+   * Дивиденды — по дате отсечки, ОФЗ — по дате купона. Налоги, комиссии, НКД и дата зачисления не учитываются.
+   * Формулировки: «справочный результат», «с учётом найденных выплат», «по данным портфеля».
+   * Не писать: гарантированная/чистая доходность, получено на счёт, инвестиционная рекомендация.
+   */
+  function buildTickerReturnWithPayouts(ticker, portfolio, options) {
+    options = options || {};
+    ticker = asOfNormTicker(ticker);
+    var toIso = timelineIsoDate(options.now);
+    if (!toIso) toIso = timelineIsoDate(localPortfolioTodayYmd());
+    if (!ticker) return twpEmptyResult('', '', toIso);
+
+    var parts = payoutsPositionsSales(portfolio, options);
+    var positions = parts.positions;
+    var sales = parts.sales;
+    var bondMeta = twpResolveBondMeta(ticker, options);
+    var ops = buildTickerOperationTimeline(ticker, positions, sales, bondMeta);
+    var warnings = [];
+    var isPartial = false;
+    var fromIso = '';
+    var i;
+
+    for (i = 0; i < ops.length; i++) {
+      var op = ops[i];
+      if (!op) continue;
+      if (!timelineIsoDate(op.date)) {
+        isPartial = true;
+        payoutsPushWarning(warnings, TWP_UNDATED_OPS_WARNING);
+      }
+      if (op.type === 'buy') {
+        var buyIso = timelineIsoDate(op.date);
+        if (buyIso && (!fromIso || buyIso < fromIso)) fromIso = buyIso;
+      }
+      if (op.quality === 'partial' && op.note) {
+        isPartial = true;
+        payoutsPushWarning(warnings, op.note);
+      }
+    }
+
+    var buySum = twpSumOpAmounts(ops, 'buy');
+    var sellSum = twpSumOpAmounts(ops, 'sell');
+    var purchaseCostRub = buySum.value;
+    var saleProceedsRub = sellSum.value;
+    if (buySum.missing) {
+      isPartial = true;
+      payoutsPushWarning(warnings, TWP_MISSING_BUY_AMOUNT_WARNING);
+    }
+    if (sellSum.missing) {
+      isPartial = true;
+      payoutsPushWarning(warnings, TWP_MISSING_SALE_AMOUNT_WARNING);
+    }
+
+    var market = twpOpenMarketValue(ticker, positions, bondMeta);
+    var currentMarketValueRub = market.value;
+    var openQty = market.openQty;
+    if (market.missingPrice) {
+      isPartial = true;
+      payoutsPushWarning(warnings, TWP_MISSING_MARKET_PRICE_WARNING);
+    }
+
+    var payoutsRub = 0;
+    var dividendsRub = 0;
+    var couponsRub = 0;
+    var sample = payoutsSampleEntity(ticker, positions, sales);
+    var kind = payoutsClassifyTicker(ticker, sample);
+    var feed = payoutsGetFeed(options.payoutsByTicker, ticker);
+    var skipPayouts = kind === 'skip' || ASOF_SKIP_TICKERS[ticker];
+    var unsupported = kind === 'unsupported';
+
+    if (unsupported) {
+      isPartial = true;
+      payoutsPushWarning(warnings, PAYOUT_FEED_UNSUPPORTED_PREFIX + ticker + PAYOUT_FEED_UNSUPPORTED_SUFFIX);
+    }
+
+    if (!skipPayouts && !unsupported && !fromIso && buySum.seen) {
+      isPartial = true;
+      payoutsPushWarning(warnings, TWP_NO_FIRST_BUY_WARNING);
+    } else if (!skipPayouts && !unsupported && fromIso && toIso && fromIso <= toIso) {
+      var childOpts = {
+        payoutsByTicker: options.payoutsByTicker,
+        now: toIso,
+        bondMetaMap: options.bondMetaMap || {},
+        _compositionCache: options._compositionCache || {}
+      };
+      if (bondMeta && !childOpts.bondMetaMap[ticker]) {
+        var mapCopy = {};
+        var mapKey;
+        for (mapKey in childOpts.bondMetaMap) {
+          if (Object.prototype.hasOwnProperty.call(childOpts.bondMetaMap, mapKey)) {
+            mapCopy[mapKey] = childOpts.bondMetaMap[mapKey];
+          }
+        }
+        mapCopy[ticker] = bondMeta;
+        childOpts.bondMetaMap = mapCopy;
+      }
+      var payoutPart = buildTickerPayoutsForHoldingPeriod(ticker, portfolio, fromIso, toIso, childOpts);
+      if (payoutPart && !payoutPart.invalidDate) {
+        payoutsRub = payoutPart.totalPayoutsRub != null && isFinite(Number(payoutPart.totalPayoutsRub))
+          ? Number(payoutPart.totalPayoutsRub) : 0;
+        dividendsRub = payoutPart.totalDividendsRub != null && isFinite(Number(payoutPart.totalDividendsRub))
+          ? Number(payoutPart.totalDividendsRub) : 0;
+        couponsRub = payoutPart.totalCouponsRub != null && isFinite(Number(payoutPart.totalCouponsRub))
+          ? Number(payoutPart.totalCouponsRub) : 0;
+        (payoutPart.warnings || []).forEach(function (w) { payoutsPushWarning(warnings, w); });
+        if (payoutPart.isPartial) isPartial = true;
+      } else {
+        isPartial = true;
+      }
+    }
+
+    if (!unsupported && !skipPayouts && payoutsFeedMissing(feed) && fromIso) {
+      isPartial = true;
+    }
+
+    var resultWithoutPayoutsRub = twpResultRub(saleProceedsRub, currentMarketValueRub, purchaseCostRub, 0);
+    var resultWithPayoutsRub = twpResultRub(saleProceedsRub, currentMarketValueRub, purchaseCostRub, payoutsRub);
+
+    return {
+      ticker: ticker,
+      fromDate: fromIso,
+      toDate: toIso,
+      purchaseCostRub: purchaseCostRub,
+      saleProceedsRub: saleProceedsRub,
+      realizedPnlRub: twpSumRealizedPnl(ops),
+      currentMarketValueRub: currentMarketValueRub,
+      payoutsRub: asOfRoundRub(payoutsRub) || 0,
+      dividendsRub: asOfRoundRub(dividendsRub) || 0,
+      couponsRub: asOfRoundRub(couponsRub) || 0,
+      resultWithoutPayoutsRub: resultWithoutPayoutsRub,
+      resultWithPayoutsRub: resultWithPayoutsRub,
+      returnWithoutPayoutsPct: twpReturnPct(resultWithoutPayoutsRub, purchaseCostRub),
+      returnWithPayoutsPct: twpReturnPct(resultWithPayoutsRub, purchaseCostRub),
+      openQty: openQty,
+      isClosed: !(openQty > 1e-9),
+      isPartial: isPartial,
+      warnings: warnings,
+      notes: TWP_NOTES.slice()
+    };
+  }
+
   /**
    * Read-only дивиденды и купоны за период владения по всему портфелю.
    * qtyHeld — через buildPortfolioCompositionAtDate на дату события. Без fetch и без цен.
