@@ -260,31 +260,100 @@
     return null;
   }
 
-  function formatSplitHiddenTotalReturn12m(ticker, toDate, events) {
+  /** Коэффициент приведения per-share значения с valueDate к шкале targetDate.
+   *  Учитываются split-события, где valueDate < effectiveDate <= targetDate.
+   *  ratio 10 = 1:10 → factor 10 (старую цену/дивиденд делить на 10). */
+  function getSplitAdjustmentFactor(ticker, valueDate, targetDate, events) {
+    var valueIso = splitIsoDate(valueDate);
+    var targetIso = splitIsoDate(targetDate);
+    if (!valueIso || !targetIso || valueIso >= targetIso) return 1;
+    var list = getSplitEventsForTicker(ticker, events);
+    if (!list.length) return 1;
+    var factor = 1;
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var ev = list[i];
+      var type = splitEventType(ev);
+      if (type === 'reverse') continue;
+      var eff = splitIsoDate(ev && ev.effectiveDate);
+      var ratio = Number(ev && ev.ratio);
+      if (!eff || !isFinite(ratio) || ratio <= 1) continue;
+      if (valueIso < eff && eff <= targetIso) factor *= ratio;
+    }
+    return isFinite(factor) && factor > 0 ? factor : 1;
+  }
+
+  function adjustPerShareValueForSplits(ticker, value, valueDate, targetDate, events) {
+    var n = Number(value);
+    if (!isFinite(n)) return null;
+    var factor = getSplitAdjustmentFactor(ticker, valueDate, targetDate, events);
+    if (!isFinite(factor) || factor <= 1) return n;
+    return n / factor;
+  }
+
+  function getTotalReturn12mWindow(toDate) {
     var toIso = splitIsoDate(toDate);
     if (!toIso) return null;
     var fromIso = splitShiftYears(toIso, -1);
     if (!fromIso) return null;
-    var ev = findSplitEventInPeriod(ticker, fromIso, toIso, events);
+    return { fromDate: fromIso, toDate: toIso };
+  }
+
+  function formatSplitHiddenTotalReturn12m(ticker, toDate, events) {
+    var win = getTotalReturn12mWindow(toDate);
+    if (!win) return null;
+    var ev = findSplitEventInPeriod(ticker, win.fromDate, win.toDate, events);
     if (!ev) return null;
     var ratioText = formatSplitRatioText(ev);
     var dateRu = formatSplitDateRu(ev.effectiveDate);
-    var title = '12-месячная доходность не показана: период пересекает дробление акций' +
-      (ratioText ? ' ' + ratioText : '') +
-      '. Сырая историческая цена не сопоставима с текущей ценой за 1 акцию, поэтому процент не показан.';
+    var title = '12-месячная доходность не показана: период пересекает дробление акций, но не хватает данных для корректировки.';
+    title += ' Период пересекает дробление акций. Сырая историческая цена не сопоставима с текущей ценой за 1 акцию, поэтому процент не показан.';
     if (ratioText || dateRu) {
       title += ' Дробление акций' +
         (ratioText ? ' ' + ratioText : '') +
         (dateRu ? ', ' + dateRu : '') + '.';
     }
     return {
+      mode: 'hidden',
       text: SPLIT_BADGE_TEXT,
       cls: 'quote-div-val muted quote-div-val--split',
       title: title,
       splitEvent: ev,
-      fromDate: fromIso,
-      toDate: toIso
+      fromDate: win.fromDate,
+      toDate: win.toDate
     };
+  }
+
+  function formatSplitAdjustedTotalReturnTitle(ev) {
+    var ratioText = formatSplitRatioText(ev);
+    var dateRu = formatSplitDateRu(ev && ev.effectiveDate);
+    var title = 'Доходность скорректирована с учётом дробления акций' +
+      (ratioText ? ' ' + ratioText : '') + '.';
+    if (ratioText || dateRu) {
+      title += ' Дробление акций' +
+        (ratioText ? ' ' + ratioText : '') +
+        (dateRu ? ', ' + dateRu : '') + '.';
+    }
+    return title;
+  }
+
+  /** Вид «Полн. доходн. 12м»: adjusted % / fallback «сплит» / null (обычный процент). */
+  function formatTotalReturn12mView(ticker, toDate, totalReturn, events) {
+    var hidden = formatSplitHiddenTotalReturn12m(ticker, toDate, events);
+    if (!hidden) return null;
+    var pct = totalReturn && isFinite(Number(totalReturn.pct)) ? Number(totalReturn.pct) : null;
+    if (totalReturn && totalReturn.splitAdjusted && pct != null) {
+      return {
+        mode: 'adjusted',
+        pct: pct,
+        cls: 'quote-div-val' + (pct >= 0 ? ' pnl-pos' : ' pnl-neg'),
+        title: formatSplitAdjustedTotalReturnTitle(hidden.splitEvent),
+        splitEvent: hidden.splitEvent,
+        fromDate: hidden.fromDate,
+        toDate: hidden.toDate
+      };
+    }
+    return hidden;
   }
 
   function expectedSplitDayChangePct(ev) {
@@ -347,7 +416,12 @@
     isSplitAffectedChange: isSplitAffectedChange,
     formatSplitDayChangeDisplay: formatSplitDayChangeDisplay,
     findSplitEventInPeriod: findSplitEventInPeriod,
+    getSplitAdjustmentFactor: getSplitAdjustmentFactor,
+    adjustPerShareValueForSplits: adjustPerShareValueForSplits,
+    getTotalReturn12mWindow: getTotalReturn12mWindow,
     formatSplitHiddenTotalReturn12m: formatSplitHiddenTotalReturn12m,
+    formatTotalReturn12mView: formatTotalReturn12mView,
+    formatSplitAdjustedTotalReturnTitle: formatSplitAdjustedTotalReturnTitle,
     formatSplitDateRu: formatSplitDateRu,
     splitEventCoversTicker: splitEventCoversTicker
   };
@@ -361,6 +435,11 @@
   root.getSplitEventsForTicker = getSplitEventsForTicker;
   root.findSplitEventForDate = findSplitEventForDate;
   root.findSplitEventInPeriod = findSplitEventInPeriod;
+  root.getSplitAdjustmentFactor = getSplitAdjustmentFactor;
+  root.adjustPerShareValueForSplits = adjustPerShareValueForSplits;
+  root.getTotalReturn12mWindow = getTotalReturn12mWindow;
+  root.formatTotalReturn12mView = formatTotalReturn12mView;
+  root.formatSplitAdjustedTotalReturnTitle = formatSplitAdjustedTotalReturnTitle;
   root.expectedSplitDayChangePct = expectedSplitDayChangePct;
   root.formatSplitRatioText = formatSplitRatioText;
   root.formatSplitChangeHint = formatSplitChangeHint;

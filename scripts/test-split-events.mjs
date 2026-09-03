@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const SplitEvents = require('../split-events.js');
+const Core = require('../analytics-core.js');
 const errors = [];
 
 function assert(cond, msg) {
@@ -87,11 +88,125 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
   assert(hidden && hidden.text === 'сплит', '12m formatter hides T raw %');
   assert(!/-89/.test(hidden.text) && !/%/.test(hidden.text), '12m formatter has no percent');
   assert(hidden.cls.indexOf('pnl-neg') < 0 && hidden.cls.indexOf('pnl-pos') < 0, '12m split is neutral');
+  assert(/не хватает данных/.test(hidden.title || ''), '12m hidden title mentions missing data');
   assert(/1:10/.test(hidden.title || '') && /17\.04\.2026/.test(hidden.title || ''), '12m title has ratio and date');
   assert(hidden.price == null && hidden.valToday == null, 'formatter does not touch LAST/VALTODAY');
   assert(aliasHidden && aliasHidden.text === 'сплит', '12m alias TCSG hidden');
   assert(sber == null, '12m SBER still uses regular percent path');
   assert(afterSplitYear == null, '12m window after split shows percent again');
+}
+
+{
+  const factorT = SplitEvents.getSplitAdjustmentFactor('T', '2025-09-03', '2026-09-03', events);
+  const factorAlias = SplitEvents.getSplitAdjustmentFactor('TCSG', '2025-09-03', '2026-09-03', events);
+  const after = SplitEvents.getSplitAdjustmentFactor('T', '2026-04-18', '2026-09-03', events);
+  const unknown = SplitEvents.getSplitAdjustmentFactor('SBER', '2025-09-03', '2026-09-03', events);
+  const bad = SplitEvents.getSplitAdjustmentFactor('T', '', '2026-09-03', events);
+  assert(factorT === 10, 'T factor across split = 10, got ' + factorT);
+  assert(factorAlias === 10, 'TCSG factor across split = 10');
+  assert(after === 1, 'T after split factor = 1');
+  assert(unknown === 1, 'unknown ticker factor = 1');
+  assert(bad === 1, 'invalid dates factor = 1');
+}
+
+{
+  const oldPx = SplitEvents.adjustPerShareValueForSplits('T', 3000, '2025-09-03', '2026-09-03', events);
+  const newPx = SplitEvents.adjustPerShareValueForSplits('T', 300, '2026-04-18', '2026-09-03', events);
+  const unknown = SplitEvents.adjustPerShareValueForSplits('SBER', 250, '2025-09-03', '2026-09-03', events);
+  const badVal = SplitEvents.adjustPerShareValueForSplits('T', 'x', '2025-09-03', '2026-09-03', events);
+  assert(oldPx === 300, 'T 3000 before split → 300, got ' + oldPx);
+  assert(newPx === 300, 'T 300 after split stays 300');
+  assert(unknown === 250, 'unknown ticker value unchanged');
+  assert(badVal == null, 'non-numeric value → null');
+}
+
+{
+  const now = new Date(2026, 8, 3, 12, 0, 0);
+  const historyFlat = [
+    { date: '2025-01-15', close: 3000, value: 1 },
+    { date: '2026-08-15', close: 300, value: 1 }
+  ];
+  const historyUp = [
+    { date: '2025-01-15', close: 3000, value: 1 },
+    { date: '2026-08-15', close: 330, value: 1 }
+  ];
+  const opts = { ticker: 'T', splitEvents: events };
+  const raw = Core.computeTotalReturn12m([], historyFlat, new Date(now), {});
+  const flat = Core.computeTotalReturn12m([], historyFlat, new Date(now), opts);
+  const up = Core.computeTotalReturn12m([], historyUp, new Date(now), opts);
+  const preDiv = Core.computeTotalReturn12m(
+    [{ date: '2026-03-01', value: 100 }],
+    historyFlat,
+    new Date(now),
+    opts
+  );
+  const postDiv = Core.computeTotalReturn12m(
+    [{ date: '2026-05-01', value: 10 }],
+    historyFlat,
+    new Date(now),
+    opts
+  );
+  const sber = Core.computeTotalReturn12m(
+    [],
+    [
+      { date: '2025-01-15', close: 250, value: 1 },
+      { date: '2026-08-15', close: 275, value: 1 }
+    ],
+    new Date(now),
+    { ticker: 'SBER', splitEvents: events }
+  );
+  const noOpts = Core.computeTotalReturn12m([], historyUp, new Date(now));
+
+  function near(actual, expected, msg) {
+    assert(actual != null && isFinite(actual) && Math.abs(actual - expected) < 0.05, msg + ' (got ' + actual + ')');
+  }
+
+  assert(raw && raw.pct != null && raw.pct < -80, 'raw T without splitEvents stays ~-90%, got ' + (raw && raw.pct));
+  assert(!raw.splitAdjusted, 'raw path is not splitAdjusted');
+  near(flat.pct, 0, 'split-adjusted flat T ≈ 0%');
+  assert(flat.splitAdjusted === true, 'flat T marked splitAdjusted');
+  assert(!/-89/.test(String(flat.pct)), 'adjusted pct is not -89');
+  near(up.pct, 10, 'split-adjusted growth T ≈ +10%');
+  near(preDiv.pct, 100 / 30, 'pre-split dividend 100 → 10, ≈ +3.33%');
+  near(preDiv.divPaid12m, 10, 'pre-split dividend adjusted to 10');
+  near(postDiv.pct, 10 / 3, 'post-split dividend 10 not divided, ≈ +3.33%');
+  near(postDiv.divPaid12m, 10, 'post-split dividend stays 10');
+  near(sber.pct, 10, 'SBER without split ≈ +10% as before');
+  assert(!sber.splitAdjusted, 'SBER is not splitAdjusted');
+  assert(noOpts && noOpts.pct != null && noOpts.pct < -80, 'no options → old formula ~-90%');
+}
+
+{
+  const adjustedMetric = { pct: 0, splitAdjusted: true, source: 'цена + дивиденды за 12 мес. (MOEX), скорректировано с учётом сплита' };
+  const rawMetric = { pct: -89.9, splitAdjusted: false, source: 'цена + дивиденды за 12 мес. (MOEX)' };
+  const viewAdj = SplitEvents.formatTotalReturn12mView('T', '2026-09-03', adjustedMetric, events);
+  const viewRaw = SplitEvents.formatTotalReturn12mView('T', '2026-09-03', rawMetric, events);
+  const viewSber = SplitEvents.formatTotalReturn12mView('SBER', '2026-09-03', { pct: 12.5, splitAdjusted: false }, events);
+
+  function paint(view, fallbackPct) {
+    if (view && view.mode === 'adjusted' && isFinite(view.pct)) return { text: String(view.pct), cls: view.cls };
+    if (view) return { text: view.text, cls: view.cls };
+    return { text: String(fallbackPct), cls: 'quote-div-val' };
+  }
+
+  const tAdj = paint(viewAdj, -89.9);
+  const tRaw = paint(viewRaw, -89.9);
+  const sberUi = paint(viewSber, 12.5);
+
+  assert(viewAdj && viewAdj.mode === 'adjusted', 'adjusted view mode');
+  assert(Math.abs(viewAdj.pct - 0) < 1e-9, 'adjusted view shows 0, not hidden');
+  assert(viewAdj.cls.indexOf('pnl-pos') >= 0, 'adjusted 0% uses pnl-pos');
+  assert(/скорректирована с учётом дробления/.test(viewAdj.title || ''), 'adjusted title');
+  assert(/1:10/.test(viewAdj.title || ''), 'adjusted title has 1:10');
+  assert(!/-89/.test(tAdj.text) && tAdj.text !== 'сплит', 'UI adjusted text is not -89.9 or сплит');
+  assert(viewRaw && viewRaw.mode === 'hidden' && viewRaw.text === 'сплит', 'unadjusted T falls back to сплит');
+  assert(!/-89/.test(viewRaw.text), 'hidden fallback has no -89');
+  assert(viewRaw.cls.indexOf('pnl-neg') < 0, 'hidden fallback is not red');
+  assert(/не хватает данных/.test(viewRaw.title || ''), 'hidden fallback title');
+  assert(tRaw.text === 'сплит', 'UI raw T paints сплит');
+  assert(viewSber == null, 'SBER view is null → regular percent');
+  assert(sberUi.text === '12.5' && !/сплит/.test(sberUi.text), 'SBER still shows percent');
+  assert(viewAdj.price == null && viewAdj.valToday == null, 'view does not touch LAST/VALTODAY');
 }
 
 {

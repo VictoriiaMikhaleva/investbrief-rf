@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v17.';
+  var ANALYTICS_CACHE_PREFIX = 'ibrf.analytics.v18.';
   var DIV_YIELD_MAX_SANE_PCT = 35;
   var DIV_PRICE_SCALE_BREAK_RATIO = 5;
   var ANALYTICS_TTL = 30 * 60 * 1000;
@@ -54,7 +54,7 @@
 
   function invalidateAnalyticsTickerCache(ticker) {
     ticker = normalizeTicker(ticker);
-    analyticsCacheRemove('full.v15.' + ticker);
+    analyticsCacheRemove('full.v16.' + ticker);
     analyticsCacheRemove('hist.v13.' + ticker + '.' + YIELD_YEARS);
   }
 
@@ -804,7 +804,11 @@
       var dividends = results[0];
       var history = results[1];
       var quote = results[2] || {};
-      var metrics = requireAnalyticsCore().buildMetricsFromMoex(dividends, history, quote.price);
+      var splitEvents = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+      var metrics = requireAnalyticsCore().buildMetricsFromMoex(dividends, history, quote.price, null, {
+        ticker: ticker,
+        splitEvents: splitEvents
+      });
       var out = {
         ticker: ticker,
         eligible: true,
@@ -912,6 +916,26 @@
     return Promise.resolve(finish());
   }
 
+  function localTodayIso() {
+    var now = new Date();
+    return now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0');
+  }
+
+  function tickerNeedsSplitAdjustedTotalReturn12m(ticker) {
+    if (typeof formatSplitHiddenTotalReturn12m !== 'function') return false;
+    var events = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+    return !!formatSplitHiddenTotalReturn12m(ticker, localTodayIso(), events);
+  }
+
+  function readySplitEvents() {
+    if (typeof loadSplitEvents === 'function') {
+      return loadSplitEvents().catch(function () { return []; });
+    }
+    return Promise.resolve([]);
+  }
+
   function buildSecurityAnalytics(ticker, opts) {
     opts = opts || {};
     ticker = normalizeTicker(ticker);
@@ -925,26 +949,28 @@
         volumeByDay: []
       });
     }
-    var cacheKey = 'full.v15.' + ticker;
+    var cacheKey = 'full.v16.' + ticker;
     var cached = analyticsCacheGet(cacheKey);
     if (cached && !isAnalyticsFullCacheStale(cached) && !opts.forceRefresh) return Promise.resolve(cached);
 
-    var useServer = shouldUseServerAnalytics();
-    if (useServer) {
-      return fetchSecurityAnalyticsFromApi(ticker, opts.forceRefresh).then(function (api) {
-        var core = requireAnalyticsCore();
-        if (api && api.coreVersion && api.coreVersion !== core.VERSION) {
+    return readySplitEvents().then(function () {
+      var useServer = shouldUseServerAnalytics();
+      if (useServer && !tickerNeedsSplitAdjustedTotalReturn12m(ticker)) {
+        return fetchSecurityAnalyticsFromApi(ticker, opts.forceRefresh).then(function (api) {
+          var core = requireAnalyticsCore();
+          if (api && api.coreVersion && api.coreVersion !== core.VERSION) {
+            return buildSecurityAnalyticsLocal(ticker, cacheKey);
+          }
+          return enrichServerAnalytics(api, ticker).then(function (out) {
+            analyticsCacheSet(cacheKey, out, ANALYTICS_TTL);
+            return out;
+          });
+        }).catch(function () {
           return buildSecurityAnalyticsLocal(ticker, cacheKey);
-        }
-        return enrichServerAnalytics(api, ticker).then(function (out) {
-          analyticsCacheSet(cacheKey, out, ANALYTICS_TTL);
-          return out;
         });
-      }).catch(function () {
-        return buildSecurityAnalyticsLocal(ticker, cacheKey);
-      });
-    }
-    return buildSecurityAnalyticsLocal(ticker, cacheKey);
+      }
+      return buildSecurityAnalyticsLocal(ticker, cacheKey);
+    });
   }
 
   /** Spot-check GAZP/SBER — серверный API или локальный MOEX. */
@@ -1163,28 +1189,26 @@
       });
     }
     if (totalReturnEl) {
-      var splitHidden = null;
-      if (typeof formatSplitHiddenTotalReturn12m === 'function') {
-        var trTicker = wrapEl.getAttribute && wrapEl.getAttribute('data-ticker');
-        var trTo = '';
-        if (typeof resolveQuoteTradeDate === 'function') trTo = resolveQuoteTradeDate(a) || '';
-        if (!trTo && typeof getMoexSessionTradeDateIso === 'function') trTo = getMoexSessionTradeDateIso();
-        if (!trTo) {
-          var now = new Date();
-          trTo = now.getFullYear() + '-' +
-            String(now.getMonth() + 1).padStart(2, '0') + '-' +
-            String(now.getDate()).padStart(2, '0');
-        }
-        splitHidden = formatSplitHiddenTotalReturn12m(
-          trTicker,
-          trTo,
-          typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []
-        );
+      var splitView = null;
+      var trTicker = wrapEl.getAttribute && wrapEl.getAttribute('data-ticker');
+      var trTo = '';
+      if (typeof resolveQuoteTradeDate === 'function') trTo = resolveQuoteTradeDate(a) || '';
+      if (!trTo && typeof getMoexSessionTradeDateIso === 'function') trTo = getMoexSessionTradeDateIso();
+      if (!trTo) trTo = localTodayIso();
+      var splitEvents = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+      if (typeof formatTotalReturn12mView === 'function') {
+        splitView = formatTotalReturn12mView(trTicker, trTo, a.totalReturn12m, splitEvents);
+      } else if (typeof formatSplitHiddenTotalReturn12m === 'function') {
+        splitView = formatSplitHiddenTotalReturn12m(trTicker, trTo, splitEvents);
       }
-      if (splitHidden) {
-        totalReturnEl.textContent = splitHidden.text;
-        totalReturnEl.className = splitHidden.cls;
-        totalReturnEl.title = splitHidden.title || '';
+      if (splitView && splitView.mode === 'adjusted' && isFinite(splitView.pct)) {
+        totalReturnEl.textContent = formatDivYieldPct(splitView.pct);
+        totalReturnEl.className = splitView.cls;
+        totalReturnEl.title = splitView.title || '';
+      } else if (splitView && splitView.mode !== 'adjusted') {
+        totalReturnEl.textContent = splitView.text || 'сплит';
+        totalReturnEl.className = splitView.cls || 'quote-div-val muted quote-div-val--split';
+        totalReturnEl.title = splitView.title || '';
       } else {
         var tr = a.totalReturn12m && isFinite(a.totalReturn12m.pct) ? Number(a.totalReturn12m.pct) : null;
         if (tr === 0 && a.totalReturn12m && !String(a.totalReturn12m.source || '').trim()) tr = null;

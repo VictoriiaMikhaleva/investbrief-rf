@@ -11,7 +11,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.5.1';
+  var VERSION = '1.6.0';
   /** Минимальный интервал между якорными датами для полной доходности 12м (~11 мес.). */
   var TOTAL_RETURN_MIN_SPAN_DAYS = 330;
   var DIV_YIELD_MAX_SANE_PCT = 35;
@@ -352,7 +352,66 @@
     return picked;
   }
 
-  function computeTotalReturn12m(dividends, dailyHistory, now) {
+  function emptyTotalReturn12m() {
+    return { pct: null, priceReturnPct: null, divPaid12m: null, source: '', splitAdjusted: false };
+  }
+
+  function resolveSplitEventsOption(options) {
+    if (!options) return null;
+    if (Array.isArray(options.splitEvents)) return options.splitEvents;
+    if (Array.isArray(options.splitEventsCatalog)) return options.splitEventsCatalog;
+    return null;
+  }
+
+  function splitEventMatchesTicker(ev, ticker) {
+    var t = String(ticker || '').trim().toUpperCase();
+    if (!t || !ev) return false;
+    if (String(ev.ticker || '').trim().toUpperCase() === t) return true;
+    var aliases = ev.aliases || [];
+    var i;
+    for (i = 0; i < aliases.length; i++) {
+      if (String(aliases[i] || '').trim().toUpperCase() === t) return true;
+    }
+    return false;
+  }
+
+  function getSplitAdjustmentFactorCore(ticker, valueDate, targetDate, events) {
+    if (typeof SplitEvents !== 'undefined' && typeof SplitEvents.getSplitAdjustmentFactor === 'function') {
+      return SplitEvents.getSplitAdjustmentFactor(ticker, valueDate, targetDate, events);
+    }
+    var valueIso = String(valueDate || '').slice(0, 10);
+    var targetIso = String(targetDate || '').slice(0, 10);
+    if (valueIso.length < 10 || targetIso.length < 10 || valueIso >= targetIso) return 1;
+    var t = String(ticker || '').trim();
+    if (!t || !events || !events.length) return 1;
+    var factor = 1;
+    var i;
+    for (i = 0; i < events.length; i++) {
+      var ev = events[i];
+      if (!splitEventMatchesTicker(ev, t)) continue;
+      var type = ev && ev.type != null ? String(ev.type).trim().toLowerCase() : 'split';
+      if (type === 'reverse') continue;
+      var eff = String(ev && ev.effectiveDate || '').slice(0, 10);
+      var ratio = Number(ev && ev.ratio);
+      if (eff.length < 10 || !isFinite(ratio) || ratio <= 1) continue;
+      if (valueIso < eff && eff <= targetIso) factor *= ratio;
+    }
+    return isFinite(factor) && factor > 0 ? factor : 1;
+  }
+
+  function adjustPerShareValueForSplitsCore(ticker, value, valueDate, targetDate, events) {
+    if (typeof SplitEvents !== 'undefined' && typeof SplitEvents.adjustPerShareValueForSplits === 'function') {
+      return SplitEvents.adjustPerShareValueForSplits(ticker, value, valueDate, targetDate, events);
+    }
+    var n = Number(value);
+    if (!isFinite(n)) return null;
+    var factor = getSplitAdjustmentFactorCore(ticker, valueDate, targetDate, events);
+    if (!isFinite(factor) || factor <= 1) return n;
+    return n / factor;
+  }
+
+  function computeTotalReturn12m(dividends, dailyHistory, now, options) {
+    options = options || {};
     now = now || new Date();
     now.setHours(12, 0, 0, 0);
     var endIso = now.toISOString().slice(0, 10);
@@ -363,35 +422,63 @@
     var startPoint = nearestCloseOnOrBefore(dailyHistory, startIso);
     var endPoint = nearestCloseOnOrBefore(dailyHistory, endIso);
     if (!startPoint || !endPoint || !isFinite(startPoint.close) || startPoint.close <= 0) {
-      return { pct: null, priceReturnPct: null, divPaid12m: null, source: '' };
+      return emptyTotalReturn12m();
     }
 
     var anchorStartMs = new Date(startPoint.date + 'T12:00:00').getTime();
     var anchorEndMs = new Date(endPoint.date + 'T12:00:00').getTime();
     if (isNaN(anchorStartMs) || isNaN(anchorEndMs) ||
         anchorEndMs - anchorStartMs < TOTAL_RETURN_MIN_SPAN_DAYS * 24 * 60 * 60 * 1000) {
-      return { pct: null, priceReturnPct: null, divPaid12m: null, source: '' };
+      return emptyTotalReturn12m();
     }
 
+    var splitEvents = resolveSplitEventsOption(options);
+    var ticker = options.ticker != null ? String(options.ticker).trim() : '';
+    var canAdjust = !!(ticker && Array.isArray(splitEvents));
+    var fromDate = startPoint.date;
+    var toDate = endPoint.date;
+
     var paid12m = 0;
+    var splitAdjusted = false;
     var startMs = new Date(startIso + 'T12:00:00').getTime();
     var endMs = new Date(endIso + 'T12:00:00').getTime();
     (dividends || []).forEach(function (d) {
       var dt = new Date(String(d.date || '').slice(0, 10) + 'T12:00:00');
       if (isNaN(dt.getTime()) || !isFinite(d.value) || d.value <= 0) return;
       var ms = dt.getTime();
-      if (ms > startMs && ms <= endMs) paid12m += Number(d.value);
+      if (ms > startMs && ms <= endMs) {
+        var rawDiv = Number(d.value);
+        var divDate = String(d.date || '').slice(0, 10);
+        var adjDiv = canAdjust
+          ? adjustPerShareValueForSplitsCore(ticker, rawDiv, divDate, toDate, splitEvents)
+          : rawDiv;
+        if (adjDiv == null || !isFinite(adjDiv)) return;
+        if (canAdjust && adjDiv !== rawDiv) splitAdjusted = true;
+        paid12m += adjDiv;
+      }
     });
 
     var startClose = Number(startPoint.close);
     var endClose = Number(endPoint.close);
+    if (canAdjust) {
+      var adjStart = adjustPerShareValueForSplitsCore(ticker, startClose, fromDate, toDate, splitEvents);
+      if (adjStart == null || !isFinite(adjStart) || adjStart <= 0) {
+        return emptyTotalReturn12m();
+      }
+      if (adjStart !== startClose) splitAdjusted = true;
+      startClose = adjStart;
+    }
+
     var priceReturnPct = ((endClose - startClose) / startClose) * 100;
     var totalReturnPct = ((endClose + paid12m - startClose) / startClose) * 100;
+    var source = 'цена + дивиденды за 12 мес. (MOEX)';
+    if (splitAdjusted) source += ', скорректировано с учётом сплита';
     return {
       pct: isFinite(totalReturnPct) ? totalReturnPct : null,
       priceReturnPct: isFinite(priceReturnPct) ? priceReturnPct : null,
       divPaid12m: paid12m,
-      source: 'цена + дивиденды за 12 мес. (MOEX)'
+      source: source,
+      splitAdjusted: splitAdjusted
     };
   }
 
@@ -665,9 +752,10 @@
     return { months: months, source: source, totalPerShare: totalPerShare, hasAnnounced: hasAnnounced };
   }
 
-  function buildMetricsFromMoex(dividends, history, quotePrice, now) {
+  function buildMetricsFromMoex(dividends, history, quotePrice, now, options) {
     dividends = normalizeMoexDividends(dividends || []);
     history = history || [];
+    options = options || {};
     var yearly = computeYearlyDividendYields(dividends, history, getYieldWindowYears(now));
     var displayYears = buildDividendDisplayYears(dividends, history, now);
     var forecast = computeDividendForecast12m(dividends, now);
@@ -684,7 +772,7 @@
       divYieldQuality: divMetrics.divYieldQuality,
       divForecast: divMetrics.divForecast,
       noMoexDividends: divMetrics.noMoexDividends,
-      totalReturn12m: computeTotalReturn12m(dividends, history, now),
+      totalReturn12m: computeTotalReturn12m(dividends, history, now, options),
       monthlyForecast: buildMonthlyDividendForecast12m(dividends, history, quotePrice, now),
       volumeByDay: volumeByDay,
       dataAsOf: dataAsOf,
