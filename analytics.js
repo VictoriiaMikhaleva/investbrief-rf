@@ -1163,18 +1163,42 @@
       });
     }
     if (totalReturnEl) {
-      var tr = a.totalReturn12m && isFinite(a.totalReturn12m.pct) ? Number(a.totalReturn12m.pct) : null;
-      if (tr === 0 && a.totalReturn12m && !String(a.totalReturn12m.source || '').trim()) tr = null;
-      if (tr == null) {
-        totalReturnEl.textContent = '—';
-        totalReturnEl.className = 'quote-div-val muted';
-        totalReturnEl.title = a.noMoexDividends
-          ? 'Недостаточно истории торгов для расчёта за 12 месяцев'
-          : '';
+      var splitHidden = null;
+      if (typeof formatSplitHiddenTotalReturn12m === 'function') {
+        var trTicker = wrapEl.getAttribute && wrapEl.getAttribute('data-ticker');
+        var trTo = '';
+        if (typeof resolveQuoteTradeDate === 'function') trTo = resolveQuoteTradeDate(a) || '';
+        if (!trTo && typeof getMoexSessionTradeDateIso === 'function') trTo = getMoexSessionTradeDateIso();
+        if (!trTo) {
+          var now = new Date();
+          trTo = now.getFullYear() + '-' +
+            String(now.getMonth() + 1).padStart(2, '0') + '-' +
+            String(now.getDate()).padStart(2, '0');
+        }
+        splitHidden = formatSplitHiddenTotalReturn12m(
+          trTicker,
+          trTo,
+          typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []
+        );
+      }
+      if (splitHidden) {
+        totalReturnEl.textContent = splitHidden.text;
+        totalReturnEl.className = splitHidden.cls;
+        totalReturnEl.title = splitHidden.title || '';
       } else {
-        totalReturnEl.textContent = formatDivYieldPct(tr);
-        totalReturnEl.className = 'quote-div-val' + (tr >= 0 ? ' pnl-pos' : ' pnl-neg');
-        totalReturnEl.title = a.totalReturn12m.source || 'Цена + дивиденды за 12 месяцев';
+        var tr = a.totalReturn12m && isFinite(a.totalReturn12m.pct) ? Number(a.totalReturn12m.pct) : null;
+        if (tr === 0 && a.totalReturn12m && !String(a.totalReturn12m.source || '').trim()) tr = null;
+        if (tr == null) {
+          totalReturnEl.textContent = '—';
+          totalReturnEl.className = 'quote-div-val muted';
+          totalReturnEl.title = a.noMoexDividends
+            ? 'Недостаточно истории торгов для расчёта за 12 месяцев'
+            : '';
+        } else {
+          totalReturnEl.textContent = formatDivYieldPct(tr);
+          totalReturnEl.className = 'quote-div-val' + (tr >= 0 ? ' pnl-pos' : ' pnl-neg');
+          totalReturnEl.title = a.totalReturn12m.source || 'Цена + дивиденды за 12 месяцев';
+        }
       }
     }
   }
@@ -1276,7 +1300,12 @@
         resolve();
         return;
       }
-      buildSecurityAnalytics(ticker).then(function (a) {
+      var ready = typeof loadSplitEvents === 'function'
+        ? loadSplitEvents().catch(function () { return []; })
+        : Promise.resolve([]);
+      ready.then(function () {
+        return buildSecurityAnalytics(ticker);
+      }).then(function (a) {
         if (!wrapEl.isConnected) {
           resolve();
           return;

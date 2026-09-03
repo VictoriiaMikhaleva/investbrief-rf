@@ -785,6 +785,10 @@ input:focus, select:focus, textarea:focus {
   text-transform: lowercase;
   color: color-mix(in srgb, var(--text-muted) 82%, #5c5348 18%);
 }
+.quote-div-val--split {
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text-muted) 82%, #5c5348 18%);
+}
 
 .pnl-neg,
 .index-change.pnl-neg,

@@ -67,6 +67,34 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
 }
 
 {
+  const inWin = SplitEvents.findSplitEventInPeriod('T', '2025-09-03', '2026-09-03', events);
+  const aliasWin = SplitEvents.findSplitEventInPeriod('TCSG', '2025-09-03', '2026-09-03', events);
+  const after = SplitEvents.findSplitEventInPeriod('T', '2026-04-18', '2026-09-03', events);
+  const unknown = SplitEvents.findSplitEventInPeriod('SBER', '2025-09-03', '2026-09-03', events);
+  const bad = SplitEvents.findSplitEventInPeriod('T', '', '2026-09-03', events);
+  assert(inWin && inWin.ticker === 'T' && inWin.effectiveDate === '2026-04-17', 'period 12m includes T split');
+  assert(aliasWin && aliasWin.ticker === 'T', 'TCSG period finds same split');
+  assert(after == null, 'period after 2026-04-18 → null');
+  assert(unknown == null, 'unknown ticker period → null');
+  assert(bad == null, 'invalid dates → null');
+}
+
+{
+  const hidden = SplitEvents.formatSplitHiddenTotalReturn12m('T', '2026-09-03', events);
+  const aliasHidden = SplitEvents.formatSplitHiddenTotalReturn12m('tcsg', '2026-09-03', events);
+  const sber = SplitEvents.formatSplitHiddenTotalReturn12m('SBER', '2026-09-03', events);
+  const afterSplitYear = SplitEvents.formatSplitHiddenTotalReturn12m('T', '2028-01-01', events);
+  assert(hidden && hidden.text === 'сплит', '12m formatter hides T raw %');
+  assert(!/-89/.test(hidden.text) && !/%/.test(hidden.text), '12m formatter has no percent');
+  assert(hidden.cls.indexOf('pnl-neg') < 0 && hidden.cls.indexOf('pnl-pos') < 0, '12m split is neutral');
+  assert(/1:10/.test(hidden.title || '') && /17\.04\.2026/.test(hidden.title || ''), '12m title has ratio and date');
+  assert(hidden.price == null && hidden.valToday == null, 'formatter does not touch LAST/VALTODAY');
+  assert(aliasHidden && aliasHidden.text === 'сплит', '12m alias TCSG hidden');
+  assert(sber == null, '12m SBER still uses regular percent path');
+  assert(afterSplitYear == null, '12m window after split shows percent again');
+}
+
+{
   const empty = SplitEvents.parseSplitEventsCatalog(null);
   assert(Array.isArray(empty) && empty.length === 0, 'bad catalog → []');
 }

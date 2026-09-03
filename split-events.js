@@ -219,6 +219,74 @@
     return exact || near;
   }
 
+  function splitShiftYears(iso, years) {
+    var n = splitIsoDate(iso);
+    var add = Number(years);
+    if (!n || !isFinite(add)) return '';
+    var y = Number(n.slice(0, 4)) + add;
+    var mo = Number(n.slice(5, 7));
+    var day = Number(n.slice(8, 10));
+    if (!isFinite(y) || mo < 1 || mo > 12) return '';
+    var leap = (y % 4 === 0 && y % 100 !== 0) || (y % 400 === 0);
+    var dim = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    var max = dim[mo - 1] || 31;
+    if (day > max) day = max;
+    return y + '-' + String(mo).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  }
+
+  function formatSplitDateRu(iso) {
+    var n = splitIsoDate(iso);
+    if (!n) return '';
+    return n.slice(8, 10) + '.' + n.slice(5, 7) + '.' + n.slice(0, 4);
+  }
+
+  function findSplitEventInPeriod(ticker, fromDate, toDate, events) {
+    var fromIso = splitIsoDate(fromDate);
+    var toIso = splitIsoDate(toDate);
+    if (!fromIso || !toIso) return null;
+    if (fromIso > toIso) {
+      var tmp = fromIso;
+      fromIso = toIso;
+      toIso = tmp;
+    }
+    var list = getSplitEventsForTicker(ticker, events);
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var ev = list[i];
+      var eff = splitIsoDate(ev && ev.effectiveDate);
+      if (!eff) continue;
+      if (eff >= fromIso && eff <= toIso) return ev;
+    }
+    return null;
+  }
+
+  function formatSplitHiddenTotalReturn12m(ticker, toDate, events) {
+    var toIso = splitIsoDate(toDate);
+    if (!toIso) return null;
+    var fromIso = splitShiftYears(toIso, -1);
+    if (!fromIso) return null;
+    var ev = findSplitEventInPeriod(ticker, fromIso, toIso, events);
+    if (!ev) return null;
+    var ratioText = formatSplitRatioText(ev);
+    var dateRu = formatSplitDateRu(ev.effectiveDate);
+    var title = '12-месячная доходность не показана: период пересекает дробление акций' +
+      (ratioText ? ' ' + ratioText : '') +
+      '. Сырая историческая цена не сопоставима с текущей ценой за 1 акцию, поэтому процент не показан.';
+    if (ratioText || dateRu) {
+      title += ' Дробление акций' +
+        (ratioText ? ' ' + ratioText : '') +
+        (dateRu ? ', ' + dateRu : '') + '.';
+    }
+    return {
+      text: SPLIT_BADGE_TEXT,
+      cls: 'quote-div-val muted quote-div-val--split',
+      title: title,
+      splitEvent: ev,
+      fromDate: fromIso,
+      toDate: toIso
+    };
+  }
+
   function expectedSplitDayChangePct(ev) {
     if (!ev) return null;
     var ratio = Number(ev.ratio);
@@ -278,6 +346,9 @@
     formatSplitChangeHint: formatSplitChangeHint,
     isSplitAffectedChange: isSplitAffectedChange,
     formatSplitDayChangeDisplay: formatSplitDayChangeDisplay,
+    findSplitEventInPeriod: findSplitEventInPeriod,
+    formatSplitHiddenTotalReturn12m: formatSplitHiddenTotalReturn12m,
+    formatSplitDateRu: formatSplitDateRu,
     splitEventCoversTicker: splitEventCoversTicker
   };
 
@@ -289,11 +360,14 @@
   root.loadSplitEvents = loadSplitEvents;
   root.getSplitEventsForTicker = getSplitEventsForTicker;
   root.findSplitEventForDate = findSplitEventForDate;
+  root.findSplitEventInPeriod = findSplitEventInPeriod;
   root.expectedSplitDayChangePct = expectedSplitDayChangePct;
   root.formatSplitRatioText = formatSplitRatioText;
   root.formatSplitChangeHint = formatSplitChangeHint;
+  root.formatSplitDateRu = formatSplitDateRu;
   root.isSplitAffectedChange = isSplitAffectedChange;
   root.formatSplitDayChangeDisplay = formatSplitDayChangeDisplay;
+  root.formatSplitHiddenTotalReturn12m = formatSplitHiddenTotalReturn12m;
   root.splitEventCoversTicker = splitEventCoversTicker;
 
   if (typeof module !== 'undefined' && module.exports) {
