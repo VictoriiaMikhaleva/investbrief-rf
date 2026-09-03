@@ -269,6 +269,24 @@ function loadPortfolioCalcHelpers() {
     }
     return '';
   }
+  function isIndexQuoteTicker(ticker) {
+    ticker = String(ticker || '').trim().toUpperCase();
+    return ticker === 'IMOEX' || ticker === 'INDEX';
+  }
+  function isRuBondTicker(ticker) {
+    ticker = String(ticker || '').trim().toUpperCase();
+    return ticker.indexOf('OFZ') >= 0 || (ticker.indexOf('SU') === 0 && ticker.length > 8);
+  }
+  function isUsTicker(ticker) {
+    ticker = String(ticker || '').trim().toUpperCase();
+    return ticker === 'AAPL' || ticker === 'MSFT';
+  }
+  function isRuStockForAnalytics(ticker) {
+    ticker = String(ticker || '').trim().toUpperCase();
+    if (!ticker || isIndexQuoteTicker(ticker)) return false;
+    if (isUsTicker(ticker)) return false;
+    return !isRuBondTicker(ticker);
+  }
   const sandbox = {
     console,
     Date,
@@ -284,13 +302,12 @@ function loadPortfolioCalcHelpers() {
     normalizeTicker: (t) => String(t || '').trim().toUpperCase(),
     normalizePortfolioDate,
     safeFormatPortfolioDate: (value) => normalizePortfolioDate(value) || '—',
-    isRuBondTicker: (ticker) => {
-      ticker = String(ticker || '').trim().toUpperCase();
-      return ticker.indexOf('OFZ') >= 0 || (ticker.indexOf('SU') === 0 && ticker.length > 8);
-    },
+    isIndexQuoteTicker,
+    isRuBondTicker,
+    isRuStockForAnalytics,
     Markets: {
-      isUsPosition: () => false,
-      isUsTicker: () => false,
+      isUsPosition: (pos) => !!(pos && (pos.market === 'US' || isUsTicker(pos.ticker))),
+      isUsTicker,
       formatMoneyValue: (v) => (v == null ? '—' : String(v))
     },
     document: { getElementById: () => null },
@@ -341,9 +358,10 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
       '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;' +
       '\nthis.__payouts = buildPortfolioPayoutsForHoldingPeriod;' +
-      '\nthis.__tickerPayouts = buildTickerPayoutsForHoldingPeriod;',
+      '\nthis.__tickerPayouts = buildTickerPayoutsForHoldingPeriod;' +
+      '\nthis.__loadPayoutFeeds = loadPayoutFeedsForPortfolio;',
     sandbox,
-    { timeout: 5000 }
+    { timeout: 10000 }
   );
   return {
     bondRubFromPct: sandbox.__bondRub,
@@ -374,6 +392,7 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
     buildPortfolioPayoutsForHoldingPeriod: sandbox.__payouts,
     buildTickerPayoutsForHoldingPeriod: sandbox.__tickerPayouts,
+    loadPayoutFeedsForPortfolio: sandbox.__loadPayoutFeeds,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -2329,9 +2348,113 @@ function loadPriceAtDateHelpers() {
   assert(badDivValue.warnings.some((w) => /дивиденд без суммы/i.test(w)), 'payouts: dividend value warning');
 }
 
+{
+  // Волна 4.2: загрузчик лент — моки, без сети
+  assert(typeof calc.loadPayoutFeedsForPortfolio === 'function', 'feed loader exported');
+
+  const called = { analytics: [], bonds: [] };
+  const mocks = {
+    buildSecurityAnalytics: (ticker) => {
+      called.analytics.push(ticker);
+      if (ticker === 'GAZP') return Promise.reject(new Error('analytics down'));
+      return Promise.resolve({
+        ticker: ticker,
+        eligible: true,
+        dividends: [{ date: '2024-07-17', value: 33.3 }]
+      });
+    },
+    fetchOfzBondSnapshot: (cfg) => {
+      called.bonds.push(cfg && cfg.ticker);
+      if (cfg && cfg.ticker === 'OFZ_FAIL') {
+        return Promise.resolve({ ticker: cfg.ticker, error: true });
+      }
+      return Promise.resolve({
+        ticker: cfg.ticker,
+        faceValue: 1000,
+        coupons: [{ date: '2024-06-19', value: 42.38 }],
+        accruedInt: 12.5,
+        nextCoupon: '2026-01-01'
+      });
+    }
+  };
+
+  const mixedPf = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 300 },
+      { ticker: 'OFZ_26238', lotId: 'O1', qty: 4, avgPrice: 95, buyDate: '2024-02-01', faceValue: 1000 },
+      { ticker: 'GAZP', lotId: 'G1', qty: 8, avgPrice: 140, buyDate: '2024-03-01' },
+      { ticker: 'AAPL', lotId: 'U1', qty: 2, avgPrice: 180, buyDate: '2024-04-01', market: 'US' },
+      { ticker: 'SBGB', lotId: 'P1', qty: 3, avgPrice: 10, buyDate: '2024-05-01', kind: 'pif' },
+      { ticker: 'IMOEX', lotId: 'I1', qty: 1, avgPrice: 1, buyDate: '2024-01-01' }
+    ],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'PLZL',
+      qty: 4,
+      buyPrice: 100,
+      salePrice: 200,
+      saleDate: '2024-08-30',
+      allocations: [{ lotId: 'P1', qty: 4, buyPrice: 100, buyDate: '2024-01-01' }]
+    }]
+  };
+  const frozenMixed = JSON.stringify(mixedPf);
+  const feeds = await calc.loadPayoutFeedsForPortfolio(mixedPf, mocks);
+
+  assert(JSON.stringify(mixedPf) === frozenMixed, 'feed loader: does not mutate portfolio');
+  assert(feeds.isPartial === true, 'feed loader: mixed result isPartial');
+  assert(feeds.payoutsByTicker.SBER && feeds.payoutsByTicker.SBER.unavailable === false, 'feed loader: SBER available');
+  assert(feeds.payoutsByTicker.SBER.kind === 'stock' && feeds.payoutsByTicker.SBER.source === 'moex', 'feed loader: SBER stock/moex');
+  assert(feeds.payoutsByTicker.SBER.dividends.length === 1 && feeds.payoutsByTicker.SBER.dividends[0].value === 33.3, 'feed loader: SBER dividends');
+  assert(feeds.payoutsByTicker.SBER.coupons && feeds.payoutsByTicker.SBER.coupons.length === 0, 'feed loader: SBER no coupons');
+  assert(feeds.payoutsByTicker.SBER.dividends[0].date === '2024-07-17', 'feed loader: SBER cutoff date');
+  assert(feeds.payoutsByTicker.SBER.dividends[0].payoutDate == null, 'feed loader: no invented payment date');
+
+  assert(feeds.payoutsByTicker.OFZ_26238 && feeds.payoutsByTicker.OFZ_26238.unavailable === false, 'feed loader: OFZ available');
+  assert(feeds.payoutsByTicker.OFZ_26238.kind === 'bond' && feeds.payoutsByTicker.OFZ_26238.source === 'bondization', 'feed loader: OFZ bondization');
+  assert(feeds.payoutsByTicker.OFZ_26238.faceValue === 1000, 'feed loader: OFZ faceValue');
+  assert(feeds.payoutsByTicker.OFZ_26238.coupons.length === 1 && feeds.payoutsByTicker.OFZ_26238.coupons[0].value === 42.38, 'feed loader: OFZ coupons');
+  assert(feeds.payoutsByTicker.OFZ_26238.accruedInt == null, 'feed loader: no NKD field');
+  assert(feeds.payoutsByTicker.OFZ_26238.nextCoupon == null, 'feed loader: no nextCoupon calendar');
+
+  assert(feeds.payoutsByTicker.GAZP && feeds.payoutsByTicker.GAZP.unavailable === true, 'feed loader: GAZP unavailable on error');
+  assert(feeds.warnings.some((w) => w === 'нет данных по дивидендам для GAZP'), 'feed loader: GAZP warning');
+
+  assert(feeds.payoutsByTicker.PLZL && feeds.payoutsByTicker.PLZL.kind === 'stock', 'feed loader: closed PLZL still loaded');
+  assert(called.analytics.indexOf('PLZL') >= 0, 'feed loader: analytics called for closed ticker');
+
+  assert(!feeds.payoutsByTicker.IMOEX, 'feed loader: IMOEX skipped');
+  assert(!feeds.payoutsByTicker.AAPL, 'feed loader: US not in feeds');
+  assert(!feeds.payoutsByTicker.SBGB, 'feed loader: PIF not in feeds');
+  assert(feeds.warnings.some((w) => /выплаты для AAPL пока не поддерживаются/.test(w)), 'feed loader: US warning');
+  assert(feeds.warnings.some((w) => /выплаты для SBGB пока не поддерживаются/.test(w)), 'feed loader: PIF warning');
+  assert(called.analytics.indexOf('AAPL') < 0 && called.bonds.indexOf('AAPL') < 0, 'feed loader: US not fetched');
+  assert(called.analytics.indexOf('SBGB') < 0, 'feed loader: PIF not fetched');
+  assert(called.analytics.indexOf('IMOEX') < 0, 'feed loader: IMOEX not fetched');
+
+  const ofzFail = await calc.loadPayoutFeedsForPortfolio({
+    positions: [{ ticker: 'OFZ_FAIL', lotId: 'X', qty: 1, avgPrice: 90, buyDate: '2024-01-01', faceValue: 1000 }],
+    sales: []
+  }, mocks);
+  assert(ofzFail.payoutsByTicker.OFZ_FAIL.unavailable === true, 'feed loader: OFZ error unavailable');
+  assert(ofzFail.payoutsByTicker.OFZ_FAIL.faceValue === 1000, 'feed loader: OFZ error face 1000');
+  assert(ofzFail.warnings.some((w) => w === 'нет данных по купонам для OFZ_FAIL'), 'feed loader: OFZ error warning');
+  assert(ofzFail.isPartial === true, 'feed loader: OFZ error partial');
+
+  const emptyFeeds = await calc.loadPayoutFeedsForPortfolio({ positions: [], sales: [] }, mocks);
+  assert(Object.keys(emptyFeeds.payoutsByTicker).length === 0, 'feed loader: empty map');
+  assert(emptyFeeds.warnings.length === 0 && emptyFeeds.isPartial === false, 'feed loader: empty no warning');
+
+  const noLoader = await calc.loadPayoutFeedsForPortfolio({
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 1, buyDate: '2024-01-01' }],
+    sales: []
+  }, {});
+  assert(noLoader.payoutsByTicker.SBER.unavailable === true, 'feed loader: missing analytics fn');
+  assert(noLoader.warnings.some((w) => /нет данных по дивидендам для SBER/.test(w)), 'feed loader: missing fn warning');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds');

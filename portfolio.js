@@ -1807,6 +1807,225 @@
     };
   }
 
+  var PAYOUT_FEED_NO_DIV_PREFIX = 'нет данных по дивидендам для ';
+  var PAYOUT_FEED_NO_CPN_PREFIX = 'нет данных по купонам для ';
+  var PAYOUT_FEED_UNSUPPORTED_PREFIX = 'выплаты для ';
+  var PAYOUT_FEED_UNSUPPORTED_SUFFIX = ' пока не поддерживаются';
+  var PAYOUT_FEED_PIF_KINDS = {
+    pif: true,
+    opif: true,
+    ipif: true,
+    zpif: true,
+    'mutual-fund': true,
+    mutual_fund: true,
+    mutualfund: true
+  };
+
+  function payoutsSampleEntity(ticker, positions, sales) {
+    var found = null;
+    function consider(entity) {
+      if (found || !entity || asOfNormTicker(entity.ticker) !== ticker) return;
+      found = entity;
+    }
+    (positions || []).forEach(consider);
+    (sales || []).forEach(consider);
+    return found;
+  }
+
+  function payoutsEntityKindHint(sample) {
+    if (!sample) return '';
+    var k = sample.kind || sample.type;
+    return k ? String(k).toLowerCase() : '';
+  }
+
+  function payoutsTickerIsUs(ticker, sample) {
+    if (sample && String(sample.market || '').toUpperCase() === 'US') return true;
+    return typeof Markets !== 'undefined' && Markets.isUsTicker && Markets.isUsTicker(ticker);
+  }
+
+  /**
+   * stock | bond | unsupported | skip
+   * Не бросает: неизвестный тип → unsupported.
+   */
+  function payoutsClassifyTicker(ticker, sample) {
+    ticker = asOfNormTicker(ticker);
+    if (!ticker || ASOF_SKIP_TICKERS[ticker]) return 'skip';
+    if (typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker)) return 'skip';
+    var hint = payoutsEntityKindHint(sample);
+    if (hint === 'index') return 'skip';
+    if (PAYOUT_FEED_PIF_KINDS[hint]) return 'unsupported';
+    if (payoutsTickerIsUs(ticker, sample)) return 'unsupported';
+    if (hint === 'bond' || hint === 'bonds' || hint === 'ofz' || hint === 'ofz-bond' ||
+        hint === 'fixed' || hint === 'indexed' || hint === 'float') {
+      return 'bond';
+    }
+    if (isPortfolioBondPosition({ ticker: ticker })) return 'bond';
+    if (hint === 'stock' || hint === 'share' || hint === 'equity' || hint === 'etf' ||
+        hint === 'bpif' || hint === 'fund' || hint === 'shares') {
+      return 'stock';
+    }
+    if (typeof isRuStockForAnalytics === 'function') {
+      return isRuStockForAnalytics(ticker) ? 'stock' : 'unsupported';
+    }
+    return 'unsupported';
+  }
+
+  function payoutsNormalizeDividendRows(raw) {
+    var out = [];
+    (raw || []).forEach(function (d) {
+      if (!d) return;
+      var date = String(d.date || '').slice(0, 10);
+      var value = Number(d.value);
+      if (date.length !== 10 || !isFinite(value) || !(value > 0)) return;
+      var row = { date: date, value: value };
+      if (d.currency) row.currency = String(d.currency);
+      out.push(row);
+    });
+    return out;
+  }
+
+  function payoutsNormalizeCouponRows(raw) {
+    var out = [];
+    (raw || []).forEach(function (c) {
+      if (!c) return;
+      var date = String(c.date || '').slice(0, 10);
+      if (date.length !== 10) return;
+      var row = { date: date };
+      if (c.value != null && isFinite(Number(c.value))) row.value = Number(c.value);
+      if (c.valuePct != null && isFinite(Number(c.valuePct))) row.valuePct = Number(c.valuePct);
+      out.push(row);
+    });
+    return out;
+  }
+
+  function payoutsResolveAnalyticsLoader(options) {
+    if (options && typeof options.buildSecurityAnalytics === 'function') return options.buildSecurityAnalytics;
+    if (typeof buildSecurityAnalytics === 'function') return buildSecurityAnalytics;
+    if (typeof window !== 'undefined' && typeof window.buildSecurityAnalytics === 'function') {
+      return window.buildSecurityAnalytics;
+    }
+    return null;
+  }
+
+  function payoutsResolveBondLoader(options) {
+    if (options && typeof options.fetchOfzBondSnapshot === 'function') return options.fetchOfzBondSnapshot;
+    if (typeof fetchOfzBondSnapshot === 'function') return fetchOfzBondSnapshot;
+    if (typeof window !== 'undefined' && typeof window.fetchOfzBondSnapshot === 'function') {
+      return window.fetchOfzBondSnapshot;
+    }
+    return null;
+  }
+
+  function payoutsStockUnavailable(ticker) {
+    return { kind: 'stock', dividends: [], coupons: [], unavailable: true };
+  }
+
+  function payoutsBondUnavailable(ticker) {
+    return { kind: 'bond', dividends: [], coupons: [], faceValue: 1000, unavailable: true };
+  }
+
+  /**
+   * Async-загрузчик лент для buildPortfolioPayoutsForHoldingPeriod.
+   * Read-only: не пишет в JSON/storage, не считает выплаты, не ходит в новые endpoints.
+   * Кэш — существующий у buildSecurityAnalytics / fetchOfzBondSnapshot.
+   */
+  function loadPayoutFeedsForPortfolio(portfolio, options) {
+    options = options || {};
+    var parts = payoutsPositionsSales(portfolio, options);
+    var tickers = payoutsCollectTickers(parts.positions, parts.sales);
+    var payoutsByTicker = {};
+    var warnings = [];
+    var isPartial = false;
+
+    function markPartial(text) {
+      isPartial = true;
+      payoutsPushWarning(warnings, text);
+    }
+
+    if (!tickers.length) {
+      return Promise.resolve({
+        payoutsByTicker: payoutsByTicker,
+        warnings: warnings,
+        isPartial: false
+      });
+    }
+
+    var fetchAnalytics = payoutsResolveAnalyticsLoader(options);
+    var fetchBond = payoutsResolveBondLoader(options);
+
+    var jobs = tickers.map(function (ticker) {
+      var sample = payoutsSampleEntity(ticker, parts.positions, parts.sales);
+      var kind = payoutsClassifyTicker(ticker, sample);
+      if (kind === 'skip') return Promise.resolve();
+      if (kind !== 'stock' && kind !== 'bond') {
+        markPartial(PAYOUT_FEED_UNSUPPORTED_PREFIX + ticker + PAYOUT_FEED_UNSUPPORTED_SUFFIX);
+        return Promise.resolve();
+      }
+
+      if (kind === 'bond') {
+        if (typeof fetchBond !== 'function') {
+          payoutsByTicker[ticker] = payoutsBondUnavailable(ticker);
+          markPartial(PAYOUT_FEED_NO_CPN_PREFIX + ticker);
+          return Promise.resolve();
+        }
+        return Promise.resolve().then(function () {
+          return fetchBond({ ticker: ticker });
+        }).then(function (bond) {
+          if (!bond || bond.error) {
+            payoutsByTicker[ticker] = payoutsBondUnavailable(ticker);
+            markPartial(PAYOUT_FEED_NO_CPN_PREFIX + ticker);
+            return;
+          }
+          var face = Number(bond.faceValue);
+          payoutsByTicker[ticker] = {
+            kind: 'bond',
+            source: 'bondization',
+            dividends: [],
+            coupons: payoutsNormalizeCouponRows(bond.coupons),
+            faceValue: isFinite(face) && face > 0 ? face : 1000,
+            unavailable: false
+          };
+        }).catch(function () {
+          payoutsByTicker[ticker] = payoutsBondUnavailable(ticker);
+          markPartial(PAYOUT_FEED_NO_CPN_PREFIX + ticker);
+        });
+      }
+
+      if (typeof fetchAnalytics !== 'function') {
+        payoutsByTicker[ticker] = payoutsStockUnavailable(ticker);
+        markPartial(PAYOUT_FEED_NO_DIV_PREFIX + ticker);
+        return Promise.resolve();
+      }
+      return Promise.resolve().then(function () {
+        return fetchAnalytics(ticker);
+      }).then(function (a) {
+        if (!a || a.eligible === false) {
+          payoutsByTicker[ticker] = payoutsStockUnavailable(ticker);
+          markPartial(PAYOUT_FEED_NO_DIV_PREFIX + ticker);
+          return;
+        }
+        payoutsByTicker[ticker] = {
+          kind: 'stock',
+          source: 'moex',
+          dividends: payoutsNormalizeDividendRows(a.dividends),
+          coupons: [],
+          unavailable: false
+        };
+      }).catch(function () {
+        payoutsByTicker[ticker] = payoutsStockUnavailable(ticker);
+        markPartial(PAYOUT_FEED_NO_DIV_PREFIX + ticker);
+      });
+    });
+
+    return Promise.all(jobs).then(function () {
+      return {
+        payoutsByTicker: payoutsByTicker,
+        warnings: warnings,
+        isPartial: isPartial
+      };
+    });
+  }
+
   function asOfIsoToRu(iso) {
     var n = timelineIsoDate(iso);
     if (!n || n.length < 10) return '';
