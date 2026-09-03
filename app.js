@@ -340,6 +340,32 @@
       });
     }
 
+    var analyticsScaleTabs = document.getElementById('analyticsPriceScaleTabs');
+    if (analyticsScaleTabs) {
+      analyticsScaleTabs.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-analytics-price-scale]');
+        if (!btn) return;
+        var ticker = state.analyticsTicker;
+        if (!ticker) return;
+        var mode = btn.getAttribute('data-analytics-price-scale') === 'raw' ? 'raw' : 'adjusted';
+        if (typeof setAnalyticsPriceScaleMode === 'function') setAnalyticsPriceScaleMode(ticker, mode);
+        else {
+          if (!state.analyticsPriceScaleModeByTicker) state.analyticsPriceScaleModeByTicker = {};
+          state.analyticsPriceScaleModeByTicker[normalizeTicker(ticker)] = mode;
+        }
+        var canvas = document.getElementById('analyticsPriceChart');
+        var src = canvas && canvas._analyticsSourceSeries;
+        var horizon = typeof resolveAnalyticsPriceHorizon === 'function'
+          ? resolveAnalyticsPriceHorizon(state.analyticsPriceHorizon)
+          : (state.analyticsPriceHorizon || '5y');
+        if (src && src.length && typeof paintAnalyticsPriceChart === 'function') {
+          paintAnalyticsPriceChart(canvas, ticker, src, horizon);
+        } else if (typeof renderAnalyticsDetail === 'function') {
+          renderAnalyticsDetail(ticker);
+        }
+      });
+    }
+
     var secClose = document.getElementById('securityAnalyticsCloseBtn');
     if (secClose) secClose.addEventListener('click', function () {
       if (typeof closeAnalyticsModal === 'function') closeAnalyticsModal();

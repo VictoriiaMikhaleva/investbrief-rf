@@ -486,12 +486,27 @@
 
 
 
+  function formatAnalyticsRawHint(value) {
+    if (value == null || !isFinite(Number(value))) return '';
+    return Number(value).toLocaleString('ru-RU', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }) + ' ₽';
+  }
+
   function formatChartHoverLabel(pt, ticker, horizon) {
     var label = formatChartAxisTime(pt.t, horizon) + ' · ' + formatChartPrice(pt.price, ticker);
     if (pt && pt.restoredRaw) {
       label += pt.splitRatioText
         ? ' · фактическая цена до сплита · до дробления ' + pt.splitRatioText
         : ' · фактическая цена до сплита';
+      return label;
+    }
+    if (pt && pt.splitAdjustedDisplay) {
+      label += ' · с учётом сплита';
+      if (pt.rawPrice != null && isFinite(Number(pt.rawPrice))) {
+        label += ' · фактическая цена до дробления: около ' + formatAnalyticsRawHint(pt.rawPrice);
+      }
     }
     return label;
   }
@@ -1760,19 +1775,81 @@
       String(now.getDate()).padStart(2, '0');
   }
 
+  function getAnalyticsPriceScaleMode(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!state.analyticsPriceScaleModeByTicker || typeof state.analyticsPriceScaleModeByTicker !== 'object') {
+      state.analyticsPriceScaleModeByTicker = {};
+    }
+    return state.analyticsPriceScaleModeByTicker[ticker] === 'raw' ? 'raw' : 'adjusted';
+  }
+
+  function setAnalyticsPriceScaleMode(ticker, mode) {
+    ticker = normalizeTicker(ticker);
+    if (!state.analyticsPriceScaleModeByTicker || typeof state.analyticsPriceScaleModeByTicker !== 'object') {
+      state.analyticsPriceScaleModeByTicker = {};
+    }
+    state.analyticsPriceScaleModeByTicker[ticker] = mode === 'raw' ? 'raw' : 'adjusted';
+    return state.analyticsPriceScaleModeByTicker[ticker];
+  }
+
+  function findAnalyticsChartSplitEvent(ticker, series, events) {
+    if (!series || !series.length || typeof findSplitEventInPeriod !== 'function') return null;
+    var fromIso = isoDateFromChartPoint(series[0]);
+    var toIso = analyticsPriceTargetIso(series);
+    return findSplitEventInPeriod(ticker, fromIso, toIso, events);
+  }
+
+  function cloneAnalyticsPricePoint(pt, extra) {
+    var out = { t: pt.t, price: pt.price };
+    if (pt.date) out.date = pt.date;
+    if (extra) {
+      var key;
+      for (key in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, key) && extra[key] != null) out[key] = extra[key];
+      }
+    }
+    return out;
+  }
+
+  function mapAnalyticsPriceSeriesCopy(series) {
+    if (!Array.isArray(series) || !series.length) return [];
+    return series.map(function (pt) { return cloneAnalyticsPricePoint(pt); });
+  }
+
+  function mapAnalyticsPriceSeriesToAdjustedDisplay(ticker, series, events) {
+    if (!Array.isArray(series) || !series.length) return [];
+    var list = Array.isArray(events) ? events : (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    var targetIso = analyticsPriceTargetIso(series);
+    var splitEv = findAnalyticsChartSplitEvent(ticker, series, list);
+    var ratioText = splitEv && typeof formatSplitRatioText === 'function'
+      ? formatSplitRatioText(splitEv)
+      : '';
+    return series.map(function (pt) {
+      var iso = isoDateFromChartPoint(pt);
+      var extra = {};
+      var factor = typeof getSplitAdjustmentFactor === 'function'
+        ? getSplitAdjustmentFactor(ticker, iso, targetIso, list)
+        : 1;
+      if (isFinite(factor) && factor > 1) {
+        extra.splitAdjustedDisplay = true;
+        if (ratioText) extra.splitRatioText = ratioText;
+        if (typeof restoreRawPriceFromAdjustedForSplits === 'function') {
+          var rawHint = restoreRawPriceFromAdjustedForSplits(ticker, pt.price, iso, targetIso, list);
+          if (rawHint != null && isFinite(rawHint)) extra.rawPrice = rawHint;
+        }
+      }
+      return cloneAnalyticsPricePoint(pt, extra);
+    });
+  }
+
   function mapAnalyticsPriceSeriesToRaw(ticker, series, events) {
     if (!Array.isArray(series) || !series.length) return [];
     if (typeof restoreRawPriceFromAdjustedForSplits !== 'function') {
-      return series.map(function (pt) {
-        return { t: pt.t, price: pt.price, date: pt.date };
-      });
+      return mapAnalyticsPriceSeriesCopy(series);
     }
     var list = Array.isArray(events) ? events : (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
     var targetIso = analyticsPriceTargetIso(series);
-    var fromIso = isoDateFromChartPoint(series[0]);
-    var splitEv = typeof findSplitEventInPeriod === 'function'
-      ? findSplitEventInPeriod(ticker, fromIso, targetIso, list)
-      : null;
+    var splitEv = findAnalyticsChartSplitEvent(ticker, series, list);
     var ratioText = splitEv && typeof formatSplitRatioText === 'function'
       ? formatSplitRatioText(splitEv)
       : '';
@@ -1782,58 +1859,89 @@
       var price = raw != null && isFinite(raw) ? raw : pt.price;
       var restored = isFinite(Number(pt.price)) && isFinite(Number(price)) &&
         Math.abs(Number(price) - Number(pt.price)) > 1e-9;
-      var out = { t: pt.t, price: price };
-      if (pt.date) out.date = pt.date;
+      var extra = { price: price };
       if (restored) {
-        out.restoredRaw = true;
-        if (ratioText) out.splitRatioText = ratioText;
+        extra.restoredRaw = true;
+        if (ratioText) extra.splitRatioText = ratioText;
       }
-      return out;
+      return cloneAnalyticsPricePoint(pt, extra);
     });
   }
 
-  function updateAnalyticsPriceSplitCaption(ticker, displaySeries) {
+  function updateAnalyticsPriceChartChrome(ticker, mode, splitEv, horizon) {
     var note = document.getElementById('analyticsPriceNote');
     var lbl = document.getElementById('analyticsPriceChartLbl');
-    var restored = (displaySeries || []).some(function (pt) { return pt && pt.restoredRaw; });
-    var events = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
-    var fromIso = displaySeries && displaySeries.length ? isoDateFromChartPoint(displaySeries[0]) : '';
-    var toIso = analyticsPriceTargetIso(displaySeries);
-    var splitEv = restored && typeof findSplitEventInPeriod === 'function'
-      ? findSplitEventInPeriod(ticker, fromIso, toIso, events)
-      : null;
-    if (!note) {
-      if (lbl) lbl.removeAttribute('title');
+    var tabs = document.getElementById('analyticsPriceScaleTabs');
+    var period = analyticsPriceHorizonLabel(horizon);
+    if (tabs) {
+      tabs.hidden = !splitEv;
+      if (splitEv) {
+        tabs.querySelectorAll('[data-analytics-price-scale]').forEach(function (btn) {
+          var id = btn.getAttribute('data-analytics-price-scale');
+          btn.classList.toggle('active', id === mode);
+          btn.setAttribute('aria-selected', id === mode ? 'true' : 'false');
+        });
+      }
+    }
+    if (!splitEv) {
+      if (lbl) {
+        lbl.textContent = 'Цена · ' + period;
+        lbl.removeAttribute('title');
+      }
+      if (note) {
+        note.hidden = true;
+        note.textContent = '';
+        note.removeAttribute('title');
+      }
       return;
     }
-    if (!restored || !splitEv) {
-      note.hidden = true;
-      note.textContent = '';
-      note.removeAttribute('title');
-      if (lbl) lbl.removeAttribute('title');
-      return;
-    }
-    note.hidden = false;
-    note.textContent = 'На графике показана фактическая цена одной акции на дату. На дате дробления возможен технический разрыв цены.';
     var dateRu = typeof formatSplitDateRu === 'function' ? formatSplitDateRu(splitEv.effectiveDate) : '';
     var ratioText = typeof formatSplitRatioText === 'function' ? formatSplitRatioText(splitEv) : '';
-    var title = '';
-    if (dateRu && ratioText) {
-      title = 'До ' + dateRu + ' цены восстановлены к фактической шкале до дробления ' + ratioText + '.';
-    } else if (dateRu) {
-      title = 'До ' + dateRu + ' цены восстановлены к фактической шкале до дробления.';
-    } else {
-      title = 'Цены до дробления восстановлены к фактической шкале одной акции на дату.';
+    var legend = '';
+    if (ratioText || dateRu) {
+      legend = ' Сплит' + (ratioText ? ' ' + ratioText : '') + (dateRu ? ' · ' + dateRu : '') + '.';
     }
-    note.title = title;
-    if (lbl) lbl.title = title;
+    if (mode === 'raw') {
+      if (lbl) {
+        lbl.textContent = 'Фактическая цена · ' + period;
+        lbl.title = dateRu && ratioText
+          ? ('До ' + dateRu + ' цены в шкале одной акции до дробления ' + ratioText + '.')
+          : 'Цена одной акции в шкале конкретной даты.';
+      }
+      if (note) {
+        note.hidden = false;
+        note.textContent = 'На графике показана цена одной акции в шкале конкретной даты. Резкий разрыв связан с дроблением акций и не означает рыночное падение на 90%.' + legend;
+        note.title = lbl ? lbl.title : '';
+      }
+      return;
+    }
+    if (lbl) {
+      lbl.textContent = 'Цена с учётом сплита · ' + period;
+      lbl.title = 'Цены до дробления приведены к текущей шкале акции.';
+    }
+    if (note) {
+      note.hidden = false;
+      note.textContent = 'Цены до дробления приведены к текущей шкале акции. Это делает динамику сопоставимой до и после сплита.' + legend;
+      note.title = lbl ? lbl.title : '';
+    }
   }
 
   function paintAnalyticsPriceChart(canvas, ticker, series, horizon) {
     function paint(events) {
-      var display = mapAnalyticsPriceSeriesToRaw(ticker, series, events);
+      var source = Array.isArray(series) ? series.slice() : [];
+      if (canvas) canvas._analyticsSourceSeries = source;
+      var splitEv = findAnalyticsChartSplitEvent(ticker, source, events);
+      var mode = splitEv ? getAnalyticsPriceScaleMode(ticker) : 'adjusted';
+      var display;
+      if (!splitEv) {
+        display = mapAnalyticsPriceSeriesCopy(source);
+      } else if (mode === 'raw') {
+        display = mapAnalyticsPriceSeriesToRaw(ticker, source, events);
+      } else {
+        display = mapAnalyticsPriceSeriesToAdjustedDisplay(ticker, source, events);
+      }
       if (canvas) drawPriceChart(canvas, display, { ticker: ticker, horizon: horizon });
-      updateAnalyticsPriceSplitCaption(ticker, display);
+      updateAnalyticsPriceChartChrome(ticker, mode, splitEv, horizon);
     }
     if (typeof loadSplitEvents === 'function') {
       return loadSplitEvents().then(paint, function () { paint([]); });
@@ -1865,7 +1973,7 @@
       priceLbl.textContent = 'Цена · ' + analyticsPriceHorizonLabel(horizon);
       priceLbl.removeAttribute('title');
     }
-    updateAnalyticsPriceSplitCaption(ticker, []);
+    updateAnalyticsPriceChartChrome(ticker, 'adjusted', null, horizon);
 
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       if (metaEl) metaEl.textContent = 'Рынок США · дивиденды и оборот TQBR недоступны для американских бумаг';
@@ -2455,6 +2563,10 @@
   window.drawMiniBarChart = drawMiniBarChart;
   window.drawFullBarChart = drawFullBarChart;
   window.renderAnalyticsDetail = renderAnalyticsDetail;
+  window.paintAnalyticsPriceChart = paintAnalyticsPriceChart;
+  window.setAnalyticsPriceScaleMode = setAnalyticsPriceScaleMode;
+  window.getAnalyticsPriceScaleMode = getAnalyticsPriceScaleMode;
+  window.resolveAnalyticsPriceHorizon = resolveAnalyticsPriceHorizon;
   window.renderPortfolioInsights = renderPortfolioInsights;
   window.drawPurchaseCandleChart = drawPurchaseCandleChart;
   window.setSecurityChartTab = setSecurityChartTab;

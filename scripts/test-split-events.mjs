@@ -141,6 +141,24 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
 }
 
 {
+  function displayPrice(mode, adj, date) {
+    if (mode === 'raw') {
+      return SplitEvents.restoreRawPriceFromAdjustedForSplits('T', adj, date, '2026-09-03', events);
+    }
+    return adj;
+  }
+  function near(actual, expected, msg) {
+    assert(actual != null && isFinite(actual) && Math.abs(actual - expected) < 1e-6, msg + ' (got ' + actual + ')');
+  }
+  near(displayPrice('adjusted', 312.64, '2025-12-01'), 312.64, 'adjusted Dec 2025 stays 312.64');
+  near(displayPrice('raw', 312.64, '2025-12-01'), 3126.4, 'raw Dec 2025 is 3126.4');
+  near(displayPrice('adjusted', 327.3, '2026-04-23'), 327.3, 'adjusted after split 327.3');
+  near(displayPrice('raw', 327.3, '2026-04-23'), 327.3, 'raw after split still 327.3');
+  assert(displayPrice('adjusted', 312.64, '2025-12-01') < 400, 'default adjusted is ~300 not ~3000');
+  assert(displayPrice('raw', 312.64, '2025-12-01') > 3000, 'raw mode is ~3000');
+}
+
+{
   const now = new Date(2026, 8, 3, 12, 0, 0);
   const historyFlat = [
     { date: '2025-01-15', close: 3000, value: 1 },

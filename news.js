@@ -954,6 +954,7 @@
     chartTicker: '',
     analyticsTicker: '',
     analyticsPriceHorizon: '5y',
+    analyticsPriceScaleModeByTicker: {},
     folderOpen: false,
     chartRequestId: 0,
     briefArticleReqId: 0,

@@ -429,6 +429,14 @@
       border-color: color-mix(in srgb, var(--bronze, #C48A4A) 35%, #6a7f70 65%);
       color: #f4f7f5;
     }
+    .analytics-price-scale.horizon-tabs {
+      margin-top: -0.45rem;
+      margin-bottom: 0.7rem;
+    }
+    .analytics-price-scale.horizon-tabs button {
+      min-width: 0;
+      font-size: 0.8rem;
+    }
     .analytics-subnav {
       margin-bottom: 1.1rem;
     }
