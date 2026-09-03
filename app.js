@@ -427,6 +427,10 @@
     if (pfPayBtn) pfPayBtn.addEventListener('click', function () {
       if (typeof showPortfolioHoldingPayouts === 'function') showPortfolioHoldingPayouts();
     });
+    var pfUpPayBtn = document.getElementById('pfUpPayBtn');
+    if (pfUpPayBtn) pfUpPayBtn.addEventListener('click', function () {
+      if (typeof showUpcomingPortfolioPayouts === 'function') showUpcomingPortfolioPayouts();
+    });
     var pfSaleAllBtn = document.getElementById('pfSaleAllBtn');
     if (pfSaleAllBtn) {
       pfSaleAllBtn.addEventListener('click', function () {

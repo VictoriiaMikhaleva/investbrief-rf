@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru" class="us-market-unavailable">
 <head>
-  <!-- ibrf-asset-version: 202609030922 -->
+  <!-- ibrf-asset-version: 202609031000 -->
   <script>
     /* GitHub Pages: база /investbrief-rf/ — иначе без завершающего / ломаются CSS/JS и legal-ссылки. */
     (function () {
@@ -48,14 +48,14 @@
   <link rel="icon" href="./favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-  <link rel="manifest" href="./site.webmanifest?v=202609030922" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
+  <link rel="manifest" href="./site.webmanifest?v=202609031000" />  <title>ИнвестБриф РФ — инвестиционная сводка</title>
   <meta name="description" content="Инвестиционная сводка по рынку России: новости, котировки, агент наблюдения, ОФЗ, дивиденды и обороты торгов." />
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=202609030922" />
-  <link rel="stylesheet" href="./theme-luxury.css?v=202609030922" />
+  <link rel="stylesheet" href="./styles.css?v=202609031000" />
+  <link rel="stylesheet" href="./theme-luxury.css?v=202609031000" />
 </head>
 <body>
   <div class="app">
@@ -802,6 +802,45 @@
             </div>
           </section>
 
+          <section class="glass pf-pay-block pf-up-pay-block" id="portfolioUpcomingPayoutsBlock" aria-label="Предстоящие выплаты">
+            <div class="pf-pay-head">
+              <span class="pf-pay-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                  <rect class="pf-up-pay-icon-cal" x="4.4" y="6.4" width="15.2" height="13" rx="2.2"></rect>
+                  <path class="pf-up-pay-icon-cal" d="M8.1 5v3.1M15.9 5v3.1M4.4 10.15h15.2"></path>
+                  <circle class="pf-up-pay-icon-dot" cx="14.55" cy="15.35" r="1.55"></circle>
+                </svg>
+              </span>
+              <div class="pf-pay-copy">
+                <h3 class="pf-pay-title">Предстоящие выплаты</h3>
+                <p class="pf-pay-hint">Показывает ближайшие известные дивиденды и купоны по текущему составу портфеля.</p>
+              </div>
+            </div>
+            <div class="pf-pay-toolbar">
+              <div class="pf-up-pay-horizon" role="radiogroup" aria-label="Горизонт">
+                <label class="pf-up-pay-chip">
+                  <input type="radio" name="pfUpPayHorizon" value="90">
+                  <span>3 месяца</span>
+                </label>
+                <label class="pf-up-pay-chip">
+                  <input type="radio" name="pfUpPayHorizon" value="182">
+                  <span>6 месяцев</span>
+                </label>
+                <label class="pf-up-pay-chip">
+                  <input type="radio" name="pfUpPayHorizon" value="365" checked>
+                  <span>12 месяцев</span>
+                </label>
+              </div>
+              <button type="button" id="pfUpPayBtn" class="pf-pay-btn">Показать выплаты</button>
+            </div>
+            <p class="muted pf-pay-status" id="pfUpPayStatus" hidden role="status"></p>
+            <p class="muted pf-pay-lead pf-up-pay-lead">Расчёт справочный: акции считаются по отсечке, ОФЗ — по дате купона. Сумма рассчитана для текущего состава портфеля. Налоги, комиссии, НКД и дата зачисления не учитываются.</p>
+            <div class="pf-pay-panel" id="pfUpPayPanel" hidden>
+              <p class="pf-pay-warn" id="pfUpPayWarn" hidden role="status"></p>
+              <div id="pfUpPayResult" class="pf-pay-result"></div>
+            </div>
+          </section>
+
           <div class="glass portfolio-folder-section" id="portfolioFolderSection" aria-label="Быстрый выбор бумаги">
             <div class="portfolio-folder-head">
               <h3 class="portfolio-folder-title">Быстрый выбор бумаги</h3>
@@ -1249,16 +1288,16 @@
     </div>
   </div>
 
-  <script type="module" src="./firebase-init.mjs?v=202609030922"></script>
+  <script type="module" src="./firebase-init.mjs?v=202609031000"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-  <script src="./nav-books.js?v=202609030922"></script>
-  <script src="./markets.js?v=202609030922"></script>
-  <script src="./storage.js?v=202609030922"></script>
-  <script src="./ui.js?v=202609030922"></script>
-  <script src="./news.js?v=202609030922"></script>
-  <script src="./moex.js?v=202609030922"></script>
-  <script src="./pif-articles.js?v=202609030922"></script>
-  <script src="./manual-data.js?v=202609030922"></script>  <script>
+  <script src="./nav-books.js?v=202609031000"></script>
+  <script src="./markets.js?v=202609031000"></script>
+  <script src="./storage.js?v=202609031000"></script>
+  <script src="./ui.js?v=202609031000"></script>
+  <script src="./news.js?v=202609031000"></script>
+  <script src="./moex.js?v=202609031000"></script>
+  <script src="./pif-articles.js?v=202609031000"></script>
+  <script src="./manual-data.js?v=202609031000"></script>  <script>
     /** Серверная аналитика: Firebase Function (prod) или /api/analytics при npm start */
     window.INVESTBRIEF_ANALYTICS_API = 'https://europe-west1-investor-brief-rf.cloudfunctions.net/getAnalytics';
     (function () {
@@ -1270,14 +1309,14 @@
       }
     })();
   </script>
-  <script src="./analytics-core.js?v=202609030922"></script>
-  <script src="./price-at-date.js?v=202609030922"></script>
-  <script src="./analytics.js?v=202609030922"></script>
-  <script src="./ofz.js?v=202609030922"></script>
-  <script src="./pif.js?v=202609030922"></script>
-  <script src="./portfolio.js?v=202609030922"></script>
-  <script src="./agent.js?v=202609030922"></script>
-  <script src="./watchdog.js?v=202609030922"></script>
-  <script src="./firebase-sync.js?v=202609030922"></script>
-  <script src="./app.js?v=202609030922"></script></body>
+  <script src="./analytics-core.js?v=202609031000"></script>
+  <script src="./price-at-date.js?v=202609031000"></script>
+  <script src="./analytics.js?v=202609031000"></script>
+  <script src="./ofz.js?v=202609031000"></script>
+  <script src="./pif.js?v=202609031000"></script>
+  <script src="./portfolio.js?v=202609031000"></script>
+  <script src="./agent.js?v=202609031000"></script>
+  <script src="./watchdog.js?v=202609031000"></script>
+  <script src="./firebase-sync.js?v=202609031000"></script>
+  <script src="./app.js?v=202609031000"></script></body>
 </html>

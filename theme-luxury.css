@@ -4926,9 +4926,87 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   line-height: 1.35;
 }
 
+#tab-portfolio .pf-up-pay-icon-cal {
+  fill: none;
+  stroke: color-mix(in srgb, var(--bronze) 48%, #6a5e4e 52%);
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#tab-portfolio .pf-up-pay-icon-dot {
+  fill: color-mix(in srgb, var(--accent) 42%, #8a9a90 58%);
+  stroke: none;
+}
+
+#tab-portfolio .pf-up-pay-horizon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.32rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#tab-portfolio .pf-up-pay-chip {
+  position: relative;
+  display: inline-flex;
+  margin: 0;
+  cursor: pointer;
+}
+
+#tab-portfolio .pf-up-pay-chip input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+#tab-portfolio .pf-up-pay-chip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.2rem;
+  padding: 0.28rem 0.72rem;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 20%, #d5dbe2 80%);
+  background: #fff;
+  color: color-mix(in srgb, var(--text-muted) 72%, #3d5348 28%);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+#tab-portfolio .pf-up-pay-chip:hover span {
+  border-color: color-mix(in srgb, var(--bronze) 32%, #c5d0cb 68%);
+  background: color-mix(in srgb, #ffffff 88%, var(--bronze-soft) 12%);
+}
+
+#tab-portfolio .pf-up-pay-chip input:checked + span,
+#tab-portfolio .pf-up-pay-chip:has(input:checked) span,
+#tab-portfolio .pf-up-pay-chip input:focus-visible + span {
+  border-color: color-mix(in srgb, var(--bronze) 40%, var(--accent) 18%);
+  background: color-mix(in srgb, #ffffff 78%, var(--bronze-soft) 22%);
+  color: color-mix(in srgb, var(--text) 82%, #3d5348 18%);
+}
+
+#tab-portfolio .pf-up-pay-lead {
+  white-space: normal;
+  max-width: 52rem;
+}
+
+#tab-portfolio .pf-pay-board--up {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 @media (max-width: 899px) {
   #tab-portfolio .pf-pay-board {
     grid-template-columns: 1fr;
+  }
+
+  #tab-portfolio .pf-pay-board--up {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -4947,6 +5025,21 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   #tab-portfolio .pf-pay-btn {
     width: 100%;
     min-width: 0;
+  }
+
+  #tab-portfolio .pf-up-pay-horizon {
+    width: 100%;
+  }
+
+  #tab-portfolio .pf-up-pay-chip,
+  #tab-portfolio .pf-up-pay-chip span {
+    flex: 1 1 0;
+    justify-content: center;
+    text-align: center;
+  }
+
+  #tab-portfolio .pf-pay-board--up {
+    grid-template-columns: 1fr;
   }
 
   #tab-portfolio .pf-pay-btn {

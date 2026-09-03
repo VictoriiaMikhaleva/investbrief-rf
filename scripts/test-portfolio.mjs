@@ -359,7 +359,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;' +
       '\nthis.__payouts = buildPortfolioPayoutsForHoldingPeriod;' +
       '\nthis.__tickerPayouts = buildTickerPayoutsForHoldingPeriod;' +
-      '\nthis.__loadPayoutFeeds = loadPayoutFeedsForPortfolio;',
+      '\nthis.__loadPayoutFeeds = loadPayoutFeedsForPortfolio;' +
+      '\nthis.__upcomingPayouts = buildUpcomingPortfolioPayouts;',
     sandbox,
     { timeout: 10000 }
   );
@@ -393,6 +394,7 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioPayoutsForHoldingPeriod: sandbox.__payouts,
     buildTickerPayoutsForHoldingPeriod: sandbox.__tickerPayouts,
     loadPayoutFeedsForPortfolio: sandbox.__loadPayoutFeeds,
+    buildUpcomingPortfolioPayouts: sandbox.__upcomingPayouts,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -2452,9 +2454,182 @@ function loadPriceAtDateHelpers() {
   assert(noLoader.warnings.some((w) => /нет данных по дивидендам для SBER/.test(w)), 'feed loader: missing fn warning');
 }
 
+{
+  // Волна 4.3: предстоящие выплаты по текущему составу
+  assert(typeof calc.buildUpcomingPortfolioPayouts === 'function', 'upcoming helper exported');
+  const NOW = '2025-06-01';
+  function runUpcoming(portfolio, extra) {
+    return calc.buildUpcomingPortfolioPayouts(
+      portfolio,
+      Object.assign({ now: NOW, horizonDays: 365 }, extra || {})
+    );
+  }
+  function sberFeed(dividends) {
+    return { SBER: { kind: 'stock', source: 'moex', dividends: dividends } };
+  }
+  function ofzFeed(coupons, faceValue) {
+    return {
+      OFZ_26238: {
+        kind: 'bond',
+        source: 'bondization',
+        coupons: coupons,
+        faceValue: faceValue != null ? faceValue : 1000
+      }
+    };
+  }
+
+  const heldNow = {
+    positions: [{
+      ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15',
+      currentPrice: 9999, LAST: 8888
+    }],
+    sales: []
+  };
+  const frozenHeld = JSON.stringify(heldNow);
+  const rHeld = runUpcoming(heldNow, {
+    payoutsByTicker: sberFeed([{ date: '2025-07-17', value: 33.3, currency: 'RUB' }])
+  });
+  assert(!rHeld.invalidDate, 'upcoming 1: valid');
+  assert(rHeld.items.length === 1, 'upcoming 1: one dividend');
+  assert(rHeld.items[0].ticker === 'SBER' && rHeld.items[0].type === 'dividend', 'upcoming 1: SBER dividend');
+  assert(rHeld.items[0].date === '2025-07-17', 'upcoming 1: cutoff date');
+  assert(rHeld.items[0].qtyHeld === 10, 'upcoming 1: current qty');
+  assert(rHeld.items[0].payoutPerUnit === 33.3, 'upcoming 1: per share');
+  assert(rHeld.items[0].amountRub === 333, 'upcoming 1: qty × value');
+  assert(rHeld.totalUpcomingRub === 333 && rHeld.totalDividendsRub === 333, 'upcoming 1: totals');
+  assert(rHeld.totalCouponsRub === 0, 'upcoming 1: no coupons');
+  assert(rHeld.nextDate === '2025-07-17', 'upcoming 1: nextDate');
+  assert(/отсечки/.test(rHeld.items[0].note) && /не по дате зачисления/.test(rHeld.items[0].note), 'upcoming 1: cutoff note');
+  assert(rHeld.isPartial === false && rHeld.warnings.length === 0, 'upcoming 1: complete');
+  assert(JSON.stringify(heldNow) === frozenHeld, 'upcoming 12: does not mutate portfolio');
+  assert(rHeld.items[0].amountRub === 10 * 33.3, 'upcoming 11: LAST/currentPrice/avgPrice ignored');
+
+  const soldNow = runUpcoming({
+    positions: [],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 10,
+      buyPrice: 250,
+      salePrice: 280,
+      saleDate: '2025-03-01',
+      allocations: [{ lotId: 'S1', qty: 10, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  }, {
+    payoutsByTicker: sberFeed([{ date: '2025-07-17', value: 33.3 }])
+  });
+  assert(soldNow.items.length === 0 && rHeld.totalUpcomingRub === 333, 'upcoming 2: sold now not counted');
+  assert(soldNow.totalUpcomingRub === 0, 'upcoming 2: zeros after sale');
+
+  const beyond = runUpcoming(heldNow, {
+    horizonDays: 30,
+    payoutsByTicker: sberFeed([{ date: '2025-12-01', value: 20 }])
+  });
+  assert(beyond.items.length === 0 && beyond.totalUpcomingRub === 0, 'upcoming 3: beyond horizon skipped');
+
+  const todayEvent = runUpcoming(heldNow, {
+    now: '2025-07-17',
+    payoutsByTicker: sberFeed([
+      { date: '2025-07-17', value: 33.3 },
+      { date: '2025-07-16', value: 10 }
+    ])
+  });
+  assert(todayEvent.items.length === 0, 'upcoming 4: today and past skipped');
+
+  const tomorrowOk = runUpcoming(heldNow, {
+    now: '2025-07-16',
+    horizonDays: 10,
+    payoutsByTicker: sberFeed([{ date: '2025-07-17', value: 5 }])
+  });
+  assert(tomorrowOk.items.length === 1 && tomorrowOk.items[0].amountRub === 50, 'upcoming 4: tomorrow included');
+
+  const horizonEdge = runUpcoming(heldNow, {
+    now: '2025-01-01',
+    horizonDays: 10,
+    payoutsByTicker: sberFeed([
+      { date: '2025-01-11', value: 2 },
+      { date: '2025-01-12', value: 9 }
+    ])
+  });
+  assert(horizonEdge.items.length === 1 && horizonEdge.items[0].date === '2025-01-11', 'upcoming 3: end of horizon inclusive');
+
+  const ofzHeld = {
+    positions: [{
+      ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01',
+      faceValue: 1000, currentPrice: 120, LAST: 99
+    }],
+    sales: []
+  };
+  const ofzValue = runUpcoming(ofzHeld, {
+    payoutsByTicker: ofzFeed([{ date: '2025-09-19', value: 42.38 }], 1000)
+  });
+  assert(ofzValue.items.length === 1 && ofzValue.items[0].type === 'coupon', 'upcoming 5: OFZ coupon');
+  assert(ofzValue.items[0].qtyHeld === 10, 'upcoming 5: OFZ qty');
+  assert(ofzValue.items[0].payoutPerUnit === 42.38, 'upcoming 5: coupon value');
+  assert(ofzValue.items[0].amountRub === 423.8, 'upcoming 5: qty × coupon');
+  assert(ofzValue.totalCouponsRub === 423.8 && ofzValue.totalDividendsRub === 0, 'upcoming 5: coupon totals');
+  assert(/без НКД/.test(ofzValue.items[0].note), 'upcoming 5: no NKD note');
+  assert(ofzValue.items[0].amountRub === 10 * 42.38, 'upcoming 11: OFZ price fields ignored');
+
+  const ofzPct = runUpcoming({
+    positions: [{
+      ticker: 'OFZ_26238', lotId: 'O1', qty: 4, avgPrice: 98, buyDate: '2024-01-10', faceValue: 1000
+    }],
+    sales: []
+  }, {
+    payoutsByTicker: ofzFeed([{ date: '2025-09-19', valuePct: 5.5 }], 1000)
+  });
+  assert(ofzPct.items.length === 1, 'upcoming 6: valuePct item');
+  assert(ofzPct.items[0].payoutPerUnit === 55, 'upcoming 6: 5.5% × 1000');
+  assert(ofzPct.items[0].amountRub === 220, 'upcoming 6: 4 × 55');
+
+  const ofzNoAmount = runUpcoming(ofzHeld, {
+    payoutsByTicker: ofzFeed([{ date: '2025-09-19' }], 1000)
+  });
+  assert(ofzNoAmount.items.length === 0, 'upcoming 7: coupon without value skipped');
+  assert(ofzNoAmount.isPartial === true, 'upcoming 7: partial');
+  assert(ofzNoAmount.warnings.some((w) => /купон без суммы/i.test(w)), 'upcoming 7: coupon warning');
+
+  const noFeed = runUpcoming(heldNow, { payoutsByTicker: {} });
+  assert(noFeed.totalUpcomingRub === 0 && noFeed.items.length === 0, 'upcoming 8: no feed totals 0');
+  assert(noFeed.isPartial === true, 'upcoming 8: isPartial');
+  assert(noFeed.warnings.some((w) => /нет данных по выплатам для SBER/.test(w)), 'upcoming 8: no feed warning');
+
+  const emptyPf = runUpcoming({ positions: [], sales: [] }, {
+    payoutsByTicker: sberFeed([{ date: '2025-07-17', value: 10 }])
+  });
+  assert(emptyPf.invalidDate === false, 'upcoming 9: empty portfolio valid');
+  assert(emptyPf.totalUpcomingRub === 0 && emptyPf.items.length === 0, 'upcoming 9: zeros');
+  assert(emptyPf.warnings.length === 0 && emptyPf.isPartial === false, 'upcoming 9: no warning');
+  assert(emptyPf.nextDate == null, 'upcoming 9: no nextDate');
+
+  const badNow = runUpcoming(heldNow, {
+    now: 'not-a-date',
+    payoutsByTicker: sberFeed([{ date: '2025-07-17', value: 10 }])
+  });
+  assert(badNow.invalidDate === true, 'upcoming 10: invalid now');
+  assert(badNow.totalUpcomingRub == null && badNow.items.length === 0, 'upcoming 10: soft null totals');
+
+  const mixed = runUpcoming({
+    positions: [
+      { ticker: 'GAZP', lotId: 'G1', qty: 2, avgPrice: 140, buyDate: '2024-01-01' },
+      { ticker: 'SBER', lotId: 'S1', qty: 3, avgPrice: 250, buyDate: '2024-01-01' }
+    ],
+    sales: []
+  }, {
+    payoutsByTicker: {
+      SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2025-08-01', value: 10 }] },
+      GAZP: { kind: 'stock', source: 'moex', dividends: [{ date: '2025-08-01', value: 7 }] }
+    }
+  });
+  assert(mixed.items.length === 2, 'upcoming sort: two items same date');
+  assert(mixed.items[0].ticker === 'GAZP' && mixed.items[1].ticker === 'SBER', 'upcoming sort: ticker within date');
+  assert(mixed.nextDate === '2025-08-01', 'upcoming sort: nextDate nearest');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts');
