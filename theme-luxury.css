@@ -4756,6 +4756,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   margin: 0 0 0.2rem;
   font-size: 0.74rem;
   line-height: 1.45;
+  max-width: none;
+  white-space: nowrap;
 }
 
 #tab-portfolio .pf-pay-panel {
@@ -4827,6 +4829,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   margin: 0.75rem 0 0;
   font-size: 0.74rem;
   line-height: 1.45;
+  max-width: none;
+  white-space: nowrap;
   color: color-mix(in srgb, var(--text-muted) 62%, #4d5a54 38%);
 }
 
