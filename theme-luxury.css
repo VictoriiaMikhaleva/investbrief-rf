@@ -3466,6 +3466,103 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   }
 }
 
+/* Единые date-input в блоках «Состав на дату», «Сравнение дат», «Выплаты» */
+#tab-portfolio .pf-date-label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.22rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-muted);
+  min-width: 12rem;
+}
+
+#tab-portfolio .pf-date-input {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 12rem;
+  width: 12rem;
+  min-width: 12rem;
+  max-width: 12rem;
+  height: 2.4rem;
+  min-height: 2.4rem;
+  max-height: 2.4rem;
+  margin: 0;
+  padding: 0 0.5rem 0 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #d5dbe2 78%);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color-scheme: light;
+}
+
+#tab-portfolio .pf-date-input::-webkit-calendar-picker-indicator {
+  box-sizing: content-box;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.62;
+}
+
+#tab-portfolio .pf-date-input:hover::-webkit-calendar-picker-indicator {
+  opacity: 0.84;
+}
+
+#tab-portfolio .pf-date-input:focus,
+#tab-portfolio .pf-date-input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--bronze) 40%, var(--accent) 18%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bronze-soft) 78%, var(--accent-soft) 22%);
+}
+
+#tab-portfolio .pf-date-input:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+  background: color-mix(in srgb, #f6f7f5 82%, #fff 18%);
+}
+
+#tab-portfolio .pf-asof-toolbar .pf-asof-btn,
+#tab-portfolio .pf-cmp-toolbar .pf-cmp-btn,
+#tab-portfolio .pf-pay-toolbar .pf-pay-btn {
+  box-sizing: border-box;
+  height: 2.4rem;
+  min-height: 2.4rem;
+}
+
+@media (max-width: 699px) {
+  #tab-portfolio .pf-date-label {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #tab-portfolio .pf-date-input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    max-height: 2.5rem;
+  }
+
+  #tab-portfolio .pf-asof-toolbar .pf-asof-btn,
+  #tab-portfolio .pf-cmp-toolbar .pf-cmp-btn,
+  #tab-portfolio .pf-pay-toolbar .pf-pay-btn {
+    width: 100%;
+    height: 2.5rem;
+    min-height: 2.5rem;
+  }
+}
+
 /* Состав на дату — заметная аналитическая карточка, не тонкая строка */
 #tab-portfolio .pf-asof-block {
   margin: 0.95rem 0 0.35rem;
@@ -3568,27 +3665,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   gap: 0.5rem 0.7rem;
 }
 
-#tab-portfolio .pf-asof-date-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.22rem;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  min-width: 10.5rem;
-}
-
-#tab-portfolio .pf-asof-date-label input[type="date"] {
-  min-height: 2.25rem;
-  padding: 0.28rem 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #d5dbe2 78%);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--text);
-  font-size: 0.88rem;
-}
-
 #tab-portfolio .pf-asof-btn {
-  min-height: 2.25rem;
+  min-height: 2.4rem;
   padding: 0.32rem 0.95rem;
   font-size: 0.82rem;
   font-weight: 600;
@@ -4109,7 +4187,6 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
     width: 100%;
   }
 
-  #tab-portfolio .pf-asof-date-label input[type="date"],
   #tab-portfolio .pf-asof-btn {
     width: 100%;
     min-height: 2.5rem;
@@ -4218,27 +4295,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   gap: 0.5rem 0.65rem;
 }
 
-#tab-portfolio .pf-cmp-date-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  min-width: 9.5rem;
-}
-
-#tab-portfolio .pf-cmp-date-label input[type="date"] {
-  min-height: 2.2rem;
-  padding: 0.26rem 0.48rem;
-  border: 1px solid color-mix(in srgb, var(--bronze) 20%, #d5dbe2 80%);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--text);
-  font-size: 0.86rem;
-}
-
 #tab-portfolio .pf-cmp-btn {
-  min-height: 2.2rem;
+  min-height: 2.4rem;
   padding: 0.3rem 0.9rem;
   font-size: 0.8rem;
   font-weight: 600;
@@ -4546,7 +4604,6 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   }
 
   #tab-portfolio .pf-cmp-date-label,
-  #tab-portfolio .pf-cmp-date-label input[type="date"],
   #tab-portfolio .pf-cmp-btn {
     width: 100%;
     min-width: 0;
@@ -4701,30 +4758,9 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   margin: 0 0 0.45rem;
 }
 
-#tab-portfolio .pf-pay-date-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  min-width: 9.5rem;
-}
-
-#tab-portfolio .pf-pay-date-label input[type="date"] {
-  min-width: 10.5rem;
-  min-height: 2.2rem;
-  padding: 0.26rem 0.48rem;
-  border: 1px solid color-mix(in srgb, var(--bronze) 20%, #d5dbe2 80%);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--text);
-  font-size: 0.86rem;
-}
-
 #tab-portfolio .pf-pay-btn {
-  min-height: 2.2rem;
-  height: auto;
+  min-height: 2.4rem;
+  height: 2.4rem;
   padding: 0.3rem 0.9rem;
   font-size: 0.8rem;
   font-weight: 600;
@@ -4967,7 +5003,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 #tab-portfolio .pf-up-pay-chip span {
   display: inline-flex;
   align-items: center;
-  min-height: 2.2rem;
+  min-height: 2.4rem;
+  height: 2.4rem;
   padding: 0.28rem 0.72rem;
   border-radius: 9px;
   border: 1px solid color-mix(in srgb, var(--bronze) 20%, #d5dbe2 80%);
@@ -5020,8 +5057,11 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
     align-items: stretch;
   }
 
+  #tab-portfolio .pf-pay-lead {
+    white-space: normal;
+  }
+
   #tab-portfolio .pf-pay-date-label,
-  #tab-portfolio .pf-pay-date-label input[type="date"],
   #tab-portfolio .pf-pay-btn {
     width: 100%;
     min-width: 0;
