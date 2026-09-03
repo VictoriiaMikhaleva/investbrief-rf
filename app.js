@@ -423,6 +423,10 @@
     if (pfCmpBtn) pfCmpBtn.addEventListener('click', function () {
       if (typeof showPortfolioValueCompare === 'function') showPortfolioValueCompare();
     });
+    var pfPayBtn = document.getElementById('pfPayBtn');
+    if (pfPayBtn) pfPayBtn.addEventListener('click', function () {
+      if (typeof showPortfolioHoldingPayouts === 'function') showPortfolioHoldingPayouts();
+    });
     var pfSaleAllBtn = document.getElementById('pfSaleAllBtn');
     if (pfSaleAllBtn) {
       pfSaleAllBtn.addEventListener('click', function () {

@@ -4609,6 +4609,394 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   }
 }
 
+/* Выплаты за период владения */
+#tab-portfolio .pf-pay-block {
+  margin: 0.55rem 0 0.35rem;
+  padding: 0.78rem 0.95rem 0.82rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 14%, #d5dbe2 86%);
+  border-radius: 14px;
+  border-left: 2px solid color-mix(in srgb, var(--bronze) 42%, var(--accent) 18%);
+  background:
+    linear-gradient(180deg,
+      #ffffff 0%,
+      color-mix(in srgb, #f8f7f4 86%, var(--bronze-soft) 14%) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  overflow-x: hidden;
+}
+
+#tab-portfolio .pf-pay-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin: 0 0 0.58rem;
+}
+
+#tab-portfolio .pf-pay-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 28%, #c5d0cb 72%);
+  background: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  line-height: 0;
+}
+
+#tab-portfolio .pf-pay-icon svg {
+  display: block;
+  width: 1.7rem;
+  height: 1.7rem;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+#tab-portfolio .pf-pay-icon-coin {
+  fill: #fff;
+  stroke: color-mix(in srgb, var(--bronze) 52%, #6a5e4e 48%);
+  stroke-width: 1.15;
+}
+
+#tab-portfolio .pf-pay-icon-coin-inner {
+  fill: none;
+  stroke: color-mix(in srgb, var(--bronze) 34%, #cbb89a 66%);
+  stroke-width: 0.9;
+}
+
+#tab-portfolio .pf-pay-icon-mark {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 46%, #6a7f70 54%);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#tab-portfolio .pf-pay-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+#tab-portfolio .pf-pay-title {
+  margin: 0 0 0.18rem;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: color-mix(in srgb, var(--text) 88%, #3d5348 12%);
+}
+
+#tab-portfolio .pf-pay-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 78%, #5c6560 22%);
+}
+
+#tab-portfolio .pf-pay-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.55rem;
+  margin: 0 0 0.45rem;
+}
+
+#tab-portfolio .pf-pay-date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 9.5rem;
+}
+
+#tab-portfolio .pf-pay-date-label input[type="date"] {
+  min-width: 10.5rem;
+  min-height: 2.2rem;
+  padding: 0.26rem 0.48rem;
+  border: 1px solid color-mix(in srgb, var(--bronze) 20%, #d5dbe2 80%);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+#tab-portfolio .pf-pay-btn {
+  min-height: 2.2rem;
+  height: auto;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent-hover) 58%, #3d5348 42%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 26%, #c5d0cb 74%);
+  border-radius: 9px;
+  background: color-mix(in srgb, #ffffff 88%, var(--bronze-soft) 12%);
+}
+
+#tab-portfolio .pf-pay-btn:hover {
+  background: color-mix(in srgb, var(--bronze-soft) 22%, #ffffff 78%);
+  border-color: color-mix(in srgb, var(--bronze) 36%, #b7c4be 64%);
+  filter: none;
+}
+
+#tab-portfolio .pf-pay-btn:disabled {
+  opacity: 0.68;
+  cursor: wait;
+  pointer-events: none;
+}
+
+#tab-portfolio .pf-pay-status {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+#tab-portfolio .pf-pay-lead {
+  margin: 0 0 0.2rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+#tab-portfolio .pf-pay-panel {
+  margin-top: 0.55rem;
+}
+
+#tab-portfolio .pf-pay-block--open .pf-pay-panel {
+  display: block;
+}
+
+#tab-portfolio .pf-pay-result {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+#tab-portfolio .pf-pay-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0 0 0.55rem;
+}
+
+#tab-portfolio .pf-pay-kpi {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.52rem 0.62rem 0.48rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 16%, #d5dbe2 84%);
+  background: color-mix(in srgb, #ffffff 90%, var(--bronze-soft) 10%);
+}
+
+#tab-portfolio .pf-pay-kpi-lbl {
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--text-muted) 80%, #5c6560 20%);
+}
+
+#tab-portfolio .pf-pay-kpi-val {
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--text) 88%, #3d5348 12%);
+}
+
+#tab-portfolio .pf-pay-warn {
+  margin: 0 0 0.55rem;
+  padding: 0.42rem 0.6rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
+  background: color-mix(in srgb, var(--bronze-soft) 28%, #fffaf6 72%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 18%, #eadccb 82%);
+  border-radius: 8px;
+}
+
+#tab-portfolio .pf-pay-empty {
+  margin: 0.15rem 0 0.4rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+#tab-portfolio .pf-pay-foot {
+  margin: 0.75rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--text-muted) 62%, #4d5a54 38%);
+}
+
+#tab-portfolio .pf-pay-table-wrap {
+  overflow: hidden;
+  max-width: 100%;
+}
+
+#tab-portfolio .pf-pay-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 0.28rem;
+  font-size: 0.82rem;
+}
+
+#tab-portfolio .pf-pay-table th {
+  text-align: left;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--text-muted) 78%, #5c6560 22%);
+  padding: 0 0.45rem 0.1rem;
+}
+
+#tab-portfolio .pf-pay-table td {
+  padding: 0.48rem 0.45rem;
+  border-top: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+  background: color-mix(in srgb, #ffffff 93%, var(--accent-soft) 7%);
+  vertical-align: middle;
+}
+
+#tab-portfolio .pf-pay-table td:first-child,
+#tab-portfolio .pf-pay-table th:first-child {
+  padding-left: 0.65rem;
+}
+
+#tab-portfolio .pf-pay-table td:first-child {
+  border-left: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+  border-radius: 10px 0 0 10px;
+  white-space: nowrap;
+}
+
+#tab-portfolio .pf-pay-table td:last-child {
+  padding-right: 0.65rem;
+  border-right: 1px solid color-mix(in srgb, #dfe6e2 42%, transparent);
+  border-radius: 0 10px 10px 0;
+  white-space: nowrap;
+  font-weight: 650;
+}
+
+#tab-portfolio .pf-pay-ticker {
+  font-weight: 650;
+}
+
+#tab-portfolio .pf-pay-table .pf-pay-name {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 400;
+  margin-top: 0.06rem;
+}
+
+#tab-portfolio .pf-pay-badge {
+  display: inline-block;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+#tab-portfolio .pf-pay-badge--div {
+  color: color-mix(in srgb, var(--accent) 42%, #4a5e52 58%);
+  background: color-mix(in srgb, var(--accent-soft) 42%, #fff 58%);
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, #d5dbe2 84%);
+}
+
+#tab-portfolio .pf-pay-badge--cpn {
+  color: color-mix(in srgb, var(--bronze) 56%, #5c4636 44%);
+  background: color-mix(in srgb, var(--bronze-soft) 36%, #fff 64%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 20%, #eadccb 80%);
+}
+
+#tab-portfolio .pf-pay-cards {
+  display: none;
+}
+
+#tab-portfolio .pf-pay-card-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 899px) {
+  #tab-portfolio .pf-pay-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 699px) {
+  #tab-portfolio .pf-pay-block {
+    padding: 0.75rem 0.8rem 0.8rem;
+  }
+
+  #tab-portfolio .pf-pay-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #tab-portfolio .pf-pay-date-label,
+  #tab-portfolio .pf-pay-date-label input[type="date"],
+  #tab-portfolio .pf-pay-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #tab-portfolio .pf-pay-btn {
+    min-height: 2.5rem;
+  }
+
+  #tab-portfolio .pf-pay-kpi-val {
+    font-size: 1.22rem;
+  }
+
+  #tab-portfolio .pf-pay-table-wrap {
+    display: none;
+  }
+
+  #tab-portfolio .pf-pay-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+  }
+
+  #tab-portfolio .pf-pay-card {
+    padding: 0.58rem 0.65rem;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--bronze) 14%, #d5dbe2 86%);
+    background: #fff;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+  }
+
+  #tab-portfolio .pf-pay-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.28rem 0.45rem;
+    margin-bottom: 0.35rem;
+  }
+
+  #tab-portfolio .pf-pay-card-kpis {
+    display: flex;
+    flex-direction: column;
+    gap: 0.16rem;
+    font-size: 0.8rem;
+  }
+
+  #tab-portfolio .pf-pay-card-kpis .lbl {
+    color: var(--text-muted);
+    margin-right: 0.25rem;
+  }
+
+  #tab-portfolio .pf-pay-card-sum {
+    font-weight: 650;
+  }
+}
+
 /* panel-intro--one-line: ╤Б╨╝. ╨┐╤А╨░╨▓╨╕╨╗╨░ .panel-intro.hint-frame > p ╨▓╤Л╤И╨╡ */
 
 /* ╨в╨╡╨╗╨╡╤Д╨╛╨╜: ╨▒╨╛╨╗╤М╤И╨╡ ╨┐╨╛╨╗╨╡╨╖╨╜╨╛╨╣ ╤И╨╕╤А╨╕╨╜╤Л ╤Г ╨║╨░╤А╤В╨╛╤З╨╜╤Л╤Е ╤Б╨╡╤В╨╛╨║ (desktop/tablet ╨▒╨╡╨╖ ╨╕╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╣) */

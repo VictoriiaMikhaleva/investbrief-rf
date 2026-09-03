@@ -6336,12 +6336,284 @@
     });
   }
 
+  var PF_PAY_BTN_IDLE = 'Показать выплаты';
+  var PF_PAY_BTN_BUSY = 'Считаем…';
+  var PF_PAY_BUSY_HINT = 'Подбираем дивиденды и купоны за период владения…';
+  var PF_PAY_ERROR = 'Не удалось рассчитать выплаты за период. Попробуйте ещё раз.';
+  var PF_PAY_EMPTY = 'За выбранный период выплат по бумагам из портфеля не найдено.';
+  var PF_PAY_PARTIAL = 'Расчёт частичный: по части бумаг нет данных о выплатах или есть операции без корректной даты.';
+  var PF_PAY_FOOT = 'Расчёт справочный: для акций используется дата закрытия реестра, для ОФЗ — дата купона. Налоги, комиссии, НКД, режим торгов T+1/T+2 и фактическая дата зачисления не учитываются.';
+  var pfPaySeq = 0;
+  var pfPayBusy = false;
+
+  function earliestPortfolioBuyDateIso(portfolio) {
+    var parts = payoutsPositionsSales(portfolio, {});
+    var earliest = '';
+    function consider(raw) {
+      var iso = timelineIsoDate(raw);
+      if (!iso) return;
+      if (!earliest || iso < earliest) earliest = iso;
+    }
+    (parts.positions || []).forEach(function (p) {
+      if (p) consider(p.buyDate);
+    });
+    (parts.sales || []).forEach(function (s) {
+      if (!s) return;
+      consider(s.buyDate);
+      (s.allocations || []).forEach(function (a) {
+        if (a) consider(a.buyDate);
+      });
+    });
+    return earliest;
+  }
+
+  function initPortfolioPayoutsDatesDefault() {
+    var fromInput = document.getElementById('pfPayFromDate');
+    var toInput = document.getElementById('pfPayToDate');
+    if (!fromInput || !toInput) return;
+    var today = localPortfolioTodayYmd();
+    var toIso = typeof normalizePortfolioDate === 'function' ? normalizePortfolioDate(today) : today;
+    if (!toInput.value || !timelineIsoDate(toInput.value)) {
+      if (toIso) toInput.value = toIso;
+    }
+    if (!fromInput.value || !timelineIsoDate(fromInput.value)) {
+      var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+      var fromIso = earliestPortfolioBuyDateIso(pf);
+      if (!fromIso) fromIso = shiftPortfolioIsoByMonths(toInput.value || toIso, -12);
+      if (fromIso) fromInput.value = fromIso;
+    }
+  }
+
+  function setPortfolioPayoutsBusy(on) {
+    pfPayBusy = !!on;
+    var btn = document.getElementById('pfPayBtn');
+    var status = document.getElementById('pfPayStatus');
+    if (btn) {
+      btn.disabled = !!on;
+      btn.setAttribute('aria-busy', on ? 'true' : 'false');
+      btn.textContent = on ? PF_PAY_BTN_BUSY : PF_PAY_BTN_IDLE;
+    }
+    if (status) {
+      if (on) {
+        status.hidden = false;
+        status.textContent = PF_PAY_BUSY_HINT;
+      } else {
+        status.hidden = true;
+        status.textContent = '';
+      }
+    }
+  }
+
+  function revealPortfolioPayoutsPanel() {
+    var panel = document.getElementById('pfPayPanel');
+    var block = document.getElementById('portfolioPayoutsBlock');
+    if (panel) panel.hidden = false;
+    if (block) block.classList.add('pf-pay-block--open');
+  }
+
+  function formatPayoutPerUnitDisplay(val) {
+    if (val == null || !isFinite(Number(val))) return '—';
+    return Number(val).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+  }
+
+  function payoutsSortItemsNewestFirst(items) {
+    return (items || []).slice().sort(function (a, b) {
+      var da = a && a.recordDate ? String(a.recordDate) : '';
+      var db = b && b.recordDate ? String(b.recordDate) : '';
+      if (da !== db) return da > db ? -1 : 1;
+      var ta = a && a.ticker ? String(a.ticker) : '';
+      var tb = b && b.ticker ? String(b.ticker) : '';
+      if (ta !== tb) return ta < tb ? -1 : 1;
+      var ka = a && a.type ? String(a.type) : '';
+      var kb = b && b.type ? String(b.type) : '';
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      return 0;
+    });
+  }
+
+  function payoutsItemTypeLabel(type) {
+    return type === 'coupon' ? 'купон' : 'дивиденд';
+  }
+
+  function payoutsItemHint(row) {
+    if (row && row.type === 'coupon') return 'дата купона, без НКД';
+    return 'по дате закрытия реестра';
+  }
+
+  function payoutsTickerName(ticker) {
+    if (typeof getTickerSubtitle === 'function') {
+      try {
+        var name = getTickerSubtitle(ticker);
+        if (name && name !== ticker) return name;
+      } catch (e) { /* */ }
+    }
+    return '';
+  }
+
+  function buildPortfolioPayoutsKpiHtml(lbl, val) {
+    return '<div class="pf-pay-kpi">' +
+      '<span class="pf-pay-kpi-lbl">' + escapeHtml(lbl) + '</span>' +
+      '<span class="pf-pay-kpi-val">' + escapeHtml(val) + '</span>' +
+    '</div>';
+  }
+
+  function buildPortfolioPayoutsCardsHtml(items) {
+    return (items || []).map(function (row) {
+      var type = payoutsItemTypeLabel(row.type);
+      var hint = payoutsItemHint(row);
+      var name = payoutsTickerName(row.ticker);
+      return '<article class="pf-pay-card">' +
+        '<div class="pf-pay-card-head">' +
+          '<span class="pf-pay-ticker">' + escapeHtml(row.ticker || '') + '</span>' +
+          (name ? ' <span class="muted pf-pay-name">' + escapeHtml(name) + '</span>' : '') +
+          '<span class="pf-pay-badge pf-pay-badge--' + (row.type === 'coupon' ? 'cpn' : 'div') + '">' +
+            escapeHtml(type) +
+          '</span>' +
+        '</div>' +
+        '<div class="pf-pay-card-kpis">' +
+          '<span><span class="lbl">Дата</span> ' + escapeHtml(formatAsOfDateDisplay(row.recordDate)) + '</span>' +
+          '<span><span class="lbl">Кол-во на дату</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) + '</span>' +
+          '<span><span class="lbl">Выплата за 1 шт.</span> ' + escapeHtml(formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</span>' +
+          '<span class="pf-pay-card-sum"><span class="lbl">Сумма</span> ' +
+            escapeHtml(formatPortfolioRubAmount(row.amountRub)) + '</span>' +
+        '</div>' +
+        '<p class="muted pf-pay-card-note">' + escapeHtml(hint) + '</p>' +
+      '</article>';
+    }).join('');
+  }
+
+  function buildPortfolioPayoutsTableHtml(items) {
+    items = payoutsSortItemsNewestFirst(items);
+    if (!items.length) return '';
+    var rows = items.map(function (row) {
+      var type = payoutsItemTypeLabel(row.type);
+      var hint = payoutsItemHint(row);
+      var name = payoutsTickerName(row.ticker);
+      return '<tr class="pf-pay-row">' +
+        '<td class="pf-pay-td-date" title="' + escapeHtml(hint) + '">' +
+          escapeHtml(formatAsOfDateDisplay(row.recordDate)) +
+        '</td>' +
+        '<td class="pf-pay-td-paper">' +
+          '<span class="pf-pay-ticker">' + escapeHtml(row.ticker || '') + '</span>' +
+          (name ? '<span class="muted pf-pay-name">' + escapeHtml(name) + '</span>' : '') +
+        '</td>' +
+        '<td>' +
+          '<span class="pf-pay-badge pf-pay-badge--' + (row.type === 'coupon' ? 'cpn' : 'div') + '" title="' +
+            escapeHtml(hint) + '">' + escapeHtml(type) + '</span>' +
+        '</td>' +
+        '<td>' + escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) + '</td>' +
+        '<td>' + escapeHtml(formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</td>' +
+        '<td class="pf-pay-td-sum">' + escapeHtml(formatPortfolioRubAmount(row.amountRub)) + '</td>' +
+      '</tr>';
+    }).join('');
+    return '<div class="pf-pay-table-wrap">' +
+      '<table class="pf-pay-table">' +
+        '<thead><tr>' +
+          '<th>Дата</th><th>Бумага</th><th>Тип</th>' +
+          '<th>Кол-во на дату</th><th>Выплата за 1 шт.</th><th>Сумма</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div class="pf-pay-cards">' + buildPortfolioPayoutsCardsHtml(items) + '</div>';
+  }
+
+  function renderPortfolioPayoutsResult(result, errorText) {
+    var out = document.getElementById('pfPayResult');
+    var warn = document.getElementById('pfPayWarn');
+    revealPortfolioPayoutsPanel();
+    if (!out) return;
+    if (errorText) {
+      if (warn) { warn.hidden = true; warn.textContent = ''; }
+      out.innerHTML = '<p class="muted pf-pay-empty">' + escapeHtml(errorText) + '</p>';
+      return;
+    }
+    if (!result || result.invalidDate) {
+      if (warn) { warn.hidden = true; warn.textContent = ''; }
+      out.innerHTML = '<p class="muted pf-pay-empty">Укажите корректные даты.</p>';
+      return;
+    }
+    var partial = !!(result.isPartial || result.feedPartial);
+    if (warn) {
+      if (partial) {
+        warn.hidden = false;
+        warn.textContent = PF_PAY_PARTIAL;
+      } else {
+        warn.hidden = true;
+        warn.textContent = '';
+      }
+    }
+    var total = formatPortfolioRubAmount(result.totalPayoutsRub);
+    var divs = formatPortfolioRubAmount(result.totalDividendsRub);
+    var cpns = formatPortfolioRubAmount(result.totalCouponsRub);
+    var board = '<div class="pf-pay-board">' +
+      buildPortfolioPayoutsKpiHtml('Всего выплат', total) +
+      buildPortfolioPayoutsKpiHtml('Дивиденды', divs) +
+      buildPortfolioPayoutsKpiHtml('Купоны', cpns) +
+    '</div>';
+    var body = '';
+    var items = result.items || [];
+    if (!items.length || !(Number(result.totalPayoutsRub) > 0)) {
+      body = '<p class="muted pf-pay-empty">' + escapeHtml(PF_PAY_EMPTY) + '</p>';
+    } else {
+      body = buildPortfolioPayoutsTableHtml(items);
+    }
+    out.innerHTML = board + body +
+      '<p class="pf-pay-foot">' + escapeHtml(PF_PAY_FOOT) + '</p>';
+  }
+
+  function showPortfolioHoldingPayouts() {
+    if (pfPayBusy) return Promise.resolve();
+    initPortfolioPayoutsDatesDefault();
+    var fromInput = document.getElementById('pfPayFromDate');
+    var toInput = document.getElementById('pfPayToDate');
+    var fromRaw = fromInput ? String(fromInput.value || '').trim() : '';
+    var toRaw = toInput ? String(toInput.value || '').trim() : '';
+    var seq = ++pfPaySeq;
+    if (!timelineIsoDate(fromRaw) || !timelineIsoDate(toRaw)) {
+      setPortfolioPayoutsBusy(false);
+      renderPortfolioPayoutsResult(null, 'Укажите корректные даты.');
+      return Promise.resolve();
+    }
+    if (typeof loadPayoutFeedsForPortfolio !== 'function' ||
+        typeof buildPortfolioPayoutsForHoldingPeriod !== 'function') {
+      renderPortfolioPayoutsResult(null, PF_PAY_ERROR);
+      return Promise.resolve();
+    }
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    var today = localPortfolioTodayYmd();
+    setPortfolioPayoutsBusy(true);
+    return Promise.resolve()
+      .then(function () {
+        return loadPayoutFeedsForPortfolio(pf);
+      })
+      .then(function (feeds) {
+        if (seq !== pfPaySeq) return;
+        feeds = feeds || { payoutsByTicker: {}, warnings: [], isPartial: false };
+        var result = buildPortfolioPayoutsForHoldingPeriod(pf, fromRaw, toRaw, {
+          payoutsByTicker: feeds.payoutsByTicker,
+          now: today
+        });
+        result = result || {};
+        result.feedPartial = !!feeds.isPartial;
+        if (seq !== pfPaySeq) return;
+        setPortfolioPayoutsBusy(false);
+        renderPortfolioPayoutsResult(result);
+      })
+      .catch(function () {
+        if (seq !== pfPaySeq) return;
+        setPortfolioPayoutsBusy(false);
+        renderPortfolioPayoutsResult(null, PF_PAY_ERROR);
+      });
+  }
+
   function renderPortfolio() {
     if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
       Markets.renderBriefingMarketTabs('portfolioMarketTabs');
     }
     initPortfolioAsOfDateDefault();
     initPortfolioCompareDatesDefault();
+    initPortfolioPayoutsDatesDefault();
     renderPortfolioTableBody();
     renderPortfolioFolder();
     renderPortfolioChart();
