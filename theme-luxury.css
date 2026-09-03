@@ -3476,22 +3476,22 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   font-weight: 600;
   line-height: 1.3;
   color: var(--text-muted);
-  min-width: 12rem;
+  min-width: 9.75rem;
 }
 
 #tab-portfolio .pf-date-input {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  flex: 0 0 12rem;
-  width: 12rem;
-  min-width: 12rem;
-  max-width: 12rem;
+  flex: 0 0 9.75rem;
+  width: 9.75rem;
+  min-width: 9.75rem;
+  max-width: 9.75rem;
   height: 2.4rem;
   min-height: 2.4rem;
   max-height: 2.4rem;
   margin: 0;
-  padding: 0 0.5rem 0 0.65rem;
+  padding: 0 0.38rem 0 0.55rem;
   border: 1px solid color-mix(in srgb, var(--bronze) 22%, #d5dbe2 78%);
   border-radius: 9px;
   background: #fff;
@@ -3662,6 +3662,7 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
+  justify-content: flex-start;
   gap: 0.5rem 0.7rem;
 }
 
@@ -4292,6 +4293,7 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
+  justify-content: flex-start;
   gap: 0.5rem 0.65rem;
 }
 
@@ -4754,6 +4756,7 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
+  justify-content: flex-start;
   gap: 0.5rem 0.55rem;
   margin: 0 0 0.45rem;
 }
@@ -4981,7 +4984,17 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   align-items: center;
   gap: 0.32rem;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+}
+
+#tab-portfolio .pf-up-pay-block .pf-pay-toolbar {
+  align-items: center;
+  justify-content: flex-start;
+}
+
+#tab-portfolio .pf-up-pay-block .pf-pay-btn {
+  margin-left: 0;
+  flex: 0 0 auto;
 }
 
 #tab-portfolio .pf-up-pay-chip {
@@ -5057,6 +5070,12 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
     align-items: stretch;
   }
 
+  #tab-portfolio .pf-up-pay-block .pf-pay-toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
   #tab-portfolio .pf-pay-lead {
     white-space: normal;
   }
@@ -5067,13 +5086,18 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
     min-width: 0;
   }
 
+  #tab-portfolio .pf-up-pay-block .pf-pay-btn {
+    width: auto;
+  }
+
   #tab-portfolio .pf-up-pay-horizon {
-    width: 100%;
+    width: auto;
+    flex: 0 1 auto;
   }
 
   #tab-portfolio .pf-up-pay-chip,
   #tab-portfolio .pf-up-pay-chip span {
-    flex: 1 1 0;
+    flex: 0 0 auto;
     justify-content: center;
     text-align: center;
   }
