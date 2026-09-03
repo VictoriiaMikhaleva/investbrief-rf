@@ -1177,6 +1177,36 @@
     };
   }
 
+  function resolveTopVolumeChangeView(row, events) {
+    var tradeDate = row && row.tradeDate ? row.tradeDate : getMoexSessionTradeDateIso();
+    if (typeof formatSplitDayChangeDisplay === 'function') {
+      var splitView = formatSplitDayChangeDisplay(
+        row && row.ticker,
+        tradeDate,
+        row && row.changePct,
+        events
+      );
+      if (splitView) return splitView;
+    }
+    return formatMacroChange(row && row.changePct);
+  }
+
+  function ensureSplitEventsForTopVolume(onReady) {
+    if (typeof loadSplitEvents !== 'function') {
+      onReady([]);
+      return;
+    }
+    if (typeof hasSplitEventsLoaded === 'function' && hasSplitEventsLoaded()) {
+      onReady(typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+      return;
+    }
+    loadSplitEvents().then(function (events) {
+      onReady(events || []);
+    }).catch(function () {
+      onReady([]);
+    });
+  }
+
 
 
   function macroMeta(pct, source, tag, note) {
@@ -2274,9 +2304,12 @@
     var changeEl = wrap.querySelector('.quote-card-change');
     if (priceEl) priceEl.textContent = formatChartPrice(r.price, r.ticker);
     if (changeEl) {
-      var ch = formatMacroChange(r.changePct);
+      var events = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+      var ch = resolveTopVolumeChangeView(r, events);
       changeEl.textContent = ch.text;
       changeEl.className = 'quote-card-change ' + ch.cls;
+      if (ch.title) changeEl.setAttribute('title', ch.title);
+      else changeEl.removeAttribute('title');
     }
     var turnoverEl = wrap.querySelector('[data-turnover]');
     if (turnoverEl && r.valToday != null && isFinite(Number(r.valToday))) {
@@ -2426,9 +2459,21 @@
       if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="muted">Нет данных</td></tr>';
       return;
     }
+    var splitEvents = opts.splitEvents;
+    if (!splitEvents) {
+      splitEvents = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+      if (typeof hasSplitEventsLoaded !== 'function' || !hasSplitEventsLoaded()) {
+        ensureSplitEventsForTopVolume(function (loaded) {
+          renderImoexTopVolumeTable(rows, market, {
+            resetEnrich: false,
+            splitEvents: loaded || []
+          });
+        });
+      }
+    }
     if (grid) {
       grid.innerHTML = rows.map(function (r, i) {
-        var ch = formatMacroChange(r.changePct);
+        var ch = resolveTopVolumeChangeView(r, splitEvents);
         var divHtml = typeof window.quoteCardDivMetricsHtml === 'function'
           ? window.quoteCardDivMetricsHtml({
             compact: isUs,
@@ -2447,7 +2492,9 @@
               '</div>' +
               '<div class="quote-card-metrics">' +
                 '<span class="quote-card-price">' + escapeHtml(formatChartPrice(r.price, r.ticker)) + '</span>' +
-                '<span class="quote-card-change ' + ch.cls + '">' + escapeHtml(ch.text) + '</span>' +
+                '<span class="quote-card-change ' + ch.cls + '"' +
+                  (ch.title ? ' title="' + escapeHtml(ch.title) + '"' : '') + '>' +
+                  escapeHtml(ch.text) + '</span>' +
               '</div>' +
               divHtml +
             '</button>' +
@@ -2495,7 +2542,7 @@
     }
     if (!tbody) return;
     tbody.innerHTML = rows.map(function (r, i) {
-      var ch = formatMacroChange(r.changePct);
+      var ch = resolveTopVolumeChangeView(r, splitEvents);
       return (
         '<tr data-chart-ticker="' + escapeHtml(r.ticker) + '" class="imoex-top-row" tabindex="0" role="button">' +
           '<td>' + (i + 1) + '</td>' +
@@ -2503,7 +2550,9 @@
           '<td>' + escapeHtml(r.name || '—') + '</td>' +
           '<td>' + escapeHtml(formatBlnRub(r.valToday)) + '</td>' +
           '<td>' + escapeHtml(formatChartPrice(r.price, r.ticker)) + '</td>' +
-          '<td class="' + ch.cls + '">' + escapeHtml(ch.text) + '</td>' +
+          '<td class="' + ch.cls + '"' +
+            (ch.title ? ' title="' + escapeHtml(ch.title) + '"' : '') + '>' +
+            escapeHtml(ch.text) + '</td>' +
         '</tr>'
       );
     }).join('');
@@ -2971,6 +3020,7 @@
   window.scheduleMarketMacroRefresh = scheduleMarketMacroRefresh;
   window.refreshBriefingMarketData = refreshBriefingMarketData;
   window.fetchTopMoexSharesByVolume = fetchTopMoexSharesByVolume;
+  window.resolveTopVolumeChangeView = resolveTopVolumeChangeView;
   window.refreshMacroDataSilent = refreshMacroDataSilent;
   window.getInvestbriefDataFile = fetchInvestbriefDataFile;
   window.isInvestbriefDataStale = isDataSnapshotStale;

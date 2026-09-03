@@ -281,6 +281,104 @@
     return sign + pct.toFixed(decimals) + '%';
   }
 
+  var PF_SPLIT_WARN_TEXT = 'По бумаге было дробление акций. Проверьте, что количество и средняя цена в портфеле уже приведены к новой шкале. Стоимость позиции при сплите сама по себе не должна падать пропорционально цене одной акции.';
+  var _pfSplitEventsTried = false;
+
+  function pfSplitIsoDate(raw) {
+    if (typeof normalizePortfolioDate === 'function') {
+      try {
+        var n = normalizePortfolioDate(raw);
+        if (n) return n;
+      } catch (e) { /* */ }
+    }
+    var s = String(raw == null ? '' : raw).trim();
+    var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (!m) return '';
+    return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+  }
+
+  function pfSplitConsiderDate(raw, acc) {
+    var iso = pfSplitIsoDate(raw);
+    if (!iso) return { iso: acc.iso, missing: true };
+    if (!acc.iso || iso < acc.iso) return { iso: iso, missing: !!acc.missing };
+    return acc;
+  }
+
+  function portfolioTickerNeedsSplitWarning(ticker, portfolio, events) {
+    if (typeof getSplitEventsForTicker !== 'function') return null;
+    var list = getSplitEventsForTicker(ticker, events);
+    if (!list.length) return null;
+    portfolio = portfolio || {};
+    var positions = portfolio.positions || [];
+    var sales = portfolio.sales || [];
+    var i;
+    var j;
+    for (i = 0; i < list.length; i++) {
+      var ev = list[i];
+      if (!ev || !ev.effectiveDate) continue;
+      var acc = { iso: '', missing: false };
+      var hasRow = false;
+      for (j = 0; j < positions.length; j++) {
+        var p = positions[j];
+        if (!p) continue;
+        if (typeof splitEventCoversTicker === 'function'
+          ? !splitEventCoversTicker(ev, p.ticker)
+          : (normalizeTicker(p.ticker) !== normalizeTicker(ticker))) continue;
+        hasRow = true;
+        acc = pfSplitConsiderDate(p.buyDate, acc);
+      }
+      for (j = 0; j < sales.length; j++) {
+        var s = sales[j];
+        if (!s) continue;
+        if (typeof splitEventCoversTicker === 'function'
+          ? !splitEventCoversTicker(ev, s.ticker)
+          : (normalizeTicker(s.ticker) !== normalizeTicker(ticker))) continue;
+        hasRow = true;
+        acc = pfSplitConsiderDate(s.saleDate, acc);
+        var allocs = s.allocations || [];
+        var k;
+        for (k = 0; k < allocs.length; k++) {
+          if (allocs[k]) acc = pfSplitConsiderDate(allocs[k].buyDate, acc);
+        }
+      }
+      if (!hasRow) continue;
+      if (acc.missing) return ev;
+      if (acc.iso && acc.iso < ev.effectiveDate) return ev;
+    }
+    return null;
+  }
+
+  function buildPortfolioSplitWarningHtml(ticker, portfolio, events) {
+    if (!portfolioTickerNeedsSplitWarning(ticker, portfolio, events || (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []))) {
+      return '';
+    }
+    return '<p class="pf-split-warn" role="status">' + escapeHtml(PF_SPLIT_WARN_TEXT) + '</p>';
+  }
+
+  function buildPortfolioSplitWarningsForTickersHtml(tickers, portfolio) {
+    var events = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+    var seen = {};
+    var i;
+    for (i = 0; i < (tickers || []).length; i++) {
+      var t = normalizeTicker(tickers[i]);
+      if (!t || seen[t]) continue;
+      seen[t] = true;
+      if (portfolioTickerNeedsSplitWarning(t, portfolio, events)) {
+        return '<p class="pf-split-warn" role="status">' + escapeHtml(PF_SPLIT_WARN_TEXT) + '</p>';
+      }
+    }
+    return '';
+  }
+
+  function ensurePortfolioSplitEvents() {
+    if (_pfSplitEventsTried) return;
+    if (typeof loadSplitEvents !== 'function') return;
+    _pfSplitEventsTried = true;
+    loadSplitEvents().then(function () {
+      renderPortfolioTableBody();
+    }).catch(function () { /* справочник необязателен */ });
+  }
+
 
 
   function getPaperDisplayPct(pos) {
@@ -5579,6 +5677,7 @@
       (isBond
         ? '<p class="pf-ticker-detail-note muted">Цены ОФЗ указаны в % от номинала, суммы — в ₽.</p>'
         : '') +
+      buildPortfolioSplitWarningHtml(ticker, { positions: positions, sales: sales }) +
       '<div class="pf-ticker-detail-summary">' +
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Остаток</span><span class="val">' +
           escapeHtml(String(hist.openQty)) + ' шт.</span></div>' +
@@ -6123,6 +6222,7 @@
 
   function renderPortfolioTableBody() {
     var renderId = ++state.pfTableRenderId;
+    ensurePortfolioSplitEvents();
     var positions = getFilteredPortfolioPositions();
     var sales = getPortfolio().sales || [];
     var placeholderHtml = buildPortfolioTableHtml(positions, {}, sales);
@@ -6511,6 +6611,24 @@
     if (overlay) overlay.hidden = !overlayOn;
   }
 
+  function collectTickersFromRows(rows) {
+    var out = [];
+    var seen = {};
+    (rows || []).forEach(function (row) {
+      var t = row && (row.ticker || row.secid);
+      t = normalizeTicker(t);
+      if (!t || seen[t]) return;
+      seen[t] = true;
+      out.push(t);
+    });
+    return out;
+  }
+
+  function pfSplitWarnHtmlForRows(rows) {
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    return buildPortfolioSplitWarningsForTickersHtml(collectTickersFromRows(rows), pf);
+  }
+
   function renderPortfolioAsOfResult(result, errorText) {
     var out = document.getElementById('pfAsOfResult');
     var warn = document.getElementById('pfAsOfWarn');
@@ -6544,6 +6662,7 @@
     if (result.unsupportedItemsCount > 0) {
       extra += '<p class="pf-asof-partial" role="status">Некоторые инструменты пока не поддерживаются для оценки на дату.</p>';
     }
+    extra += pfSplitWarnHtmlForRows(items);
     var foot = '<p class="pf-asof-foot">' + escapeHtml(PF_ASOF_FOOT) + '</p>';
     var below = items.length
       ? '<p class="pf-asof-below">' + escapeHtml(PF_ASOF_BELOW) + '</p>'
@@ -6847,6 +6966,7 @@
     if (result.isPartial) {
       extra += '<p class="pf-cmp-partial" role="status">' + escapeHtml(PF_CMP_PARTIAL) + '</p>';
     }
+    extra += pfSplitWarnHtmlForRows(result.items || []);
     var fromLbl = formatAsOfDateDisplay(result.fromDate);
     var toLbl = formatAsOfDateDisplay(result.toDate);
     var fromVal = result.fromValue == null ? '—' : formatPortfolioRubAmount(result.fromValue);
@@ -7116,6 +7236,7 @@
       body = buildPortfolioPayoutsTableHtml(items);
     }
     out.innerHTML = board + body +
+      pfSplitWarnHtmlForRows(items) +
       '<p class="pf-pay-foot">' + escapeHtml(PF_PAY_FOOT) + '</p>';
   }
 
@@ -7319,6 +7440,7 @@
       body = buildUpcomingPayoutsTableHtml(items);
     }
     out.innerHTML = board + body +
+      pfSplitWarnHtmlForRows(items) +
       '<p class="pf-pay-foot">' + escapeHtml(PF_UP_PAY_FOOT) + '</p>';
   }
 

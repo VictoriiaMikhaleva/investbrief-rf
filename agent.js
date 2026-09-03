@@ -448,6 +448,9 @@
           name: name || getTickerSubtitle(ticker),
           currentPrice: quote.price,
           dayChangePct: quote.changePct,
+          tradeDate: quote.tradeDate || (typeof getMoexSessionTradeDateIso === 'function'
+            ? getMoexSessionTradeDateIso()
+            : ''),
           weekChangePct: weekChangePct,
           monthHigh: monthHigh,
           monthLow: monthLow,
@@ -751,8 +754,18 @@
       ? (d.todayTurnover / d.avgTurnover7d)
       : null;
 
+    var splitEv = null;
+    if (typeof isSplitAffectedChange === 'function') {
+      var splitEvents = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+      var tradeDate = d.tradeDate || '';
+      if (!tradeDate && typeof getMoexSessionTradeDateIso === 'function') {
+        tradeDate = getMoexSessionTradeDateIso();
+      }
+      splitEv = isSplitAffectedChange(d.ticker, tradeDate, d.dayChangePct, splitEvents);
+    }
+
     // У каждого сигнала — только свой факт (без повторов цены/оборота/недели в checklist).
-    if (d.dayChangePct != null && d.dayChangePct <= -dayTh) {
+    if (!splitEv && d.dayChangePct != null && d.dayChangePct <= -dayTh) {
       signals.push({
         id: 'day-down',
         title: 'Заметное снижение за день',
@@ -762,12 +775,26 @@
       });
     }
 
-    if (d.dayChangePct != null && d.dayChangePct >= dayTh) {
+    if (!splitEv && d.dayChangePct != null && d.dayChangePct >= dayTh) {
       signals.push({
         id: 'day-up',
         title: 'Заметный рост за день',
         reasons: [
           'За день ' + fmtPct(d.dayChangePct) + ' (порог: ≥ +' + fmtNum(dayTh, 1) + '%).'
+        ]
+      });
+    }
+
+    if (splitEv) {
+      signals.push({
+        id: 'split-adjust',
+        contextOnly: true,
+        title: 'Техническое изменение цены',
+        reasons: [
+          'техническое изменение цены после дробления акций' +
+            (typeof formatSplitRatioText === 'function' && formatSplitRatioText(splitEv)
+              ? ' ' + formatSplitRatioText(splitEv)
+              : '')
         ]
       });
     }
@@ -902,7 +929,7 @@
     var samples = [];
     cards.forEach(function (c) {
       if (!c.signals || !c.signals.length || samples.length >= 2) return;
-      var titles = c.signals.map(function (s) {
+      var titles = c.signals.filter(function (s) { return s && !s.contextOnly; }).map(function (s) {
         if (s.id === 'turnover-high') return 'оборот выше обычного';
         if (s.id === 'week-down') return 'снижение за неделю';
         if (s.id === 'week-up') return 'рост за неделю';
@@ -1304,6 +1331,9 @@
         }).join('') + '</ul></div>';
     }
 
+    var splitAdjust = (card.signals || []).some(function (s) { return s && s.id === 'split-adjust'; });
+    var dayCls = splitAdjust ? 'muted' : dayChangeClass(card.dayChangePct);
+    var dayText = splitAdjust ? 'сплит' : (formatAgentDayChange(card.dayChangePct) + ' за день');
     var toneClass = card.status === 'Зона внимания' ? 'agent-card--watch'
       : (card.status === 'Есть событие' ? 'agent-card--event' : 'agent-card--calm');
     return (
@@ -1317,7 +1347,7 @@
         '</div>' +
         '<div class="agent-card-metrics">' +
           '<span class="agent-metric">' + escapeHtml(formatAgentPrice(card.currentPrice)) + '</span>' +
-          '<span class="agent-metric ' + dayChangeClass(card.dayChangePct) + '">' + escapeHtml(formatAgentDayChange(card.dayChangePct)) + ' за день</span>' +
+          '<span class="agent-metric ' + dayCls + '">' + escapeHtml(dayText) + '</span>' +
         '</div>' +
         signalsHtml +
         '<div class="agent-card-actions">' +
@@ -1384,21 +1414,26 @@
   }
 
   function fetchAgentCardsLive(tickers, settings, seq) {
-    return Promise.all(tickers.map(function (ticker) {
-      return fetchAgentSecurityData(ticker).then(function (data) {
-        var events = findRelatedEventsForTicker(ticker);
-        var signals = analyzeAgentSignals(data, events, settings);
-        return {
-          ticker: ticker,
-          name: data.name || (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(ticker) : ticker),
-          currentPrice: data.currentPrice,
-          dayChangePct: data.dayChangePct,
-          insufficient: data.insufficient,
-          signals: signals,
-          status: deriveAgentStatus(signals)
-        };
-      });
-    })).then(function (cards) {
+    var ready = typeof loadSplitEvents === 'function'
+      ? loadSplitEvents().catch(function () { return []; })
+      : Promise.resolve([]);
+    return ready.then(function () {
+      return Promise.all(tickers.map(function (ticker) {
+        return fetchAgentSecurityData(ticker).then(function (data) {
+          var events = findRelatedEventsForTicker(ticker);
+          var signals = analyzeAgentSignals(data, events, settings);
+          return {
+            ticker: ticker,
+            name: data.name || (typeof getTickerSubtitle === 'function' ? getTickerSubtitle(ticker) : ticker),
+            currentPrice: data.currentPrice,
+            dayChangePct: data.dayChangePct,
+            insufficient: data.insufficient,
+            signals: signals,
+            status: deriveAgentStatus(signals)
+          };
+        });
+      }));
+    }).then(function (cards) {
       applyAgentCardsFromLive(cards, seq);
     });
   }

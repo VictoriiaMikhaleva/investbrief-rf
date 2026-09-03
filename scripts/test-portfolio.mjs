@@ -329,6 +329,8 @@ function loadPortfolioCalcHelpers() {
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
+  const splitCode = fs.readFileSync(path.join(__dirname, '..', 'split-events.js'), 'utf8');
+  vm.runInNewContext(splitCode, sandbox, { timeout: 5000 });
   vm.runInNewContext(
     code +
       '\nthis.__bondRub = bondRubFromPct;' +
@@ -362,7 +364,9 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__tickerReturn = buildTickerReturnWithPayouts;' +
       '\nthis.__portfolioReturn = buildPortfolioReturnWithPayouts;' +
       '\nthis.__loadPayoutFeeds = loadPayoutFeedsForPortfolio;' +
-      '\nthis.__upcomingPayouts = buildUpcomingPortfolioPayouts;',
+      '\nthis.__upcomingPayouts = buildUpcomingPortfolioPayouts;' +
+      '\nthis.__splitWarn = portfolioTickerNeedsSplitWarning;' +
+      '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;',
     sandbox,
     { timeout: 10000 }
   );
@@ -399,6 +403,10 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioReturnWithPayouts: sandbox.__portfolioReturn,
     loadPayoutFeedsForPortfolio: sandbox.__loadPayoutFeeds,
     buildUpcomingPortfolioPayouts: sandbox.__upcomingPayouts,
+    portfolioTickerNeedsSplitWarning: sandbox.__splitWarn,
+    buildPortfolioSplitWarningHtml: sandbox.__splitWarnHtml,
+    setSplitEventsCatalog: sandbox.setSplitEventsCatalog,
+    getSplitEventsSync: sandbox.getSplitEventsSync,
     localStorage: sandbox.localStorage,
     memStore: memStore
   };
@@ -3082,6 +3090,59 @@ function loadPriceAtDateHelpers() {
   const pfSkip = runPf(withIndex, { payoutsByTicker: sberFeed([]) });
   assert(pfSkip.items.length === 1 && pfSkip.items[0].ticker === 'SBER', 'pfr 11: skip IMOEX/MOEX/INDEX');
   assert(pfSkip.purchaseCostRub === 2500, 'pfr 11: only SBER purchase');
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const beforePf = {
+    positions: [
+      { ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3200, buyDate: '2025-06-01', currentPrice: 255 }
+    ],
+    sales: []
+  };
+  const snap = JSON.stringify(beforePf);
+  const ev = calc.portfolioTickerNeedsSplitWarning('T', beforePf, events);
+  assert(ev && ev.ticker === 'T', 'split warn: buyDate before effectiveDate');
+  assert(JSON.stringify(beforePf) === snap, 'split warn: portfolio JSON not mutated');
+  const html = calc.buildPortfolioSplitWarningHtml('T', beforePf, events);
+  assert(/дробление акций/.test(html), 'split warn html present');
+
+  const afterPf = {
+    positions: [
+      { ticker: 'T', lotId: 'T1', qty: 10, avgPrice: 320, buyDate: '2026-05-01', currentPrice: 255 }
+    ],
+    sales: []
+  };
+  assert(calc.portfolioTickerNeedsSplitWarning('T', afterPf, events) == null, 'split warn: buyDate after effectiveDate → no');
+
+  const aliasPf = {
+    positions: [
+      { ticker: 'TCSG', lotId: 'T1', qty: 1, avgPrice: 3200, buyDate: '2025-01-10', currentPrice: 255 }
+    ],
+    sales: []
+  };
+  assert(calc.portfolioTickerNeedsSplitWarning('TCSG', aliasPf, events), 'split warn: alias TCSG');
+  assert(calc.portfolioTickerNeedsSplitWarning('T', aliasPf, events), 'split warn: query T finds TCSG lot');
+
+  const closedPf = {
+    positions: [],
+    sales: [{
+      saleId: 'S1',
+      ticker: 'T',
+      qty: 1,
+      buyPrice: 3200,
+      salePrice: 255,
+      saleDate: '2026-05-10',
+      allocations: [{ lotId: 'T1', qty: 1, buyPrice: 3200, buyDate: '2025-03-01' }]
+    }]
+  };
+  assert(calc.portfolioTickerNeedsSplitWarning('T', closedPf, events), 'split warn: closed position with old buy');
+  assert(calc.portfolioTickerNeedsSplitWarning('SBER', {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 250, buyDate: '2024-01-01' }],
+    sales: []
+  }, events) == null, 'split warn: other ticker no');
 }
 
 if (errors.length) {

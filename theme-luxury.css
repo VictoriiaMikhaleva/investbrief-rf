@@ -779,6 +779,12 @@ input:focus, select:focus, textarea:focus {
   font-weight: 600;
   opacity: 0.92;
 }
+.quote-card-change--split {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: color-mix(in srgb, var(--text-muted) 82%, #5c5348 18%);
+}
 
 .pnl-neg,
 .index-change.pnl-neg,
@@ -3973,6 +3979,18 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
   background: color-mix(in srgb, var(--bronze-soft) 28%, #fffaf6 72%);
   border: 1px solid color-mix(in srgb, var(--bronze) 18%, #eadccb 82%);
+  border-radius: 8px;
+}
+
+#tab-portfolio .pf-split-warn,
+#tab-portfolio .pf-pay-result .pf-split-warn {
+  margin: 0.45rem 0 0.55rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, #7a5a42 78%, #5c4636 22%);
+  background: color-mix(in srgb, var(--bronze-soft) 22%, #fffaf6 78%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 16%, #eadccb 84%);
   border-radius: 8px;
 }
 

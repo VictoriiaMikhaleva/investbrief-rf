@@ -10,6 +10,7 @@
     "test:analytics-server": "node scripts/test-analytics-server.mjs",
     "test:agent": "node scripts/test-agent.mjs",
     "test:portfolio": "node scripts/test-portfolio.mjs",
+    "test:splits": "node scripts/test-split-events.mjs",
     "smoke": "node scripts/smoke-health.mjs",
     "update:market-data": "node scripts/update-market-data.js",
     "update:dividends": "node scripts/update-dividend-patches.js",

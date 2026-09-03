@@ -69,11 +69,14 @@ function loadAgentHelpers() {
     MOEX_ISS: MOEX
   };
   sandbox.window = sandbox;
+  const splitCode = fs.readFileSync(path.join(__dirname, '..', 'split-events.js'), 'utf8');
+  vm.runInNewContext(splitCode, sandbox, { timeout: 5000 });
   vm.runInNewContext(code, sandbox, { timeout: 5000 });
   return {
     classifyAgentEvent: sandbox.window.classifyAgentEvent,
     analyzeAgentSignals: sandbox.window.analyzeAgentSignals,
-    deriveAgentStatus: sandbox.window.deriveAgentStatus
+    deriveAgentStatus: sandbox.window.deriveAgentStatus,
+    setSplitEventsCatalog: sandbox.setSplitEventsCatalog
   };
 }
 
@@ -165,6 +168,54 @@ function assert(cond, msg) {
   };
   const oilCls = helpers.classifyAgentEvent(oilForT, 'T');
   assert(!oilCls, 'oil news must not appear for T, got ' + (oilCls && oilCls.level));
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  helpers.setSplitEventsCatalog(catalog);
+  const splitData = {
+    ticker: 'T',
+    insufficient: false,
+    dayChangePct: -90,
+    tradeDate: '2026-04-17',
+    weekChangePct: 0.2,
+    currentPrice: 255,
+    monthHigh: 280,
+    monthLow: 240,
+    todayTurnover: 1e10,
+    avgTurnover7d: 5e9
+  };
+  const splitSigs = helpers.analyzeAgentSignals(splitData, [], settings);
+  assert(!splitSigs.some((s) => s.id === 'day-down'), 'split day does not create day-down');
+  assert(!splitSigs.some((s) => s.id === 'day-up'), 'split day does not create day-up');
+  assert(splitSigs.some((s) => s.id === 'split-adjust' && s.contextOnly), 'split-adjust context signal');
+  assert(splitSigs.some((s) => s.id === 'turnover-high'), 'other signals still on');
+  assert(helpers.deriveAgentStatus(splitSigs) === 'Зона внимания', 'turnover still makes watch zone');
+
+  const onlySplit = helpers.analyzeAgentSignals({
+    ticker: 'T',
+    insufficient: false,
+    dayChangePct: -90,
+    tradeDate: '2026-04-17',
+    weekChangePct: 0.2,
+    currentPrice: 255,
+    monthHigh: 280,
+    monthLow: 240
+  }, [], settings);
+  assert(!onlySplit.some((s) => s.id === 'day-down'), 'only-split: no day-down');
+  assert(helpers.deriveAgentStatus(onlySplit) === 'Спокойно', 'only split-adjust stays calm');
+
+  const otherDay = helpers.analyzeAgentSignals({
+    ticker: 'T',
+    insufficient: false,
+    dayChangePct: -90,
+    tradeDate: '2026-09-03',
+    weekChangePct: 0.2,
+    currentPrice: 255,
+    monthHigh: 280,
+    monthLow: 240
+  }, [], settings);
+  assert(otherDay.some((s) => s.id === 'day-down'), 'same paper other day still day-down');
 }
 
 const tickers = ['SBER', 'GAZP', 'VTBR', 'LKOH'];
