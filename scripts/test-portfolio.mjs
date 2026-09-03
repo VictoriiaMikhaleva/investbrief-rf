@@ -360,6 +360,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__payouts = buildPortfolioPayoutsForHoldingPeriod;' +
       '\nthis.__tickerPayouts = buildTickerPayoutsForHoldingPeriod;' +
       '\nthis.__tickerReturn = buildTickerReturnWithPayouts;' +
+      '\nthis.__portfolioReturn = buildPortfolioReturnWithPayouts;' +
       '\nthis.__loadPayoutFeeds = loadPayoutFeedsForPortfolio;' +
       '\nthis.__upcomingPayouts = buildUpcomingPortfolioPayouts;',
     sandbox,
@@ -395,6 +396,7 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioPayoutsForHoldingPeriod: sandbox.__payouts,
     buildTickerPayoutsForHoldingPeriod: sandbox.__tickerPayouts,
     buildTickerReturnWithPayouts: sandbox.__tickerReturn,
+    buildPortfolioReturnWithPayouts: sandbox.__portfolioReturn,
     loadPayoutFeedsForPortfolio: sandbox.__loadPayoutFeeds,
     buildUpcomingPortfolioPayouts: sandbox.__upcomingPayouts,
     localStorage: sandbox.localStorage,
@@ -2897,9 +2899,194 @@ function loadPriceAtDateHelpers() {
   assert(Math.abs(rId.resultWithoutPayoutsRub - (unrealized + realized)) < 1e-9, 'twp 16: resultWithout ≈ unrealized + realized');
 }
 
+{
+  // Волна 5.2: справочный результат по портфелю с учётом найденных выплат
+  const NOW = '2025-12-31';
+  function sberFeed(dividends) {
+    return { SBER: { kind: 'stock', source: 'moex', dividends: dividends } };
+  }
+  function gazpFeed(dividends) {
+    return { GAZP: { kind: 'stock', source: 'moex', dividends: dividends } };
+  }
+  function ofzFeed(coupons, faceValue) {
+    return {
+      OFZ_26238: {
+        kind: 'bond',
+        source: 'bondization',
+        coupons: coupons,
+        faceValue: faceValue != null ? faceValue : 1000
+      }
+    };
+  }
+  function runPf(portfolio, extra) {
+    return calc.buildPortfolioReturnWithPayouts(
+      portfolio,
+      Object.assign({ now: NOW }, extra || {})
+    );
+  }
+
+  const oneStock = {
+    positions: [{
+      ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280
+    }],
+    sales: [],
+    cashFlows: [{ id: 'cf1', amount: 9 }]
+  };
+  const frozenOne = JSON.stringify(oneStock);
+  const oneOpts = { payoutsByTicker: sberFeed([{ date: '2024-07-17', value: 33.3 }]) };
+  const tickerOne = calc.buildTickerReturnWithPayouts('SBER', oneStock, Object.assign({ now: NOW }, oneOpts));
+  const pfOne = runPf(oneStock, oneOpts);
+  assert(pfOne.items.length === 1 && pfOne.items[0].ticker === 'SBER', 'pfr 1: one item');
+  assert(pfOne.purchaseCostRub === tickerOne.purchaseCostRub, 'pfr 1: purchase');
+  assert(pfOne.saleProceedsRub === tickerOne.saleProceedsRub, 'pfr 1: sales');
+  assert(pfOne.currentMarketValueRub === tickerOne.currentMarketValueRub, 'pfr 1: MV');
+  assert(pfOne.payoutsRub === tickerOne.payoutsRub, 'pfr 1: payouts');
+  assert(pfOne.resultWithoutPayoutsRub === tickerOne.resultWithoutPayoutsRub, 'pfr 1: result without');
+  assert(pfOne.resultWithPayoutsRub === tickerOne.resultWithPayoutsRub, 'pfr 1: result with');
+  assert(pfOne.returnWithPayoutsPct === tickerOne.returnWithPayoutsPct, 'pfr 1: pct');
+  assert(JSON.stringify(oneStock) === frozenOne, 'pfr 12: does not mutate portfolio');
+
+  const twoStocks = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 4, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 300 },
+      { ticker: 'GAZP', lotId: 'G1', qty: 30, avgPrice: 100, buyDate: '2024-03-01', currentPrice: 110 }
+    ],
+    sales: []
+  };
+  const twoFeeds = Object.assign({}, sberFeed([]), gazpFeed([]));
+  const pfTwo = runPf(twoStocks, { payoutsByTicker: twoFeeds });
+  const tSber = calc.buildTickerReturnWithPayouts('SBER', twoStocks, { now: NOW, payoutsByTicker: twoFeeds });
+  const tGazp = calc.buildTickerReturnWithPayouts('GAZP', twoStocks, { now: NOW, payoutsByTicker: twoFeeds });
+  assert(pfTwo.items.length === 2, 'pfr 2: two items');
+  assert(pfTwo.purchaseCostRub === tSber.purchaseCostRub + tGazp.purchaseCostRub, 'pfr 2: purchase sum');
+  assert(pfTwo.currentMarketValueRub === tSber.currentMarketValueRub + tGazp.currentMarketValueRub, 'pfr 2: MV sum');
+  assert(pfTwo.resultWithoutPayoutsRub === tSber.resultWithoutPayoutsRub + tGazp.resultWithoutPayoutsRub, 'pfr 2: result sum');
+  assert(pfTwo.purchaseCostRub === 4000, 'pfr 3: total purchase 1000+3000');
+  assert(pfTwo.resultWithoutPayoutsRub === 500, 'pfr 3: total result 200+300');
+  assert(Math.abs(pfTwo.returnWithoutPayoutsPct - 12.5) < 1e-9, 'pfr 3: 500/4000 = 12.5, not avg 15');
+  assert(Math.abs(tSber.returnWithoutPayoutsPct - 20) < 1e-9, 'pfr 3: SBER 20%');
+  assert(Math.abs(tGazp.returnWithoutPayoutsPct - 10) < 1e-9, 'pfr 3: GAZP 10%');
+
+  const mix = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      {
+        ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01',
+        currentPrice: 98, faceValue: 1000
+      }
+    ],
+    sales: []
+  };
+  const mixFeeds = Object.assign(
+    {},
+    sberFeed([{ date: '2024-07-17', value: 10 }]),
+    ofzFeed([{ date: '2024-06-19', value: 42.38 }], 1000)
+  );
+  const pfMix = runPf(mix, { payoutsByTicker: mixFeeds, bondMetaMap: { OFZ_26238: { faceValue: 1000 } } });
+  assert(pfMix.purchaseCostRub === 2500 + 9540, 'pfr 4: stock + OFZ purchase');
+  assert(pfMix.currentMarketValueRub === 2800 + 9800, 'pfr 4: stock + OFZ MV');
+  assert(pfMix.dividendsRub === 100 && pfMix.couponsRub === 423.8, 'pfr 4: div + coupon');
+  assert(pfMix.payoutsRub === 523.8, 'pfr 4: payouts sum');
+
+  const oneNoFeed = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      { ticker: 'GAZP', lotId: 'G1', qty: 2, avgPrice: 140, buyDate: '2024-01-15', currentPrice: 150 }
+    ],
+    sales: []
+  };
+  const pfNoFeed = runPf(oneNoFeed, {
+    payoutsByTicker: sberFeed([{ date: '2024-07-17', value: 10 }])
+  });
+  assert(pfNoFeed.isPartial === true, 'pfr 5: partial if one feed missing');
+  assert(pfNoFeed.payoutsRub === 100, 'pfr 5: known payouts still summed');
+  assert(pfNoFeed.warnings.some((w) => /нет данных по выплатам для GAZP/.test(w)), 'pfr 5: keep ticker warning');
+  assert(pfNoFeed.resultWithPayoutsRub != null, 'pfr 5: price result still computed');
+
+  const oneNoMv = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      { ticker: 'GAZP', lotId: 'G1', qty: 2, avgPrice: 140, buyDate: '2024-01-15' }
+    ],
+    sales: []
+  };
+  const pfNoMv = runPf(oneNoMv, { payoutsByTicker: Object.assign({}, sberFeed([]), gazpFeed([])) });
+  assert(pfNoMv.currentMarketValueRub == null, 'pfr 6: MV null if one ticker null');
+  assert(pfNoMv.resultWithoutPayoutsRub == null && pfNoMv.resultWithPayoutsRub == null, 'pfr 6: results null');
+  assert(pfNoMv.returnWithPayoutsPct == null && pfNoMv.returnWithoutPayoutsPct == null, 'pfr 6: pct null');
+  assert(pfNoMv.isPartial === true, 'pfr 6: isPartial');
+  assert(pfNoMv.purchaseCostRub === 2500 + 280, 'pfr 6: known purchase still summed');
+
+  const oneNoSale = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 6, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      { ticker: 'GAZP', lotId: 'G1', qty: 2, avgPrice: 140, buyDate: '2024-01-15', currentPrice: 150 }
+    ],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 4,
+      buyPrice: 250,
+      saleDate: '2025-06-01',
+      allocations: [{ lotId: 'S1', qty: 4, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  };
+  const pfNoSale = runPf(oneNoSale, { payoutsByTicker: Object.assign({}, sberFeed([]), gazpFeed([])) });
+  assert(pfNoSale.saleProceedsRub == null, 'pfr 7: saleProceeds null if one ticker null');
+  assert(pfNoSale.resultWithoutPayoutsRub == null && pfNoSale.resultWithPayoutsRub == null, 'pfr 7: results null');
+  assert(pfNoSale.returnWithPayoutsPct == null, 'pfr 7: pct null');
+  assert(pfNoSale.isPartial === true, 'pfr 7: isPartial');
+
+  const emptyPf = runPf({ positions: [], sales: [] }, { payoutsByTicker: {} });
+  assert(emptyPf.items.length === 0, 'pfr 8: empty items');
+  assert(emptyPf.purchaseCostRub === 0 && emptyPf.saleProceedsRub === 0, 'pfr 8: zeros cost/sales');
+  assert(emptyPf.currentMarketValueRub === 0 && emptyPf.payoutsRub === 0, 'pfr 8: zeros MV/payouts');
+  assert(emptyPf.resultWithoutPayoutsRub === 0 && emptyPf.resultWithPayoutsRub === 0, 'pfr 8: zeros result');
+  assert(emptyPf.returnWithoutPayoutsPct == null && emptyPf.returnWithPayoutsPct == null, 'pfr 8: pct null');
+  assert(emptyPf.isPartial === false && emptyPf.warnings.length === 0, 'pfr 8: no warning');
+
+  const closedOnly = {
+    positions: [],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 10,
+      buyPrice: 250,
+      salePrice: 280,
+      saleDate: '2024-08-01',
+      allocations: [{ lotId: 'S1', qty: 10, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  };
+  const pfClosed = runPf(closedOnly, { payoutsByTicker: sberFeed([]) });
+  assert(pfClosed.currentMarketValueRub === 0, 'pfr 9: closed MV 0');
+  assert(pfClosed.purchaseCostRub === 2500, 'pfr 9: purchase included');
+  assert(pfClosed.saleProceedsRub === 2800, 'pfr 9: sales included');
+  assert(pfClosed.resultWithoutPayoutsRub === 300, 'pfr 9: sales − purchase');
+  assert(pfClosed.items[0].isClosed === true, 'pfr 9: ticker closed');
+
+  const pfClosedDiv = runPf(closedOnly, {
+    payoutsByTicker: sberFeed([{ date: '2024-07-17', value: 10 }])
+  });
+  assert(pfClosedDiv.payoutsRub === 100, 'pfr 10: dividend during holding');
+  assert(pfClosedDiv.resultWithPayoutsRub === 400, 'pfr 10: 2800+0+100-2500');
+
+  const withIndex = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      { ticker: 'IMOEX', lotId: 'I1', qty: 1, avgPrice: 3000, buyDate: '2024-01-15', currentPrice: 3100 },
+      { ticker: 'MOEX', lotId: 'M1', qty: 1, avgPrice: 100, buyDate: '2024-01-15', currentPrice: 110 },
+      { ticker: 'INDEX', lotId: 'X1', qty: 1, avgPrice: 1, buyDate: '2024-01-15', currentPrice: 1 }
+    ],
+    sales: []
+  };
+  const pfSkip = runPf(withIndex, { payoutsByTicker: sberFeed([]) });
+  assert(pfSkip.items.length === 1 && pfSkip.items[0].ticker === 'SBER', 'pfr 11: skip IMOEX/MOEX/INDEX');
+  assert(pfSkip.purchaseCostRub === 2500, 'pfr 11: only SBER purchase');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts');

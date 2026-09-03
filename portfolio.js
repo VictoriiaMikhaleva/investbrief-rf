@@ -2009,6 +2009,113 @@
     };
   }
 
+  function twpEmptyPortfolioResult(fromIso, toIso) {
+    return {
+      fromDate: fromIso || '',
+      toDate: toIso || '',
+      purchaseCostRub: 0,
+      saleProceedsRub: 0,
+      realizedPnlRub: 0,
+      currentMarketValueRub: 0,
+      payoutsRub: 0,
+      dividendsRub: 0,
+      couponsRub: 0,
+      resultWithoutPayoutsRub: 0,
+      resultWithPayoutsRub: 0,
+      returnWithoutPayoutsPct: null,
+      returnWithPayoutsPct: null,
+      items: [],
+      isPartial: false,
+      warnings: [],
+      notes: TWP_NOTES.slice()
+    };
+  }
+
+  function twpSumKnownOrNull(values) {
+    var sum = 0;
+    var i;
+    for (i = 0; i < (values || []).length; i++) {
+      var v = values[i];
+      if (v == null || !isFinite(Number(v))) return null;
+      sum += Number(v);
+    }
+    return asOfRoundRub(sum) || 0;
+  }
+
+  /**
+   * Read-only справочный результат по портфелю с учётом найденных выплат.
+   * Агрегирует buildTickerReturnWithPayouts. Не мутирует JSON.
+   * Процент — к общей сумме покупок, не среднее по тикерам.
+   */
+  function buildPortfolioReturnWithPayouts(portfolio, options) {
+    options = options || {};
+    var toIso = timelineIsoDate(options.now);
+    if (!toIso) toIso = timelineIsoDate(localPortfolioTodayYmd());
+    var parts = payoutsPositionsSales(portfolio, options);
+    var tickers = payoutsCollectTickers(parts.positions, parts.sales);
+    if (!tickers.length) return twpEmptyPortfolioResult('', toIso);
+
+    var childOpts = {};
+    var optKey;
+    for (optKey in options) {
+      if (Object.prototype.hasOwnProperty.call(options, optKey)) {
+        childOpts[optKey] = options[optKey];
+      }
+    }
+    childOpts.now = toIso;
+    if (!childOpts._compositionCache) childOpts._compositionCache = {};
+
+    var items = [];
+    var warnings = [];
+    var isPartial = false;
+    var fromIso = '';
+    var i;
+    for (i = 0; i < tickers.length; i++) {
+      var row = buildTickerReturnWithPayouts(tickers[i], portfolio, childOpts);
+      items.push(row);
+      if (row && row.isPartial) isPartial = true;
+      (row && row.warnings ? row.warnings : []).forEach(function (w) {
+        payoutsPushWarning(warnings, w);
+      });
+      if (row && row.fromDate && (!fromIso || row.fromDate < fromIso)) fromIso = row.fromDate;
+    }
+
+    var purchaseCostRub = twpSumKnownOrNull(items.map(function (row) { return row.purchaseCostRub; }));
+    var saleProceedsRub = twpSumKnownOrNull(items.map(function (row) { return row.saleProceedsRub; }));
+    var currentMarketValueRub = twpSumKnownOrNull(items.map(function (row) { return row.currentMarketValueRub; }));
+    var realizedPnlRub = twpSumKnownOrNull(items.map(function (row) { return row.realizedPnlRub; }));
+    var payoutsRub = twpSumKnownOrNull(items.map(function (row) { return row.payoutsRub; })) || 0;
+    var dividendsRub = twpSumKnownOrNull(items.map(function (row) { return row.dividendsRub; })) || 0;
+    var couponsRub = twpSumKnownOrNull(items.map(function (row) { return row.couponsRub; })) || 0;
+
+    if (purchaseCostRub == null || saleProceedsRub == null || currentMarketValueRub == null) {
+      isPartial = true;
+    }
+
+    var resultWithoutPayoutsRub = twpResultRub(saleProceedsRub, currentMarketValueRub, purchaseCostRub, 0);
+    var resultWithPayoutsRub = twpResultRub(saleProceedsRub, currentMarketValueRub, purchaseCostRub, payoutsRub);
+
+    return {
+      fromDate: fromIso,
+      toDate: toIso,
+      purchaseCostRub: purchaseCostRub,
+      saleProceedsRub: saleProceedsRub,
+      realizedPnlRub: realizedPnlRub,
+      currentMarketValueRub: currentMarketValueRub,
+      payoutsRub: payoutsRub,
+      dividendsRub: dividendsRub,
+      couponsRub: couponsRub,
+      resultWithoutPayoutsRub: resultWithoutPayoutsRub,
+      resultWithPayoutsRub: resultWithPayoutsRub,
+      returnWithoutPayoutsPct: twpReturnPct(resultWithoutPayoutsRub, purchaseCostRub),
+      returnWithPayoutsPct: twpReturnPct(resultWithPayoutsRub, purchaseCostRub),
+      items: items,
+      isPartial: isPartial,
+      warnings: warnings,
+      notes: TWP_NOTES.slice()
+    };
+  }
+
   /**
    * Read-only дивиденды и купоны за период владения по всему портфелю.
    * qtyHeld — через buildPortfolioCompositionAtDate на дату события. Без fetch и без цен.
