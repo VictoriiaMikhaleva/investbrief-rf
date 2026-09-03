@@ -1839,10 +1839,22 @@
   }
 
   function findAnalyticsChartSplitEvent(ticker, series, events) {
-    if (!series || !series.length || typeof findSplitEventInPeriod !== 'function') return null;
+    ticker = normalizeTicker(ticker);
+    if (!ticker || !series || !series.length) return null;
     var fromIso = isoDateFromChartPoint(series[0]);
     var toIso = analyticsPriceTargetIso(series);
-    return findSplitEventInPeriod(ticker, fromIso, toIso, events);
+    if (typeof findTickerSplitInVisiblePeriod === 'function') {
+      return findTickerSplitInVisiblePeriod(ticker, fromIso, toIso, events);
+    }
+    if (typeof getSplitEventsForTicker === 'function' && !getSplitEventsForTicker(ticker, events).length) {
+      return null;
+    }
+    if (typeof findSplitEventInPeriod !== 'function') return null;
+    var ev = findSplitEventInPeriod(ticker, fromIso, toIso, events);
+    if (ev && typeof splitEventCoversTicker === 'function' && !splitEventCoversTicker(ev, ticker)) {
+      return null;
+    }
+    return ev || null;
   }
 
   function cloneAnalyticsPricePoint(pt, extra) {

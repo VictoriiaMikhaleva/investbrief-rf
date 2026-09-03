@@ -262,6 +262,17 @@
     return null;
   }
 
+  /** Сплит именно этого тикера (или alias), попадающий в видимый период графика. */
+  function findTickerSplitInVisiblePeriod(ticker, fromDate, toDate, events) {
+    var t = splitNormTicker(ticker);
+    if (!t) return null;
+    var own = getSplitEventsForTicker(t, events);
+    if (!own.length) return null;
+    var ev = findSplitEventInPeriod(t, fromDate, toDate, events);
+    if (!ev || !splitEventCoversTicker(ev, t)) return null;
+    return ev;
+  }
+
   /** Коэффициент приведения per-share значения с valueDate к шкале targetDate.
    *  Учитываются split-события, где valueDate < effectiveDate <= targetDate.
    *  ratio 10 = 1:10 → factor 10 (старую цену/дивиденд делить на 10). */
@@ -428,6 +439,7 @@
     isSplitAffectedChange: isSplitAffectedChange,
     formatSplitDayChangeDisplay: formatSplitDayChangeDisplay,
     findSplitEventInPeriod: findSplitEventInPeriod,
+    findTickerSplitInVisiblePeriod: findTickerSplitInVisiblePeriod,
     getSplitAdjustmentFactor: getSplitAdjustmentFactor,
     adjustPerShareValueForSplits: adjustPerShareValueForSplits,
     restoreRawPriceFromAdjustedForSplits: restoreRawPriceFromAdjustedForSplits,
@@ -448,6 +460,7 @@
   root.getSplitEventsForTicker = getSplitEventsForTicker;
   root.findSplitEventForDate = findSplitEventForDate;
   root.findSplitEventInPeriod = findSplitEventInPeriod;
+  root.findTickerSplitInVisiblePeriod = findTickerSplitInVisiblePeriod;
   root.getSplitAdjustmentFactor = getSplitAdjustmentFactor;
   root.adjustPerShareValueForSplits = adjustPerShareValueForSplits;
   root.restoreRawPriceFromAdjustedForSplits = restoreRawPriceFromAdjustedForSplits;

@@ -109,6 +109,25 @@ assert(events.filter((e) => e.ticker === 'T').length === 1, 'T not duplicated');
 }
 
 {
+  function scale(ticker, from, to) {
+    return SplitEvents.findTickerSplitInVisiblePeriod(ticker, from, to, events);
+  }
+  const y5from = '2021-09-01';
+  const y5to = '2026-09-04';
+  ['SBER', 'LKOH', 'MTSS'].forEach((ticker) => {
+    assert(scale(ticker, y5from, y5to) == null, ticker + ' 5y: no price-scale toggle');
+  });
+  ['T', 'TCSG', 'GMKN', 'TRNFP', 'PLZL'].forEach((ticker) => {
+    const ev = scale(ticker, y5from, y5to);
+    assert(ev && (ev.ticker === ticker || ticker === 'TCSG' && ev.ticker === 'T'), ticker + ' 5y: toggle on');
+  });
+  assert(scale('T', '2026-09-03', '2026-09-04') == null, 'T 1 day after split: no toggle');
+  assert(scale('T', '2026-08-04', '2026-09-04') == null, 'T month after split: no toggle');
+  assert(scale('T', '2026-04-17', '2026-04-17') && scale('T', '2026-04-17', '2026-04-17').ticker === 'T', 'T on split day: toggle on');
+  assert(scale('', y5from, y5to) == null, 'empty ticker: no toggle');
+}
+
+{
   const hidden = SplitEvents.formatSplitHiddenTotalReturn12m('T', '2026-09-03', events);
   const aliasHidden = SplitEvents.formatSplitHiddenTotalReturn12m('tcsg', '2026-09-03', events);
   const sber = SplitEvents.formatSplitHiddenTotalReturn12m('SBER', '2026-09-03', events);

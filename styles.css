@@ -433,6 +433,9 @@
       margin-top: -0.45rem;
       margin-bottom: 0.7rem;
     }
+    .analytics-price-scale.horizon-tabs[hidden] {
+      display: none !important;
+    }
     .analytics-price-scale.horizon-tabs button {
       min-width: 0;
       font-size: 0.8rem;
