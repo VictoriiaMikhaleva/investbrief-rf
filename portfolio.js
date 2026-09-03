@@ -1488,6 +1488,325 @@
     return Math.round(Number(n) * 100) / 100;
   }
 
+  var PAYOUT_DIV_NOTE = 'по дате закрытия реестра, не по дате зачисления';
+  var PAYOUT_COUPON_NOTE = 'дата купона ISS, без НКД';
+  var PAYOUT_NO_FEED_PREFIX = 'нет данных по выплатам для ';
+  var PAYOUT_BAD_DIV_SUFFIX = ': дивиденд без суммы на 1 акцию';
+  var PAYOUT_BAD_COUPON_SUFFIX = ': купон без суммы на 1 облигацию';
+
+  function payoutsEmptyResult(fromIso, toIso, invalid) {
+    return {
+      fromDate: fromIso || '',
+      toDate: toIso || '',
+      invalidDate: !!invalid,
+      totalDividendsRub: invalid ? null : 0,
+      totalCouponsRub: invalid ? null : 0,
+      totalPayoutsRub: invalid ? null : 0,
+      items: [],
+      warnings: [],
+      isPartial: false
+    };
+  }
+
+  function payoutsPushWarning(warnings, text) {
+    var t = String(text || '').trim();
+    if (!t) return;
+    var i;
+    for (i = 0; i < warnings.length; i++) {
+      if (warnings[i] === t) return;
+    }
+    warnings.push(t);
+  }
+
+  function payoutsResolveWindow(fromDate, toDate, options) {
+    var fromIso = timelineIsoDate(fromDate);
+    var toIso = timelineIsoDate(toDate);
+    var nowIso = timelineIsoDate(options && options.now);
+    if (!nowIso) nowIso = timelineIsoDate(localPortfolioTodayYmd());
+    if (!fromIso || !toIso || fromIso > toIso) {
+      return { invalidDate: true, fromIso: fromIso || '', toIso: toIso || '', endIso: '' };
+    }
+    var endIso = nowIso && nowIso < toIso ? nowIso : toIso;
+    return { invalidDate: false, fromIso: fromIso, toIso: toIso, endIso: endIso };
+  }
+
+  function payoutsPositionsSales(portfolio, options) {
+    var positions = [];
+    var sales = [];
+    if (Array.isArray(portfolio)) {
+      positions = portfolio;
+      sales = (options && options.sales) || [];
+    } else if (portfolio && typeof portfolio === 'object') {
+      positions = portfolio.positions || [];
+      sales = portfolio.sales || (options && options.sales) || [];
+    }
+    return { positions: positions, sales: sales };
+  }
+
+  function payoutsCollectTickers(positions, sales) {
+    var tickers = [];
+    var seen = {};
+    function addTicker(raw) {
+      var t = asOfNormTicker(raw);
+      if (!t || ASOF_SKIP_TICKERS[t] || seen[t]) return;
+      seen[t] = true;
+      tickers.push(t);
+    }
+    (positions || []).forEach(function (p) { if (p) addTicker(p.ticker); });
+    (sales || []).forEach(function (s) { if (s) addTicker(s.ticker); });
+    tickers.sort();
+    return tickers;
+  }
+
+  function payoutsGetFeed(payoutsByTicker, ticker) {
+    if (!payoutsByTicker || typeof payoutsByTicker !== 'object') return null;
+    if (Object.prototype.hasOwnProperty.call(payoutsByTicker, ticker) && payoutsByTicker[ticker]) {
+      return payoutsByTicker[ticker];
+    }
+    var keys = Object.keys(payoutsByTicker);
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      if (asOfNormTicker(keys[i]) === ticker) return payoutsByTicker[keys[i]];
+    }
+    return null;
+  }
+
+  function payoutsFeedMissing(feed) {
+    return !feed || typeof feed !== 'object' || !!feed.unavailable;
+  }
+
+  function payoutsFeedKind(feed, ticker) {
+    var k = feed && feed.kind != null ? String(feed.kind).toLowerCase() : '';
+    if (k === 'bond' || k === 'stock') return k;
+    if (isPortfolioBondPosition({ ticker: ticker })) return 'bond';
+    if (feed && Array.isArray(feed.coupons) && !(feed.dividends && feed.dividends.length)) return 'bond';
+    return 'stock';
+  }
+
+  function payoutsFeedSource(feed, kind) {
+    if (feed && feed.source) return String(feed.source);
+    return kind === 'bond' ? 'bondization' : 'moex';
+  }
+
+  function payoutsBondFaceValue(feed, ticker, bondMetaMap) {
+    var f = feed && feed.faceValue;
+    if (f != null && isFinite(Number(f)) && Number(f) > 0) return Number(f);
+    var meta = bondMetaMap && (bondMetaMap[ticker] || null);
+    if (meta && meta.faceValue != null && isFinite(Number(meta.faceValue)) && Number(meta.faceValue) > 0) {
+      return Number(meta.faceValue);
+    }
+    return null;
+  }
+
+  function payoutsCouponPerUnit(coupon, faceValue) {
+    if (!coupon) return null;
+    var v = Number(coupon.value);
+    if (isFinite(v) && v > 0) return v;
+    var pct = Number(coupon.valuePct);
+    if (isFinite(pct) && pct > 0) {
+      var face = Number(faceValue);
+      if (!isFinite(face) || !(face > 0)) return null;
+      return pct / 100 * face;
+    }
+    return null;
+  }
+
+  function payoutsQtyHeldAtDate(portfolio, ticker, eventIso, options, cache) {
+    if (!eventIso) return { qtyHeld: 0, incomplete: false, notes: [] };
+    if (!cache[eventIso]) {
+      cache[eventIso] = buildPortfolioCompositionAtDate(portfolio, eventIso, options);
+    }
+    var composition = cache[eventIso];
+    var qtyHeld = 0;
+    var incomplete = false;
+    var notes = [];
+    (composition.items || []).forEach(function (item) {
+      if (!item || item.ticker !== ticker) return;
+      var q = Number(item.qtyAtDate);
+      qtyHeld = isFinite(q) && q > 0 ? q : 0;
+      incomplete = !!item.hasIncompleteHistory;
+      notes = (item.notes || []).slice();
+    });
+    return { qtyHeld: qtyHeld, incomplete: incomplete, notes: notes };
+  }
+
+  /**
+   * Read-only выплаты по одному тикеру за период владения.
+   * Лента только из options.payoutsByTicker; без fetch, без LAST/CLOSE/avgPrice.
+   */
+  function buildTickerPayoutsForHoldingPeriod(ticker, portfolio, fromDate, toDate, options) {
+    options = options || {};
+    ticker = asOfNormTicker(ticker);
+    var window = payoutsResolveWindow(fromDate, toDate, options);
+    if (window.invalidDate) {
+      return payoutsEmptyResult(window.fromIso, window.toIso, true);
+    }
+    var empty = payoutsEmptyResult(window.fromIso, window.toIso, false);
+    if (!ticker || ASOF_SKIP_TICKERS[ticker]) return empty;
+
+    var warnings = [];
+    var items = [];
+    var isPartial = false;
+    var cache = options._compositionCache || {};
+    var feed = payoutsGetFeed(options.payoutsByTicker, ticker);
+    if (payoutsFeedMissing(feed)) {
+      payoutsPushWarning(warnings, PAYOUT_NO_FEED_PREFIX + ticker);
+      return {
+        fromDate: window.fromIso,
+        toDate: window.toIso,
+        invalidDate: false,
+        totalDividendsRub: 0,
+        totalCouponsRub: 0,
+        totalPayoutsRub: 0,
+        items: items,
+        warnings: warnings,
+        isPartial: true
+      };
+    }
+
+    var kind = payoutsFeedKind(feed, ticker);
+    var source = payoutsFeedSource(feed, kind);
+    var faceValue = payoutsBondFaceValue(feed, ticker, options.bondMetaMap);
+    var events = kind === 'bond' ? (feed.coupons || []) : (feed.dividends || []);
+    var i;
+    for (i = 0; i < events.length; i++) {
+      var ev = events[i] || {};
+      var eventIso = timelineIsoDate(ev.date);
+      if (!eventIso || eventIso < window.fromIso || eventIso > window.endIso) continue;
+      var held = payoutsQtyHeldAtDate(portfolio, ticker, eventIso, options, cache);
+      if (held.incomplete) {
+        isPartial = true;
+        (held.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+      }
+      if (!(held.qtyHeld > 0)) continue;
+
+      var perUnit = null;
+      var type = kind === 'bond' ? 'coupon' : 'dividend';
+      if (type === 'dividend') {
+        var divVal = Number(ev.value);
+        perUnit = isFinite(divVal) && divVal > 0 ? divVal : null;
+        if (perUnit == null) {
+          isPartial = true;
+          payoutsPushWarning(warnings, ticker + PAYOUT_BAD_DIV_SUFFIX);
+          continue;
+        }
+      } else {
+        perUnit = payoutsCouponPerUnit(ev, faceValue);
+        if (perUnit == null) {
+          isPartial = true;
+          payoutsPushWarning(warnings, ticker + PAYOUT_BAD_COUPON_SUFFIX);
+          continue;
+        }
+      }
+
+      var amountRub = asOfRoundRub(held.qtyHeld * perUnit);
+      if (amountRub == null) continue;
+      var currency = ev.currency ? String(ev.currency) : 'RUB';
+      items.push({
+        ticker: ticker,
+        type: type,
+        payoutDate: null,
+        recordDate: eventIso,
+        qtyHeld: held.qtyHeld,
+        payoutPerUnit: perUnit,
+        amountRub: amountRub,
+        currency: currency,
+        source: source,
+        note: type === 'dividend' ? PAYOUT_DIV_NOTE : PAYOUT_COUPON_NOTE
+      });
+    }
+
+    var totalDiv = 0;
+    var totalCpn = 0;
+    items.forEach(function (row) {
+      if (row.type === 'dividend') totalDiv += Number(row.amountRub) || 0;
+      else totalCpn += Number(row.amountRub) || 0;
+    });
+    return {
+      fromDate: window.fromIso,
+      toDate: window.toIso,
+      invalidDate: false,
+      totalDividendsRub: asOfRoundRub(totalDiv) || 0,
+      totalCouponsRub: asOfRoundRub(totalCpn) || 0,
+      totalPayoutsRub: asOfRoundRub(totalDiv + totalCpn) || 0,
+      items: items,
+      warnings: warnings,
+      isPartial: isPartial
+    };
+  }
+
+  /**
+   * Read-only дивиденды и купоны за период владения по всему портфелю.
+   * qtyHeld — через buildPortfolioCompositionAtDate на дату события. Без fetch и без цен.
+   */
+  function buildPortfolioPayoutsForHoldingPeriod(portfolio, fromDate, toDate, options) {
+    options = options || {};
+    var window = payoutsResolveWindow(fromDate, toDate, options);
+    if (window.invalidDate) {
+      return payoutsEmptyResult(window.fromIso, window.toIso, true);
+    }
+    var parts = payoutsPositionsSales(portfolio, options);
+    var tickers = payoutsCollectTickers(parts.positions, parts.sales);
+    if (!tickers.length) {
+      return payoutsEmptyResult(window.fromIso, window.toIso, false);
+    }
+
+    var cache = options._compositionCache || {};
+    var childOpts = {};
+    var optKey;
+    for (optKey in options) {
+      if (Object.prototype.hasOwnProperty.call(options, optKey)) childOpts[optKey] = options[optKey];
+    }
+    childOpts._compositionCache = cache;
+
+    var items = [];
+    var warnings = [];
+    var isPartial = false;
+    var snapshot = cache[window.endIso];
+    if (!snapshot) {
+      snapshot = buildPortfolioCompositionAtDate(portfolio, window.endIso, options);
+      cache[window.endIso] = snapshot;
+    }
+    if (snapshot && snapshot.hasIncompleteHistory) {
+      isPartial = true;
+      (snapshot.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+    }
+
+    tickers.forEach(function (ticker) {
+      var part = buildTickerPayoutsForHoldingPeriod(ticker, portfolio, fromDate, toDate, childOpts);
+      (part.items || []).forEach(function (row) { items.push(row); });
+      (part.warnings || []).forEach(function (w) { payoutsPushWarning(warnings, w); });
+      if (part.isPartial) isPartial = true;
+    });
+
+    items.sort(function (a, b) {
+      var da = a.recordDate || '';
+      var db = b.recordDate || '';
+      if (da !== db) return da < db ? -1 : 1;
+      if (a.ticker !== b.ticker) return a.ticker < b.ticker ? -1 : 1;
+      if (a.type !== b.type) return a.type < b.type ? -1 : 1;
+      return 0;
+    });
+
+    var totalDiv = 0;
+    var totalCpn = 0;
+    items.forEach(function (row) {
+      if (row.type === 'dividend') totalDiv += Number(row.amountRub) || 0;
+      else totalCpn += Number(row.amountRub) || 0;
+    });
+    return {
+      fromDate: window.fromIso,
+      toDate: window.toIso,
+      invalidDate: false,
+      totalDividendsRub: asOfRoundRub(totalDiv) || 0,
+      totalCouponsRub: asOfRoundRub(totalCpn) || 0,
+      totalPayoutsRub: asOfRoundRub(totalDiv + totalCpn) || 0,
+      items: items,
+      warnings: warnings,
+      isPartial: isPartial
+    };
+  }
+
   function asOfIsoToRu(iso) {
     var n = timelineIsoDate(iso);
     if (!n || n.length < 10) return '';
