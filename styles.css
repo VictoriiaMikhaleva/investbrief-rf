@@ -870,14 +870,38 @@
       color: #faf8f4;
       font-size: 0.72rem;
       font-weight: 500;
-      line-height: 1.25;
-      white-space: nowrap;
+      line-height: 1.35;
+      white-space: normal;
+      overflow-wrap: break-word;
+      word-break: normal;
+      width: max-content;
+      max-width: min(16.5rem, calc(100% - 16px));
+      box-sizing: border-box;
+      text-align: left;
       opacity: 0;
       transform: translate(-50%, calc(-100% - 8px));
       transition: opacity 0.12s ease;
     }
     .chart-hover-tip.is-visible {
       opacity: 1;
+    }
+    .chart-hover-tip__line {
+      display: block;
+    }
+    .chart-hover-tip__line + .chart-hover-tip__line {
+      margin-top: 0.08rem;
+    }
+    .chart-hover-tip__line--muted {
+      font-weight: 400;
+      font-size: 0.68rem;
+      opacity: 0.9;
+    }
+    @media (max-width: 430px) {
+      .chart-hover-tip {
+        max-width: calc(100% - 12px);
+        font-size: 0.68rem;
+        padding: 0.28rem 0.42rem;
+      }
     }
     .chart-stats {
       display: grid;

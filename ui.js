@@ -494,21 +494,71 @@
     }) + ' ₽';
   }
 
-  function formatChartHoverLabel(pt, ticker, horizon) {
-    var label = formatChartAxisTime(pt.t, horizon) + ' · ' + formatChartPrice(pt.price, ticker);
+  function formatSplitHoverMetaLine(pt) {
+    var parts = [];
+    if (pt && pt.splitRatioText) parts.push('сплит ' + pt.splitRatioText);
+    if (pt && pt.splitDateRu) parts.push(pt.splitDateRu);
+    return parts.join(' · ');
+  }
+
+  function formatChartHoverLines(pt, ticker, horizon) {
+    var time = formatChartAxisTime(pt && pt.t, horizon);
+    var meta = formatSplitHoverMetaLine(pt);
     if (pt && pt.restoredRaw) {
-      label += pt.splitRatioText
-        ? ' · фактическая цена до сплита · до дробления ' + pt.splitRatioText
-        : ' · фактическая цена до сплита';
-      return label;
+      var rawShown = formatAnalyticsRawHint(pt.price) || formatChartPrice(pt.price, ticker);
+      var rawLines = [time + ' · ' + rawShown, 'фактическая цена до сплита'];
+      if (meta) rawLines.push(meta);
+      return rawLines;
     }
     if (pt && pt.splitAdjustedDisplay) {
-      label += ' · с учётом сплита';
+      var adjShown = formatAnalyticsRawHint(pt.price) || formatChartPrice(pt.price, ticker);
+      var adjLines = [time + ' · ' + adjShown + ' с учётом сплита'];
       if (pt.rawPrice != null && isFinite(Number(pt.rawPrice))) {
-        label += ' · фактическая цена до дробления: около ' + formatAnalyticsRawHint(pt.rawPrice);
+        adjLines.push('фактическая до дробления: около ' + formatAnalyticsRawHint(pt.rawPrice));
       }
+      if (meta) adjLines.push(meta);
+      return adjLines;
     }
-    return label;
+    return [time + ' · ' + formatChartPrice(pt.price, ticker)];
+  }
+
+  function formatChartHoverLabel(pt, ticker, horizon) {
+    return formatChartHoverLines(pt, ticker, horizon).join('\n');
+  }
+
+  function fillChartHoverTip(tip, lines) {
+    var rows = Array.isArray(lines) ? lines.filter(Boolean) : [String(lines || '')];
+    tip.innerHTML = rows.map(function (ln, i) {
+      var cls = 'chart-hover-tip__line' + (i > 0 ? ' chart-hover-tip__line--muted' : '');
+      return '<span class="' + cls + '">' + escapeHtml(ln) + '</span>';
+    }).join('');
+  }
+
+  function positionChartHoverTip(tip, wrap, clientX, clientY) {
+    var pad = 8;
+    var gap = 12;
+    var wrapW = wrap.clientWidth;
+    var wrapH = wrap.clientHeight;
+    var cursorX = clientX - wrap.getBoundingClientRect().left;
+    var cursorY = clientY - wrap.getBoundingClientRect().top;
+    tip.style.transform = 'none';
+    tip.style.left = pad + 'px';
+    tip.style.top = pad + 'px';
+    var tipW = tip.offsetWidth;
+    var tipH = tip.offsetHeight;
+    var left = cursorX > wrapW / 2
+      ? cursorX - gap - tipW
+      : cursorX + gap;
+    if (left < pad) left = pad;
+    if (left + tipW > wrapW - pad) left = Math.max(pad, wrapW - pad - tipW);
+
+    var top = cursorY - gap - tipH;
+    if (top < pad) top = cursorY + gap;
+    if (top + tipH > wrapH - pad) top = wrapH - pad - tipH;
+    if (top < pad) top = pad;
+
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
   }
 
 
@@ -583,14 +633,10 @@
         }
       }
       var pt = meta.series[idx];
-      tip.textContent = formatChartHoverLabel(pt, meta.ticker, meta.horizon);
+      fillChartHoverTip(tip, formatChartHoverLines(pt, meta.ticker, meta.horizon));
       tip.classList.add('is-visible');
       tip.setAttribute('aria-hidden', 'false');
-      var wrapRect = wrap.getBoundingClientRect();
-      var tipX = Math.min(Math.max(clientX - wrapRect.left, 48), wrapRect.width - 48);
-      var tipY = Math.max(clientY - wrapRect.top - 10, 12);
-      tip.style.left = tipX + 'px';
-      tip.style.top = tipY + 'px';
+      positionChartHoverTip(tip, wrap, clientX, clientY);
     }
 
     wrap.addEventListener('mousemove', function (e) {
@@ -1824,6 +1870,9 @@
     var ratioText = splitEv && typeof formatSplitRatioText === 'function'
       ? formatSplitRatioText(splitEv)
       : '';
+    var dateRu = splitEv && typeof formatSplitDateRu === 'function'
+      ? formatSplitDateRu(splitEv.effectiveDate)
+      : '';
     return series.map(function (pt) {
       var iso = isoDateFromChartPoint(pt);
       var extra = {};
@@ -1833,6 +1882,7 @@
       if (isFinite(factor) && factor > 1) {
         extra.splitAdjustedDisplay = true;
         if (ratioText) extra.splitRatioText = ratioText;
+        if (dateRu) extra.splitDateRu = dateRu;
         if (typeof restoreRawPriceFromAdjustedForSplits === 'function') {
           var rawHint = restoreRawPriceFromAdjustedForSplits(ticker, pt.price, iso, targetIso, list);
           if (rawHint != null && isFinite(rawHint)) extra.rawPrice = rawHint;
@@ -1853,6 +1903,9 @@
     var ratioText = splitEv && typeof formatSplitRatioText === 'function'
       ? formatSplitRatioText(splitEv)
       : '';
+    var dateRu = splitEv && typeof formatSplitDateRu === 'function'
+      ? formatSplitDateRu(splitEv.effectiveDate)
+      : '';
     return series.map(function (pt) {
       var iso = isoDateFromChartPoint(pt);
       var raw = restoreRawPriceFromAdjustedForSplits(ticker, pt.price, iso, targetIso, list);
@@ -1863,6 +1916,7 @@
       if (restored) {
         extra.restoredRaw = true;
         if (ratioText) extra.splitRatioText = ratioText;
+        if (dateRu) extra.splitDateRu = dateRu;
       }
       return cloneAnalyticsPricePoint(pt, extra);
     });
