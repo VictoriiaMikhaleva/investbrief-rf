@@ -20,6 +20,13 @@ const TICKERS = [
 
 const YIELD_TOLERANCE = 0.5;
 const MIN_HISTORY_DAYS = 200;
+let moexDividendsShapeWarned = false;
+
+function noteMoexDividendsShapeWarning(warning) {
+  if (!warning || moexDividendsShapeWarned) return;
+  moexDividendsShapeWarned = true;
+  console.warn('[InvestBrief]', warning);
+}
 
 function get(url) {
   return new Promise((resolve, reject) => {
@@ -47,15 +54,66 @@ async function fetchDividends(ticker) {
   const j = await get(
     'https://iss.moex.com/iss/securities/' + ticker + '/dividends.json?iss.meta=off'
   );
-  const cols = j.dividends.columns;
-  const iD = cols.indexOf('registryclosedate');
-  const iV = cols.indexOf('value');
-  const rows = (j.dividends.data || []).map((r) => ({
-    date: String(r[iD]).slice(0, 10),
-    value: Number(r[iV])
-  })).filter((d) => d.date && isFinite(d.value) && d.value > 0);
+  const parsed = Core.inspectMoexDividendsIssJson(j);
+  noteMoexDividendsShapeWarning(parsed.warning);
   const patches = loadDividendPatches()[ticker] || [];
-  return Core.mergeDividendPatches(rows, patches);
+  return {
+    dividends: Core.mergeDividendPatches(parsed.rows, patches),
+    issOk: parsed.ok
+  };
+}
+
+function testParseMoexDividendsIssJson() {
+  const errors = [];
+
+  const noBlock = Core.parseMoexDividendsIssJson({ description: {}, boards: {} });
+  assert(Array.isArray(noBlock) && noBlock.length === 0, 'parse: ответ без dividends → []', errors);
+  assert(Core.inspectMoexDividendsIssJson({ description: {}, boards: {} }).ok === false, 'parse: без dividends ok=false', errors);
+
+  const noColumns = Core.parseMoexDividendsIssJson({ dividends: { data: [['SBER', '2025-07-18', 34.84]] } });
+  assert(noColumns.length === 0, 'parse: нет columns → []', errors);
+
+  const noData = Core.parseMoexDividendsIssJson({
+    dividends: { columns: ['registryclosedate', 'value'] }
+  });
+  assert(noData.length === 0, 'parse: нет data → []', errors);
+
+  const emptyData = Core.parseMoexDividendsIssJson({
+    dividends: { columns: ['registryclosedate', 'value'], data: [] }
+  });
+  assert(emptyData.length === 0, 'parse: пустой data → []', errors);
+  assert(Core.inspectMoexDividendsIssJson({
+    dividends: { columns: ['registryclosedate', 'value'], data: [] }
+  }).ok === true, 'parse: пустой data ok=true', errors);
+
+  const valid = Core.parseMoexDividendsIssJson({
+    dividends: {
+      columns: ['secid', 'registryclosedate', 'value'],
+      data: [['SBER', '2025-07-18', 34.84]]
+    }
+  });
+  assert(
+    valid.length === 1 && valid[0].date === '2025-07-18' && valid[0].value === 34.84,
+    'parse: валидная строка',
+    errors
+  );
+
+  const history = [
+    { date: '2025-08-01', close: 100, value: 1, t: Date.parse('2025-08-01T12:00:00') },
+    { date: '2026-08-15', close: 110, value: 1, t: Date.parse('2026-08-15T12:00:00') }
+  ];
+  const now = new Date('2026-09-01T12:00:00');
+  const metrics = Core.buildMetricsFromMoex([], history, null, now);
+  const tr = metrics.totalReturn12m;
+  assert(tr && isFinite(tr.pct), 'buildMetrics: totalReturn12m без дивидендов не падает', errors);
+  assert(tr.divPaid12m === 0, 'buildMetrics: без дивидендов divPaid12m=0', errors);
+  assert(
+    Math.abs(tr.pct - 10) < 0.01 && Math.abs(tr.priceReturnPct - 10) < 0.01,
+    'buildMetrics: totalReturn12m без дивидендов = цена (' + tr.pct + ')',
+    errors
+  );
+
+  return errors;
 }
 
 async function fetchHistoryBoard(ticker, board, from, till) {
@@ -116,7 +174,8 @@ function assert(condition, message, errors) {
 
 async function testTicker(ticker) {
   const errors = [];
-  const dividends = await fetchDividends(ticker);
+  const fetched = await fetchDividends(ticker);
+  const dividends = fetched.dividends;
   const history = await fetchHistory(ticker);
   const metrics = Core.buildMetricsFromMoex(dividends, history, null);
 
@@ -134,7 +193,11 @@ async function testTicker(ticker) {
     errors
   );
 
-  errors.push(...Core.validateSpotCheck(ticker, metrics));
+  if (fetched.issOk) {
+    errors.push(...Core.validateSpotCheck(ticker, metrics));
+  } else if (Core.SPOT_CHECK_RULES[ticker]) {
+    console.warn('[InvestBrief]', ticker + ': ISS dividends без columns — spot-check пропущен');
+  }
 
   // Годы в UI — по календарной дате отсечки; оценки в годовой ряд не попадают.
   for (const y of metrics.divYieldByYear || []) {
@@ -196,6 +259,14 @@ async function main() {
   console.log('AnalyticsCore v' + Core.VERSION + ' · tickers: ' + TICKERS.length);
   const allErrors = [];
   let checked = 0;
+
+  const parseErrors = testParseMoexDividendsIssJson();
+  if (parseErrors.length) {
+    allErrors.push(...parseErrors);
+    console.log('FAIL', 'parseMoexDividendsIssJson', parseErrors.join('; '));
+  } else {
+    console.log('OK   parseMoexDividendsIssJson (fail-soft + totalReturn12m без дивидендов)');
+  }
 
   for (const ticker of TICKERS) {
     try {

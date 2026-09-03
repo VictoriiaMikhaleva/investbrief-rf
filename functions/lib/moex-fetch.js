@@ -3,6 +3,7 @@
 const MOEX_ISS = 'https://iss.moex.com/iss';
 const FETCH_TIMEOUT_MS = 25000;
 const USER_AGENT = 'InvestBriefAnalytics/1.0 (+https://victoriiamikhaleva.github.io/investbrief-rf/)';
+let moexDividendsShapeWarned = false;
 
 async function moexFetchJson(url) {
   const controller = new AbortController();
@@ -33,19 +34,12 @@ async function fetchMoexDividends(ticker) {
   const path = require('path');
   const url = MOEX_ISS + '/securities/' + encodeURIComponent(ticker) + '/dividends.json?iss.meta=off';
   const json = await moexFetchJson(url);
-  const block = json.dividends;
-  let rows = [];
-  if (block && block.data && block.data.length) {
-    const cols = block.columns;
-    const iDate = cols.indexOf('registryclosedate');
-    const iVal = cols.indexOf('value');
-    rows = block.data.map(function (row) {
-      return {
-        date: String(row[iDate] || '').slice(0, 10),
-        value: Number(row[iVal])
-      };
-    }).filter(function (d) { return d.date && isFinite(d.value) && d.value > 0; });
+  const parsed = Core.inspectMoexDividendsIssJson(json);
+  if (parsed.warning && !moexDividendsShapeWarned) {
+    moexDividendsShapeWarned = true;
+    console.warn('[InvestBrief]', parsed.warning);
   }
+  const rows = parsed.rows;
   let patchRows = [];
   try {
     const patchPath = path.join(__dirname, '..', '..', 'data', 'dividend-patches.json');

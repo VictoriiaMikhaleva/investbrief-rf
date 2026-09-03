@@ -246,6 +246,52 @@
     return normalizeMoexDividends(merged);
   }
 
+  /**
+   * Разбор ISS dividends.json. Если нет dividends / columns / data — пустой массив,
+   * без исключения и без подставных выплат. ok=false — неожиданная форма ответа.
+   */
+  function inspectMoexDividendsIssJson(json) {
+    function empty(warning) {
+      return { rows: [], warning: warning || '', ok: false };
+    }
+    if (json == null || typeof json !== 'object') {
+      return empty('MOEX dividends: нет JSON');
+    }
+    var block = json.dividends;
+    if (block == null || typeof block !== 'object') {
+      return empty('MOEX dividends: нет блока dividends');
+    }
+    var cols = block.columns;
+    var data = block.data;
+    if (!Array.isArray(cols) || !Array.isArray(data)) {
+      return empty('MOEX dividends: нет columns/data');
+    }
+    if (!data.length) {
+      return { rows: [], warning: '', ok: true };
+    }
+    var iDate = cols.indexOf('registryclosedate');
+    var iVal = cols.indexOf('value');
+    if (iDate < 0 || iVal < 0) {
+      return empty('MOEX dividends: нет полей registryclosedate/value');
+    }
+    var rows = [];
+    var i;
+    for (i = 0; i < data.length; i++) {
+      var row = data[i];
+      if (!row) continue;
+      var date = String(row[iDate] || '').slice(0, 10);
+      var value = Number(row[iVal]);
+      if (date && isFinite(value) && value > 0) {
+        rows.push({ date: date, value: value });
+      }
+    }
+    return { rows: rows, warning: '', ok: true };
+  }
+
+  function parseMoexDividendsIssJson(json) {
+    return inspectMoexDividendsIssJson(json).rows;
+  }
+
   function sumDividendsInReportingYear(dividends, reportingYear) {
     var y = String(reportingYear);
     var sum = 0;
@@ -857,6 +903,8 @@
     isSaneYearYield: isSaneYearYield,
     normalizeMoexDividends: normalizeMoexDividends,
     mergeDividendPatches: mergeDividendPatches,
+    inspectMoexDividendsIssJson: inspectMoexDividendsIssJson,
+    parseMoexDividendsIssJson: parseMoexDividendsIssJson,
     sumDividendsInReportingYear: sumDividendsInReportingYear,
     getLastDividendPaymentDate: getLastDividendPaymentDate,
     monthsSinceIsoDate: monthsSinceIsoDate,

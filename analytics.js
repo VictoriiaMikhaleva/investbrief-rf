@@ -15,6 +15,7 @@
   var ANALYTICS_API_TIMEOUT_MS = 6000;
   var enrichQueue = [];
   var enrichActive = 0;
+  var _moexDividendsShapeWarned = false;
   var C = typeof AnalyticsCore !== 'undefined' ? AnalyticsCore : null;
 
   function requireAnalyticsCore() {
@@ -552,17 +553,16 @@
     var url = MOEX_ISS + '/securities/' + encodeURIComponent(ticker) + '/dividends.json?iss.meta=off';
     return Promise.all([
       moexFetchJson(url).then(function (json) {
-        var block = json.dividends;
-        if (!block || !block.data || !block.data.length) return [];
-        var cols = block.columns;
-        var iDate = cols.indexOf('registryclosedate');
-        var iVal = cols.indexOf('value');
-        return block.data.map(function (row) {
-          return {
-            date: String(row[iDate] || '').slice(0, 10),
-            value: Number(row[iVal])
-          };
-        }).filter(function (d) { return d.date && isFinite(d.value) && d.value > 0; });
+        var parsed = requireAnalyticsCore().inspectMoexDividendsIssJson(json);
+        if (parsed.warning && !_moexDividendsShapeWarned) {
+          _moexDividendsShapeWarned = true;
+          try {
+            if (typeof console !== 'undefined' && console.warn) {
+              console.warn('[InvestBrief]', parsed.warning);
+            }
+          } catch (e) { /* */ }
+        }
+        return parsed.rows;
       }).catch(function () { return []; }),
       loadDividendPatches()
     ]).then(function (parts) {
