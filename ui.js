@@ -487,7 +487,13 @@
 
 
   function formatChartHoverLabel(pt, ticker, horizon) {
-    return formatChartAxisTime(pt.t, horizon) + ' · ' + formatChartPrice(pt.price, ticker);
+    var label = formatChartAxisTime(pt.t, horizon) + ' · ' + formatChartPrice(pt.price, ticker);
+    if (pt && pt.restoredRaw) {
+      label += pt.splitRatioText
+        ? ' · фактическая цена до сплита · до дробления ' + pt.splitRatioText
+        : ' · фактическая цена до сплита';
+    }
+    return label;
   }
 
 
@@ -1723,6 +1729,119 @@
     card.hidden = false;
   }
 
+  function isoDateFromChartPoint(pt) {
+    if (!pt) return '';
+    if (pt.date) {
+      if (typeof splitIsoDate === 'function') {
+        try {
+          var n = splitIsoDate(pt.date);
+          if (n) return n;
+        } catch (e) { /* */ }
+      }
+      return String(pt.date).slice(0, 10);
+    }
+    var t = Number(pt.t);
+    if (!isFinite(t)) return '';
+    var d = new Date(t);
+    if (isNaN(d.getTime())) return '';
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+  }
+
+  function analyticsPriceTargetIso(series) {
+    if (series && series.length) {
+      var last = isoDateFromChartPoint(series[series.length - 1]);
+      if (last) return last;
+    }
+    var now = new Date();
+    return now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0');
+  }
+
+  function mapAnalyticsPriceSeriesToRaw(ticker, series, events) {
+    if (!Array.isArray(series) || !series.length) return [];
+    if (typeof restoreRawPriceFromAdjustedForSplits !== 'function') {
+      return series.map(function (pt) {
+        return { t: pt.t, price: pt.price, date: pt.date };
+      });
+    }
+    var list = Array.isArray(events) ? events : (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    var targetIso = analyticsPriceTargetIso(series);
+    var fromIso = isoDateFromChartPoint(series[0]);
+    var splitEv = typeof findSplitEventInPeriod === 'function'
+      ? findSplitEventInPeriod(ticker, fromIso, targetIso, list)
+      : null;
+    var ratioText = splitEv && typeof formatSplitRatioText === 'function'
+      ? formatSplitRatioText(splitEv)
+      : '';
+    return series.map(function (pt) {
+      var iso = isoDateFromChartPoint(pt);
+      var raw = restoreRawPriceFromAdjustedForSplits(ticker, pt.price, iso, targetIso, list);
+      var price = raw != null && isFinite(raw) ? raw : pt.price;
+      var restored = isFinite(Number(pt.price)) && isFinite(Number(price)) &&
+        Math.abs(Number(price) - Number(pt.price)) > 1e-9;
+      var out = { t: pt.t, price: price };
+      if (pt.date) out.date = pt.date;
+      if (restored) {
+        out.restoredRaw = true;
+        if (ratioText) out.splitRatioText = ratioText;
+      }
+      return out;
+    });
+  }
+
+  function updateAnalyticsPriceSplitCaption(ticker, displaySeries) {
+    var note = document.getElementById('analyticsPriceNote');
+    var lbl = document.getElementById('analyticsPriceChartLbl');
+    var restored = (displaySeries || []).some(function (pt) { return pt && pt.restoredRaw; });
+    var events = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+    var fromIso = displaySeries && displaySeries.length ? isoDateFromChartPoint(displaySeries[0]) : '';
+    var toIso = analyticsPriceTargetIso(displaySeries);
+    var splitEv = restored && typeof findSplitEventInPeriod === 'function'
+      ? findSplitEventInPeriod(ticker, fromIso, toIso, events)
+      : null;
+    if (!note) {
+      if (lbl) lbl.removeAttribute('title');
+      return;
+    }
+    if (!restored || !splitEv) {
+      note.hidden = true;
+      note.textContent = '';
+      note.removeAttribute('title');
+      if (lbl) lbl.removeAttribute('title');
+      return;
+    }
+    note.hidden = false;
+    note.textContent = 'На графике показана фактическая цена одной акции на дату. На дате дробления возможен технический разрыв цены.';
+    var dateRu = typeof formatSplitDateRu === 'function' ? formatSplitDateRu(splitEv.effectiveDate) : '';
+    var ratioText = typeof formatSplitRatioText === 'function' ? formatSplitRatioText(splitEv) : '';
+    var title = '';
+    if (dateRu && ratioText) {
+      title = 'До ' + dateRu + ' цены восстановлены к фактической шкале до дробления ' + ratioText + '.';
+    } else if (dateRu) {
+      title = 'До ' + dateRu + ' цены восстановлены к фактической шкале до дробления.';
+    } else {
+      title = 'Цены до дробления восстановлены к фактической шкале одной акции на дату.';
+    }
+    note.title = title;
+    if (lbl) lbl.title = title;
+  }
+
+  function paintAnalyticsPriceChart(canvas, ticker, series, horizon) {
+    function paint(events) {
+      var display = mapAnalyticsPriceSeriesToRaw(ticker, series, events);
+      if (canvas) drawPriceChart(canvas, display, { ticker: ticker, horizon: horizon });
+      updateAnalyticsPriceSplitCaption(ticker, display);
+    }
+    if (typeof loadSplitEvents === 'function') {
+      return loadSplitEvents().then(paint, function () { paint([]); });
+    }
+    paint(typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    return Promise.resolve();
+  }
+
   function renderAnalyticsDetail(ticker) {
     ticker = normalizeTicker(ticker);
     var sec = document.getElementById('analyticsDetailSection');
@@ -1742,7 +1861,11 @@
     setSecurityChartTab('price');
 
     var horizon = resolveAnalyticsPriceHorizon(state.analyticsPriceHorizon);
-    if (priceLbl) priceLbl.textContent = 'Цена · ' + analyticsPriceHorizonLabel(horizon);
+    if (priceLbl) {
+      priceLbl.textContent = 'Цена · ' + analyticsPriceHorizonLabel(horizon);
+      priceLbl.removeAttribute('title');
+    }
+    updateAnalyticsPriceSplitCaption(ticker, []);
 
     if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) {
       if (metaEl) metaEl.textContent = 'Рынок США · дивиденды и оборот TQBR недоступны для американских бумаг';
@@ -1755,7 +1878,7 @@
         }).catch(function () { /* profile already shown */ });
       }
       fetchMoexHistory(ticker, horizon).then(function (r) {
-        if (priceCanvas) drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
+        if (priceCanvas && r) paintAnalyticsPriceChart(priceCanvas, ticker, r.series, horizon);
       });
       return;
     }
@@ -1785,7 +1908,7 @@
         return fetchMoexHistory(ticker, horizon);
       }).then(function (r) {
         if (priceCanvas && r && r.series) {
-          drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
+          paintAnalyticsPriceChart(priceCanvas, ticker, r.series, horizon);
         }
         requestAnimationFrame(function () {
           var activeTab = document.querySelector('[data-security-chart-tab].active');
@@ -1862,7 +1985,7 @@
       return fetchMoexHistory(ticker, horizon);
     }).then(function (r) {
       if (priceCanvas && r && r.series) {
-        drawPriceChart(priceCanvas, r.series, { ticker: ticker, horizon: horizon });
+        paintAnalyticsPriceChart(priceCanvas, ticker, r.series, horizon);
       }
       requestAnimationFrame(function () {
         var activeTab = document.querySelector('[data-security-chart-tab].active');

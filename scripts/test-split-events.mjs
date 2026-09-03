@@ -121,6 +121,26 @@ assert(events[0].aliases.indexOf('TCSG') >= 0, 'T alias TCSG');
 }
 
 {
+  const rawDec = SplitEvents.restoreRawPriceFromAdjustedForSplits('T', 312.64, '2025-12-01', '2026-09-03', events);
+  const aliasRaw = SplitEvents.restoreRawPriceFromAdjustedForSplits('TCSG', 312.64, '2025-12-01', '2026-09-03', events);
+  const onSplit = SplitEvents.restoreRawPriceFromAdjustedForSplits('T', 326.26, '2026-04-17', '2026-09-03', events);
+  const after = SplitEvents.restoreRawPriceFromAdjustedForSplits('T', 327.3, '2026-04-23', '2026-09-03', events);
+  const unknown = SplitEvents.restoreRawPriceFromAdjustedForSplits('SBER', 250.5, '2025-12-01', '2026-09-03', events);
+  const yearEnd = SplitEvents.restoreRawPriceFromAdjustedForSplits('T', 328, '2025-12-30', '2026-09-03', events);
+  const pre = SplitEvents.restoreRawPriceFromAdjustedForSplits('T', 319.6, '2026-04-10', '2026-09-03', events);
+  function near(actual, expected, msg) {
+    assert(actual != null && isFinite(actual) && Math.abs(actual - expected) < 1e-6, msg + ' (got ' + actual + ')');
+  }
+  near(rawDec, 3126.4, 'T 312.64 on 2025-12-01 → 3126.4');
+  near(aliasRaw, 3126.4, 'TCSG alias restores same raw price');
+  near(onSplit, 326.26, 'T on effectiveDate stays in new scale');
+  near(after, 327.3, 'T after split unchanged');
+  near(unknown, 250.5, 'unknown ticker unchanged');
+  near(yearEnd, 3280, 'T 328 on 2025-12-30 → 3280');
+  near(pre, 3196, 'T 319.6 on 2026-04-10 → 3196');
+}
+
+{
   const now = new Date(2026, 8, 3, 12, 0, 0);
   const historyFlat = [
     { date: '2025-01-15', close: 3000, value: 1 },

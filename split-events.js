@@ -291,6 +291,16 @@
     return n / factor;
   }
 
+  /** Обратная операция: candles.close уже в текущей шкале → фактическая цена на дату.
+   *  Умножает на ratio, если pointDate < effectiveDate <= targetDate. */
+  function restoreRawPriceFromAdjustedForSplits(ticker, price, pointDate, targetDate, events) {
+    var n = Number(price);
+    if (!isFinite(n)) return null;
+    var factor = getSplitAdjustmentFactor(ticker, pointDate, targetDate, events);
+    if (!isFinite(factor) || factor <= 1) return n;
+    return n * factor;
+  }
+
   function getTotalReturn12mWindow(toDate) {
     var toIso = splitIsoDate(toDate);
     if (!toIso) return null;
@@ -418,6 +428,7 @@
     findSplitEventInPeriod: findSplitEventInPeriod,
     getSplitAdjustmentFactor: getSplitAdjustmentFactor,
     adjustPerShareValueForSplits: adjustPerShareValueForSplits,
+    restoreRawPriceFromAdjustedForSplits: restoreRawPriceFromAdjustedForSplits,
     getTotalReturn12mWindow: getTotalReturn12mWindow,
     formatSplitHiddenTotalReturn12m: formatSplitHiddenTotalReturn12m,
     formatTotalReturn12mView: formatTotalReturn12mView,
@@ -437,6 +448,7 @@
   root.findSplitEventInPeriod = findSplitEventInPeriod;
   root.getSplitAdjustmentFactor = getSplitAdjustmentFactor;
   root.adjustPerShareValueForSplits = adjustPerShareValueForSplits;
+  root.restoreRawPriceFromAdjustedForSplits = restoreRawPriceFromAdjustedForSplits;
   root.getTotalReturn12mWindow = getTotalReturn12mWindow;
   root.formatTotalReturn12mView = formatTotalReturn12mView;
   root.formatSplitAdjustedTotalReturnTitle = formatSplitAdjustedTotalReturnTitle;
