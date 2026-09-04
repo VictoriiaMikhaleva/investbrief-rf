@@ -3968,6 +3968,8 @@ function loadPriceAtDateHelpers() {
   assert(!/Расчёт частичный/.test(html), 'twp ui ready: not partial');
   assert(/найденные дивиденды за период владения/.test(html), 'twp ui stock formula');
   assert(/Дивиденды — по дате отсечки/.test(html), 'twp ui stock notes');
+  assert(!/итоговый результат скрывается/.test(html), 'twp ui SBER: no split how-to');
+  assert(!/pf-split-badge/.test(html), 'twp ui SBER: no split badge');
 
   const noPx = {
     positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
@@ -4033,8 +4035,73 @@ function loadPriceAtDateHelpers() {
   cache.tickersKey = 'T';
   html = calc.buildTickerReturnWithPayoutsBlockHtml('T', false);
   assert(/T: было дробление акций 1:10 от 17\.04\.2026/.test(html), 'twp ui split: ticker ratio date');
+  assert(/До split-aware пересчёта текущей стоимости итоговый результат может быть некорректным/.test(html), 'twp ui split: market-value warning');
   assert(/Расчёт частичный/.test(html), 'twp ui split: marked partial');
+  assert(/pf-split-badge/.test(html) && /требует проверки/.test(html), 'twp ui split: dash/badge/label');
+  assert(!/pf-twp-result--neg/.test(html), 'twp ui split: no false negative tone');
+  assert(!/-92/.test(html) && !/-2[\s\u00a0]?945/.test(html), 'twp ui split: no false -92% / result');
+  assert(/Вложено в покупки/.test(html) && /Найденные выплаты/.test(html), 'twp ui split: purchase and payouts remain');
+  assert(/итоговый результат скрывается/.test(html), 'twp ui split: how-to note');
   assert(JSON.stringify(splitPf) === splitSnap, 'twp ui split: no JSON mutation');
+
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  cache.status = 'ready';
+  cache.error = null;
+
+  function twpReady(ticker, portfolio, extraFeed) {
+    sb.getPortfolio = () => portfolio;
+    cache.data = {
+      payoutsByTicker: extraFeed || {
+        [ticker]: { kind: 'stock', source: 'moex', dividends: [] }
+      },
+      warnings: [],
+      isPartial: false
+    };
+    cache.tickersKey = ticker;
+    return calc.buildTickerReturnWithPayoutsBlockHtml(ticker, false);
+  }
+
+  const gmknPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  const gmknSnap = JSON.stringify(gmknPf);
+  html = twpReady('GMKN', gmknPf);
+  assert(/GMKN: было дробление акций 1:100 от 08\.04\.2024/.test(html), 'twp ui GMKN: warning ticker/ratio/date');
+  assert(/До split-aware пересчёта текущей стоимости/.test(html), 'twp ui GMKN: TWP warning');
+  assert(/pf-split-badge/.test(html) && /требует проверки/.test(html), 'twp ui GMKN: — / сплит / требует проверки');
+  assert(!/-98/.test(html) && !/-99/.test(html), 'twp ui GMKN: no false -98%/-99%');
+  assert(!/-218/.test(html), 'twp ui GMKN: no false resultWithout/resultWith');
+  assert(!/pf-twp-result--neg/.test(html), 'twp ui GMKN: no red false result');
+  assert(/Вложено в покупки/.test(html) && /220/.test(html), 'twp ui GMKN: purchase cost remains');
+  const gmknDetail = calc.buildPortfolioTickerDetailHtml('GMKN', gmknPf.positions, gmknPf.sales, null, false);
+  assert(/требует проверки/.test(gmknDetail), 'twp ui GMKN: main требует проверки remains');
+  assert(JSON.stringify(gmknPf) === gmknSnap, 'twp ui GMKN: JSON not mutated');
+
+  const plzlPf = {
+    positions: [{
+      ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 19000, buyDate: '2024-06-01', currentPrice: 1900
+    }],
+    sales: []
+  };
+  html = twpReady('PLZL', plzlPf);
+  assert(/PLZL: было дробление акций 1:10 от 27\.03\.2025/.test(html), 'twp ui PLZL: warning');
+  assert(/pf-split-badge/.test(html) && /требует проверки/.test(html), 'twp ui PLZL: suppressed');
+  assert(!/-90/.test(html), 'twp ui PLZL: no false -90%');
+
+  const tAfterPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T3', qty: 10, avgPrice: 312, buyDate: '2026-05-01', currentPrice: 262
+    }],
+    sales: []
+  };
+  html = twpReady('T', tAfterPf);
+  assert(!/требует проверки/.test(html) && !/pf-split-badge/.test(html), 'twp ui T after split: numbers shown');
+  assert(!/итоговый результат скрывается/.test(html), 'twp ui T after split: no hide note');
+  assert(/Результат с выплатами/.test(html) && /pf-twp-result--/.test(html), 'twp ui T after split: ordinary result tone');
 
   sb.getPortfolio = () => pf;
   cache.status = 'loading';

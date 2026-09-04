@@ -980,6 +980,12 @@
     if (variant === 'paper') {
       return escapeHtml(PF_SPLIT_PNL_LABEL);
     }
+    if (variant === 'kpi') {
+      return '<span class="pf-split-pnl"' + titleAttr + '>' +
+        '<span class="pf-split-pnl-dash muted">—</span> ' + badge +
+        ' <span class="pf-split-pnl-hint muted">' + escapeHtml(PF_SPLIT_PNL_LABEL) + '</span>' +
+      '</span>';
+    }
     return '<span class="pf-split-pnl"' + titleAttr + '>' +
       '<span class="pf-split-pnl-label muted">' + escapeHtml(PF_SPLIT_PNL_LABEL) + '</span> ' +
       badge +
@@ -1017,6 +1023,18 @@
     if (ratio) head += ' ' + ratio;
     if (date) head += ' от ' + date;
     return head + '. Проверьте, что количество и средняя цена в портфеле уже приведены к новой шкале. Стоимость позиции при сплите сама по себе не должна падать пропорционально цене одной акции.';
+  }
+
+  function formatTwpSplitResultWarningText(ev, queryTicker) {
+    if (!ev) return '';
+    var name = formatSplitTickerLabel(ev, queryTicker);
+    var ratio = formatSplitRatioLabel(ev.ratio);
+    var date = formatSplitWarningDate(ev.effectiveDate);
+    if (!name) return '';
+    var head = name + ': было дробление акций';
+    if (ratio) head += ' ' + ratio;
+    if (date) head += ' от ' + date;
+    return head + '. До split-aware пересчёта текущей стоимости итоговый результат может быть некорректным.';
   }
 
   function collectPortfolioSplitHits(tickers, portfolio, events) {
@@ -6570,6 +6588,7 @@
   var PF_TWP_PARTIAL = 'Расчёт частичный: часть данных по операциям или выплатам отсутствует.';
   var PF_TWP_NULL = 'Недостаточно данных для полного расчёта.';
   var PF_TWP_PCT_UNAVAILABLE = 'процент не рассчитан';
+  var PF_TWP_SPLIT_HOW = 'Для бумаг со сплитом итоговый результат скрывается, пока количество и текущая стоимость не приведены к одной шкале.';
   var _pfPayoutFeedsCacheFallback = null;
 
   function emptyPfPayoutFeedsCache() {
@@ -6696,7 +6715,7 @@
     '</div>';
   }
 
-  function buildTwpHowHtml(isBond) {
+  function buildTwpHowHtml(isBond, splitAffected) {
     var formula = isBond
       ? '<p class="pf-twp-formula" aria-label="Формула">' +
           'текущая стоимость остатка<br>' +
@@ -6713,6 +6732,9 @@
         '<p class="pf-twp-how-note">Цены ОФЗ — в % от номинала, суммы — в ₽. Купоны — по дате купона, без НКД. Налоги, комиссии и будущие выплаты не учитываются.</p>'
       : '<p class="pf-twp-how-note">Процент — к сумме покупок. Если покупок на 0 ₽, процент не считается.</p>' +
         '<p class="pf-twp-how-note">Дивиденды — по дате отсечки, не по дате зачисления. Налоги, комиссии и будущие выплаты не учитываются.</p>';
+    if (splitAffected) {
+      notes += '<p class="pf-twp-how-note">' + escapeHtml(PF_TWP_SPLIT_HOW) + '</p>';
+    }
     return '<details class="pf-twp-how">' +
       '<summary class="pf-twp-how-summary">Как считается</summary>' +
       '<div class="pf-twp-how-body">' +
@@ -6727,26 +6749,27 @@
     var events = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
     var ev = portfolioTickerNeedsSplitWarning(ticker, portfolio, events);
     if (!ev) return '';
-    return wrapSplitWarningHtml(formatSingleSplitWarningText(ev, ticker), 'pf-twp-split-warn');
+    return wrapSplitWarningHtml(formatTwpSplitResultWarningText(ev, ticker), 'pf-twp-split-warn');
   }
 
   function buildTickerReturnWithPayoutsBlockHtml(ticker, isBond) {
     var cache = getPfPayoutFeedsCache();
     var pf = currentPortfolioForPayoutFeeds();
+    var splitHit = !isBond && isPortfolioTickerSplitAffected(ticker, pf);
     var html = '<div class="pf-ticker-detail-section pf-twp-block">' +
       '<h4 class="pf-ticker-detail-h pf-twp-title">' + escapeHtml(PF_TWP_TITLE) + '</h4>';
     html += buildTwpSplitWarnHtml(ticker, pf);
 
     if (cache.status === 'idle' || cache.status === 'loading') {
       html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_LOADING) + '</p>';
-      html += buildTwpHowHtml(isBond);
+      html += buildTwpHowHtml(isBond, splitHit);
       html += '</div>';
       return html;
     }
 
     if (cache.status === 'error') {
       html += '<p class="muted pf-twp-status pf-twp-status--error">' + escapeHtml(PF_TWP_ERROR) + '</p>';
-      html += buildTwpHowHtml(isBond);
+      html += buildTwpHowHtml(isBond, splitHit);
       html += '</div>';
       return html;
     }
@@ -6759,37 +6782,45 @@
       });
     } catch (e) {
       html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_NULL) + '</p>';
-      html += buildTwpHowHtml(isBond);
+      html += buildTwpHowHtml(isBond, splitHit);
       html += '</div>';
       return html;
     }
 
     if (!row) {
       html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_NULL) + '</p>';
-      html += buildTwpHowHtml(isBond);
+      html += buildTwpHowHtml(isBond, splitHit);
       html += '</div>';
       return html;
     }
 
-    var splitHit = !!portfolioTickerNeedsSplitWarning(ticker, pf);
     var isPartial = !!(row.isPartial || (cache.data && cache.data.isPartial) || splitHit);
-    var resultNull = row.resultWithPayoutsRub == null;
+    var resultNull = !splitHit && row.resultWithPayoutsRub == null;
+    var splitKpi = splitHit ? buildSplitAffectedPnlHtml('kpi') : '';
     var pct = row.returnWithPayoutsPct;
-    var pctHtml = escapeHtml(formatTwpReturnPct(pct));
-    var pctHint = pct == null
+    var pctHtml = splitHit
+      ? splitKpi
+      : escapeHtml(formatTwpReturnPct(pct));
+    var pctHint = (!splitHit && pct == null)
       ? '<span class="pf-twp-kpi-hint muted">' + escapeHtml(PF_TWP_PCT_UNAVAILABLE) + '</span>'
       : '';
 
     html += '<div class="pf-ticker-detail-summary pf-twp-kpis">' +
       buildTwpKpiHtml('Вложено в покупки', escapeHtml(formatPortfolioRubAmount(row.purchaseCostRub))) +
       buildTwpKpiHtml('Сумма продаж', escapeHtml(formatPortfolioRubAmount(row.saleProceedsRub))) +
-      buildTwpKpiHtml('Текущая стоимость остатка', escapeHtml(formatPortfolioRubAmount(row.currentMarketValueRub))) +
+      buildTwpKpiHtml(
+        'Текущая стоимость остатка',
+        splitHit ? splitKpi : escapeHtml(formatPortfolioRubAmount(row.currentMarketValueRub))
+      ) +
       buildTwpKpiHtml('Найденные выплаты', escapeHtml(formatPortfolioRubAmount(row.payoutsRub))) +
-      buildTwpKpiHtml('Результат без выплат', escapeHtml(formatSignedRubAmount(row.resultWithoutPayoutsRub))) +
+      buildTwpKpiHtml(
+        'Результат без выплат',
+        splitHit ? splitKpi : escapeHtml(formatSignedRubAmount(row.resultWithoutPayoutsRub))
+      ) +
       buildTwpKpiHtml(
         'Результат с выплатами',
-        escapeHtml(formatSignedRubAmount(row.resultWithPayoutsRub)),
-        twpResultToneClass(row.resultWithPayoutsRub)
+        splitHit ? splitKpi : escapeHtml(formatSignedRubAmount(row.resultWithPayoutsRub)),
+        splitHit ? '' : twpResultToneClass(row.resultWithPayoutsRub)
       ) +
       buildTwpKpiHtml('К сумме покупок, %', pctHtml, '', pctHint) +
     '</div>';
@@ -6804,7 +6835,7 @@
         escapeHtml(formatPayoutPartialWarningText(partialTickers, PF_TWP_PARTIAL)) + '</p>';
     }
 
-    html += buildTwpHowHtml(isBond);
+    html += buildTwpHowHtml(isBond, splitHit);
     html += '</div>';
     return html;
   }
