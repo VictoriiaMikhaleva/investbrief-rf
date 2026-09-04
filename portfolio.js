@@ -2379,6 +2379,7 @@
   var PAYOUT_NO_FEED_PREFIX = 'нет данных по выплатам для ';
   var PAYOUT_BAD_DIV_SUFFIX = ': дивиденд без суммы на 1 акцию';
   var PAYOUT_BAD_COUPON_SUFFIX = ': купон без суммы на 1 облигацию';
+  var PAYOUT_SPLIT_QTY_UNKNOWN_SUFFIX = ': не удалось определить количество на дату отсечки из-за сплита.';
 
   function payoutsEmptyResult(fromIso, toIso, invalid) {
     return {
@@ -2516,9 +2517,43 @@
     return { qtyHeld: qtyHeld, incomplete: incomplete, notes: notes };
   }
 
+  function payoutsTickerHasSplitEvents(ticker, options) {
+    if (typeof getSplitEventsForTicker !== 'function') return false;
+    if (isPortfolioBondPosition({ ticker: ticker })) return false;
+    var events = (options && options.splitEvents) ||
+      (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    var list = getSplitEventsForTicker(ticker, events);
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var ev = list[i];
+      if (!ev) continue;
+      var type = ev.type != null ? String(ev.type).trim().toLowerCase() : 'split';
+      if (type === 'reverse') continue;
+      var ratio = Number(ev.ratio);
+      if (isFinite(ratio) && ratio > 1) return true;
+    }
+    return false;
+  }
+
+  function payoutsSplitAwareQtyHeldAtDate(portfolio, ticker, eventIso, options, cache) {
+    cache = cache || {};
+    var key = String(ticker || '') + '|' + String(eventIso || '');
+    if (cache[key]) return cache[key];
+    var held = getSplitAwareQtyHeldOnDate(ticker, portfolio, eventIso, {
+      splitEvents: options && options.splitEvents,
+      currentPrice: options && options.currentPrice,
+      currentDate: (options && (options.currentDate || options.now)) || undefined,
+      priceTolerancePct: options && options.priceTolerancePct,
+      instrumentType: options && options.instrumentType
+    });
+    cache[key] = held;
+    return held;
+  }
+
   /**
    * Read-only выплаты по одному тикеру за период владения.
-   * Лента только из options.payoutsByTicker; без fetch, без LAST/CLOSE/avgPrice.
+   * Лента только из options.payoutsByTicker; без fetch, без LAST/CLOSE.
+   * Акции со сплитом: qtyHeldOnRecordDate × dividend.value (без adjust DPS).
    */
   function buildTickerPayoutsForHoldingPeriod(ticker, portfolio, fromDate, toDate, options) {
     options = options || {};
@@ -2554,17 +2589,41 @@
     var source = payoutsFeedSource(feed, kind);
     var faceValue = payoutsBondFaceValue(feed, ticker, options.bondMetaMap);
     var events = kind === 'bond' ? (feed.coupons || []) : (feed.dividends || []);
+    var useSplitQty = kind !== 'bond' && payoutsTickerHasSplitEvents(ticker, options);
+    var splitQtyCache = options._splitQtyCache || {};
+    options._splitQtyCache = splitQtyCache;
     var i;
     for (i = 0; i < events.length; i++) {
       var ev = events[i] || {};
       var eventIso = timelineIsoDate(ev.date);
       if (!eventIso || eventIso < window.fromIso || eventIso > window.endIso) continue;
-      var held = payoutsQtyHeldAtDate(portfolio, ticker, eventIso, options, cache);
-      if (held.incomplete) {
-        isPartial = true;
-        (held.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+      var qtyHeld = 0;
+      if (useSplitQty) {
+        var splitHeld = payoutsSplitAwareQtyHeldAtDate(
+          portfolio,
+          ticker,
+          eventIso,
+          options,
+          splitQtyCache
+        );
+        (splitHeld.warnings || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+        if (splitHeld.confidence === 'unknown' && !(Number(splitHeld.qty) > 0)) {
+          isPartial = true;
+          payoutsPushWarning(warnings, ticker + PAYOUT_SPLIT_QTY_UNKNOWN_SUFFIX);
+          continue;
+        }
+        if (splitHeld.confidence !== 'high') isPartial = true;
+        qtyHeld = Number(splitHeld.qty);
+        if (!isFinite(qtyHeld) || !(qtyHeld > 0)) continue;
+      } else {
+        var held = payoutsQtyHeldAtDate(portfolio, ticker, eventIso, options, cache);
+        if (held.incomplete) {
+          isPartial = true;
+          (held.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+        }
+        qtyHeld = held.qtyHeld;
+        if (!(qtyHeld > 0)) continue;
       }
-      if (!(held.qtyHeld > 0)) continue;
 
       var perUnit = null;
       var type = kind === 'bond' ? 'coupon' : 'dividend';
@@ -2585,7 +2644,7 @@
         }
       }
 
-      var amountRub = asOfRoundRub(held.qtyHeld * perUnit);
+      var amountRub = asOfRoundRub(qtyHeld * perUnit);
       if (amountRub == null) continue;
       var currency = ev.currency ? String(ev.currency) : 'RUB';
       items.push({
@@ -2593,7 +2652,7 @@
         type: type,
         payoutDate: null,
         recordDate: eventIso,
-        qtyHeld: held.qtyHeld,
+        qtyHeld: qtyHeld,
         payoutPerUnit: perUnit,
         amountRub: amountRub,
         currency: currency,
@@ -3004,7 +3063,8 @@
 
   /**
    * Read-only дивиденды и купоны за период владения по всему портфелю.
-   * qtyHeld — через buildPortfolioCompositionAtDate на дату события. Без fetch и без цен.
+   * qtyHeld — состав на дату события; для акций со сплитом в каталоге —
+   * getSplitAwareQtyHeldOnDate × сырой DPS. Без fetch.
    */
   function buildPortfolioPayoutsForHoldingPeriod(portfolio, fromDate, toDate, options) {
     options = options || {};

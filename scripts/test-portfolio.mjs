@@ -2398,6 +2398,142 @@ function loadPriceAtDateHelpers() {
 }
 
 {
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const NOW = '2026-12-31';
+  function gmknFeed(dividends) {
+    return { GMKN: { kind: 'stock', source: 'moex', dividends: dividends } };
+  }
+  function runGmkn(pf, extra) {
+    return calc.buildTickerPayoutsForHoldingPeriod(
+      'GMKN',
+      pf,
+      '2021-01-01',
+      '2026-12-31',
+      Object.assign({
+        now: NOW,
+        splitEvents: events,
+        payoutsByTicker: gmknFeed([])
+      }, extra || {})
+    );
+  }
+
+  const histLot = {
+    ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130
+  };
+  const histPf = { positions: [histLot], sales: [] };
+  const histSnap = JSON.stringify(histPf);
+
+  let r = runGmkn(histPf, {
+    payoutsByTicker: gmknFeed([{ date: '2023-06-01', value: 1000 }])
+  });
+  assert(r.items.length === 1, 'payouts split: hist pre-split item');
+  assert(r.items[0].qtyHeld === 10, 'payouts split: hist pre-split qtyHeld 10');
+  assert(r.items[0].payoutPerUnit === 1000, 'payouts split: hist pre-split raw DPS');
+  assert(r.items[0].amountRub === 10000, 'payouts split: hist pre-split amount 10000');
+  assert(JSON.stringify(histPf) === histSnap, 'payouts split: hist JSON not mutated');
+
+  r = runGmkn(histPf, {
+    payoutsByTicker: gmknFeed([{ date: '2025-06-01', value: 10 }])
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 1000, 'payouts split: hist post-split qtyHeld 1000');
+  assert(r.items[0].payoutPerUnit === 10, 'payouts split: hist post-split raw DPS 10');
+  assert(r.items[0].amountRub === 10000, 'payouts split: hist post-split amount 10000');
+
+  const currPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  r = runGmkn(currPf, {
+    payoutsByTicker: gmknFeed([{ date: '2025-06-01', value: 10 }])
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 1000, 'payouts split: current post-split qtyHeld 1000');
+  assert(r.items[0].amountRub === 10000, 'payouts split: current post-split amount 10000');
+
+  r = runGmkn(currPf, {
+    payoutsByTicker: gmknFeed([{ date: '2023-06-01', value: 1000 }])
+  });
+  assert(r.items.length === 0, 'payouts split: current pre-split not included');
+  assert(r.isPartial === true, 'payouts split: current pre-split isPartial');
+  assert(r.warnings.some((w) => /GMKN/.test(w) && /отсечки/.test(w)), 'payouts split: current pre-split warning has ticker');
+  assert(r.totalPayoutsRub === 0, 'payouts split: current pre-split total not a confident 0 payout line');
+
+  const mixedPf = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 },
+      { ticker: 'GMKN', lotId: 'G4', qty: 10, avgPrice: 130, buyDate: '2026-09-04', currentPrice: 130 }
+    ],
+    sales: []
+  };
+  const mixedSnap = JSON.stringify(mixedPf);
+  r = runGmkn(mixedPf, {
+    payoutsByTicker: gmknFeed([{ date: '2026-09-04', value: 10 }])
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 1010, 'payouts split: mixed qtyHeld 1010');
+  assert(r.items[0].amountRub === 10100, 'payouts split: mixed amount 10100');
+  assert(JSON.stringify(mixedPf) === mixedSnap, 'payouts split: mixed JSON not mutated');
+
+  const unknownPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'GX', qty: 10, avgPrice: 800, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  r = runGmkn(unknownPf, {
+    payoutsByTicker: gmknFeed([{ date: '2025-06-01', value: 10 }])
+  });
+  assert(r.isPartial === true, 'payouts split: unknown isPartial');
+  assert(r.warnings.some((w) => /GMKN/.test(w)), 'payouts split: unknown warning has ticker');
+  assert(r.items.length === 0, 'payouts split: unknown not a confident payout item');
+  assert(r.totalPayoutsRub === 0, 'payouts split: unknown total not treated as earned 0');
+
+  const sberStill = calc.buildTickerPayoutsForHoldingPeriod(
+    'SBER',
+    {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
+      sales: []
+    },
+    '2024-01-01',
+    '2024-12-31',
+    {
+      now: '2025-12-31',
+      splitEvents: events,
+      payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2024-07-17', value: 33.3 }] } }
+    }
+  );
+  assert(sberStill.items.length === 1 && sberStill.items[0].qtyHeld === 10, 'payouts split: SBER qty unchanged');
+  assert(sberStill.items[0].amountRub === 333, 'payouts split: SBER amount unchanged');
+  assert(sberStill.isPartial === false, 'payouts split: SBER not partial');
+
+  const ofzStill = calc.buildTickerPayoutsForHoldingPeriod(
+    'SU26238RMFS9',
+    {
+      positions: [{ ticker: 'SU26238RMFS9', lotId: 'B1', qty: 10, avgPrice: 97.5, buyDate: '2023-01-01' }],
+      sales: []
+    },
+    '2024-01-01',
+    '2024-12-31',
+    {
+      now: '2025-12-31',
+      splitEvents: events,
+      payoutsByTicker: {
+        SU26238RMFS9: {
+          kind: 'bond',
+          source: 'bondization',
+          coupons: [{ date: '2024-06-15', value: 35 }],
+          faceValue: 1000
+        }
+      }
+    }
+  );
+  assert(ofzStill.items.length === 1 && ofzStill.items[0].type === 'coupon', 'payouts split: OFZ still coupon');
+  assert(ofzStill.items[0].qtyHeld === 10 && ofzStill.items[0].amountRub === 350, 'payouts split: OFZ qty/amount unchanged');
+}
+
+{
   // Волна 4.2: загрузчик лент — моки, без сети
   assert(typeof calc.loadPayoutFeedsForPortfolio === 'function', 'feed loader exported');
 
