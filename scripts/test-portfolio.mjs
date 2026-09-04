@@ -375,6 +375,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__lotScale = diagnoseLotShareScale;' +
       '\nthis.__qtyHeld = getSplitAwareQtyHeldOnDate;' +
       '\nthis.__currentQty = getSplitAwareCurrentQty;' +
+      '\nthis.__splitMetrics = getSplitAwareCurrentPositionMetrics;' +
       '\nthis.__splitPnlHtml = buildSplitAffectedPnlHtml;' +
       '\nthis.__lotRow = buildPortfolioLotRow;' +
       '\nthis.__sectionRows = buildPortfolioSectionRows;' +
@@ -430,6 +431,7 @@ function loadPortfolioCalcHelpers() {
     diagnoseLotShareScale: sandbox.__lotScale,
     getSplitAwareQtyHeldOnDate: sandbox.__qtyHeld,
     getSplitAwareCurrentQty: sandbox.__currentQty,
+    getSplitAwareCurrentPositionMetrics: sandbox.__splitMetrics,
     buildSplitAffectedPnlHtml: sandbox.__splitPnlHtml,
     buildPortfolioLotRow: sandbox.__lotRow,
     buildPortfolioSectionRows: sandbox.__sectionRows,
@@ -3565,25 +3567,23 @@ function loadPriceAtDateHelpers() {
     const rowHtml = calc.buildPortfolioLotRow(lots[0], lotGroup(ticker, lots), {
       splitAffected: true,
       lotIndex: 0,
-      rowSpan: lots.length
+      rowSpan: lots.length,
+      positions: pf.positions,
+      sales: pf.sales
     });
-    assert(/требует проверки/.test(rowHtml), prefix + ': row shows требует проверки');
-    assert(/pf-split-badge/.test(rowHtml) && />сплит</.test(rowHtml), prefix + ': row split badge');
-    assert(rowHtml.indexOf(title) !== -1, prefix + ': row title');
+    assert(/с учётом сплита/.test(rowHtml), prefix + ': row split-aware badge');
+    assert(/pf-split-badge/.test(rowHtml), prefix + ': row split badge');
     assert(!/-99\.41%/.test(rowHtml) && !/-99,41%/.test(rowHtml), prefix + ': row hides −99.41%');
-    assert(!/class="pnl-neg"/.test(rowHtml) && !/class="pnl-pos"/.test(rowHtml), prefix + ': row not ordinary pnl color');
     const sectionHtml = calc.buildPortfolioSectionRows(pf.positions, 'stocks', {}, pf.sales);
-    assert(/требует проверки/.test(sectionHtml), prefix + ': section row split state');
+    assert(/с учётом сплита/.test(sectionHtml), prefix + ': section row split-aware');
     assert(!/-99\.41%/.test(sectionHtml), prefix + ': section hides −99.41%');
     const detail = calc.buildPortfolioTickerDetailHtml(ticker, pf.positions, pf.sales, null, false);
     assert(/Результат по текущим ценам/.test(detail), prefix + ': detail kpi label');
-    assert(/требует проверки/.test(detail), prefix + ': detail требует проверки');
-    assert(/pf-split-badge/.test(detail), prefix + ': detail split badge');
+    assert(/с учётом сплита/.test(detail), prefix + ': detail split-aware badge');
     const kpiChunk = detail.split('Результат по текущим ценам')[1].split('Зафиксированный результат')[0];
-    assert(!/pnl-neg/.test(kpiChunk) && !/pnl-pos/.test(kpiChunk), prefix + ': detail kpi not ordinary pnl');
-    assert(!/-99/.test(kpiChunk), prefix + ': detail kpi not −99');
+    assert(!/-99\.41/.test(kpiChunk), prefix + ': detail kpi not −99.41');
     const card = calc.buildPortfolioMobileCardHtml(lots[0], null, 1, pf.positions, pf.sales);
-    assert(/требует проверки/.test(card) && /pf-split-badge/.test(card), prefix + ': mobile card split state');
+    assert(/с учётом сплита/.test(card) && /pf-split-badge/.test(card), prefix + ': mobile card split-aware');
     assert(!/-99\.41%/.test(card), prefix + ': mobile card hides −99.41%');
     assert(JSON.stringify(pf) === snap, prefix + ': portfolio JSON not mutated');
     assert(lots[0].qty === pf.positions[0].qty && lots[0].avgPrice === pf.positions[0].avgPrice, prefix + ': qty/avgPrice untouched');
@@ -3916,6 +3916,171 @@ function loadPriceAtDateHelpers() {
 }
 
 {
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const NOW = '2026-09-04';
+  function metrics(ticker, pf, extra) {
+    return calc.getSplitAwareCurrentPositionMetrics(
+      ticker,
+      pf,
+      Object.assign({ splitEvents: events, now: NOW, currentDate: NOW }, extra || {})
+    );
+  }
+  function almost(a, b, eps, msg) {
+    assert(Math.abs(Number(a) - Number(b)) < (eps || 0.02), msg);
+  }
+
+  assert(typeof calc.getSplitAwareCurrentPositionMetrics === 'function', 'metrics: helper exported');
+
+  const sberPf = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+    sales: []
+  };
+  const sberSnap = JSON.stringify(sberPf);
+  let m = metrics('SBER', sberPf);
+  assert(m.splitAdjusted === false && m.confidence === 'high', 'metrics: SBER no split');
+  almost(m.currentQty, 10, 1e-9, 'metrics: SBER qty 10');
+  almost(m.currentMarketValueRub, 2800, 0.01, 'metrics: SBER MV 2800');
+  almost(m.remainingCostRub, 2500, 0.01, 'metrics: SBER cost 2500');
+  almost(m.unrealizedPnlRub, 300, 0.01, 'metrics: SBER pnl 300');
+  almost(m.unrealizedPnlPct, 12, 0.01, 'metrics: SBER pct 12');
+  assert(JSON.stringify(sberPf) === sberSnap, 'metrics: SBER JSON not mutated');
+
+  const ofzPf = {
+    positions: [{ ticker: 'SU26238RMFS9', lotId: 'B1', qty: 10, avgPrice: 97.5, buyDate: '2023-01-01', currentPrice: 98, faceValue: 1000 }],
+    sales: []
+  };
+  const ofzSnap = JSON.stringify(ofzPf);
+  m = metrics('SU26238RMFS9', ofzPf);
+  assert(m.splitAdjusted === false && m.appliedSplits.length === 0, 'metrics: OFZ no split logic');
+  almost(m.currentMarketValueRub, 9800, 0.01, 'metrics: OFZ MV 9800');
+  almost(m.remainingCostRub, 9750, 0.01, 'metrics: OFZ cost 9750');
+  assert(JSON.stringify(ofzPf) === ofzSnap, 'metrics: OFZ JSON not mutated');
+
+  const gmknHistPf = {
+    positions: [{ ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92 }],
+    sales: []
+  };
+  const gmknHistSnap = JSON.stringify(gmknHistPf);
+  m = metrics('GMKN', gmknHistPf);
+  assert(m.splitAdjusted === true, 'metrics: GMKN hist splitAdjusted');
+  almost(m.currentQty, 1000, 1e-6, 'metrics: GMKN hist qty 1000');
+  almost(m.currentMarketValueRub, 129920, 0.02, 'metrics: GMKN hist MV 129920');
+  almost(m.remainingCostRub, 220000, 0.02, 'metrics: GMKN hist cost 220000');
+  almost(m.unrealizedPnlRub, -90080, 0.05, 'metrics: GMKN hist pnl -90080');
+  almost(m.unrealizedPnlPct, -90080 / 220000 * 100, 0.05, 'metrics: GMKN hist pct not -98');
+  assert(Math.abs(m.unrealizedPnlPct) < 50, 'metrics: GMKN hist not -98%');
+  assert(JSON.stringify(gmknHistPf) === gmknHistSnap, 'metrics: GMKN hist JSON not mutated');
+  assert(gmknHistPf.positions[0].qty === 10 && gmknHistPf.positions[0].avgPrice === 22000, 'metrics: qty/avgPrice untouched');
+
+  const gmknCurrPf = {
+    positions: [{ ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 129.92 }],
+    sales: []
+  };
+  m = metrics('GMKN', gmknCurrPf);
+  almost(m.currentQty, 1000, 1e-6, 'metrics: GMKN current qty 1000 not 100000');
+  almost(m.currentMarketValueRub, 129920, 0.02, 'metrics: GMKN current MV 129920');
+  almost(m.remainingCostRub, 220000, 0.02, 'metrics: GMKN current cost 220000');
+
+  const gmknMixedPf = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92 },
+      { ticker: 'GMKN', lotId: 'G4', qty: 10, avgPrice: 129.74, buyDate: '2026-09-04', currentPrice: 129.92 }
+    ],
+    sales: []
+  };
+  const mixedSnap = JSON.stringify(gmknMixedPf);
+  m = metrics('GMKN', gmknMixedPf);
+  almost(m.currentQty, 1010, 1e-6, 'metrics: GMKN mixed qty 1010');
+  almost(m.currentMarketValueRub, 131219.20, 0.05, 'metrics: GMKN mixed MV 131219.20');
+  almost(m.remainingCostRub, 221297.40, 0.05, 'metrics: GMKN mixed cost 221297.40');
+  almost(m.unrealizedPnlRub, -90078.20, 0.05, 'metrics: GMKN mixed pnl -90078.20');
+  almost(m.unrealizedPnlPct, -40.70, 0.05, 'metrics: GMKN mixed pct ≈ -40.70');
+  assert(JSON.stringify(gmknMixedPf) === mixedSnap, 'metrics: mixed JSON not mutated');
+
+  const tHistPf = {
+    positions: [{ ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3126, buyDate: '2025-12-01', currentPrice: 262 }],
+    sales: []
+  };
+  m = metrics('T', tHistPf);
+  almost(m.currentQty, 10, 1e-6, 'metrics: T hist qty 10');
+  almost(m.currentMarketValueRub, 2620, 0.02, 'metrics: T hist MV 2620');
+  almost(m.lots[0] && m.lots[0].adjustedAvgPrice, 312.6, 0.01, 'metrics: T hist adj avg 312.6');
+
+  const tCurrPf = {
+    positions: [{ ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262 }],
+    sales: []
+  };
+  m = metrics('T', tCurrPf);
+  almost(m.currentQty, 10, 1e-6, 'metrics: T current qty 10 not 100');
+  almost(m.currentMarketValueRub, 2620, 0.02, 'metrics: T current MV 2620');
+
+  const plzlPf = {
+    positions: [{ ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 19000, buyDate: '2024-06-01', currentPrice: 1900 }],
+    sales: []
+  };
+  m = metrics('PLZL', plzlPf);
+  almost(m.currentQty, 10, 1e-6, 'metrics: PLZL hist qty ×10');
+  almost(m.currentMarketValueRub, 19000, 0.02, 'metrics: PLZL MV 10×1900');
+
+  const unknownPf = {
+    positions: [{ ticker: 'GMKN', lotId: 'GX', qty: 10, avgPrice: 800, buyDate: '2021-06-04', currentPrice: 130 }],
+    sales: []
+  };
+  const unknownSnap = JSON.stringify(unknownPf);
+  m = metrics('GMKN', unknownPf);
+  assert(m.confidence === 'unknown' || m.currentMarketValueRub == null, 'metrics: unknown not a confident MV');
+  assert(m.unrealizedPnlRub == null || m.confidence === 'unknown', 'metrics: unknown pnl not confident');
+  assert((m.warnings || []).some((w) => /GMKN/.test(w)), 'metrics: unknown warning has ticker');
+  assert(JSON.stringify(unknownPf) === unknownSnap, 'metrics: unknown JSON not mutated');
+
+  const gmknSalePf = {
+    positions: [{ ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92 }],
+    sales: [{
+      saleId: 'SALE_G',
+      ticker: 'GMKN',
+      qty: 200,
+      buyPrice: 22000,
+      salePrice: 130,
+      saleDate: '2025-06-01',
+      allocations: [{ lotId: 'G1', qty: 200, buyPrice: 22000, buyDate: '2021-06-04' }]
+    }]
+  };
+  m = metrics('GMKN', gmknSalePf);
+  almost(m.currentQty, 800, 1e-6, 'metrics: sale 200 new → qty 800');
+  almost(m.currentMarketValueRub, 800 * 129.92, 0.05, 'metrics: sale MV 800×129.92');
+
+  const prodCatalogText = fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8');
+  const fakeRaw = {
+    ticker: 'FAKE_SPLIT',
+    aliases: ['FAKE'],
+    isin: 'TEST000FAKE0',
+    effectiveDate: '2030-01-15',
+    ratio: 5,
+    type: 'split',
+    note: 'Synthetic future split for generic contract tests',
+    source: 'test'
+  };
+  const fakeEvents = calc.sandbox.parseSplitEventsCatalog({
+    version: 1,
+    events: (JSON.parse(prodCatalogText).events || []).concat([fakeRaw])
+  });
+  const fakeHistPf = {
+    positions: [{ ticker: 'FAKE_SPLIT', lotId: 'F1', qty: 2, avgPrice: 500, buyDate: '2029-06-01', currentPrice: 90 }],
+    sales: []
+  };
+  const fakeSnap = JSON.stringify(fakeHistPf);
+  m = calc.getSplitAwareCurrentPositionMetrics('FAKE_SPLIT', fakeHistPf, {
+    splitEvents: fakeEvents, now: '2031-01-01', currentDate: '2031-01-01'
+  });
+  almost(m.currentQty, 10, 1e-6, 'metrics generic: FAKE_SPLIT 2×5 → 10');
+  almost(m.currentMarketValueRub, 900, 0.02, 'metrics generic: FAKE_SPLIT MV 900');
+  almost(m.remainingCostRub, 1000, 0.02, 'metrics generic: FAKE_SPLIT cost 1000');
+  assert(JSON.stringify(fakeHistPf) === fakeSnap, 'metrics generic: JSON not mutated');
+}
+
+{
   // Волна 5.3: UI v1 справочного результата в «Подробнее»
   const sb = calc.sandbox;
   const cache = calc.getPfPayoutFeedsCache();
@@ -3968,7 +4133,7 @@ function loadPriceAtDateHelpers() {
   assert(!/Расчёт частичный/.test(html), 'twp ui ready: not partial');
   assert(/найденные дивиденды за период владения/.test(html), 'twp ui stock formula');
   assert(/Дивиденды — по дате отсечки/.test(html), 'twp ui stock notes');
-  assert(!/итоговый результат скрывается/.test(html), 'twp ui SBER: no split how-to');
+  assert(!/текущей шкале акции/.test(html), 'twp ui SBER: no split how-to');
   assert(!/pf-split-badge/.test(html), 'twp ui SBER: no split badge');
 
   const noPx = {
@@ -4035,13 +4200,12 @@ function loadPriceAtDateHelpers() {
   cache.tickersKey = 'T';
   html = calc.buildTickerReturnWithPayoutsBlockHtml('T', false);
   assert(/T: было дробление акций 1:10 от 17\.04\.2026/.test(html), 'twp ui split: ticker ratio date');
-  assert(/До split-aware пересчёта текущей стоимости итоговый результат может быть некорректным/.test(html), 'twp ui split: market-value warning');
-  assert(/Расчёт частичный/.test(html), 'twp ui split: marked partial');
-  assert(/pf-split-badge/.test(html) && /требует проверки/.test(html), 'twp ui split: dash/badge/label');
-  assert(!/pf-twp-result--neg/.test(html), 'twp ui split: no false negative tone');
-  assert(!/-92/.test(html) && !/-2[\s\u00a0]?945/.test(html), 'twp ui split: no false -92% / result');
+  assert(/Текущая стоимость и результат показаны в текущей шкале акции/.test(html), 'twp ui split: applied warning');
+  assert(/с учётом сплита/.test(html), 'twp ui split: split-aware badge');
+  assert(/2[\s\u00a0]?550/.test(html), 'twp ui split: current value 2550');
+  assert(!/-2[\s\u00a0]?945/.test(html), 'twp ui split: no false JSON-qty result');
   assert(/Вложено в покупки/.test(html) && /Найденные выплаты/.test(html), 'twp ui split: purchase and payouts remain');
-  assert(/итоговый результат скрывается/.test(html), 'twp ui split: how-to note');
+  assert(/текущей шкале акции/.test(html), 'twp ui split: how-to note');
   assert(JSON.stringify(splitPf) === splitSnap, 'twp ui split: no JSON mutation');
 
   const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
@@ -4071,14 +4235,15 @@ function loadPriceAtDateHelpers() {
   const gmknSnap = JSON.stringify(gmknPf);
   html = twpReady('GMKN', gmknPf);
   assert(/GMKN: было дробление акций 1:100 от 08\.04\.2024/.test(html), 'twp ui GMKN: warning ticker/ratio/date');
-  assert(/До split-aware пересчёта текущей стоимости/.test(html), 'twp ui GMKN: TWP warning');
-  assert(/pf-split-badge/.test(html) && /требует проверки/.test(html), 'twp ui GMKN: — / сплит / требует проверки');
+  assert(/Текущая стоимость и результат показаны в текущей шкале акции/.test(html), 'twp ui GMKN: applied warning');
+  assert(/с учётом сплита/.test(html), 'twp ui GMKN: split-aware badge');
+  assert(/130[\s\u00a0]?000/.test(html), 'twp ui GMKN: current value 1000×130');
   assert(!/-98/.test(html) && !/-99/.test(html), 'twp ui GMKN: no false -98%/-99%');
-  assert(!/-218/.test(html), 'twp ui GMKN: no false resultWithout/resultWith');
-  assert(!/pf-twp-result--neg/.test(html), 'twp ui GMKN: no red false result');
+  assert(!/-218/.test(html), 'twp ui GMKN: no false JSON-qty result');
+  assert(/-90[\s\u00a0]?000/.test(html), 'twp ui GMKN: split-aware result ≈ -90000');
   assert(/Вложено в покупки/.test(html) && /220/.test(html), 'twp ui GMKN: purchase cost remains');
   const gmknDetail = calc.buildPortfolioTickerDetailHtml('GMKN', gmknPf.positions, gmknPf.sales, null, false);
-  assert(/требует проверки/.test(gmknDetail), 'twp ui GMKN: main требует проверки remains');
+  assert(/Проверьте, что количество и средняя цена/.test(gmknDetail), 'twp ui GMKN: main split warning remains');
   assert(JSON.stringify(gmknPf) === gmknSnap, 'twp ui GMKN: JSON not mutated');
 
   const plzlPf = {
@@ -4089,7 +4254,7 @@ function loadPriceAtDateHelpers() {
   };
   html = twpReady('PLZL', plzlPf);
   assert(/PLZL: было дробление акций 1:10 от 27\.03\.2025/.test(html), 'twp ui PLZL: warning');
-  assert(/pf-split-badge/.test(html) && /требует проверки/.test(html), 'twp ui PLZL: suppressed');
+  assert(/с учётом сплита/.test(html), 'twp ui PLZL: split-aware');
   assert(!/-90/.test(html), 'twp ui PLZL: no false -90%');
 
   const tAfterPf = {
@@ -4100,7 +4265,7 @@ function loadPriceAtDateHelpers() {
   };
   html = twpReady('T', tAfterPf);
   assert(!/требует проверки/.test(html) && !/pf-split-badge/.test(html), 'twp ui T after split: numbers shown');
-  assert(!/итоговый результат скрывается/.test(html), 'twp ui T after split: no hide note');
+  assert(!/текущей шкале акции/.test(html), 'twp ui T after split: no split how-to');
   assert(/Результат с выплатами/.test(html) && /pf-twp-result--/.test(html), 'twp ui T after split: ordinary result tone');
 
   sb.getPortfolio = () => pf;
