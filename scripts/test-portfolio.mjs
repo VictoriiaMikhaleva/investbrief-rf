@@ -374,6 +374,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__splitAffected = isPortfolioTickerSplitAffected;' +
       '\nthis.__lotScale = diagnoseLotShareScale;' +
       '\nthis.__qtyHeld = getSplitAwareQtyHeldOnDate;' +
+      '\nthis.__currentQty = getSplitAwareCurrentQty;' +
       '\nthis.__splitPnlHtml = buildSplitAffectedPnlHtml;' +
       '\nthis.__lotRow = buildPortfolioLotRow;' +
       '\nthis.__sectionRows = buildPortfolioSectionRows;' +
@@ -428,6 +429,7 @@ function loadPortfolioCalcHelpers() {
     isPortfolioTickerSplitAffected: sandbox.__splitAffected,
     diagnoseLotShareScale: sandbox.__lotScale,
     getSplitAwareQtyHeldOnDate: sandbox.__qtyHeld,
+    getSplitAwareCurrentQty: sandbox.__currentQty,
     buildSplitAffectedPnlHtml: sandbox.__splitPnlHtml,
     buildPortfolioLotRow: sandbox.__lotRow,
     buildPortfolioSectionRows: sandbox.__sectionRows,
@@ -2808,6 +2810,189 @@ function loadPriceAtDateHelpers() {
   assert(mixed.items.length === 2, 'upcoming sort: two items same date');
   assert(mixed.items[0].ticker === 'GAZP' && mixed.items[1].ticker === 'SBER', 'upcoming sort: ticker within date');
   assert(mixed.nextDate === '2025-08-01', 'upcoming sort: nextDate nearest');
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const NOW = '2026-09-04';
+  function runUp(portfolio, extra) {
+    return calc.buildUpcomingPortfolioPayouts(
+      portfolio,
+      Object.assign({
+        now: NOW,
+        horizonDays: 365,
+        splitEvents: events
+      }, extra || {})
+    );
+  }
+
+  assert(typeof calc.getSplitAwareCurrentQty === 'function', 'upcoming split: currentQty helper exported');
+
+  const sberPf = {
+    positions: [{
+      ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280
+    }],
+    sales: []
+  };
+  const sberSnap = JSON.stringify(sberPf);
+  let r = runUp(sberPf, {
+    payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-10-01', value: 33.3 }] } }
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 10, 'upcoming split: SBER qty unchanged');
+  assert(r.items[0].amountRub === 333, 'upcoming split: SBER amount unchanged');
+  assert(r.isPartial === false, 'upcoming split: SBER not partial');
+  assert(JSON.stringify(sberPf) === sberSnap, 'upcoming split: SBER JSON not mutated');
+
+  const ofzPf = {
+    positions: [{
+      ticker: 'SU26238RMFS9', lotId: 'B1', qty: 10, avgPrice: 97.5, buyDate: '2023-01-01', currentPrice: 98
+    }],
+    sales: []
+  };
+  const ofzSnap = JSON.stringify(ofzPf);
+  r = runUp(ofzPf, {
+    payoutsByTicker: {
+      SU26238RMFS9: {
+        kind: 'bond',
+        source: 'bondization',
+        coupons: [{ date: '2026-10-15', value: 35 }],
+        faceValue: 1000
+      }
+    }
+  });
+  assert(r.items.length === 1 && r.items[0].type === 'coupon', 'upcoming split: OFZ still coupon');
+  assert(r.items[0].qtyHeld === 10 && r.items[0].amountRub === 350, 'upcoming split: OFZ qty/amount unchanged');
+  assert(JSON.stringify(ofzPf) === ofzSnap, 'upcoming split: OFZ JSON not mutated');
+
+  const gmknHistPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  const gmknHistSnap = JSON.stringify(gmknHistPf);
+  const gmknNow = calc.getSplitAwareCurrentQty('GMKN', gmknHistPf, {
+    splitEvents: events, now: NOW, currentDate: NOW
+  });
+  assert(gmknNow.qty === 1000, 'upcoming split: helper GMKN historical currentQty 1000');
+  assert(gmknNow.asOfDate === NOW, 'upcoming split: helper asOfDate is now');
+  r = runUp(gmknHistPf, {
+    payoutsByTicker: { GMKN: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-10-01', value: 10 }] } }
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 1000, 'upcoming split: GMKN hist qtyHeld 1000');
+  assert(r.items[0].payoutPerUnit === 10, 'upcoming split: GMKN hist raw DPS');
+  assert(r.items[0].amountRub === 10000, 'upcoming split: GMKN hist amount 10000');
+  assert(JSON.stringify(gmknHistPf) === gmknHistSnap, 'upcoming split: GMKN hist JSON not mutated');
+  assert(gmknHistPf.positions[0].qty === 10 && gmknHistPf.positions[0].avgPrice === 22000, 'upcoming split: GMKN qty/avgPrice untouched');
+
+  const gmknCurrPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  r = runUp(gmknCurrPf, {
+    payoutsByTicker: { GMKN: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-10-01', value: 10 }] } }
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 1000, 'upcoming split: GMKN current qtyHeld 1000');
+  assert(r.items[0].amountRub === 10000, 'upcoming split: GMKN current amount 10000 not 1000000');
+
+  const gmknMixedPf = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 },
+      { ticker: 'GMKN', lotId: 'G4', qty: 10, avgPrice: 130, buyDate: '2026-09-04', currentPrice: 130 }
+    ],
+    sales: []
+  };
+  const mixedSnap = JSON.stringify(gmknMixedPf);
+  r = runUp(gmknMixedPf, {
+    payoutsByTicker: { GMKN: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-10-01', value: 10 }] } }
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 1010, 'upcoming split: mixed qtyHeld 1010');
+  assert(r.items[0].amountRub === 10100, 'upcoming split: mixed amount 10100');
+  assert(JSON.stringify(gmknMixedPf) === mixedSnap, 'upcoming split: mixed JSON not mutated');
+
+  const tHistPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3126, buyDate: '2025-12-01', currentPrice: 262
+    }],
+    sales: []
+  };
+  r = runUp(tHistPf, {
+    payoutsByTicker: { T: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-10-01', value: 5 }] } }
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 10, 'upcoming split: T hist qtyHeld 10');
+  assert(r.items[0].amountRub === 50, 'upcoming split: T hist amount 50');
+
+  const tCurrPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262
+    }],
+    sales: []
+  };
+  r = runUp(tCurrPf, {
+    payoutsByTicker: { T: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-10-01', value: 5 }] } }
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 10, 'upcoming split: T current qtyHeld 10');
+  assert(r.items[0].amountRub === 50, 'upcoming split: T current amount 50');
+
+  const unknownPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'GX', qty: 10, avgPrice: 800, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  const unknownSnap = JSON.stringify(unknownPf);
+  r = runUp(unknownPf, {
+    payoutsByTicker: { GMKN: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-10-01', value: 10 }] } }
+  });
+  assert(r.items.length === 0, 'upcoming split: unknown not a confident payout item');
+  assert(r.isPartial === true, 'upcoming split: unknown isPartial');
+  assert(r.warnings.some((w) => /GMKN/.test(w) && /предстоящих выплат/.test(w)), 'upcoming split: unknown warning has ticker');
+  assert(r.totalUpcomingRub === 0, 'upcoming split: unknown total not treated as earned 0');
+  assert(JSON.stringify(unknownPf) === unknownSnap, 'upcoming split: unknown JSON not mutated');
+
+  const prodCatalogText = fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8');
+  assert(!/FAKE_SPLIT/.test(prodCatalogText), 'upcoming split: production catalog has no FAKE_SPLIT');
+  const fakeRaw = {
+    ticker: 'FAKE_SPLIT',
+    aliases: ['FAKE'],
+    isin: 'TEST000FAKE0',
+    effectiveDate: '2030-01-15',
+    ratio: 5,
+    type: 'split',
+    note: 'Synthetic future split for generic contract tests',
+    source: 'test'
+  };
+  const fakeEvents = calc.sandbox.parseSplitEventsCatalog({
+    version: 1,
+    events: (JSON.parse(prodCatalogText).events || []).concat([fakeRaw])
+  });
+  const fakeNow = '2031-01-01';
+  const fakeHistPf = {
+    positions: [{
+      ticker: 'FAKE_SPLIT', lotId: 'F1', qty: 2, avgPrice: 500, buyDate: '2029-06-01', currentPrice: 90
+    }],
+    sales: []
+  };
+  const fakeSnap = JSON.stringify(fakeHistPf);
+  const fakeHeld = calc.getSplitAwareCurrentQty('FAKE_SPLIT', fakeHistPf, {
+    splitEvents: fakeEvents, now: fakeNow, currentDate: fakeNow
+  });
+  assert(fakeHeld.qty === 10, 'upcoming split: FAKE_SPLIT helper 2×5 → 10');
+  r = calc.buildUpcomingPortfolioPayouts(fakeHistPf, {
+    now: fakeNow,
+    horizonDays: 365,
+    splitEvents: fakeEvents,
+    payoutsByTicker: {
+      FAKE_SPLIT: { kind: 'stock', source: 'moex', dividends: [{ date: '2031-03-01', value: 4 }] }
+    }
+  });
+  assert(r.items.length === 1 && r.items[0].qtyHeld === 10, 'upcoming split: FAKE_SPLIT qtyHeld 10');
+  assert(r.items[0].amountRub === 40, 'upcoming split: FAKE_SPLIT amount 40');
+  assert(JSON.stringify(fakeHistPf) === fakeSnap, 'upcoming split: FAKE_SPLIT JSON not mutated');
 }
 
 {

@@ -947,6 +947,28 @@
     };
   }
 
+  /**
+   * Read-only текущее количество акций в актуальной шкале на дату now.
+   * Обёртка над getSplitAwareQtyHeldOnDate; JSON / qty / avgPrice не меняет.
+   */
+  function getSplitAwareCurrentQty(ticker, portfolio, options) {
+    options = options || {};
+    var nowIso = pfSplitIsoDate(options.currentDate || options.now || options.asOfDate);
+    if (!nowIso && typeof localPortfolioTodayYmd === 'function') {
+      nowIso = localPortfolioTodayYmd();
+    }
+    var held = getSplitAwareQtyHeldOnDate(ticker, portfolio, nowIso, options);
+    return {
+      ticker: held.ticker,
+      asOfDate: held.targetDate,
+      qty: held.qty,
+      confidence: held.confidence,
+      appliedSplits: held.appliedSplits || [],
+      lotDiagnostics: held.lotDiagnostics || [],
+      warnings: held.warnings || []
+    };
+  }
+
   function buildSplitAffectedPnlHtml(variant) {
     var titleAttr = ' title="' + escapeHtml(PF_SPLIT_PNL_TITLE) + '"';
     var badge = '<span class="pf-split-badge">сплит</span>';
@@ -2380,6 +2402,7 @@
   var PAYOUT_BAD_DIV_SUFFIX = ': дивиденд без суммы на 1 акцию';
   var PAYOUT_BAD_COUPON_SUFFIX = ': купон без суммы на 1 облигацию';
   var PAYOUT_SPLIT_QTY_UNKNOWN_SUFFIX = ': не удалось определить количество на дату отсечки из-за сплита.';
+  var PAYOUT_SPLIT_CURRENT_QTY_UNKNOWN_SUFFIX = ': не удалось определить текущее количество для предстоящих выплат из-за сплита.';
 
   function payoutsEmptyResult(fromIso, toIso, invalid) {
     return {
@@ -3406,7 +3429,8 @@
 
   /**
    * Read-only ближайшие известные дивиденды и купоны по текущему составу.
-   * qtyHeld — qtyAtDate на now. Без fetch, LAST/CLOSE/avgPrice, НКД и даты зачисления.
+   * qtyHeld — qtyAtDate на now; для акций со сплитом в каталоге —
+   * getSplitAwareCurrentQty × сырой DPS. Без fetch, НКД и даты зачисления.
    */
   function buildUpcomingPortfolioPayouts(portfolio, options) {
     options = options || {};
@@ -3458,6 +3482,27 @@
       var kind = payoutsFeedKind(feed, ticker);
       var source = payoutsFeedSource(feed, kind);
       var faceValue = payoutsBondFaceValue(feed, ticker, options.bondMetaMap);
+      var useSplitQty = kind !== 'bond' && payoutsTickerHasSplitEvents(ticker, options);
+      if (useSplitQty) {
+        var splitNow = getSplitAwareCurrentQty(ticker, portfolio, {
+          splitEvents: options.splitEvents,
+          currentPrice: options.currentPrice,
+          currentDate: nowIso,
+          now: nowIso,
+          priceTolerancePct: options.priceTolerancePct,
+          instrumentType: options.instrumentType
+        });
+        (splitNow.warnings || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+        if (splitNow.confidence === 'unknown' && !(Number(splitNow.qty) > 0)) {
+          isPartial = true;
+          payoutsPushWarning(warnings, ticker + PAYOUT_SPLIT_CURRENT_QTY_UNKNOWN_SUFFIX);
+          continue;
+        }
+        if (splitNow.confidence !== 'high') isPartial = true;
+        currentQty = Number(splitNow.qty);
+        if (!isFinite(currentQty) || !(currentQty > 0)) continue;
+      }
+
       var events = kind === 'bond' ? (feed.coupons || []) : (feed.dividends || []);
       var e;
       for (e = 0; e < events.length; e++) {
