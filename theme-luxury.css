@@ -4197,6 +4197,49 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   white-space: normal;
 }
 
+#tab-portfolio .pf-split-pnl {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.35rem;
+  color: color-mix(in srgb, var(--text-muted) 58%, #5c4636 42%);
+  font-weight: 500;
+}
+
+#tab-portfolio .pf-split-pnl-label,
+#tab-portfolio .pf-split-pnl-dash,
+#tab-portfolio .pf-split-pnl-hint {
+  color: color-mix(in srgb, var(--text-muted) 70%, #5c4636 30%);
+  font-weight: 500;
+}
+
+#tab-portfolio .pf-split-pnl-hint {
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
+#tab-portfolio .pf-split-badge {
+  display: inline-block;
+  padding: 0.08rem 0.4rem;
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+  color: color-mix(in srgb, #7a5a42 84%, #5c4636 16%);
+  background: color-mix(in srgb, var(--bronze-soft) 34%, #fffaf6 66%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 20%, #eadccb 80%);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+#tab-portfolio .pf-ticker-detail-kpi .val.pf-split-pnl {
+  font-weight: 500;
+}
+
+#tab-portfolio .portfolio-card .pf-split-pnl {
+  justify-content: flex-end;
+}
+
 #tab-portfolio .pf-asof-foot {
   margin: 0.75rem 0 0;
   font-size: 0.74rem;

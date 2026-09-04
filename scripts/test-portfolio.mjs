@@ -309,6 +309,7 @@ function loadPortfolioCalcHelpers() {
       isUsPosition: (pos) => !!(pos && (pos.market === 'US' || isUsTicker(pos.ticker))),
       isUsTicker,
       formatMoneyValue: (v) => (v == null ? '—' : String(v)),
+      marketBadgeLabel: (market) => (market === 'US' ? 'US' : 'РФ'),
       getMarketsEnabled: () => ({ ru: true, us: true })
     },
     document: { getElementById: () => null },
@@ -370,6 +371,12 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;' +
       '\nthis.__splitWarnMany = buildPortfolioSplitWarningsForTickersHtml;' +
       '\nthis.__splitWarnText = formatSingleSplitWarningText;' +
+      '\nthis.__splitAffected = isPortfolioTickerSplitAffected;' +
+      '\nthis.__splitPnlHtml = buildSplitAffectedPnlHtml;' +
+      '\nthis.__lotRow = buildPortfolioLotRow;' +
+      '\nthis.__sectionRows = buildPortfolioSectionRows;' +
+      '\nthis.__mobileCard = buildPortfolioMobileCardHtml;' +
+      '\nthis.__lotRet = getLotReturnPct;' +
       '\nthis.__partialWarnText = formatPayoutPartialWarningText;' +
       '\nthis.__partialTickers = collectPayoutPartialTickersFromWarnings;' +
       '\nthis.__twpBlock = buildTickerReturnWithPayoutsBlockHtml;' +
@@ -416,6 +423,12 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioSplitWarningHtml: sandbox.__splitWarnHtml,
     buildPortfolioSplitWarningsForTickersHtml: sandbox.__splitWarnMany,
     formatSingleSplitWarningText: sandbox.__splitWarnText,
+    isPortfolioTickerSplitAffected: sandbox.__splitAffected,
+    buildSplitAffectedPnlHtml: sandbox.__splitPnlHtml,
+    buildPortfolioLotRow: sandbox.__lotRow,
+    buildPortfolioSectionRows: sandbox.__sectionRows,
+    buildPortfolioMobileCardHtml: sandbox.__mobileCard,
+    getLotReturnPct: sandbox.__lotRet,
     formatPayoutPartialWarningText: sandbox.__partialWarnText,
     collectPayoutPartialTickersFromWarnings: sandbox.__partialTickers,
     buildTickerReturnWithPayoutsBlockHtml: sandbox.__twpBlock,
@@ -3207,6 +3220,118 @@ function loadPriceAtDateHelpers() {
     'нет данных по купонам для OFZ_26238'
   ]);
   assert(parsed.join(',') === 'SBER,GAZP,OFZ_26238', 'partial warn parse: unique tickers from warnings');
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const title = 'По бумаге было дробление акций. До проверки количества и средней цены результат может быть некорректным.';
+
+  function lotGroup(ticker, lots) {
+    return { ticker, lots, weightedAvg: lots[0] && lots[0].avgPrice };
+  }
+
+  function assertSplitDisplay(ticker, pf) {
+    const prefix = ticker;
+    const snap = JSON.stringify(pf);
+    assert(calc.isPortfolioTickerSplitAffected(ticker, pf, events) === true, prefix + ': split-affected');
+    const lots = pf.positions.filter((p) => String(p.ticker).toUpperCase() === ticker);
+    const rowHtml = calc.buildPortfolioLotRow(lots[0], lotGroup(ticker, lots), {
+      splitAffected: true,
+      lotIndex: 0,
+      rowSpan: lots.length
+    });
+    assert(/требует проверки/.test(rowHtml), prefix + ': row shows требует проверки');
+    assert(/pf-split-badge/.test(rowHtml) && />сплит</.test(rowHtml), prefix + ': row split badge');
+    assert(rowHtml.indexOf(title) !== -1, prefix + ': row title');
+    assert(!/-99\.41%/.test(rowHtml) && !/-99,41%/.test(rowHtml), prefix + ': row hides −99.41%');
+    assert(!/class="pnl-neg"/.test(rowHtml) && !/class="pnl-pos"/.test(rowHtml), prefix + ': row not ordinary pnl color');
+    const sectionHtml = calc.buildPortfolioSectionRows(pf.positions, 'stocks', {}, pf.sales);
+    assert(/требует проверки/.test(sectionHtml), prefix + ': section row split state');
+    assert(!/-99\.41%/.test(sectionHtml), prefix + ': section hides −99.41%');
+    const detail = calc.buildPortfolioTickerDetailHtml(ticker, pf.positions, pf.sales, null, false);
+    assert(/Результат по текущим ценам/.test(detail), prefix + ': detail kpi label');
+    assert(/требует проверки/.test(detail), prefix + ': detail требует проверки');
+    assert(/pf-split-badge/.test(detail), prefix + ': detail split badge');
+    const kpiChunk = detail.split('Результат по текущим ценам')[1].split('Зафиксированный результат')[0];
+    assert(!/pnl-neg/.test(kpiChunk) && !/pnl-pos/.test(kpiChunk), prefix + ': detail kpi not ordinary pnl');
+    assert(!/-99/.test(kpiChunk), prefix + ': detail kpi not −99');
+    const card = calc.buildPortfolioMobileCardHtml(lots[0], null, 1, pf.positions, pf.sales);
+    assert(/требует проверки/.test(card) && /pf-split-badge/.test(card), prefix + ': mobile card split state');
+    assert(!/-99\.41%/.test(card), prefix + ': mobile card hides −99.41%');
+    assert(JSON.stringify(pf) === snap, prefix + ': portfolio JSON not mutated');
+    assert(lots[0].qty === pf.positions[0].qty && lots[0].avgPrice === pf.positions[0].avgPrice, prefix + ': qty/avgPrice untouched');
+  }
+
+  const gmknPf = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 1, avgPrice: 16000, buyDate: '2024-01-10', currentPrice: 95 },
+      { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 100, buyDate: '2024-06-01', currentPrice: 95 }
+    ],
+    sales: []
+  };
+  const gmknRet = calc.getLotReturnPct(gmknPf.positions[0]);
+  assert(gmknRet != null && Math.abs(gmknRet + 99.40625) < 1e-6, 'GMKN underlying lot return still ≈ −99.41%');
+  assertSplitDisplay('GMKN', gmknPf);
+  const gmknWarn = calc.buildPortfolioSplitWarningHtml('GMKN', gmknPf, events);
+  assert(/GMKN/.test(gmknWarn) && /1:100/.test(gmknWarn) && /08\.04\.2024/.test(gmknWarn), 'GMKN warning: ticker, 1:100, 08.04.2024');
+  const gmknDetail = calc.buildPortfolioTickerDetailHtml('GMKN', gmknPf.positions, gmknPf.sales, null, false);
+  assert(/GMKN/.test(gmknDetail) && /1:100/.test(gmknDetail) && /08\.04\.2024/.test(gmknDetail), 'GMKN detail warning: ticker, 1:100, 08.04.2024');
+
+  const tPf = {
+    positions: [
+      { ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3200, buyDate: '2025-06-01', currentPrice: 255 }
+    ],
+    sales: []
+  };
+  assertSplitDisplay('T', tPf);
+  const tWarn = calc.buildPortfolioSplitWarningHtml('T', tPf, events);
+  assert(/T:/.test(tWarn) && /1:10/.test(tWarn) && /17\.04\.2026/.test(tWarn), 'T warning: ticker, 1:10, 17.04.2026');
+
+  const plzlPf = {
+    positions: [
+      { ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 15000, buyDate: '2024-06-01', currentPrice: 1800 }
+    ],
+    sales: []
+  };
+  assertSplitDisplay('PLZL', plzlPf);
+  const plzlWarn = calc.buildPortfolioSplitWarningHtml('PLZL', plzlPf, events);
+  assert(/PLZL/.test(plzlWarn) && /1:10/.test(plzlWarn) && /27\.03\.2025/.test(plzlWarn), 'PLZL warning: ticker, 1:10, 27.03.2025');
+
+  const sberPf = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 200 }
+    ],
+    sales: []
+  };
+  assert(calc.isPortfolioTickerSplitAffected('SBER', sberPf, events) === false, 'SBER: not split-affected');
+  const sberRow = calc.buildPortfolioLotRow(sberPf.positions[0], lotGroup('SBER', sberPf.positions), {
+    lotIndex: 0
+  });
+  assert(/pnl-neg/.test(sberRow), 'SBER: ordinary loss color');
+  assert(/-20\.00%/.test(sberRow), 'SBER: ordinary percent shown');
+  assert(!/требует проверки/.test(sberRow) && !/pf-split-badge/.test(sberRow), 'SBER: no split badge');
+  const sberDetail = calc.buildPortfolioTickerDetailHtml('SBER', sberPf.positions, sberPf.sales, null, false);
+  const sberKpi = sberDetail.split('Результат по текущим ценам')[1].split('Зафиксированный результат')[0];
+  assert(/pnl-neg/.test(sberKpi), 'SBER detail: ordinary pnl color');
+  assert(!/требует проверки/.test(sberKpi), 'SBER detail: no split state');
+
+  const tAfterPf = {
+    positions: [
+      { ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 320, buyDate: '2026-05-01', currentPrice: 255 }
+    ],
+    sales: []
+  };
+  assert(calc.isPortfolioTickerSplitAffected('T', tAfterPf, events) === false, 'T after split: not split-affected');
+  const tAfterRow = calc.buildPortfolioLotRow(tAfterPf.positions[0], lotGroup('T', tAfterPf.positions), {
+    lotIndex: 0
+  });
+  assert(/pnl-neg/.test(tAfterRow), 'T after split: ordinary loss color');
+  assert(!/требует проверки/.test(tAfterRow), 'T after split: percent shown as usual');
+  const tAfterSection = calc.buildPortfolioSectionRows(tAfterPf.positions, 'stocks', {}, tAfterPf.sales);
+  assert(!/требует проверки/.test(tAfterSection), 'T after split: section uses ordinary PnL');
+  assert(/%/.test(tAfterSection), 'T after split: section still has percent');
 }
 
 {

@@ -284,6 +284,8 @@
   var PF_SPLIT_WARN_TEXT = 'По бумаге было дробление акций. Проверьте, что количество и средняя цена в портфеле уже приведены к новой шкале. Стоимость позиции при сплите сама по себе не должна падать пропорционально цене одной акции.';
   var PF_SPLIT_WARN_MULTI_TAIL = 'Проверьте количество и среднюю цену.';
   var PF_SPLIT_WARN_CLASS = 'pf-split-warn pf-wide-warning';
+  var PF_SPLIT_PNL_TITLE = 'По бумаге было дробление акций. До проверки количества и средней цены результат может быть некорректным.';
+  var PF_SPLIT_PNL_LABEL = 'требует проверки';
   var _pfSplitEventsTried = false;
 
   function pfSplitIsoDate(raw) {
@@ -348,6 +350,27 @@
       if (acc.iso && acc.iso < ev.effectiveDate) return ev;
     }
     return null;
+  }
+
+  function isPortfolioTickerSplitAffected(ticker, portfolio, events) {
+    return !!portfolioTickerNeedsSplitWarning(ticker, portfolio, events);
+  }
+
+  function buildSplitAffectedPnlHtml(variant) {
+    var titleAttr = ' title="' + escapeHtml(PF_SPLIT_PNL_TITLE) + '"';
+    var badge = '<span class="pf-split-badge">сплит</span>';
+    if (variant === 'detail') {
+      return '<span class="val pf-split-pnl"' + titleAttr + '>' +
+        '<span class="pf-split-pnl-dash muted">—</span> ' + badge +
+        '</span><span class="pf-split-pnl-hint muted">' + escapeHtml(PF_SPLIT_PNL_LABEL) + '</span>';
+    }
+    if (variant === 'paper') {
+      return escapeHtml(PF_SPLIT_PNL_LABEL);
+    }
+    return '<span class="pf-split-pnl"' + titleAttr + '>' +
+      '<span class="pf-split-pnl-label muted">' + escapeHtml(PF_SPLIT_PNL_LABEL) + '</span> ' +
+      badge +
+      '</span>';
   }
 
   function formatSplitRatioLabel(ratio) {
@@ -557,6 +580,10 @@
     if (day != null && isFinite(Number(day))) {
       parts.push('За сутки: ' + formatSignedPct(Number(day)));
     }
+    if (isPaperPositionSplitAffected(pos)) {
+      parts.push(PF_SPLIT_PNL_TITLE);
+      return parts.join(' · ');
+    }
     var ret = getPositionReturnPct(pos);
     if (ret != null) parts.push('В портфеле (к цене покупки): ' + formatSignedPct(ret));
     return parts.join(' · ');
@@ -564,12 +591,18 @@
 
 
 
+  function isPaperPositionSplitAffected(pos) {
+    if (typeof getPortfolio !== 'function') return false;
+    return isPortfolioTickerSplitAffected(pos && pos.ticker, getPortfolio());
+  }
+
   function buildPaperPnlHtml(pos) {
     var day = pos.dayChangePct;
     var port = getPositionReturnPct(pos);
     var hasDay = day != null && isFinite(Number(day));
     var hasPort = port != null && isFinite(port);
     var hasCur = isFinite(Number(pos.currentPrice));
+    var splitAffected = isPaperPositionSplitAffected(pos);
     var rows = [];
 
     if (hasDay) {
@@ -583,7 +616,13 @@
       rows.push({ lbl: 'цена', text: formatPositionPrice(pos), cls: '' });
     }
 
-    if (hasPort) {
+    if (splitAffected) {
+      rows.push({
+        lbl: 'портфель',
+        text: buildSplitAffectedPnlHtml('paper'),
+        cls: 'muted'
+      });
+    } else if (hasPort) {
       rows.push({
         lbl: 'портфель',
         text: formatSignedPct(port, 2),
@@ -5630,13 +5669,16 @@
     var cur = formatPositionPrice(p, { bond: isBond });
     var lotRet = isBond ? null : getLotReturnPct(p);
     var pnlCls = lotRet != null && lotRet >= 0 ? 'pnl-pos' : 'pnl-neg';
+    var splitAffected = !isBond && !!opts.splitAffected;
     var mBadge = typeof Markets !== 'undefined'
       ? ' <span class="market-badge market-badge--' + (p.market === 'US' ? 'us' : 'ru') + '">' + escapeHtml(Markets.marketBadgeLabel(p.market || 'RU')) + '</span>'
       : '';
     var editActive = state.pfEditLotId === p.lotId ? ' pf-row-editing' : '';
     var returnCell = isBond
       ? formatBondReturnCell(p, bondMeta)
-      : '<span class="' + pnlCls + '">' + escapeHtml(formatSignedPct(lotRet, 2)) + '</span>';
+      : (splitAffected
+        ? buildSplitAffectedPnlHtml('row')
+        : '<span class="' + pnlCls + '">' + escapeHtml(formatSignedPct(lotRet, 2)) + '</span>');
     var bondCols = '<td class="pf-bond-mat">' + (isBond ? formatBondMaturityCell(bondMeta) : '<span class="muted">—</span>') + '</td>';
     var tickerCell = lotIndex === 0
       ? '<td class="ticker" rowspan="' + (opts.rowSpan || 1) + '">' + escapeHtml(group.ticker) + mBadge + '</td>'
@@ -6076,6 +6118,8 @@
     var stack = opts.layout === 'stack';
     var hist = summarizeTickerHistory(ticker, positions, sales, bondMeta);
     var timeline = buildTickerOperationTimeline(ticker, positions, sales, bondMeta);
+    var pfSlice = { positions: positions, sales: sales };
+    var splitAffected = !isBond && isPortfolioTickerSplitAffected(ticker, pfSlice);
     var uCls = hist.unrealizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
     var rCls = hist.realizedPnlRub >= 0 ? 'pnl-pos' : 'pnl-neg';
     var html = '<div class="pf-ticker-detail' + (stack ? ' pf-ticker-detail--stack' : '') + '">' +
@@ -6083,7 +6127,7 @@
       (isBond
         ? '<p class="pf-ticker-detail-note muted">Цены ОФЗ указаны в % от номинала, суммы — в ₽.</p>'
         : '') +
-      buildPortfolioSplitWarningHtml(ticker, { positions: positions, sales: sales }) +
+      buildPortfolioSplitWarningHtml(ticker, pfSlice) +
       '<div class="pf-ticker-detail-summary">' +
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Остаток</span><span class="val">' +
           escapeHtml(String(hist.openQty)) + ' шт.</span></div>' +
@@ -6096,7 +6140,10 @@
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Вложено в остаток</span><span class="val">' +
           escapeHtml(formatPortfolioRubAmount(hist.openCostRub)) + '</span></div>' +
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Результат по текущим ценам</span>' +
-          '<span class="val ' + uCls + '">' + escapeHtml(formatSignedRubAmount(hist.unrealizedPnlRub)) + '</span></div>' +
+          (splitAffected
+            ? buildSplitAffectedPnlHtml('detail')
+            : '<span class="val ' + uCls + '">' + escapeHtml(formatSignedRubAmount(hist.unrealizedPnlRub)) + '</span>') +
+          '</div>' +
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Зафиксированный результат</span>' +
           '<span class="val ' + rCls + '">' + escapeHtml(formatSignedRubAmount(hist.realizedPnlRub)) + '</span></div>' +
       '</div>';
@@ -6268,6 +6315,10 @@
     var weight = formatPortfolioWeightPct(marketVal, sleeveTotal);
     var pnl = isBond ? null : getPositionReturnPct(agg);
     var cls = pnl != null && pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+    var splitAffected = !isBond && isPortfolioTickerSplitAffected(ticker, {
+      positions: allPositions,
+      sales: allSales
+    });
     var avg = formatPositionAvg(agg, { bond: isBond });
     var cur = formatPositionPrice(agg, { bond: isBond });
     var mBadge = typeof Markets !== 'undefined'
@@ -6278,7 +6329,9 @@
       ? '<span>Погашение</span><span>' + (bondMeta && bondMeta.matDate
         ? escapeHtml(typeof formatOfzDate === 'function' ? formatOfzDate(bondMeta.matDate) : bondMeta.matDate)
         : '—') + '</span>'
-      : '<span>Доходность</span><span class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>';
+      : (splitAffected
+        ? '<span>Доходность</span>' + buildSplitAffectedPnlHtml('row')
+        : '<span>Доходность</span><span class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>');
     var open = !!(state.pfHistoryTickers && state.pfHistoryTickers[ticker]);
     var sellable = getPortfolioSellableQty(ticker);
     var actions = '<div class="portfolio-card-actions pf-row-actions">' +
@@ -6348,6 +6401,10 @@
       var hasDetail = !!(state.pfHistoryTickers && state.pfHistoryTickers[group.ticker]);
       var hasToggle = hiddenCount > 0 || (collapsible && expanded);
       var endKind = hasDetail ? 'detail' : (hasToggle ? 'toggle' : 'lot');
+      var splitAffected = !isBond && isPortfolioTickerSplitAffected(group.ticker, {
+        positions: positions,
+        sales: sales
+      });
 
       visibleLots.forEach(function (p, idx) {
         var isPrimary = idx === 0;
@@ -6360,6 +6417,7 @@
           rowSpan: visibleRowSpan,
           incomeRowSpan: visibleRowSpan,
           showIncome: isPrimary,
+          splitAffected: splitAffected,
           groupClass: groupBase +
             (isPrimary ? ' pf-ticker-group-start pf-lot-primary' : ' pf-lot-nested') +
             (isEnd ? ' pf-ticker-group-end' : '')
