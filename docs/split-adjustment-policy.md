@@ -60,11 +60,75 @@
 - Сплиты акций к ОФЗ не применять.
 - Купоны и НКД не корректировать.
 
-## 8. Новые события
+## 8. Новые сплиты
+
+Когда на рынке появляется новый сплит:
 
 1. Подтвердить факт по MOEX / раскрытию эмитента.
-2. Добавить строку в `data/split-events.json` (ticker, aliases, isin, effectiveDate, ratio, type, note, source; при ссылке — `sourceUrl`).
-3. Не угадывать сплит только по дневному −90%.
-4. Подозрительный скачок без записи в справочник можно пометить как warning-кандидат, но не считать сплитом.
+2. Добавить строку в `data/split-events.json`: `ticker`, `aliases`, `isin`, `effectiveDate`, `ratio`, `type`, `note`, `source`; при ссылке — `sourceUrl`.
+3. После записи существующие split-aware helper’ы должны начать работать **без дополнительных правок под конкретную бумагу**.
+4. Если для новой бумаги нужна отдельная правка в коде (`if ticker === '…'`, своя формула, отдельная ветка UI) — это **архитектурный запах**. Сначала расширяют общий helper, не тикер.
+
+Не угадывать сплит только по дневному −90%. Подозрительный скачок без записи в справочник можно пометить как warning-кандидат, но не считать сплитом.
 
 Поля справочника расширяемые. Не дублировать одно и то же событие. Сомнительные даты не добавлять.
+
+T, GMKN, PLZL, TRNFP и остальные строки текущего справочника — **примеры уже внесённых событий**, не список «особых» тикеров в коде.
+
+## 9. Generic contract для будущих split events
+
+Любое событие в `data/split-events.json` — источник истины для split-aware расчётов.
+
+Код **не** должен проверять конкретные тикеры вроде T, GMKN, PLZL или TRNFP. Он должен:
+
+- находить событие по `ticker` / `aliases` (`getSplitEventsForTicker`, `splitEventCoversTicker`);
+- проверять, попадает ли `effectiveDate` в расчётный период;
+- применять `ratio` через общие helper’ы (`getSplitAdjustmentFactor`, `adjustPerShareValueForSplits`, `restoreRawPriceFromAdjustedForSplits`, `diagnoseLotShareScale`, `getSplitAwareQtyHeldOnDate` и следующие слои);
+- если события нет в справочнике — **не угадывать** сплит только по резкому изменению цены.
+
+Один и тот же контракт действует на текущие события справочника и на любые будущие строки. Этап 2 и дальше используют только этот generic-механизм, не список бумаг.
+
+## 10. Запрещено (хардкод тикеров)
+
+Запрещено:
+
+- писать условия вида `if ticker === 'T'`;
+- писать условия вида `if ticker === 'GMKN'` (то же для PLZL, TRNFP и любого другого эмитента);
+- добавлять индивидуальную математику под конкретный тикер;
+- считать −90% или −99% доказательством сплита без записи в `data/split-events.json`.
+
+Тесты могут **называть** T / GMKN / PLZL / TRNFP как фикстуры. Продуктовый код ветвится только по полям события (`effectiveDate`, `ratio`, `type`, aliases).
+
+## 11. Тестовый контракт
+
+Каждый новый split-aware helper сначала проверяется:
+
+1. на реальных событиях справочника (T / GMKN / PLZL / TRNFP как примеры);
+2. на **synthetic future split event**, которого нет в production `data/split-events.json`.
+
+Пример synthetic-события только внутри тестов:
+
+- ticker: `FAKE_SPLIT`
+- aliases: например `FAKE`
+- `effectiveDate`: `2030-01-15`
+- `ratio`: `5`
+
+Проверять, что helper’ы работают не только на известных бумагах, а на любой новой записи справочника:
+
+- `getSplitEventsForTicker` находит synthetic ticker (и alias);
+- `getSplitAdjustmentFactor` даёт factor `5` на окне через `effectiveDate`;
+- `restoreRawPriceFromAdjustedForSplits` умножает на `5` до сплита;
+- `findSplitEventInPeriod` находит событие в периоде, пересекающем `2030-01-15`;
+- `getSplitAwareQtyHeldOnDate` приводит qty historical-лота через `ratio` 5 (и не делает двойную корректировку для current-лота).
+
+Synthetic event **не** добавлять в production `data/split-events.json`.
+
+## 12. Roadmap split-aware слоя
+
+Этап 2 и дальше используют generic split-events mechanism из §9.
+
+Формулировка для внедрения: каждый новый helper сначала тестируется на реальных событиях T / GMKN / PLZL / TRNFP **и** на synthetic future split event, чтобы исключить хардкод.
+
+- JSON портфеля, `qty` / `avgPrice`, `storage.js`, backup / import / export не мутировать.
+- Автокоррекции лотов нет.
+- Выплаты и UI подключаются только после generic helper’ов и тестов, не отдельной веткой «для GMKN».

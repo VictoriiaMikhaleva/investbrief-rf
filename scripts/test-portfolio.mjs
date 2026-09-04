@@ -3551,6 +3551,47 @@ function loadPriceAtDateHelpers() {
   };
   r = held('SU26238RMFS9', ofzPf, '2026-09-04');
   assert(r.qty === 10 && r.confidence === 'high' && r.appliedSplits.length === 0, 'qtyHeld: OFZ no split logic');
+
+  const prodCatalogText = fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8');
+  assert(!/FAKE_SPLIT/.test(prodCatalogText), 'qtyHeld generic: production catalog has no FAKE_SPLIT');
+  const fakeRaw = {
+    ticker: 'FAKE_SPLIT',
+    aliases: ['FAKE'],
+    isin: 'TEST000FAKE0',
+    effectiveDate: '2030-01-15',
+    ratio: 5,
+    type: 'split',
+    note: 'Synthetic future split for generic contract tests',
+    source: 'test'
+  };
+  const fakeEvents = calc.sandbox.parseSplitEventsCatalog({
+    version: 1,
+    events: (JSON.parse(prodCatalogText).events || []).concat([fakeRaw])
+  });
+  const fakeOpts = { splitEvents: fakeEvents, currentDate: '2031-01-01' };
+  const fakeHistPf = {
+    positions: [{
+      ticker: 'FAKE_SPLIT', lotId: 'F1', qty: 2, avgPrice: 500, buyDate: '2029-06-01', currentPrice: 90
+    }],
+    sales: []
+  };
+  const fakeHistSnap = JSON.stringify(fakeHistPf);
+  r = calc.getSplitAwareQtyHeldOnDate('FAKE_SPLIT', fakeHistPf, '2031-01-01', fakeOpts);
+  assert(r.qty === 10, 'qtyHeld generic: FAKE_SPLIT historical 2×5 → 10');
+  assert(r.appliedSplits.some((ev) => ev.effectiveDate === '2030-01-15' && Number(ev.ratio) === 5), 'qtyHeld generic: applied ratio 5');
+  assert(JSON.stringify(fakeHistPf) === fakeHistSnap, 'qtyHeld generic: JSON not mutated');
+  r = calc.getSplitAwareQtyHeldOnDate('FAKE_SPLIT', fakeHistPf, '2029-12-01', fakeOpts);
+  assert(r.qty === 2, 'qtyHeld generic: before split → 2');
+  const fakeCurrPf = {
+    positions: [{
+      ticker: 'FAKE_SPLIT', lotId: 'F2', qty: 10, avgPrice: 95, buyDate: '2029-06-01', currentPrice: 90
+    }],
+    sales: []
+  };
+  r = calc.getSplitAwareQtyHeldOnDate('FAKE_SPLIT', fakeCurrPf, '2031-01-01', fakeOpts);
+  assert(r.qty === 10, 'qtyHeld generic: current lot not 50');
+  const fakeScale = calc.diagnoseLotShareScale(fakeHistPf.positions[0], 'FAKE_SPLIT', fakeOpts);
+  assert(fakeScale.scale === 'historical', 'lot scale generic: FAKE_SPLIT historical');
 }
 
 {

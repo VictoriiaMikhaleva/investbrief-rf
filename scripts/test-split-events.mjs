@@ -355,6 +355,41 @@ assert(events.filter((e) => e.ticker === 'T').length === 1, 'T not duplicated');
   assert(Array.isArray(empty) && empty.length === 0, 'bad catalog → []');
 }
 
+{
+  const prodText = fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8');
+  assert(!/FAKE_SPLIT/.test(prodText), 'production split-events.json has no FAKE_SPLIT');
+  const fakeRaw = {
+    ticker: 'FAKE_SPLIT',
+    aliases: ['FAKE'],
+    isin: 'TEST000FAKE0',
+    effectiveDate: '2030-01-15',
+    ratio: 5,
+    type: 'split',
+    note: 'Synthetic future split for generic contract tests',
+    source: 'test'
+  };
+  const withFake = SplitEvents.parseSplitEventsCatalog({
+    version: 1,
+    events: (catalog.events || []).concat([fakeRaw])
+  });
+  const fakeList = SplitEvents.getSplitEventsForTicker('FAKE_SPLIT', withFake);
+  const fakeAlias = SplitEvents.getSplitEventsForTicker('FAKE', withFake);
+  assert(fakeList.length === 1 && fakeList[0].ticker === 'FAKE_SPLIT', 'generic: getSplitEventsForTicker FAKE_SPLIT');
+  assert(fakeAlias.length === 1 && fakeAlias[0].ticker === 'FAKE_SPLIT', 'generic: alias FAKE finds FAKE_SPLIT');
+  assert(SplitEvents.getSplitAdjustmentFactor('FAKE_SPLIT', '2029-12-01', '2030-02-01', withFake) === 5, 'generic: factor 5');
+  assert(SplitEvents.getSplitAdjustmentFactor('FAKE', '2029-12-01', '2030-02-01', withFake) === 5, 'generic: alias factor 5');
+  assert(SplitEvents.getSplitAdjustmentFactor('FAKE_SPLIT', '2030-01-16', '2030-06-01', withFake) === 1, 'generic: after split factor 1');
+  const rawPx = SplitEvents.restoreRawPriceFromAdjustedForSplits('FAKE_SPLIT', 100, '2029-06-01', '2030-06-01', withFake);
+  assert(rawPx === 500, 'generic: restoreRaw 100 → 500');
+  const afterPx = SplitEvents.restoreRawPriceFromAdjustedForSplits('FAKE_SPLIT', 100, '2030-01-16', '2030-06-01', withFake);
+  assert(afterPx === 100, 'generic: restoreRaw after split unchanged');
+  const inPeriod = SplitEvents.findSplitEventInPeriod('FAKE_SPLIT', '2029-01-01', '2030-06-01', withFake);
+  assert(inPeriod && inPeriod.effectiveDate === '2030-01-15' && inPeriod.ratio === 5, 'generic: findSplitEventInPeriod');
+  assert(SplitEvents.findSplitEventInPeriod('FAKE', '2029-01-01', '2030-06-01', withFake).ticker === 'FAKE_SPLIT', 'generic: period via alias');
+  assert(SplitEvents.findSplitEventInPeriod('FAKE_SPLIT', '2030-01-16', '2031-01-01', withFake) == null, 'generic: period after split empty');
+  assert(SplitEvents.getSplitEventsForTicker('FAKE_SPLIT', events).length === 0, 'generic: production catalog still without FAKE_SPLIT');
+}
+
 const loadOk = await SplitEvents.loadSplitEvents({ catalog: { events: [] } });
 assert(Array.isArray(loadOk) && loadOk.length === 0, 'loadSplitEvents catalog []');
 
