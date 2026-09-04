@@ -3641,6 +3641,8 @@ function loadPriceAtDateHelpers() {
   assert(/pnl-neg/.test(sberRow), 'SBER: ordinary loss color');
   assert(/-20\.00%/.test(sberRow), 'SBER: ordinary percent shown');
   assert(!/требует проверки/.test(sberRow) && !/pf-split-badge/.test(sberRow), 'SBER: no split badge');
+  assert(!/≈\d+ шт\. с учётом сплита/.test(sberRow), 'SBER: no split qty hint');
+  assert(!/итого ≈/.test(sberRow), 'SBER: no group итого');
   const sberDetail = calc.buildPortfolioTickerDetailHtml('SBER', sberPf.positions, sberPf.sales, null, false);
   const sberKpi = sberDetail.split('Результат по текущим ценам')[1].split('Зафиксированный результат')[0];
   assert(/pnl-neg/.test(sberKpi), 'SBER detail: ordinary pnl color');
@@ -3661,6 +3663,8 @@ function loadPriceAtDateHelpers() {
   const tAfterSection = calc.buildPortfolioSectionRows(tAfterPf.positions, 'stocks', {}, tAfterPf.sales);
   assert(!/требует проверки/.test(tAfterSection), 'T after split: section uses ordinary PnL');
   assert(/%/.test(tAfterSection), 'T after split: section still has percent');
+  assert(!/≈\d+ шт\. с учётом сплита/.test(tAfterRow), 'T after split: no lot qty hint');
+  assert(!/итого ≈/.test(tAfterSection), 'T after split: no group итого');
   const tAfterDetail = calc.buildPortfolioTickerDetailHtml('T', tAfterPf.positions, tAfterPf.sales, null, false);
   const tAfterRemain = tAfterDetail.split('Остаток')[1].split('Куплено всего')[0];
   assert(/10 шт\./.test(tAfterRemain), 'T after split: remain still JSON qty');
@@ -3686,6 +3690,38 @@ function loadPriceAtDateHelpers() {
   assert(/20 шт\./.test(gmknBought), 'GMKN detail bought: 20 still shown');
   assert(/в истории операций/.test(gmknBought), 'GMKN detail bought: history hint');
   assert(JSON.stringify(gmknMixedPf) === gmknMixedSnap, 'GMKN detail qty: JSON not mutated');
+
+  const gmknHistRow = calc.buildPortfolioLotRow(gmknMixedPf.positions[0], lotGroup('GMKN', gmknMixedPf.positions), {
+    splitAffected: true,
+    lotIndex: 0,
+    rowSpan: 2,
+    positions: gmknMixedPf.positions,
+    sales: gmknMixedPf.sales
+  });
+  assert(/>10</.test(gmknHistRow) || /pf-qty">10/.test(gmknHistRow), 'GMKN row qty: JSON 10 kept');
+  assert(/≈1000 шт\. с учётом сплита/.test(gmknHistRow), 'GMKN hist lot: ≈1000 шт. hint');
+  assert(/итого ≈1010 шт\. с учётом сплита/.test(gmknHistRow), 'GMKN group: итого ≈1010');
+  const gmknCurrRow = calc.buildPortfolioLotRow(gmknMixedPf.positions[1], lotGroup('GMKN', gmknMixedPf.positions), {
+    splitAffected: true,
+    lotIndex: 1,
+    rowSpan: 2,
+    positions: gmknMixedPf.positions,
+    sales: gmknMixedPf.sales
+  });
+  assert(/≈1000 шт\. с учётом сплита/.test(gmknCurrRow) === false, 'GMKN current lot: no extra ≈10 hint');
+  assert(/итого ≈1010/.test(gmknCurrRow) === false, 'GMKN nested lot: no group итого');
+  const gmknSection = calc.buildPortfolioSectionRows(gmknMixedPf.positions, 'stocks', {}, gmknMixedPf.sales);
+  assert(/≈1000 шт\. с учётом сплита/.test(gmknSection), 'GMKN section: hist lot hint');
+  assert(/итого ≈1010 шт\. с учётом сплита/.test(gmknSection), 'GMKN section: group total hint');
+
+  const tHistRow = calc.buildPortfolioLotRow(tPf.positions[0], lotGroup('T', tPf.positions), {
+    splitAffected: true,
+    lotIndex: 0,
+    positions: tPf.positions,
+    sales: tPf.sales
+  });
+  assert(/≈10 шт\. с учётом сплита/.test(tHistRow), 'T hist lot: ≈10 шт. hint');
+  assert(!/итого ≈/.test(tHistRow), 'T single lot: no group итого');
 
   const tHistDetail = calc.buildPortfolioTickerDetailHtml('T', tPf.positions, tPf.sales, null, false);
   const tRemain = tHistDetail.split('Остаток')[1].split('Куплено всего')[0];
@@ -3714,6 +3750,11 @@ function loadPriceAtDateHelpers() {
   assert(/10 шт\./.test(ofzRemain), 'OFZ detail qty: unchanged 10');
   assert(!/по операциям/.test(ofzRemain), 'OFZ detail qty: no ops hint');
   assert(!/с учётом сплита/.test(ofzRemain), 'OFZ detail qty: no split badge');
+  const ofzSection = calc.buildPortfolioSectionRows(ofzPf.positions, 'bonds', {
+    OFZ_26238: { faceValue: 1000 }
+  }, ofzPf.sales);
+  assert(!/≈\d+ шт\. с учётом сплита/.test(ofzSection), 'OFZ section: no split qty hint');
+  assert(!/итого ≈/.test(ofzSection), 'OFZ section: no group итого');
 }
 
 {

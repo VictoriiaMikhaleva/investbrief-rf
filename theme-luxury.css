@@ -3227,6 +3227,25 @@ table.portfolio-table tr.pf-lot-primary > td.ticker .market-badge {
   vertical-align: middle;
 }
 
+table.portfolio-table tr.pf-lot-primary > td.ticker.pf-ticker-with-split-qty {
+  vertical-align: top;
+}
+
+.pf-split-qty-hint {
+  display: block;
+  margin-top: 0.14rem;
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+table.portfolio-table td.pf-qty .pf-split-qty-hint,
+table.portfolio-table td.ticker .pf-split-qty-hint {
+  max-width: 11.5rem;
+}
+
 /* ╨Т╨╗╨╛╨╢╨╡╨╜╨╜╤Л╨╡ ╨╗╨╛╤В╤Л тАФ ╤Б╨┐╨╛╨║╨╛╨╣╨╜╨╡╨╡, ╨▓╨╜╤Г╤В╤А╨╕ ╤В╨╛╨╣ ╨╢╨╡ ╨║╨░╤А╤В╨╛╤З╨║╨╕ */
 table.portfolio-table tr.pf-lot-nested > td {
   background: color-mix(in srgb, #fafbfa 86%, var(--accent-soft) 14%) !important;

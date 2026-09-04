@@ -291,6 +291,7 @@
   var PF_ASOF_SPLIT_BADGE_TITLE = 'Количество и стоимость на дату приведены к шкале цены этой даты. Количество и средняя цена в JSON не менялись.';
   var PF_SPLIT_QTY_OPS_HINT_PREFIX = 'по операциям: ';
   var PF_SPLIT_BOUGHT_OPS_HINT = 'в истории операций';
+  var PF_SPLIT_QTY_HINT_SUFFIX = ' шт. с учётом сплита';
   var PF_LOT_SCALE_UNKNOWN_SUFFIX = ': не удалось определить шкалу лота после сплита.';
   var _pfSplitEventsTried = false;
 
@@ -6802,7 +6803,30 @@
     return groups;
   }
 
+  function splitAwareQtyDiffers(jsonQty, splitQty) {
+    var a = Number(jsonQty);
+    var b = Number(splitQty);
+    if (!isFinite(a) || !isFinite(b)) return false;
+    return Math.abs(a - b) > 1e-6;
+  }
 
+  function sumOpenLotsJsonQty(lots) {
+    var sum = 0;
+    (lots || []).forEach(function (lot) {
+      var q = Number(lot && lot.qty);
+      if (isFinite(q) && q > 0) sum += q;
+    });
+    return sum;
+  }
+
+  function buildSplitAwareApproxQtyHintHtml(splitQty, kind) {
+    if (splitQty == null || !isFinite(Number(splitQty))) return '';
+    var n = asOfRoundQty(Number(splitQty));
+    var text = kind === 'total'
+      ? ('итого ≈' + String(n) + PF_SPLIT_QTY_HINT_SUFFIX)
+      : ('≈' + String(n) + PF_SPLIT_QTY_HINT_SUFFIX);
+    return '<span class="pf-split-qty-hint muted">' + escapeHtml(text) + '</span>';
+  }
 
   function buildPortfolioLotRow(p, group, opts) {
     opts = opts || {};
@@ -6851,9 +6875,25 @@
           : buildSplitAffectedPnlHtml('row'))
         : '<span class="' + pnlCls + '">' + escapeHtml(formatSignedPct(lotRet, 2)) + '</span>');
     var bondCols = '<td class="pf-bond-mat">' + (isBond ? formatBondMaturityCell(bondMeta) : '<span class="muted">—</span>') + '</td>';
+    var tickerHint = '';
+    if (lotIndex === 0 && splitAwareMetricsUsable(metrics) &&
+        group.lots && group.lots.length > 1 &&
+        splitAwareQtyDiffers(sumOpenLotsJsonQty(group.lots), metrics.currentQty)) {
+      tickerHint = buildSplitAwareApproxQtyHintHtml(metrics.currentQty, 'total');
+    }
     var tickerCell = lotIndex === 0
-      ? '<td class="ticker" rowspan="' + (opts.rowSpan || 1) + '">' + escapeHtml(group.ticker) + mBadge + '</td>'
+      ? '<td class="ticker' + (tickerHint ? ' pf-ticker-with-split-qty' : '') +
+        '" rowspan="' + (opts.rowSpan || 1) + '">' +
+        escapeHtml(group.ticker) + mBadge + tickerHint + '</td>'
       : '';
+    var qtyCell = escapeHtml(formatPortfolioQty(p));
+    if (splitAwareMetricsUsable(metrics)) {
+      var lotQtyM = splitAwareLotMetrics(metrics, p);
+      if (lotQtyM && lotQtyM.included !== false &&
+          splitAwareQtyDiffers(p.qty, lotQtyM.currentQty)) {
+        qtyCell += buildSplitAwareApproxQtyHintHtml(lotQtyM.currentQty);
+      }
+    }
     var incomeCell = showIncome
       ? '<td class="pf-div-cell" rowspan="' + (opts.incomeRowSpan || 1) + '" data-pf-div-cell="' + escapeHtml(group.ticker) + '"><span class="muted">…</span></td>'
       : '';
@@ -6869,7 +6909,7 @@
       '" data-chart-ticker="' + escapeHtml(group.ticker) + '" data-pf-lot="' + escapeHtml(p.lotId || '') + '">' +
       tickerCell +
       '<td class="pf-weight">' + escapeHtml(weight) + '</td>' +
-      '<td>' + escapeHtml(formatPortfolioQty(p)) + '</td>' +
+      '<td class="pf-qty">' + qtyCell + '</td>' +
       '<td class="pf-buy-price">' + escapeHtml(purchasePrice) + '</td>' +
       weightedAvgCell +
       '<td>' + escapeHtml(formatPortfolioDate(p)) + '</td>' +
