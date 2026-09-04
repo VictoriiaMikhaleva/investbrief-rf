@@ -549,6 +549,404 @@
     });
   }
 
+  var PF_QTY_HELD_BAD_DATE_WARNING = 'нет корректной даты';
+  var PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING = 'лот в текущей шкале нельзя безопасно привести к дате до сплита';
+  var PF_QTY_HELD_SALE_UNCLEAR_WARNING = 'шкала продажи неясна';
+  var PF_QTY_HELD_SALE_UNMATCHED_WARNING = 'продажу нельзя надёжно отнести к лоту';
+
+  function splitAwareEmptyQtyHeld(ticker, targetDate, extra) {
+    extra = extra || {};
+    return {
+      ticker: ticker || '',
+      targetDate: targetDate || '',
+      qty: extra.qty != null ? extra.qty : 0,
+      confidence: extra.confidence || 'unknown',
+      appliedSplits: extra.appliedSplits ? extra.appliedSplits.slice() : [],
+      lotDiagnostics: extra.lotDiagnostics ? extra.lotDiagnostics.slice() : [],
+      warnings: extra.warnings ? extra.warnings.slice() : []
+    };
+  }
+
+  function splitAwareCopyEvent(ev) {
+    if (!ev) return null;
+    return {
+      ticker: ev.ticker || '',
+      effectiveDate: ev.effectiveDate || '',
+      ratio: Number(ev.ratio) || 0,
+      type: ev.type || 'split',
+      aliases: ev.aliases ? ev.aliases.slice() : []
+    };
+  }
+
+  function splitAwarePushUniqueSplit(list, ev) {
+    if (!ev || !ev.effectiveDate) return;
+    var key = String(ev.ticker || '') + '|' + String(ev.effectiveDate);
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (String(list[i].ticker || '') + '|' + String(list[i].effectiveDate) === key) return;
+    }
+    list.push(splitAwareCopyEvent(ev));
+  }
+
+  function splitAwareWorseConfidence(a, b) {
+    var rank = { high: 0, partial: 1, unknown: 2 };
+    var ra = rank[a] != null ? rank[a] : 2;
+    var rb = rank[b] != null ? rank[b] : 2;
+    return ra >= rb ? (a || 'unknown') : (b || 'unknown');
+  }
+
+  function splitAwarePortfolioParts(portfolio, options) {
+    var positions = [];
+    var sales = [];
+    if (Array.isArray(portfolio)) {
+      positions = portfolio;
+      sales = (options && options.sales) || [];
+    } else if (portfolio && typeof portfolio === 'object') {
+      positions = portfolio.positions || [];
+      sales = portfolio.sales || (options && options.sales) || [];
+    }
+    return { positions: positions, sales: sales };
+  }
+
+  function splitAwareEachAlloc(ticker, sales, fn) {
+    ticker = asOfNormTicker(ticker);
+    (sales || []).forEach(function (sale) {
+      if (!sale || asOfNormTicker(sale.ticker) !== ticker) return;
+      var saleIso = pfSplitIsoDate(sale.saleDate);
+      if (sale.allocations && sale.allocations.length) {
+        sale.allocations.forEach(function (alloc) {
+          if (!alloc) return;
+          var q = Number(alloc.qty);
+          if (!isFinite(q) || q <= 1e-9) return;
+          fn({
+            saleIso: saleIso,
+            qty: q,
+            lotId: alloc.lotId ? String(alloc.lotId) : '',
+            buyIso: pfSplitIsoDate(alloc.buyDate),
+            buyPrice: Number(alloc.buyPrice)
+          });
+        });
+        return;
+      }
+      var q = Number(sale.qty);
+      if (!isFinite(q) || q <= 1e-9) return;
+      fn({
+        saleIso: saleIso,
+        qty: q,
+        lotId: sale.lotId ? String(sale.lotId) : '',
+        buyIso: pfSplitIsoDate(sale.buyDate),
+        buyPrice: Number(sale.buyPrice)
+      });
+    });
+  }
+
+  function splitAwareAllocMatchesGroup(g, row) {
+    if (!g || !row) return false;
+    if (g.lotId && row.lotId) return g.lotId === row.lotId;
+    if (g.lotId || row.lotId) return false;
+    if (row.buyIso && g.date && row.buyIso === g.date) return true;
+    return false;
+  }
+
+  function splitAwareFindPosition(positions, ticker, g) {
+    ticker = asOfNormTicker(ticker);
+    var found = null;
+    (positions || []).some(function (p) {
+      if (!p || asOfNormTicker(p.ticker) !== ticker) return false;
+      if (g.lotId && p.lotId && String(p.lotId) === g.lotId) {
+        found = p;
+        return true;
+      }
+      return false;
+    });
+    if (found) return found;
+    (positions || []).some(function (p) {
+      if (!p || asOfNormTicker(p.ticker) !== ticker) return false;
+      if (g.date && pfSplitIsoDate(p.buyDate) === g.date) {
+        found = p;
+        return true;
+      }
+      return false;
+    });
+    return found;
+  }
+
+  function splitAwareForwardSplitsToTarget(ticker, buyIso, targetIso, events) {
+    var list = lotShareScaleForwardEvents(ticker, buyIso, events);
+    var out = [];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var ev = list[i];
+      if (!ev || !ev.effectiveDate) continue;
+      if (ev.effectiveDate <= targetIso) out.push(ev);
+    }
+    return out;
+  }
+
+  /**
+   * Read-only qty на дату с учётом сплита и диагностики шкалы лота.
+   * Не меняет portfolio JSON и пока не подключается к выплатам/UI.
+   */
+  function getSplitAwareQtyHeldOnDate(ticker, portfolio, targetDate, options) {
+    options = options || {};
+    var t = asOfNormTicker(ticker);
+    var targetIso = pfSplitIsoDate(targetDate);
+    if (!t) {
+      return splitAwareEmptyQtyHeld('', targetIso, {
+        warnings: [PF_QTY_HELD_BAD_DATE_WARNING]
+      });
+    }
+    if (!targetIso) {
+      return splitAwareEmptyQtyHeld(t, '', {
+        warnings: [PF_QTY_HELD_BAD_DATE_WARNING]
+      });
+    }
+
+    var parts = splitAwarePortfolioParts(portfolio, options);
+    var instrumentType = options.instrumentType != null
+      ? String(options.instrumentType).toLowerCase()
+      : '';
+    var asBond = instrumentType === 'bond' || instrumentType === 'ofz' ||
+      isPortfolioBondPosition({ ticker: t });
+    var events = options.splitEvents ||
+      (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    var covering = typeof getSplitEventsForTicker === 'function'
+      ? getSplitEventsForTicker(t, events)
+      : [];
+    covering = covering.filter(function (ev) {
+      if (!ev) return false;
+      var type = ev.type != null ? String(ev.type).trim().toLowerCase() : 'split';
+      if (type === 'reverse') return false;
+      var ratio = Number(ev.ratio);
+      return isFinite(ratio) && ratio > 1;
+    });
+
+    if (asBond || !covering.length) {
+      var comp = buildPortfolioCompositionAtDate(portfolio, targetIso, options);
+      var qty = 0;
+      var warnings = [];
+      var confidence = 'high';
+      if (comp && comp.invalidDate) {
+        return splitAwareEmptyQtyHeld(t, targetIso, { warnings: [PF_QTY_HELD_BAD_DATE_WARNING] });
+      }
+      (comp && comp.items ? comp.items : []).forEach(function (item) {
+        if (!item || asOfNormTicker(item.ticker) !== t) return;
+        qty = Number(item.qtyAtDate);
+        if (item.hasIncompleteHistory) confidence = 'partial';
+        (item.notes || []).forEach(function (n) { warnings.push(n); });
+      });
+      if (comp && comp.hasIncompleteHistory && confidence === 'high') confidence = 'partial';
+      return {
+        ticker: t,
+        targetDate: targetIso,
+        qty: asOfRoundQty(qty),
+        confidence: confidence,
+        appliedSplits: [],
+        lotDiagnostics: [{
+          lotId: '',
+          scale: asBond ? 'n/a' : 'n/a',
+          confidence: confidence,
+          included: qty > 0,
+          qtyAtDate: asOfRoundQty(qty),
+          reason: asBond ? 'облигация' : 'нет сплита'
+        }],
+        warnings: warnings
+      };
+    }
+
+    var includeSales = options.includeSales !== false;
+    var diagNow = options.currentDate || options.now;
+    if (!diagNow && typeof localPortfolioTodayYmd === 'function') {
+      diagNow = localPortfolioTodayYmd();
+    }
+    var diagOpts = {
+      splitEvents: events,
+      currentPrice: options.currentPrice,
+      currentDate: diagNow,
+      priceTolerancePct: options.priceTolerancePct,
+      instrumentType: options.instrumentType
+    };
+    var reconstructed = reconstructTickerBuyGroups(t, parts.positions, parts.sales);
+    var warnings = [];
+    var lotDiagnostics = [];
+    var appliedSplits = [];
+    var qtySum = 0;
+    var confidence = 'high';
+    var includedLots = 0;
+    var skippedLots = 0;
+    var unmatchedSales = 0;
+
+    if (includeSales) {
+      splitAwareEachAlloc(t, parts.sales, function (row) {
+        if (!row.saleIso) {
+          confidence = splitAwareWorseConfidence(confidence, 'partial');
+          warnings.push(PF_QTY_HELD_SALE_UNCLEAR_WARNING);
+          return;
+        }
+        var matched = false;
+        (reconstructed.groups || []).forEach(function (g) {
+          if (splitAwareAllocMatchesGroup(g, row)) matched = true;
+        });
+        if (!matched && row.lotId) {
+          unmatchedSales += 1;
+        }
+      });
+      if (unmatchedSales) {
+        confidence = splitAwareWorseConfidence(confidence, 'partial');
+        warnings.push(PF_QTY_HELD_SALE_UNMATCHED_WARNING);
+      }
+    }
+
+    (reconstructed.groups || []).forEach(function (g) {
+      var buyIso = pfSplitIsoDate(g.date);
+      var pos = splitAwareFindPosition(parts.positions, t, g);
+      var lotLike = {
+        ticker: t,
+        lotId: g.lotId || (pos && pos.lotId) || '',
+        buyDate: buyIso || (pos && pos.buyDate) || '',
+        avgPrice: g.avgPrice != null ? g.avgPrice : (pos && pos.avgPrice),
+        currentPrice: pos && pos.currentPrice,
+        qty: g.openQty
+      };
+      if (options.currentPrice != null) lotLike.currentPrice = options.currentPrice;
+      var diag = diagnoseLotShareScale(lotLike, t, diagOpts);
+      (diag.warnings || []).forEach(function (w) {
+        if (warnings.indexOf(w) === -1) warnings.push(w);
+      });
+
+      var diagRow = {
+        lotId: lotLike.lotId,
+        buyDate: buyIso,
+        scale: diag.scale,
+        confidence: diag.confidence,
+        included: false,
+        qtyJson: asOfRoundQty(g.openQty),
+        qtyAtDate: 0,
+        reason: diag.reason || '',
+        warnings: (diag.warnings || []).slice()
+      };
+
+      if (!buyIso) {
+        skippedLots += 1;
+        confidence = splitAwareWorseConfidence(confidence, 'unknown');
+        lotDiagnostics.push(diagRow);
+        return;
+      }
+      if (buyIso > targetIso) {
+        diagRow.reason = 'лот куплен после даты';
+        lotDiagnostics.push(diagRow);
+        return;
+      }
+
+      if (diag.scale === 'unknown') {
+        skippedLots += 1;
+        confidence = splitAwareWorseConfidence(confidence, 'unknown');
+        lotDiagnostics.push(diagRow);
+        return;
+      }
+
+      var firstEff = '';
+      var forward = lotShareScaleForwardEvents(t, buyIso, events);
+      if (forward.length) firstEff = forward[0].effectiveDate || '';
+      var jsonSoldAfter = 0;
+      var jsonSoldToTarget = 0;
+      var newSoldToTarget = 0;
+      var saleUnclear = false;
+
+      if (includeSales) {
+        splitAwareEachAlloc(t, parts.sales, function (row) {
+          if (!splitAwareAllocMatchesGroup(g, row)) return;
+          if (!row.saleIso) {
+            saleUnclear = true;
+            return;
+          }
+          var isNewScale = false;
+          if (diag.scale === 'historical' && firstEff) {
+            isNewScale = row.saleIso >= firstEff;
+          } else if (diag.scale === 'current' && firstEff && row.saleIso < firstEff) {
+            saleUnclear = true;
+            return;
+          }
+          if (row.saleIso > targetIso) {
+            if (!isNewScale) jsonSoldAfter += row.qty;
+            return;
+          }
+          if (isNewScale) newSoldToTarget += row.qty;
+          else jsonSoldToTarget += row.qty;
+        });
+      }
+
+      if (saleUnclear) {
+        skippedLots += 1;
+        confidence = splitAwareWorseConfidence(confidence, 'unknown');
+        diagRow.warnings.push(PF_QTY_HELD_SALE_UNCLEAR_WARNING);
+        if (warnings.indexOf(PF_QTY_HELD_SALE_UNCLEAR_WARNING) === -1) {
+          warnings.push(PF_QTY_HELD_SALE_UNCLEAR_WARNING);
+        }
+        lotDiagnostics.push(diagRow);
+        return;
+      }
+
+      var heldJson = Number(g.openQty) + jsonSoldAfter;
+      if (!isFinite(heldJson) || heldJson < 0) heldJson = 0;
+      var factorToTarget = 1;
+      if (typeof getSplitAdjustmentFactor === 'function') {
+        factorToTarget = Number(getSplitAdjustmentFactor(t, buyIso, targetIso, events));
+      }
+      if (!isFinite(factorToTarget) || factorToTarget < 1) factorToTarget = 1;
+
+      var qtyAt = heldJson;
+      if (diag.scale === 'historical') {
+        qtyAt = heldJson * factorToTarget - newSoldToTarget;
+        splitAwareForwardSplitsToTarget(t, buyIso, targetIso, events).forEach(function (ev) {
+          splitAwarePushUniqueSplit(appliedSplits, ev);
+        });
+      } else if (diag.scale === 'current') {
+        var factorToNow = diag.factor;
+        if (!isFinite(factorToNow) || factorToNow < 1) factorToNow = 1;
+        if (factorToTarget + 1e-9 < factorToNow) {
+          skippedLots += 1;
+          confidence = splitAwareWorseConfidence(confidence, 'unknown');
+          diagRow.warnings.push(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING);
+          if (warnings.indexOf(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING) === -1) {
+            warnings.push(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING);
+          }
+          diagRow.reason = PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING;
+          lotDiagnostics.push(diagRow);
+          return;
+        }
+        qtyAt = heldJson - newSoldToTarget;
+      }
+
+      qtyAt = asOfRoundQty(qtyAt);
+      if (qtyAt < 0 && qtyAt > -1e-6) qtyAt = 0;
+      if (qtyAt < 0) qtyAt = 0;
+      diagRow.included = qtyAt > 0 || heldJson > 0;
+      diagRow.qtyJson = asOfRoundQty(heldJson);
+      diagRow.qtyAtDate = qtyAt;
+      confidence = splitAwareWorseConfidence(confidence, diag.confidence);
+      includedLots += 1;
+      qtySum += qtyAt;
+      lotDiagnostics.push(diagRow);
+    });
+
+    if (skippedLots && includedLots) {
+      confidence = splitAwareWorseConfidence(confidence, 'partial');
+    } else if (skippedLots && !includedLots) {
+      confidence = splitAwareWorseConfidence(confidence, 'unknown');
+    }
+
+    return {
+      ticker: t,
+      targetDate: targetIso,
+      qty: asOfRoundQty(qtySum),
+      confidence: confidence,
+      appliedSplits: appliedSplits,
+      lotDiagnostics: lotDiagnostics,
+      warnings: warnings
+    };
+  }
+
   function buildSplitAffectedPnlHtml(variant) {
     var titleAttr = ' title="' + escapeHtml(PF_SPLIT_PNL_TITLE) + '"';
     var badge = '<span class="pf-split-badge">сплит</span>';

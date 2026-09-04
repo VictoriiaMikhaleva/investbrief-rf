@@ -373,6 +373,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__splitWarnText = formatSingleSplitWarningText;' +
       '\nthis.__splitAffected = isPortfolioTickerSplitAffected;' +
       '\nthis.__lotScale = diagnoseLotShareScale;' +
+      '\nthis.__qtyHeld = getSplitAwareQtyHeldOnDate;' +
       '\nthis.__splitPnlHtml = buildSplitAffectedPnlHtml;' +
       '\nthis.__lotRow = buildPortfolioLotRow;' +
       '\nthis.__sectionRows = buildPortfolioSectionRows;' +
@@ -426,6 +427,7 @@ function loadPortfolioCalcHelpers() {
     formatSingleSplitWarningText: sandbox.__splitWarnText,
     isPortfolioTickerSplitAffected: sandbox.__splitAffected,
     diagnoseLotShareScale: sandbox.__lotScale,
+    getSplitAwareQtyHeldOnDate: sandbox.__qtyHeld,
     buildSplitAffectedPnlHtml: sandbox.__splitPnlHtml,
     buildPortfolioLotRow: sandbox.__lotRow,
     buildPortfolioSectionRows: sandbox.__sectionRows,
@@ -3408,6 +3410,147 @@ function loadPriceAtDateHelpers() {
   scaleOf(pf.positions[1], 'T');
   assert(JSON.stringify(pf) === pfSnap, 'lot scale: portfolio JSON not mutated');
   assert(JSON.stringify({ positions: [sberBefore, sberAfter], sales: [] }) === sberSnap, 'lot scale: SBER fixture untouched');
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const now = { splitEvents: events, currentDate: '2026-09-04' };
+
+  function held(ticker, pf, target, extra) {
+    return calc.getSplitAwareQtyHeldOnDate(ticker, pf, target, Object.assign({}, now, extra || {}));
+  }
+
+  const sberPf = {
+    positions: [{
+      ticker: 'SBER', lotId: 'S1', qty: 7, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280
+    }],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 3,
+      buyPrice: 250,
+      salePrice: 260,
+      saleDate: '2024-06-01',
+      allocations: [{ lotId: 'S1', qty: 3, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  };
+  const sberSnap = JSON.stringify(sberPf);
+  let r = held('SBER', sberPf, '2024-12-31');
+  assert(r.qty === 7 && r.confidence === 'high', 'qtyHeld: SBER 10−3 → 7 high');
+  assert(r.appliedSplits.length === 0, 'qtyHeld: SBER no splits');
+  assert(JSON.stringify(sberPf) === sberSnap, 'qtyHeld: SBER JSON not mutated');
+
+  const gmknHistPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  const gmknHistSnap = JSON.stringify(gmknHistPf);
+  r = held('GMKN', gmknHistPf, '2026-09-04');
+  assert(r.qty === 1000, 'qtyHeld: GMKN historical after split → 1000');
+  assert(r.confidence === 'high' || r.confidence === 'partial', 'qtyHeld: GMKN historical confidence');
+  assert(r.appliedSplits.some((ev) => ev.effectiveDate === '2024-04-08' && Number(ev.ratio) === 100), 'qtyHeld: GMKN applied 1:100');
+  assert(JSON.stringify(gmknHistPf) === gmknHistSnap, 'qtyHeld: GMKN historical JSON not mutated');
+  assert(gmknHistPf.positions[0].qty === 10 && gmknHistPf.positions[0].avgPrice === 22000, 'qtyHeld: GMKN qty/avgPrice untouched');
+
+  const gmknCurrPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  r = held('GMKN', gmknCurrPf, '2026-09-04');
+  assert(r.qty === 1000, 'qtyHeld: GMKN current after split → 1000 not 100000');
+
+  r = held('GMKN', gmknHistPf, '2023-12-01');
+  assert(r.qty === 10, 'qtyHeld: GMKN historical before split → 10');
+
+  r = held('GMKN', gmknHistPf, '2024-04-08');
+  assert(r.qty === 1000, 'qtyHeld: GMKN same-day split → 1000');
+
+  const gmknAfterPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G3', qty: 10, avgPrice: 130, buyDate: '2026-09-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  r = held('GMKN', gmknAfterPf, '2026-09-04');
+  assert(r.qty === 10 && r.confidence === 'high', 'qtyHeld: GMKN lot after split → 10');
+
+  const gmknMixedPf = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 },
+      { ticker: 'GMKN', lotId: 'G4', qty: 10, avgPrice: 130, buyDate: '2026-09-04', currentPrice: 130 }
+    ],
+    sales: []
+  };
+  const mixedSnap = JSON.stringify(gmknMixedPf);
+  r = held('GMKN', gmknMixedPf, '2026-09-04');
+  assert(r.qty === 1010, 'qtyHeld: GMKN mixed historical+after → 1010');
+  assert(JSON.stringify(gmknMixedPf) === mixedSnap, 'qtyHeld: mixed JSON not mutated');
+
+  const tHistPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3126, buyDate: '2025-12-01', currentPrice: 262
+    }],
+    sales: []
+  };
+  r = held('T', tHistPf, '2026-09-04');
+  assert(r.qty === 10, 'qtyHeld: T historical after split → 10');
+
+  const tCurrPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262
+    }],
+    sales: []
+  };
+  r = held('T', tCurrPf, '2026-09-04');
+  assert(r.qty === 10, 'qtyHeld: T current after split → 10');
+
+  const unknownPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'GX', qty: 10, avgPrice: 800, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  r = held('GMKN', unknownPf, '2026-09-04');
+  assert(r.confidence === 'unknown' || r.confidence === 'partial', 'qtyHeld: unknown scale confidence');
+  assert(r.qty === 0, 'qtyHeld: unknown scale not included in qty');
+  assert((r.warnings || []).some((w) => /шкала лота не определена/.test(w)), 'qtyHeld: unknown scale warning');
+
+  const gmknSalePf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: [{
+      saleId: 'SALE_G',
+      ticker: 'GMKN',
+      qty: 200,
+      buyPrice: 22000,
+      salePrice: 130,
+      saleDate: '2025-06-01',
+      allocations: [{ lotId: 'G1', qty: 200, buyPrice: 22000, buyDate: '2021-06-04' }]
+    }]
+  };
+  const saleSnap = JSON.stringify(gmknSalePf);
+  r = held('GMKN', gmknSalePf, '2026-09-04');
+  assert(r.qty === 800, 'qtyHeld: GMKN historical 10×100 − 200 → 800');
+  assert(JSON.stringify(gmknSalePf) === saleSnap, 'qtyHeld: sale fixture JSON not mutated');
+
+  r = held('GMKN', gmknSalePf, '2024-12-01');
+  assert(r.qty === 1000, 'qtyHeld: sale after targetDate does not reduce qty');
+
+  const ofzPf = {
+    positions: [{
+      ticker: 'SU26238RMFS9', lotId: 'B1', qty: 10, avgPrice: 97.5, buyDate: '2021-06-04', currentPrice: 98
+    }],
+    sales: []
+  };
+  r = held('SU26238RMFS9', ofzPf, '2026-09-04');
+  assert(r.qty === 10 && r.confidence === 'high' && r.appliedSplits.length === 0, 'qtyHeld: OFZ no split logic');
 }
 
 {
