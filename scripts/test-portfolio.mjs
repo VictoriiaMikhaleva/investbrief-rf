@@ -361,6 +361,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__asOfValue = buildPortfolioValueAtDate;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
       '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;' +
+      '\nthis.__asOfTable = buildPortfolioAsOfTableHtml;' +
+      '\nthis.__cmpDetailsHtml = buildPortfolioCompareDetailsHtml;' +
       '\nthis.__payouts = buildPortfolioPayoutsForHoldingPeriod;' +
       '\nthis.__tickerPayouts = buildTickerPayoutsForHoldingPeriod;' +
       '\nthis.__tickerReturn = buildTickerReturnWithPayouts;' +
@@ -417,6 +419,8 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioValueAtDate: sandbox.__asOfValue,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
     buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
+    buildPortfolioAsOfTableHtml: sandbox.__asOfTable,
+    buildPortfolioCompareDetailsHtml: sandbox.__cmpDetailsHtml,
     buildPortfolioPayoutsForHoldingPeriod: sandbox.__payouts,
     buildTickerPayoutsForHoldingPeriod: sandbox.__tickerPayouts,
     buildTickerReturnWithPayouts: sandbox.__tickerReturn,
@@ -4283,6 +4287,227 @@ function loadPriceAtDateHelpers() {
   cache.tickersKey = '';
   sb.getPortfolio = () => ({ positions: [], sales: [] });
   assert(JSON.stringify(pf) === snap, 'twp ui: original fixture not mutated');
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const NOW = '2026-09-04';
+
+  function priceOk(price, extra) {
+    extra = extra || {};
+    return {
+      status: 'ok',
+      price: price,
+      priceDate: extra.priceDate || extra.date || '2024-06-01',
+      priceType: 'close',
+      unit: extra.unit || 'rub'
+    };
+  }
+  function mockPrices(map) {
+    return function (ticker, date) {
+      const t = String(ticker || '').toUpperCase();
+      const iso = String(date || '').slice(0, 10);
+      const byTicker = map[t];
+      if (!byTicker) return Promise.resolve({ status: 'missing', price: null, priceDate: null });
+      const row = byTicker[iso] || byTicker.default;
+      return Promise.resolve(row || { status: 'missing', price: null, priceDate: null });
+    };
+  }
+  function asOfOpts(priceMap, extra) {
+    return Object.assign({
+      splitEvents: events,
+      currentDate: NOW,
+      getInstrumentPriceAtDate: mockPrices(priceMap)
+    }, extra || {});
+  }
+
+  const gmknHistPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92
+    }],
+    sales: []
+  };
+  const gmknHistSnap = JSON.stringify(gmknHistPf);
+
+  const before = await calc.buildPortfolioValueAtDate(gmknHistPf, '2024-03-01', asOfOpts({
+    GMKN: { '2024-03-01': priceOk(25014, { date: '2024-03-01' }) }
+  }));
+  const beforeRow = before.items.find((x) => x.ticker === 'GMKN');
+  assert(beforeRow && beforeRow.qtyAtDate === 10, 'asof split: GMKN historical before split qty 10');
+  assert(beforeRow.valueRub === 250140, 'asof split: GMKN historical before 10×25014');
+  assert(beforeRow.splitAdjusted === true, 'asof split: GMKN historical marked splitAdjusted');
+  assert(beforeRow.splitConfidence === 'high' || beforeRow.splitConfidence === 'partial', 'asof split: GMKN historical confidence');
+
+  const after = await calc.buildPortfolioValueAtDate(gmknHistPf, '2024-06-01', asOfOpts({
+    GMKN: { '2024-06-01': priceOk(129.92, { date: '2024-06-01' }) }
+  }));
+  const afterRow = after.items.find((x) => x.ticker === 'GMKN');
+  assert(afterRow && afterRow.qtyAtDate === 1000, 'asof split: GMKN historical after split qty 1000');
+  assert(Math.abs(afterRow.valueRub - 129920) < 1e-6, 'asof split: GMKN historical after 1000×129.92');
+  assert(afterRow.qtyAtDate !== 10, 'asof split: GMKN after is not raw JSON qty');
+  assert(JSON.stringify(gmknHistPf) === gmknHistSnap, 'asof split: GMKN historical JSON not mutated');
+  assert(gmknHistPf.positions[0].qty === 10 && gmknHistPf.positions[0].avgPrice === 22000, 'asof split: qty/avgPrice untouched');
+
+  const gmknMixedPf = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92 },
+      { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 129.74, buyDate: '2026-09-04', currentPrice: 129.92 }
+    ],
+    sales: []
+  };
+  const mixedAfter = await calc.buildPortfolioValueAtDate(gmknMixedPf, '2026-09-04', asOfOpts({
+    GMKN: { '2026-09-04': priceOk(129.92, { date: '2026-09-04' }) }
+  }));
+  const mixedRow = mixedAfter.items.find((x) => x.ticker === 'GMKN');
+  assert(mixedRow && mixedRow.qtyAtDate === 1010, 'asof split: GMKN mixed after both buys qty 1010');
+  assert(Math.abs(mixedRow.valueRub - 131219.2) < 1e-6, 'asof split: GMKN mixed 1010×129.92');
+  assert(mixedRow.qtyAtDate !== 20, 'asof split: GMKN mixed is not 20 JSON shares');
+
+  const gmknCurrPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 129.92
+    }],
+    sales: []
+  };
+  const currAfter = await calc.buildPortfolioValueAtDate(gmknCurrPf, '2026-09-04', asOfOpts({
+    GMKN: { '2026-09-04': priceOk(129.92, { date: '2026-09-04' }) }
+  }));
+  const currRow = currAfter.items.find((x) => x.ticker === 'GMKN');
+  assert(currRow && currRow.qtyAtDate === 1000, 'asof split: GMKN current after split qty 1000');
+  assert(currRow.qtyAtDate !== 100000, 'asof split: GMKN current not 1000×100');
+  assert(Math.abs(currRow.valueRub - 129920) < 1e-6, 'asof split: GMKN current 1000×129.92');
+
+  const tHistPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3126, buyDate: '2025-12-01', currentPrice: 262
+    }],
+    sales: []
+  };
+  const tAfter = await calc.buildPortfolioValueAtDate(tHistPf, '2026-09-04', asOfOpts({
+    T: { '2026-09-04': priceOk(262, { date: '2026-09-04' }) }
+  }));
+  const tRow = tAfter.items.find((x) => x.ticker === 'T');
+  assert(tRow && tRow.qtyAtDate === 10, 'asof split: T historical after 1×10 → 10');
+  assert(tRow.valueRub === 2620, 'asof split: T historical 10×262');
+
+  const sberPf = {
+    positions: [{
+      ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280
+    }],
+    sales: []
+  };
+  const sberSnap = JSON.stringify(sberPf);
+  const sberVal = await calc.buildPortfolioValueAtDate(sberPf, '2024-06-01', asOfOpts({
+    SBER: { '2024-06-01': priceOk(100, { date: '2024-06-01' }) }
+  }));
+  assert(sberVal.items[0].qtyAtDate === 10 && sberVal.items[0].valueRub === 1000, 'asof split: SBER same as old logic');
+  assert(!sberVal.items[0].splitAdjusted, 'asof split: SBER not splitAdjusted');
+  assert(JSON.stringify(sberPf) === sberSnap, 'asof split: SBER JSON not mutated');
+  const sberHtml = calc.buildPortfolioAsOfTableHtml(sberVal.items);
+  assert(!/с учётом сплита/.test(sberHtml), 'asof split ui: SBER no split badge');
+
+  const ofzPf = {
+    positions: [{
+      ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000, currentPrice: 95
+    }],
+    sales: []
+  };
+  const ofzVal = await calc.buildPortfolioValueAtDate(ofzPf, '2024-06-01', asOfOpts({
+    OFZ_26238: {
+      '2024-06-01': priceOk(95, { date: '2024-06-01', unit: 'pct-of-face-value' })
+    }
+  }));
+  assert(ofzVal.items[0].qtyAtDate === 10 && ofzVal.items[0].valueRub === 9500, 'asof split: OFZ same as old logic');
+  assert(!ofzVal.items[0].splitAdjusted, 'asof split: OFZ not splitAdjusted');
+  assert(ofzVal.items[0].unit === 'pct-of-face-value', 'asof split: OFZ unit unchanged');
+
+  const currBefore = await calc.buildPortfolioValueAtDate(gmknCurrPf, '2023-12-01', asOfOpts({
+    GMKN: { '2023-12-01': priceOk(22000, { date: '2023-12-01' }) }
+  }));
+  const currBeforeRow = currBefore.items.find((x) => x.ticker === 'GMKN');
+  assert(currBeforeRow, 'asof split: current-lot before split still in composition');
+  assert(currBeforeRow.splitConfidence === 'unknown' || currBeforeRow.splitConfidence === 'partial',
+    'asof split: current-lot before split not high');
+  if (currBeforeRow.splitConfidence === 'unknown') {
+    assert(currBeforeRow.valueRub == null, 'asof split: unknown value not confident');
+    assert(currBeforeRow.qtyAtDate == null, 'asof split: unknown qty shown as empty');
+  }
+  assert(currBefore.isPartial === true, 'asof split: unknown overall partial');
+  const unkNotes = String((currBeforeRow.notes || []).join(' ') + ' ' + (currBeforeRow.note || '') + ' ' +
+    (currBefore.notes || []).join(' '));
+  assert(/GMKN/.test(unkNotes), 'asof split: unknown warning contains ticker');
+
+  const cmp = await calc.buildPortfolioValueChangeBetweenDates(
+    gmknMixedPf,
+    '2024-03-01',
+    '2026-09-04',
+    asOfOpts({
+      GMKN: {
+        '2024-03-01': priceOk(25014, { date: '2024-03-01' }),
+        '2026-09-04': priceOk(129.92, { date: '2026-09-04' })
+      }
+    })
+  );
+  const cmpRow = (cmp.items || []).find((x) => x.ticker === 'GMKN');
+  assert(cmpRow, 'asof split compare: GMKN row');
+  assert(cmpRow.qtyFrom === 10, 'asof split compare: start qty 10');
+  assert(cmpRow.qtyTo === 1010, 'asof split compare: end qty 1010 not 20');
+  assert(Math.abs(cmpRow.valueTo - 131219.2) < 1e-6, 'asof split compare: end value 1010×129.92');
+  assert(cmpRow.valueTo !== 2626.4 && cmpRow.valueTo !== 2598.4, 'asof split compare: not JSON-qty × new price');
+  assert(cmpRow.changeRub != null && cmpRow.changeRub > -200000, 'asof split compare: no −247k technical drop');
+  const cmpPct = cmp.changePct;
+  assert(cmpPct == null || cmpPct > -90, 'asof split compare: changePct not −98/−99% mix');
+  assert(cmpRow.splitAdjusted === true, 'asof split compare: splitAdjusted');
+  const cmpHtml = calc.buildPortfolioCompareDetailsHtml(cmp.items);
+  assert(/с учётом сплита/.test(cmpHtml), 'asof split compare ui: badge');
+  const asofHtml = calc.buildPortfolioAsOfTableHtml(mixedAfter.items);
+  assert(/с учётом сплита/.test(asofHtml), 'asof split ui: GMKN badge');
+  assert(/1010/.test(asofHtml), 'asof split ui: GMKN qty 1010');
+
+  const prodCatalogText = fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8');
+  assert(!/FAKE_SPLIT/.test(prodCatalogText), 'asof split generic: production catalog has no FAKE_SPLIT');
+  const fakeEvents = calc.sandbox.parseSplitEventsCatalog({
+    version: 1,
+    events: (JSON.parse(prodCatalogText).events || []).concat([{
+      ticker: 'FAKE_SPLIT',
+      aliases: ['FAKE'],
+      isin: 'TEST000FAKE0',
+      effectiveDate: '2030-01-15',
+      ratio: 5,
+      type: 'split',
+      note: 'Synthetic future split for generic contract tests',
+      source: 'test'
+    }])
+  });
+  const fakePf = {
+    positions: [{
+      ticker: 'FAKE_SPLIT', lotId: 'F1', qty: 2, avgPrice: 500, buyDate: '2029-06-01', currentPrice: 90
+    }],
+    sales: []
+  };
+  const fakeSnap = JSON.stringify(fakePf);
+  const fakeAfter = await calc.buildPortfolioValueAtDate(fakePf, '2031-01-01', {
+    splitEvents: fakeEvents,
+    currentDate: '2031-01-01',
+    getInstrumentPriceAtDate: mockPrices({
+      FAKE_SPLIT: { '2031-01-01': priceOk(90, { date: '2031-01-01' }) }
+    })
+  });
+  const fakeRow = fakeAfter.items.find((x) => x.ticker === 'FAKE_SPLIT');
+  assert(fakeRow && fakeRow.qtyAtDate === 10, 'asof split generic: FAKE_SPLIT 2×5 → 10');
+  assert(fakeRow.valueRub === 900, 'asof split generic: 10×90');
+  const fakeBefore = await calc.buildPortfolioValueAtDate(fakePf, '2029-12-01', {
+    splitEvents: fakeEvents,
+    currentDate: '2031-01-01',
+    getInstrumentPriceAtDate: mockPrices({
+      FAKE_SPLIT: { '2029-12-01': priceOk(500, { date: '2029-12-01' }) }
+    })
+  });
+  assert(fakeBefore.items[0].qtyAtDate === 2, 'asof split generic: before split qty 2');
+  assert(JSON.stringify(fakePf) === fakeSnap, 'asof split generic: JSON not mutated');
+  assert(JSON.stringify(gmknHistPf) === gmknHistSnap, 'asof split: GMKN fixture still immutable');
 }
 
 if (errors.length) {

@@ -288,6 +288,7 @@
   var PF_SPLIT_PNL_LABEL = 'требует проверки';
   var PF_SPLIT_AWARE_BADGE = 'с учётом сплита';
   var PF_SPLIT_AWARE_PNL_TITLE = 'Результат пересчитан к текущей шкале акции после дробления. Количество и средняя цена в JSON не менялись.';
+  var PF_ASOF_SPLIT_BADGE_TITLE = 'Количество и стоимость на дату приведены к шкале цены этой даты. Количество и средняя цена в JSON не менялись.';
   var PF_LOT_SCALE_UNKNOWN_SUFFIX = ': не удалось определить шкалу лота после сплита.';
   var _pfSplitEventsTried = false;
 
@@ -3991,6 +3992,67 @@
     return { status: status, valueRub: valueRub, price: status === 'ok' ? price : null, unit: unit };
   }
 
+  function asOfTickerForwardSplitEvents(ticker, events) {
+    if (typeof getSplitEventsForTicker !== 'function') return [];
+    var list = getSplitEventsForTicker(ticker, events);
+    return (list || []).filter(function (ev) {
+      if (!ev) return false;
+      var type = ev.type != null ? String(ev.type).trim().toLowerCase() : 'split';
+      if (type === 'reverse') return false;
+      var ratio = Number(ev.ratio);
+      return isFinite(ratio) && ratio > 1;
+    });
+  }
+
+  /**
+   * Read-only: qty на дату в шкале цены этой даты.
+   * ОФЗ и бумаги без split event не трогает. JSON qty / avgPrice не меняет.
+   */
+  function asOfApplySplitAwareQty(compItem, portfolio, targetIso, options) {
+    options = options || {};
+    var out = {
+      qtyAtDate: compItem ? compItem.qtyAtDate : 0,
+      splitAdjusted: false,
+      splitConfidence: '',
+      appliedSplits: [],
+      warnings: []
+    };
+    if (!compItem || compItem.type === 'bond') return out;
+    var events = options.splitEvents ||
+      (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    var covering = asOfTickerForwardSplitEvents(compItem.ticker, events);
+    if (!covering.length) return out;
+
+    var heldOpts = {
+      splitEvents: events,
+      currentDate: options.currentDate || options.now,
+      instrumentType: 'stock',
+      includeSales: options.includeSales,
+      priceTolerancePct: options.priceTolerancePct
+    };
+    if (options.currentPrice != null) heldOpts.currentPrice = options.currentPrice;
+    var held = getSplitAwareQtyHeldOnDate(compItem.ticker, portfolio, targetIso, heldOpts);
+    out.splitAdjusted = true;
+    out.splitConfidence = held.confidence || 'unknown';
+    out.appliedSplits = held.appliedSplits || [];
+    out.warnings = (held.warnings || []).slice();
+    var t = asOfNormTicker(compItem.ticker);
+    if (out.splitConfidence === 'unknown') {
+      out.qtyAtDate = null;
+      var unk = t + PF_LOT_SCALE_UNKNOWN_SUFFIX;
+      if (out.warnings.indexOf(unk) === -1) out.warnings.push(unk);
+    } else {
+      out.qtyAtDate = held.qty;
+    }
+    return out;
+  }
+
+  function asOfItemValueUsable(row) {
+    if (!row || row.status !== 'ok') return false;
+    if (row.splitConfidence === 'unknown') return false;
+    return row.valueRub != null && isFinite(Number(row.valueRub));
+  }
+
   /**
    * Read-only оценка портфеля на дату (qty × CLOSE / % номинала).
    * Не пишет в JSON, не использует LAST, live-хвост и цену покупки.
@@ -4052,9 +4114,33 @@
       var faceValue = (compItem.type === 'bond') ? asOfFaceValueForItem(compItem, bondMeta) : null;
       return asOfFetchPriceAtDate(ticker, iso, meta, options).then(function (priceRes) {
         priceRes = priceRes || {};
-        var mapped = asOfValueFromPrice(compItem, priceRes, faceValue);
+        var splitQty = asOfApplySplitAwareQty(compItem, portfolio, iso, options);
+        var qtyAtDate = splitQty.qtyAtDate;
+        var mapped;
+        if (splitQty.splitConfidence === 'unknown') {
+          var unknownStatus = priceRes.status ? String(priceRes.status) : 'missing';
+          if (unknownStatus === 'invalid-date') unknownStatus = 'missing';
+          var unknownPrice = priceRes.price != null ? Number(priceRes.price) : null;
+          mapped = {
+            status: unknownStatus,
+            valueRub: null,
+            price: unknownStatus === 'ok' && unknownPrice != null && isFinite(unknownPrice)
+              ? unknownPrice
+              : null,
+            unit: priceRes.unit || null
+          };
+        } else {
+          mapped = asOfValueFromPrice(
+            Object.assign({}, compItem, { qtyAtDate: qtyAtDate }),
+            priceRes,
+            faceValue
+          );
+        }
         var notes = [];
         (compItem.notes || []).forEach(function (n) {
+          if (n && notes.indexOf(n) < 0) notes.push(n);
+        });
+        (splitQty.warnings || []).forEach(function (n) {
           if (n && notes.indexOf(n) < 0) notes.push(n);
         });
         if (mapped.status === 'ok' && priceRes.priceDate && priceRes.priceDate !== iso) {
@@ -4072,13 +4158,16 @@
           name: compItem.name || ticker,
           type: compItem.type || '',
           market: compItem.market || '',
-          qtyAtDate: compItem.qtyAtDate,
+          qtyAtDate: qtyAtDate,
           boughtQtyUpToDate: compItem.boughtQtyUpToDate,
           soldQtyUpToDate: compItem.soldQtyUpToDate,
           firstBuyDate: compItem.firstBuyDate,
           lastOperationDate: compItem.lastOperationDate,
           openLotsAtDate: compItem.openLotsAtDate,
           hasIncompleteHistory: !!compItem.hasIncompleteHistory,
+          splitAdjusted: !!splitQty.splitAdjusted,
+          splitConfidence: splitQty.splitConfidence || '',
+          appliedSplits: splitQty.appliedSplits || [],
           price: mapped.price,
           priceDate: mapped.status === 'ok' ? (priceRes.priceDate || null) : null,
           priceType: mapped.status === 'ok' ? (priceRes.priceType || 'close') : null,
@@ -4096,9 +4185,18 @@
       var priced = 0;
       var missing = 0;
       var unsupported = 0;
+      var splitUnknown = 0;
+      var splitPartial = 0;
       var total = 0;
       items.forEach(function (row) {
-        if (row.status === 'ok') {
+        if (row.splitConfidence === 'partial') splitPartial += 1;
+        if (row.splitConfidence === 'unknown') {
+          splitUnknown += 1;
+          if (row.status === 'unsupported') unsupported += 1;
+          else if (row.status === 'missing') missing += 1;
+          return;
+        }
+        if (asOfItemValueUsable(row)) {
           priced += 1;
           total += Number(row.valueRub) || 0;
         } else if (row.status === 'unsupported') unsupported += 1;
@@ -4113,6 +4211,9 @@
       if (unsupported > 0) {
         notes.push('Некоторые инструменты пока не поддерживаются для оценки на дату');
       }
+      if (splitUnknown > 0) {
+        notes.push('По части бумаг со сплитом не удалось определить шкалу лота');
+      }
       return {
         targetDate: iso,
         invalidDate: false,
@@ -4123,7 +4224,7 @@
         missingItemsCount: missing,
         unsupportedItemsCount: unsupported,
         hasIncompleteHistory: !!composition.hasIncompleteHistory,
-        isPartial: (missing + unsupported) > 0,
+        isPartial: (missing + unsupported + splitUnknown) > 0 || splitPartial > 0,
         notes: notes,
         items: items
       };
@@ -4167,6 +4268,8 @@
           qtyTo: 0,
           valueFrom: 0,
           valueTo: 0,
+          splitAdjusted: false,
+          splitConfidence: '',
           notes: []
         };
         order.push(key);
@@ -4174,7 +4277,7 @@
       var rec = map[key];
       if (row.name && rec.name === rec.ticker) rec.name = row.name;
       if (row.type && !rec.type) rec.type = row.type;
-      var ok = row.status === 'ok' && row.valueRub != null && isFinite(Number(row.valueRub));
+      var ok = asOfItemValueUsable(row);
       var qty = row.qtyAtDate;
       if (side === 'from') {
         rec.fromPresent = true;
@@ -4185,8 +4288,17 @@
         rec.qtyTo = qty;
         rec.valueTo = ok ? Number(row.valueRub) : null;
       }
+      if (row.splitAdjusted) rec.splitAdjusted = true;
+      if (row.splitConfidence) {
+        rec.splitConfidence = rec.splitConfidence
+          ? splitAwareWorseConfidence(rec.splitConfidence, row.splitConfidence)
+          : row.splitConfidence;
+      }
       if (row.status === 'missing') rec.notes.push(ASOF_MISSING_PRICE_NOTE);
       if (row.status === 'unsupported') rec.notes.push(ASOF_UNSUPPORTED_NOTE);
+      (row.notes || []).forEach(function (n) {
+        if (n) rec.notes.push(n);
+      });
     }
     ((fromResult && fromResult.items) || []).forEach(function (row) { take(row, 'from'); });
     ((toResult && toResult.items) || []).forEach(function (row) { take(row, 'to'); });
@@ -4211,6 +4323,8 @@
         valueFrom: rec.valueFrom,
         valueTo: rec.valueTo,
         changeRub: canDiff ? asOfRoundRub(Number(rec.valueTo) - Number(rec.valueFrom)) : null,
+        splitAdjusted: !!rec.splitAdjusted,
+        splitConfidence: rec.splitConfidence || '',
         note: asOfUniqueNotes([rec.notes]).join('; ')
       };
     });
@@ -4479,6 +4593,10 @@
     };
     (items || []).forEach(function (row) {
       if (!row) return;
+      if (row.splitConfidence === 'unknown') {
+        groups.unknown.push(row);
+        return;
+      }
       var qtyFrom = cmpExplainQty(row.qtyFrom);
       var qtyTo = cmpExplainQty(row.qtyTo);
       var unknownPrice = cmpExplainHasUnknownPrice(row);
@@ -4492,12 +4610,12 @@
         if (unknownPrice) groups.unknown.push(row);
         return;
       }
-      if (qtyTo > qtyFrom + CMP_EXPLAIN_EPS && qtyFrom > CMP_EXPLAIN_EPS) {
+      if (!row.splitAdjusted && qtyTo > qtyFrom + CMP_EXPLAIN_EPS && qtyFrom > CMP_EXPLAIN_EPS) {
         groups.qtyUp.push(row);
         if (unknownPrice) groups.unknown.push(row);
         return;
       }
-      if (qtyTo < qtyFrom - CMP_EXPLAIN_EPS && qtyTo > CMP_EXPLAIN_EPS) {
+      if (!row.splitAdjusted && qtyTo < qtyFrom - CMP_EXPLAIN_EPS && qtyTo > CMP_EXPLAIN_EPS) {
         groups.qtyDown.push(row);
         if (unknownPrice) groups.unknown.push(row);
         return;
@@ -8088,7 +8206,9 @@
       mainClass += ' pf-asof-kpi--partial';
       lbl = 'Оценено на дату';
       val = hasValue ? formatPortfolioRubAmount(result.totalValueRub) : '—';
-      sub = 'часть бумаг без цены';
+      var missPrice = Number((result && result.missingItemsCount) || 0) +
+        Number((result && result.unsupportedItemsCount) || 0);
+      sub = missPrice > 0 ? 'часть бумаг без цены' : 'часть оценок требует проверки';
     } else {
       lbl = 'Стоимость портфеля на дату';
       val = hasValue ? formatPortfolioRubAmount(result.totalValueRub) : '—';
@@ -8117,11 +8237,23 @@
     '</div>';
   }
 
+  function pfSplitAwareBadgeHtml(row) {
+    if (!row || !row.splitAdjusted) return '';
+    if (row.splitConfidence === 'unknown') return '';
+    var html = ' <span class="pf-split-badge" title="' + escapeHtml(PF_ASOF_SPLIT_BADGE_TITLE) + '">' +
+      escapeHtml(PF_SPLIT_AWARE_BADGE) + '</span>';
+    if (row.splitConfidence === 'partial') {
+      html += ' <span class="pf-split-pnl-hint muted">проверьте</span>';
+    }
+    return html;
+  }
+
   function asOfPaperCellHtml(row) {
     var paper = '<span class="pf-asof-ticker">' + escapeHtml(row.ticker) + '</span>';
     if (row.name && row.name !== row.ticker) {
       paper += ' <span class="muted pf-asof-name">' + escapeHtml(row.name) + '</span>';
     }
+    paper += pfSplitAwareBadgeHtml(row);
     return paper;
   }
 
@@ -8432,6 +8564,7 @@
           (row.name && row.name !== row.ticker
             ? ' <span class="muted pf-cmp-name">' + escapeHtml(row.name) + '</span>'
             : '') +
+          pfSplitAwareBadgeHtml(row) +
         '</div>' +
         '<div class="pf-cmp-card-kpis">' +
           '<span><span class="lbl">Кол-во на начало</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyFrom)) + '</span>' +
@@ -8461,6 +8594,7 @@
           (row.name && row.name !== row.ticker
             ? '<span class="muted pf-cmp-name">' + escapeHtml(row.name) + '</span>'
             : '') +
+          pfSplitAwareBadgeHtml(row) +
         '</td>' +
         '<td>' + escapeHtml(formatAsOfQtyDisplay(row.qtyFrom)) + '</td>' +
         '<td>' + escapeHtml(row.valueFrom == null ? '—' : formatPortfolioRubAmount(row.valueFrom)) + '</td>' +
