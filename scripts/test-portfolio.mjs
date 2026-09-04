@@ -308,7 +308,8 @@ function loadPortfolioCalcHelpers() {
     Markets: {
       isUsPosition: (pos) => !!(pos && (pos.market === 'US' || isUsTicker(pos.ticker))),
       isUsTicker,
-      formatMoneyValue: (v) => (v == null ? '—' : String(v))
+      formatMoneyValue: (v) => (v == null ? '—' : String(v)),
+      getMarketsEnabled: () => ({ ru: true, us: true })
     },
     document: { getElementById: () => null },
     escapeHtml: (s) => String(s == null ? '' : s),
@@ -366,7 +367,11 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__loadPayoutFeeds = loadPayoutFeedsForPortfolio;' +
       '\nthis.__upcomingPayouts = buildUpcomingPortfolioPayouts;' +
       '\nthis.__splitWarn = portfolioTickerNeedsSplitWarning;' +
-      '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;',
+      '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;' +
+      '\nthis.__twpBlock = buildTickerReturnWithPayoutsBlockHtml;' +
+      '\nthis.__ensureFeeds = ensurePortfolioPayoutFeedsLoaded;' +
+      '\nthis.__feedsCache = getPfPayoutFeedsCache;' +
+      '\nthis.__twpDetail = buildPortfolioTickerDetailHtml;',
     sandbox,
     { timeout: 10000 }
   );
@@ -405,10 +410,15 @@ function loadPortfolioCalcHelpers() {
     buildUpcomingPortfolioPayouts: sandbox.__upcomingPayouts,
     portfolioTickerNeedsSplitWarning: sandbox.__splitWarn,
     buildPortfolioSplitWarningHtml: sandbox.__splitWarnHtml,
+    buildTickerReturnWithPayoutsBlockHtml: sandbox.__twpBlock,
+    ensurePortfolioPayoutFeedsLoaded: sandbox.__ensureFeeds,
+    getPfPayoutFeedsCache: sandbox.__feedsCache,
+    buildPortfolioTickerDetailHtml: sandbox.__twpDetail,
     setSplitEventsCatalog: sandbox.setSplitEventsCatalog,
     getSplitEventsSync: sandbox.getSplitEventsSync,
     localStorage: sandbox.localStorage,
-    memStore: memStore
+    memStore: memStore,
+    sandbox: sandbox
   };
 }
 
@@ -3145,9 +3155,146 @@ function loadPriceAtDateHelpers() {
   }, events) == null, 'split warn: other ticker no');
 }
 
+{
+  // Волна 5.3: UI v1 справочного результата в «Подробнее»
+  const sb = calc.sandbox;
+  const cache = calc.getPfPayoutFeedsCache();
+  const pf = {
+    positions: [{
+      ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280
+    }],
+    sales: []
+  };
+  const snap = JSON.stringify(pf);
+  sb.getPortfolio = () => pf;
+
+  cache.status = 'idle';
+  cache.data = null;
+  cache.error = null;
+  cache.promise = null;
+  cache.tickersKey = '';
+  let html = calc.buildTickerReturnWithPayoutsBlockHtml('SBER', false);
+  assert(/Справочный результат с учётом найденных выплат/.test(html), 'twp ui: title');
+  assert(/Считаем результат с выплатами/.test(html), 'twp ui idle: loading');
+  assert(/Как считается/.test(html), 'twp ui idle: how-to present');
+  assert(/История операций/.test(calc.buildPortfolioTickerDetailHtml('SBER', pf.positions, pf.sales, null, false)) === true, 'twp ui: timeline still in detail');
+  assert(/Управление лотами и продажами/.test(calc.buildPortfolioTickerDetailHtml('SBER', pf.positions, pf.sales, null, false)), 'twp ui: lot manage still in detail');
+
+  cache.status = 'error';
+  cache.error = true;
+  html = calc.buildTickerReturnWithPayoutsBlockHtml('SBER', false);
+  assert(/Не удалось загрузить данные о выплатах/.test(html), 'twp ui error: message');
+  assert(!/pf-twp-kpis/.test(html), 'twp ui error: no kpi numbers');
+
+  cache.status = 'ready';
+  cache.error = null;
+  cache.data = {
+    payoutsByTicker: {
+      SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2024-07-17', value: 33.3 }] }
+    },
+    warnings: [],
+    isPartial: false
+  };
+  cache.tickersKey = 'SBER';
+  html = calc.buildTickerReturnWithPayoutsBlockHtml('SBER', false);
+  assert(/Вложено в покупки/.test(html), 'twp ui ready: purchase label');
+  assert(/Сумма продаж/.test(html), 'twp ui ready: sales label');
+  assert(/Текущая стоимость остатка/.test(html), 'twp ui ready: remainder label');
+  assert(/Найденные выплаты/.test(html), 'twp ui ready: payouts label');
+  assert(/Результат без выплат/.test(html), 'twp ui ready: without label');
+  assert(/Результат с выплатами/.test(html), 'twp ui ready: with label');
+  assert(/К сумме покупок, %/.test(html), 'twp ui ready: pct label');
+  assert(/pf-twp-result--pos/.test(html), 'twp ui ready: positive tone');
+  assert(!/Расчёт частичный/.test(html), 'twp ui ready: not partial');
+  assert(/найденные дивиденды за период владения/.test(html), 'twp ui stock formula');
+  assert(/Дивиденды — по дате отсечки/.test(html), 'twp ui stock notes');
+
+  const noPx = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
+    sales: []
+  };
+  sb.getPortfolio = () => noPx;
+  html = calc.buildTickerReturnWithPayoutsBlockHtml('SBER', false);
+  assert(/Недостаточно данных для полного расчёта/.test(html), 'twp ui missing price: null result');
+  assert(/Текущая стоимость остатка[\s\S]*?—/.test(html), 'twp ui missing price: em dash not 0');
+
+  sb.getPortfolio = () => ({
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+    sales: []
+  });
+  cache.data = { payoutsByTicker: {}, warnings: [], isPartial: true };
+  html = calc.buildTickerReturnWithPayoutsBlockHtml('SBER', false);
+  assert(/Расчёт частичный/.test(html), 'twp ui missing feed: partial');
+
+  const ofzPf = {
+    positions: [{
+      ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 90, buyDate: '2024-01-10',
+      currentPrice: 95, faceValue: 1000
+    }],
+    sales: []
+  };
+  sb.getPortfolio = () => ofzPf;
+  cache.data = {
+    payoutsByTicker: {
+      OFZ_26238: {
+        kind: 'bond', source: 'bondization',
+        coupons: [{ date: '2024-06-19', value: 42.38 }],
+        faceValue: 1000
+      }
+    },
+    warnings: [],
+    isPartial: false
+  };
+  cache.tickersKey = 'OFZ_26238';
+  html = calc.buildTickerReturnWithPayoutsBlockHtml('OFZ_26238', true);
+  assert(/найденные купоны за период владения/.test(html), 'twp ui ofz formula');
+  assert(/Цены ОФЗ — в % от номинала/.test(html), 'twp ui ofz notes');
+  assert(/без НКД/.test(html), 'twp ui ofz no NKD');
+
+  calc.setSplitEventsCatalog({
+    version: 1,
+    events: [{
+      ticker: 'T', aliases: ['TCSG'], effectiveDate: '2026-04-17', ratio: 10, type: 'split'
+    }]
+  });
+  const splitPf = {
+    positions: [{ ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3200, buyDate: '2025-06-01', currentPrice: 255 }],
+    sales: []
+  };
+  const splitSnap = JSON.stringify(splitPf);
+  sb.getPortfolio = () => splitPf;
+  cache.status = 'ready';
+  cache.data = {
+    payoutsByTicker: { T: { kind: 'stock', source: 'moex', dividends: [] } },
+    warnings: [],
+    isPartial: false
+  };
+  cache.tickersKey = 'T';
+  html = calc.buildTickerReturnWithPayoutsBlockHtml('T', false);
+  assert(/ещё не приведены к новой шкале/.test(html), 'twp ui split: extra warning');
+  assert(/Расчёт частичный/.test(html), 'twp ui split: marked partial');
+  assert(JSON.stringify(splitPf) === splitSnap, 'twp ui split: no JSON mutation');
+
+  sb.getPortfolio = () => pf;
+  cache.status = 'loading';
+  cache.tickersKey = 'SBER';
+  cache.promise = new Promise(function () { /* never settles */ });
+  const p1 = calc.ensurePortfolioPayoutFeedsLoaded();
+  const p2 = calc.ensurePortfolioPayoutFeedsLoaded();
+  assert(p1 === cache.promise && p2 === cache.promise, 'twp ui cache: second open joins inflight');
+
+  cache.status = 'idle';
+  cache.data = null;
+  cache.error = null;
+  cache.promise = null;
+  cache.tickersKey = '';
+  sb.getPortfolio = () => ({ positions: [], sales: [] });
+  assert(JSON.stringify(pf) === snap, 'twp ui: original fixture not mutated');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI');

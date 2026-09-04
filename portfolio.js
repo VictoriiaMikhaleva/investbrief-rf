@@ -5249,6 +5249,7 @@
       state.pfShowHiddenClosed = true;
     }
 
+    ensurePortfolioPayoutFeedsLoaded();
     renderPortfolioTableBody();
     scrollPortfolioTickerIntoView(ticker, { retries: 4 });
   }
@@ -5279,7 +5280,8 @@
       '.portfolio-card-actions, .portfolio-closed-card-actions,' +
       '.portfolio-card-detail, .portfolio-closed-card-detail,' +
       '.pf-row-actions, .pf-lot-toggle-row, .pf-sale-row, .pf-ticker-detail-row,' +
-      '.pf-ticker-manage, .pf-ticker-manage-summary'
+      '.pf-ticker-manage, .pf-ticker-manage-summary,' +
+      '.pf-twp-block, .pf-twp-how, .pf-twp-how-summary'
     );
 
     var openHistoryBtn = e.target.closest('[data-pf-open-history]');
@@ -5296,6 +5298,7 @@
       var tHist = normalizeTicker(historyBtn.getAttribute('data-pf-toggle-history'));
       if (!state.pfHistoryTickers) state.pfHistoryTickers = {};
       state.pfHistoryTickers[tHist] = !state.pfHistoryTickers[tHist];
+      if (state.pfHistoryTickers[tHist]) ensurePortfolioPayoutFeedsLoaded();
       renderPortfolioTableBody();
       return;
     }
@@ -5392,7 +5395,7 @@
       }
       return;
     }
-    if (e.target.closest('summary, .pf-ticker-manage-summary')) {
+    if (e.target.closest('summary, .pf-ticker-manage-summary, .pf-twp-how-summary')) {
       e.stopPropagation();
       return;
     }
@@ -5665,6 +5668,246 @@
     return html;
   }
 
+  var PF_TWP_TITLE = 'Справочный результат с учётом найденных выплат';
+  var PF_TWP_LOADING = 'Считаем результат с выплатами…';
+  var PF_TWP_ERROR = 'Не удалось загрузить данные о выплатах. Расчёт может быть неполным.';
+  var PF_TWP_PARTIAL = 'Расчёт частичный: часть данных по операциям или выплатам отсутствует.';
+  var PF_TWP_NULL = 'Недостаточно данных для полного расчёта.';
+  var PF_TWP_PCT_UNAVAILABLE = 'процент не рассчитан';
+  var PF_TWP_SPLIT_WARN = 'По бумаге было дробление акций. Если количество и средняя цена в портфеле ещё не приведены к новой шкале, расчёт может быть неполным.';
+  var _pfPayoutFeedsCacheFallback = null;
+
+  function emptyPfPayoutFeedsCache() {
+    return {
+      status: 'idle',
+      data: null,
+      error: null,
+      promise: null,
+      tickersKey: ''
+    };
+  }
+
+  function getPfPayoutFeedsCache() {
+    if (typeof state !== 'undefined' && state) {
+      if (!state.pfPayoutFeedsCache) state.pfPayoutFeedsCache = emptyPfPayoutFeedsCache();
+      return state.pfPayoutFeedsCache;
+    }
+    if (!_pfPayoutFeedsCacheFallback) _pfPayoutFeedsCacheFallback = emptyPfPayoutFeedsCache();
+    return _pfPayoutFeedsCacheFallback;
+  }
+
+  function portfolioPayoutFeedsTickersKey(portfolio) {
+    var parts = payoutsPositionsSales(portfolio);
+    return payoutsCollectTickers(parts.positions, parts.sales).join('|');
+  }
+
+  function currentPortfolioForPayoutFeeds() {
+    if (typeof getPortfolio === 'function') return getPortfolio() || { positions: [], sales: [] };
+    return { positions: [], sales: [] };
+  }
+
+  function hasOpenPortfolioTickerDetails() {
+    var map = (typeof state !== 'undefined' && state && state.pfHistoryTickers) || {};
+    var k;
+    for (k in map) {
+      if (Object.prototype.hasOwnProperty.call(map, k) && map[k]) return true;
+    }
+    return false;
+  }
+
+  function ensurePortfolioPayoutFeedsLoaded() {
+    var cache = getPfPayoutFeedsCache();
+    var pf = currentPortfolioForPayoutFeeds();
+    var key = portfolioPayoutFeedsTickersKey(pf);
+    if (cache.tickersKey && cache.tickersKey !== key) {
+      cache.status = 'idle';
+      cache.data = null;
+      cache.error = null;
+      cache.promise = null;
+      cache.tickersKey = '';
+    }
+    if (cache.status === 'ready' && cache.tickersKey === key) {
+      return Promise.resolve(cache);
+    }
+    if (cache.status === 'loading' && cache.promise && cache.tickersKey === key) {
+      return cache.promise;
+    }
+    cache.status = 'loading';
+    cache.error = null;
+    cache.data = null;
+    cache.tickersKey = key;
+    cache.promise = Promise.resolve()
+      .then(function () {
+        if (typeof loadPayoutFeedsForPortfolio !== 'function') {
+          throw new Error('payout feeds loader unavailable');
+        }
+        return loadPayoutFeedsForPortfolio(pf);
+      })
+      .then(function (feeds) {
+        if (cache.tickersKey !== key) return cache;
+        cache.status = 'ready';
+        cache.data = feeds || { payoutsByTicker: {}, warnings: [], isPartial: false };
+        cache.error = null;
+        cache.promise = null;
+        try {
+          if (typeof renderPortfolioTableBody === 'function') renderPortfolioTableBody();
+        } catch (e) { /* re-render is best-effort; detail stays on last HTML */ }
+        return cache;
+      })
+      .catch(function () {
+        if (cache.tickersKey !== key) return cache;
+        cache.status = 'error';
+        cache.data = null;
+        cache.error = true;
+        cache.promise = null;
+        try {
+          if (typeof renderPortfolioTableBody === 'function') renderPortfolioTableBody();
+        } catch (e) { /* re-render is best-effort; detail stays on last HTML */ }
+        return cache;
+      });
+    return cache.promise;
+  }
+
+  function maybeEnsurePayoutFeedsForOpenDetails() {
+    if (!hasOpenPortfolioTickerDetails()) return;
+    var cache = getPfPayoutFeedsCache();
+    var key = portfolioPayoutFeedsTickersKey(currentPortfolioForPayoutFeeds());
+    if (cache.status === 'ready' && cache.tickersKey === key) return;
+    if (cache.status === 'loading' && cache.promise && cache.tickersKey === key) return;
+    if (cache.status === 'error' && cache.tickersKey === key) return;
+    ensurePortfolioPayoutFeedsLoaded();
+  }
+
+  function formatTwpReturnPct(pct) {
+    if (pct == null || !isFinite(Number(pct))) return '—';
+    var n = Number(pct);
+    var decimals = Math.abs(n * 10 - Math.round(n * 10)) < 1e-6 ? 1 : 2;
+    return formatSignedPct(n, decimals);
+  }
+
+  function twpResultToneClass(val) {
+    if (val == null || !isFinite(Number(val))) return '';
+    var n = Number(val);
+    if (n > 0) return ' pf-twp-result--pos';
+    if (n < 0) return ' pf-twp-result--neg';
+    return ' pf-twp-result--zero';
+  }
+
+  function buildTwpKpiHtml(label, valueHtml, extraClass, hintHtml) {
+    return '<div class="pf-ticker-detail-kpi pf-twp-kpi' + (extraClass || '') + '">' +
+      '<span class="lbl">' + escapeHtml(label) + '</span>' +
+      '<span class="val">' + valueHtml + '</span>' +
+      (hintHtml || '') +
+    '</div>';
+  }
+
+  function buildTwpHowHtml(isBond) {
+    var formula = isBond
+      ? '<p class="pf-twp-formula" aria-label="Формула">' +
+          'текущая стоимость остатка<br>' +
+          '+ сумма продаж<br>' +
+          '+ найденные купоны за период владения<br>' +
+          '− сумма покупок.</p>'
+      : '<p class="pf-twp-formula" aria-label="Формула">' +
+          'текущая стоимость остатка<br>' +
+          '+ сумма продаж<br>' +
+          '+ найденные дивиденды за период владения<br>' +
+          '− сумма покупок.</p>';
+    var notes = isBond
+      ? '<p class="pf-twp-how-note">Процент — к сумме покупок. Если покупок на 0 ₽, процент не считается.</p>' +
+        '<p class="pf-twp-how-note">Цены ОФЗ — в % от номинала, суммы — в ₽. Купоны — по дате купона, без НКД. Налоги, комиссии и будущие выплаты не учитываются.</p>'
+      : '<p class="pf-twp-how-note">Процент — к сумме покупок. Если покупок на 0 ₽, процент не считается.</p>' +
+        '<p class="pf-twp-how-note">Дивиденды — по дате отсечки, не по дате зачисления. Налоги, комиссии и будущие выплаты не учитываются.</p>';
+    return '<details class="pf-twp-how">' +
+      '<summary class="pf-twp-how-summary">Как считается</summary>' +
+      '<div class="pf-twp-how-body">' +
+        '<p class="pf-twp-how-lead">Справочный результат по данным портфеля:</p>' +
+        formula +
+        notes +
+      '</div>' +
+    '</details>';
+  }
+
+  function buildTwpSplitWarnHtml(ticker, portfolio) {
+    if (!portfolioTickerNeedsSplitWarning(ticker, portfolio)) return '';
+    return '<p class="pf-twp-split-warn" role="status">' + escapeHtml(PF_TWP_SPLIT_WARN) + '</p>';
+  }
+
+  function buildTickerReturnWithPayoutsBlockHtml(ticker, isBond) {
+    var cache = getPfPayoutFeedsCache();
+    var pf = currentPortfolioForPayoutFeeds();
+    var html = '<div class="pf-ticker-detail-section pf-twp-block">' +
+      '<h4 class="pf-ticker-detail-h pf-twp-title">' + escapeHtml(PF_TWP_TITLE) + '</h4>';
+    html += buildTwpSplitWarnHtml(ticker, pf);
+
+    if (cache.status === 'idle' || cache.status === 'loading') {
+      html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_LOADING) + '</p>';
+      html += buildTwpHowHtml(isBond);
+      html += '</div>';
+      return html;
+    }
+
+    if (cache.status === 'error') {
+      html += '<p class="muted pf-twp-status pf-twp-status--error">' + escapeHtml(PF_TWP_ERROR) + '</p>';
+      html += buildTwpHowHtml(isBond);
+      html += '</div>';
+      return html;
+    }
+
+    var row = null;
+    try {
+      row = buildTickerReturnWithPayouts(ticker, pf, {
+        payoutsByTicker: cache.data && cache.data.payoutsByTicker,
+        now: typeof localPortfolioTodayYmd === 'function' ? localPortfolioTodayYmd() : undefined
+      });
+    } catch (e) {
+      html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_NULL) + '</p>';
+      html += buildTwpHowHtml(isBond);
+      html += '</div>';
+      return html;
+    }
+
+    if (!row) {
+      html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_NULL) + '</p>';
+      html += buildTwpHowHtml(isBond);
+      html += '</div>';
+      return html;
+    }
+
+    var splitHit = !!portfolioTickerNeedsSplitWarning(ticker, pf);
+    var isPartial = !!(row.isPartial || (cache.data && cache.data.isPartial) || splitHit);
+    var resultNull = row.resultWithPayoutsRub == null;
+    var pct = row.returnWithPayoutsPct;
+    var pctHtml = escapeHtml(formatTwpReturnPct(pct));
+    var pctHint = pct == null
+      ? '<span class="pf-twp-kpi-hint muted">' + escapeHtml(PF_TWP_PCT_UNAVAILABLE) + '</span>'
+      : '';
+
+    html += '<div class="pf-ticker-detail-summary pf-twp-kpis">' +
+      buildTwpKpiHtml('Вложено в покупки', escapeHtml(formatPortfolioRubAmount(row.purchaseCostRub))) +
+      buildTwpKpiHtml('Сумма продаж', escapeHtml(formatPortfolioRubAmount(row.saleProceedsRub))) +
+      buildTwpKpiHtml('Текущая стоимость остатка', escapeHtml(formatPortfolioRubAmount(row.currentMarketValueRub))) +
+      buildTwpKpiHtml('Найденные выплаты', escapeHtml(formatPortfolioRubAmount(row.payoutsRub))) +
+      buildTwpKpiHtml('Результат без выплат', escapeHtml(formatSignedRubAmount(row.resultWithoutPayoutsRub))) +
+      buildTwpKpiHtml(
+        'Результат с выплатами',
+        escapeHtml(formatSignedRubAmount(row.resultWithPayoutsRub)),
+        twpResultToneClass(row.resultWithPayoutsRub)
+      ) +
+      buildTwpKpiHtml('К сумме покупок, %', pctHtml, '', pctHint) +
+    '</div>';
+
+    if (resultNull) {
+      html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_NULL) + '</p>';
+    } else if (isPartial) {
+      html += '<p class="muted pf-twp-status pf-twp-status--partial">' + escapeHtml(PF_TWP_PARTIAL) + '</p>';
+    }
+
+    html += buildTwpHowHtml(isBond);
+    html += '</div>';
+    return html;
+  }
+
   function buildPortfolioTickerDetailHtml(ticker, positions, sales, bondMeta, isBond, opts) {
     opts = opts || {};
     var stack = opts.layout === 'stack';
@@ -5694,6 +5937,8 @@
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Зафиксированный результат</span>' +
           '<span class="val ' + rCls + '">' + escapeHtml(formatSignedRubAmount(hist.realizedPnlRub)) + '</span></div>' +
       '</div>';
+
+    html += buildTickerReturnWithPayoutsBlockHtml(hist.ticker, isBond);
 
     html += buildPortfolioTickerTimelineHtml(timeline, hist.ticker, isBond, stack);
 
@@ -6223,6 +6468,7 @@
   function renderPortfolioTableBody() {
     var renderId = ++state.pfTableRenderId;
     ensurePortfolioSplitEvents();
+    maybeEnsurePayoutFeedsForOpenDetails();
     var positions = getFilteredPortfolioPositions();
     var sales = getPortfolio().sales || [];
     var placeholderHtml = buildPortfolioTableHtml(positions, {}, sales);

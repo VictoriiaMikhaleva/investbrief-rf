@@ -2375,6 +2375,164 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
   background: color-mix(in srgb, var(--accent) 36%, var(--bronze) 28%, #9aa7b0 36%);
 }
 
+.pf-twp-block {
+  margin: 0.15rem 0 0.2rem;
+  padding: 0.42rem 0.5rem 0.4rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 10%, #d8ddd8 90%);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, #ffffff 92%, var(--accent-soft) 8%) 0%,
+      color-mix(in srgb, #f8f9f7 88%, var(--bronze-soft) 12%) 100%);
+}
+
+.pf-twp-block > .pf-twp-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.32rem;
+  padding: 0;
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--accent) 58%, #4e5c56 42%);
+  text-transform: none;
+}
+
+.pf-twp-block > .pf-twp-title::before {
+  content: "";
+  width: 0.18rem;
+  height: 0.78rem;
+  border-radius: 99px;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--accent) 42%, var(--bronze) 22%, #b7c9bd 36%);
+}
+
+.pf-twp-kpis {
+  margin: 0 0 0.28rem;
+  padding: 0.32rem 0.4rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 22%, #c5d0c8 78%);
+  background: color-mix(in srgb, #ffffff 72%, var(--accent-soft) 28%);
+  box-shadow: none;
+}
+
+.pf-twp-kpi .val {
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-twp-kpi-hint {
+  display: block;
+  margin-top: 0.04rem;
+  font-size: 0.64rem;
+  line-height: 1.25;
+  font-weight: 500;
+}
+
+.pf-twp-result--pos .val {
+  color: color-mix(in srgb, #3d5c47 78%, #5a7464 22%);
+}
+
+.pf-twp-result--neg .val {
+  color: color-mix(in srgb, #8d6a58 70%, #6a5044 30%);
+}
+
+.pf-twp-result--zero .val {
+  color: var(--text);
+}
+
+.pf-twp-status {
+  margin: 0.2rem 0 0.28rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.pf-twp-split-warn {
+  margin: 0 0 0.32rem;
+  padding: 0.36rem 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, #6e5a48 68%, var(--text-muted) 32%);
+  background: color-mix(in srgb, var(--bronze-soft) 16%, #fffdf9 84%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 10%, #eadccb 90%);
+  border-radius: 8px;
+}
+
+.pf-twp-how {
+  margin-top: 0.18rem;
+}
+
+.pf-twp-how-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.22rem 0.1rem;
+  border-radius: 6px;
+  user-select: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text-muted) 70%, #4e5854 30%);
+}
+
+.pf-twp-how-summary::-webkit-details-marker,
+.pf-twp-how-summary::marker {
+  display: none;
+  content: "";
+}
+
+.pf-twp-how-summary::before {
+  content: "";
+  width: 0.28rem;
+  height: 0.28rem;
+  flex: 0 0 auto;
+  border-right: 1.5px solid color-mix(in srgb, var(--text-muted) 50%, #9aa3ad 50%);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--text-muted) 50%, #9aa3ad 50%);
+  transform: rotate(-45deg);
+  opacity: 0.55;
+  transition: transform 0.15s ease;
+}
+
+.pf-twp-how[open] > .pf-twp-how-summary::before {
+  transform: rotate(45deg);
+}
+
+.pf-twp-how-summary:hover {
+  color: color-mix(in srgb, var(--text) 72%, var(--accent) 28%);
+}
+
+.pf-twp-how-summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.pf-twp-how-body {
+  padding: 0.08rem 0.1rem 0.2rem 0.08rem;
+}
+
+.pf-twp-how-lead,
+.pf-twp-how-note {
+  margin: 0 0 0.28rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 82%, #4e5854 18%);
+}
+
+.pf-twp-formula {
+  margin: 0 0 0.32rem;
+  padding: 0.32rem 0.5rem;
+  font-size: 0.74rem;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--text) 78%, #4e5854 22%);
+  background: color-mix(in srgb, #ffffff 70%, var(--accent-soft) 30%);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 28%, var(--bronze) 18%, #c5d0c8 54%);
+  border-radius: 0 8px 8px 0;
+  overflow-wrap: anywhere;
+}
+
 .pf-ticker-manage {
   margin-top: 0.8rem;
   border: 1px solid color-mix(in srgb, #d5dbe2 42%, rgba(23, 34, 51, 0.04) 58%);
@@ -3451,6 +3609,30 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 
   .pf-ticker-manage-hint {
     font-size: 0.64rem;
+  }
+
+  .pf-twp-block {
+    margin-top: 0.2rem;
+    padding: 0.4rem 0.45rem 0.38rem;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .pf-ticker-detail--stack .pf-twp-kpis,
+  .pf-twp-kpis {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.38rem 0.45rem;
+  }
+
+  .pf-twp-how-summary {
+    min-height: 2.25rem;
+    padding: 0.38rem 0.12rem;
+  }
+
+  .pf-twp-formula,
+  .pf-twp-split-warn,
+  .pf-twp-status {
+    overflow-wrap: anywhere;
   }
 
   .pf-ticker-detail .pf-op-badge {

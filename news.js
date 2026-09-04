@@ -966,7 +966,14 @@
     pfSaleTicker: '',
     pfTableRenderId: 0,
     pfExpandedTickers: {},
-    pfHistoryTickers: {}
+    pfHistoryTickers: {},
+    pfPayoutFeedsCache: {
+      status: 'idle',
+      data: null,
+      error: null,
+      promise: null,
+      tickersKey: ''
+    }
   };
   if (typeof globalThis !== 'undefined') globalThis.state = state;
   else if (typeof window !== 'undefined') window.state = state;
