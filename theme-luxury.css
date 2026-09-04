@@ -2448,13 +2448,18 @@ table.portfolio-table tr.pf-ticker-detail-row .pf-ticker-detail {
 
 .pf-twp-split-warn {
   margin: 0 0 0.32rem;
-  padding: 0.36rem 0.45rem;
+  padding: 0.36rem 0.55rem;
   font-size: 0.72rem;
-  line-height: 1.4;
+  line-height: 1.45;
   color: color-mix(in srgb, #6e5a48 68%, var(--text-muted) 32%);
   background: color-mix(in srgb, var(--bronze-soft) 16%, #fffdf9 84%);
   border: 1px solid color-mix(in srgb, var(--bronze) 10%, #eadccb 90%);
   border-radius: 8px;
+  display: block;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
 }
 
 .pf-twp-how {
@@ -3631,8 +3636,12 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 
   .pf-twp-formula,
   .pf-twp-split-warn,
-  .pf-twp-status {
+  .pf-twp-status,
+  #tab-portfolio .pf-split-warn,
+  #tab-portfolio .pf-wide-warning {
     overflow-wrap: anywhere;
+    white-space: normal;
+    max-width: 100%;
   }
 
   .pf-ticker-detail .pf-op-badge {
@@ -4169,15 +4178,23 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 }
 
 #tab-portfolio .pf-split-warn,
-#tab-portfolio .pf-pay-result .pf-split-warn {
+#tab-portfolio .pf-pay-result .pf-split-warn,
+#tab-portfolio .pf-wide-warning,
+#tab-portfolio .pf-twp-split-warn {
+  display: block;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
   margin: 0.45rem 0 0.55rem;
-  padding: 0.5rem 0.65rem;
+  padding: 0.48rem 0.75rem;
   font-size: 0.76rem;
-  line-height: 1.4;
+  line-height: 1.45;
   color: color-mix(in srgb, #7a5a42 78%, #5c4636 22%);
   background: color-mix(in srgb, var(--bronze-soft) 22%, #fffaf6 78%);
   border: 1px solid color-mix(in srgb, var(--bronze) 16%, #eadccb 84%);
   border-radius: 8px;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 #tab-portfolio .pf-asof-foot {

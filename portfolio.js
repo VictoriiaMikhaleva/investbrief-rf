@@ -282,6 +282,8 @@
   }
 
   var PF_SPLIT_WARN_TEXT = 'По бумаге было дробление акций. Проверьте, что количество и средняя цена в портфеле уже приведены к новой шкале. Стоимость позиции при сплите сама по себе не должна падать пропорционально цене одной акции.';
+  var PF_SPLIT_WARN_MULTI_TAIL = 'Проверьте количество и среднюю цену.';
+  var PF_SPLIT_WARN_CLASS = 'pf-split-warn pf-wide-warning';
   var _pfSplitEventsTried = false;
 
   function pfSplitIsoDate(raw) {
@@ -348,26 +350,182 @@
     return null;
   }
 
-  function buildPortfolioSplitWarningHtml(ticker, portfolio, events) {
-    if (!portfolioTickerNeedsSplitWarning(ticker, portfolio, events || (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []))) {
-      return '';
+  function formatSplitRatioLabel(ratio) {
+    var n = Number(ratio);
+    if (!isFinite(n) || !(n > 0)) return '';
+    if (Math.abs(n - Math.round(n)) < 1e-9) return '1:' + String(Math.round(n));
+    return '1:' + String(n);
+  }
+
+  function formatSplitWarningDate(iso) {
+    var n = pfSplitIsoDate(iso);
+    var m = String(n || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return '';
+    return m[3] + '.' + m[2] + '.' + m[1];
+  }
+
+  function formatSplitTickerLabel(ev, queryTicker) {
+    var main = normalizeTicker(ev && ev.ticker);
+    var q = normalizeTicker(queryTicker);
+    if (q && main && q !== main) return q + ' / ' + main;
+    return q || main || '';
+  }
+
+  function formatSingleSplitWarningText(ev, queryTicker) {
+    if (!ev) return PF_SPLIT_WARN_TEXT;
+    var name = formatSplitTickerLabel(ev, queryTicker);
+    var ratio = formatSplitRatioLabel(ev.ratio);
+    var date = formatSplitWarningDate(ev.effectiveDate);
+    if (!name) return PF_SPLIT_WARN_TEXT;
+    var head = name + ': было дробление акций';
+    if (ratio) head += ' ' + ratio;
+    if (date) head += ' от ' + date;
+    return head + '. Проверьте, что количество и средняя цена в портфеле уже приведены к новой шкале. Стоимость позиции при сплите сама по себе не должна падать пропорционально цене одной акции.';
+  }
+
+  function collectPortfolioSplitHits(tickers, portfolio, events) {
+    events = events || (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    var hits = [];
+    var seen = {};
+    var i;
+    for (i = 0; i < (tickers || []).length; i++) {
+      var t = normalizeTicker(tickers[i]);
+      if (!t) continue;
+      var ev = portfolioTickerNeedsSplitWarning(t, portfolio, events);
+      if (!ev) continue;
+      var key = String(ev.ticker || t) + '|' + String(ev.effectiveDate || '');
+      if (seen[key]) continue;
+      seen[key] = true;
+      hits.push({ queryTicker: t, event: ev });
     }
-    return '<p class="pf-split-warn" role="status">' + escapeHtml(PF_SPLIT_WARN_TEXT) + '</p>';
+    return hits;
+  }
+
+  function formatSplitHitsWarningText(hits) {
+    if (!hits || !hits.length) return '';
+    if (hits.length === 1) return formatSingleSplitWarningText(hits[0].event, hits[0].queryTicker);
+    var parts = [];
+    var i;
+    for (i = 0; i < hits.length; i++) {
+      var ev = hits[i].event;
+      var label = formatSplitTickerLabel(ev, hits[i].queryTicker);
+      var ratio = formatSplitRatioLabel(ev && ev.ratio);
+      var date = formatSplitWarningDate(ev && ev.effectiveDate);
+      if (!label) continue;
+      var bit = label;
+      if (ratio) bit += ' — ' + ratio;
+      if (date) bit += ' от ' + date;
+      parts.push(bit);
+    }
+    if (!parts.length) return PF_SPLIT_WARN_TEXT;
+    return 'Сплиты в портфеле: ' + parts.join('; ') + '. ' + PF_SPLIT_WARN_MULTI_TAIL;
+  }
+
+  function wrapSplitWarningHtml(text, extraClass) {
+    if (!text) return '';
+    var cls = PF_SPLIT_WARN_CLASS + (extraClass ? ' ' + extraClass : '');
+    return '<p class="' + cls + '" role="status">' + escapeHtml(text) + '</p>';
+  }
+
+  function buildPortfolioSplitWarningHtml(ticker, portfolio, events) {
+    var ev = portfolioTickerNeedsSplitWarning(
+      ticker,
+      portfolio,
+      events || (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [])
+    );
+    if (!ev) return '';
+    return wrapSplitWarningHtml(formatSingleSplitWarningText(ev, ticker));
   }
 
   function buildPortfolioSplitWarningsForTickersHtml(tickers, portfolio) {
     var events = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+    var hits = collectPortfolioSplitHits(tickers, portfolio, events);
+    if (!hits.length) return '';
+    return wrapSplitWarningHtml(formatSplitHitsWarningText(hits));
+  }
+
+  function uniqueWarningTickers(tickers) {
+    var out = [];
     var seen = {};
     var i;
     for (i = 0; i < (tickers || []).length; i++) {
       var t = normalizeTicker(tickers[i]);
       if (!t || seen[t]) continue;
       seen[t] = true;
-      if (portfolioTickerNeedsSplitWarning(t, portfolio, events)) {
-        return '<p class="pf-split-warn" role="status">' + escapeHtml(PF_SPLIT_WARN_TEXT) + '</p>';
-      }
+      out.push(t);
     }
-    return '';
+    return out;
+  }
+
+  function orderWarningTickersByPortfolio(tickers, portfolio) {
+    var unique = uniqueWarningTickers(tickers);
+    if (unique.length <= 1) return unique;
+    var wanted = {};
+    unique.forEach(function (t) { wanted[t] = true; });
+    var ordered = [];
+    var seen = {};
+    function add(raw) {
+      var t = normalizeTicker(raw);
+      if (!t || !wanted[t] || seen[t]) return;
+      seen[t] = true;
+      ordered.push(t);
+    }
+    var parts = payoutsPositionsSales(portfolio);
+    (parts.positions || []).forEach(function (p) { if (p) add(p.ticker); });
+    (parts.sales || []).forEach(function (s) { if (s) add(s.ticker); });
+    unique.slice().sort().forEach(add);
+    return ordered;
+  }
+
+  function collectPayoutPartialTickersFromWarnings(warnings) {
+    var out = [];
+    var i;
+    for (i = 0; i < (warnings || []).length; i++) {
+      var s = String(warnings[i] || '');
+      var m = s.match(/нет данных по (?:выплатам|дивидендам|купонам) для\s+([A-Za-z0-9._-]+)/i);
+      if (!m) m = s.match(/выплаты для\s+([A-Za-z0-9._-]+)\s+пока не поддерживаются/i);
+      if (!m) m = s.match(/^([A-Za-z0-9._-]+):\s+(?:дивиденд|купон) без суммы/i);
+      if (!m) continue;
+      out.push(m[1]);
+    }
+    return uniqueWarningTickers(out);
+  }
+
+  function collectUnavailablePayoutTickers(payoutsByTicker) {
+    if (!payoutsByTicker || typeof payoutsByTicker !== 'object') return [];
+    var out = [];
+    var keys = Object.keys(payoutsByTicker);
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      var feed = payoutsByTicker[keys[i]];
+      if (feed && feed.unavailable) out.push(keys[i]);
+    }
+    return uniqueWarningTickers(out);
+  }
+
+  function collectPayoutPartialTickers(result, portfolio) {
+    result = result || {};
+    var merged = collectPayoutPartialTickersFromWarnings(
+      [].concat(result.warnings || [], result.feedWarnings || [])
+    ).concat(collectUnavailablePayoutTickers(result.payoutsByTicker));
+    return orderWarningTickersByPortfolio(merged, portfolio);
+  }
+
+  function formatTickerListForWarning(tickers) {
+    var unique = uniqueWarningTickers(tickers);
+    if (!unique.length) return '';
+    if (unique.length <= 5) return unique.join(', ');
+    return unique.slice(0, 5).join(', ') + ' и ещё ' + (unique.length - 5);
+  }
+
+  function formatPayoutPartialWarningText(tickers, fallback) {
+    var unique = uniqueWarningTickers(tickers);
+    if (!unique.length) return fallback || '';
+    if (unique.length === 1) {
+      return 'Расчёт частичный: нет данных о выплатах или сумме на 1 шт. по бумаге ' + unique[0] + '.';
+    }
+    return 'Расчёт частичный: нет данных о выплатах или сумме на 1 шт. по бумагам: ' +
+      formatTickerListForWarning(unique) + '.';
   }
 
   function ensurePortfolioSplitEvents() {
@@ -5674,7 +5832,6 @@
   var PF_TWP_PARTIAL = 'Расчёт частичный: часть данных по операциям или выплатам отсутствует.';
   var PF_TWP_NULL = 'Недостаточно данных для полного расчёта.';
   var PF_TWP_PCT_UNAVAILABLE = 'процент не рассчитан';
-  var PF_TWP_SPLIT_WARN = 'По бумаге было дробление акций. Если количество и средняя цена в портфеле ещё не приведены к новой шкале, расчёт может быть неполным.';
   var _pfPayoutFeedsCacheFallback = null;
 
   function emptyPfPayoutFeedsCache() {
@@ -5829,8 +5986,10 @@
   }
 
   function buildTwpSplitWarnHtml(ticker, portfolio) {
-    if (!portfolioTickerNeedsSplitWarning(ticker, portfolio)) return '';
-    return '<p class="pf-twp-split-warn" role="status">' + escapeHtml(PF_TWP_SPLIT_WARN) + '</p>';
+    var events = typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : [];
+    var ev = portfolioTickerNeedsSplitWarning(ticker, portfolio, events);
+    if (!ev) return '';
+    return wrapSplitWarningHtml(formatSingleSplitWarningText(ev, ticker), 'pf-twp-split-warn');
   }
 
   function buildTickerReturnWithPayoutsBlockHtml(ticker, isBond) {
@@ -5900,7 +6059,11 @@
     if (resultNull) {
       html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_NULL) + '</p>';
     } else if (isPartial) {
-      html += '<p class="muted pf-twp-status pf-twp-status--partial">' + escapeHtml(PF_TWP_PARTIAL) + '</p>';
+      var partialTickers = collectPayoutPartialTickersFromWarnings(row.warnings);
+      var twpFeed = payoutsGetFeed(cache.data && cache.data.payoutsByTicker, ticker);
+      if (payoutsFeedMissing(twpFeed) && ticker) partialTickers = uniqueWarningTickers(partialTickers.concat([ticker]));
+      html += '<p class="muted pf-twp-status pf-twp-status--partial">' +
+        escapeHtml(formatPayoutPartialWarningText(partialTickers, PF_TWP_PARTIAL)) + '</p>';
     }
 
     html += buildTwpHowHtml(isBond);
@@ -7460,7 +7623,10 @@
     if (warn) {
       if (partial) {
         warn.hidden = false;
-        warn.textContent = PF_PAY_PARTIAL;
+        warn.textContent = formatPayoutPartialWarningText(
+          collectPayoutPartialTickers(result, typeof getPortfolio === 'function' ? getPortfolio() : null),
+          PF_PAY_PARTIAL
+        );
       } else {
         warn.hidden = true;
         warn.textContent = '';
@@ -7520,6 +7686,8 @@
         });
         result = result || {};
         result.feedPartial = !!feeds.isPartial;
+        result.feedWarnings = feeds.warnings || [];
+        result.payoutsByTicker = feeds.payoutsByTicker;
         if (seq !== pfPaySeq) return;
         setPortfolioPayoutsBusy(false);
         renderPortfolioPayoutsResult(result);
@@ -7661,7 +7829,10 @@
     if (warn) {
       if (partial) {
         warn.hidden = false;
-        warn.textContent = PF_UP_PAY_PARTIAL;
+        warn.textContent = formatPayoutPartialWarningText(
+          collectPayoutPartialTickers(result, typeof getPortfolio === 'function' ? getPortfolio() : null),
+          PF_UP_PAY_PARTIAL
+        );
       } else {
         warn.hidden = true;
         warn.textContent = '';
@@ -7716,6 +7887,8 @@
         });
         result = result || {};
         result.feedPartial = !!feeds.isPartial;
+        result.feedWarnings = feeds.warnings || [];
+        result.payoutsByTicker = feeds.payoutsByTicker;
         if (seq !== pfUpPaySeq) return;
         setUpcomingPayoutsBusy(false);
         renderUpcomingPayoutsResult(result);

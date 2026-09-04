@@ -368,6 +368,10 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__upcomingPayouts = buildUpcomingPortfolioPayouts;' +
       '\nthis.__splitWarn = portfolioTickerNeedsSplitWarning;' +
       '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;' +
+      '\nthis.__splitWarnMany = buildPortfolioSplitWarningsForTickersHtml;' +
+      '\nthis.__splitWarnText = formatSingleSplitWarningText;' +
+      '\nthis.__partialWarnText = formatPayoutPartialWarningText;' +
+      '\nthis.__partialTickers = collectPayoutPartialTickersFromWarnings;' +
       '\nthis.__twpBlock = buildTickerReturnWithPayoutsBlockHtml;' +
       '\nthis.__ensureFeeds = ensurePortfolioPayoutFeedsLoaded;' +
       '\nthis.__feedsCache = getPfPayoutFeedsCache;' +
@@ -410,6 +414,10 @@ function loadPortfolioCalcHelpers() {
     buildUpcomingPortfolioPayouts: sandbox.__upcomingPayouts,
     portfolioTickerNeedsSplitWarning: sandbox.__splitWarn,
     buildPortfolioSplitWarningHtml: sandbox.__splitWarnHtml,
+    buildPortfolioSplitWarningsForTickersHtml: sandbox.__splitWarnMany,
+    formatSingleSplitWarningText: sandbox.__splitWarnText,
+    formatPayoutPartialWarningText: sandbox.__partialWarnText,
+    collectPayoutPartialTickersFromWarnings: sandbox.__partialTickers,
     buildTickerReturnWithPayoutsBlockHtml: sandbox.__twpBlock,
     ensurePortfolioPayoutFeedsLoaded: sandbox.__ensureFeeds,
     getPfPayoutFeedsCache: sandbox.__feedsCache,
@@ -3118,6 +3126,10 @@ function loadPriceAtDateHelpers() {
   assert(JSON.stringify(beforePf) === snap, 'split warn: portfolio JSON not mutated');
   const html = calc.buildPortfolioSplitWarningHtml('T', beforePf, events);
   assert(/дробление акций/.test(html), 'split warn html present');
+  assert(/T:/.test(html), 'split warn html: ticker T');
+  assert(/1:10/.test(html), 'split warn html: ratio 1:10');
+  assert(/17\.04\.2026/.test(html), 'split warn html: date 17.04.2026');
+  assert(/pf-wide-warning/.test(html), 'split warn html: wide class');
 
   const afterPf = {
     positions: [
@@ -3135,6 +3147,9 @@ function loadPriceAtDateHelpers() {
   };
   assert(calc.portfolioTickerNeedsSplitWarning('TCSG', aliasPf, events), 'split warn: alias TCSG');
   assert(calc.portfolioTickerNeedsSplitWarning('T', aliasPf, events), 'split warn: query T finds TCSG lot');
+  const aliasHtml = calc.buildPortfolioSplitWarningHtml('TCSG', aliasPf, events);
+  assert(/TCSG \/ T/.test(aliasHtml), 'split warn html: alias TCSG / T');
+  assert(/1:10/.test(aliasHtml) && /17\.04\.2026/.test(aliasHtml), 'split warn html: alias keeps ratio/date');
 
   const closedPf = {
     positions: [],
@@ -3153,6 +3168,45 @@ function loadPriceAtDateHelpers() {
     positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 250, buyDate: '2024-01-01' }],
     sales: []
   }, events) == null, 'split warn: other ticker no');
+  const sberHtml = calc.buildPortfolioSplitWarningHtml('SBER', {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 250, buyDate: '2024-01-01' }],
+    sales: []
+  }, events);
+  assert(sberHtml === '', 'split warn html: no warning for ordinary ticker');
+
+  const manyPf = {
+    positions: [
+      { ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3200, buyDate: '2025-06-01', currentPrice: 255 },
+      { ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 15000, buyDate: '2024-06-01', currentPrice: 1800 },
+      { ticker: 'T', lotId: 'T2', qty: 1, avgPrice: 3100, buyDate: '2025-07-01', currentPrice: 255 }
+    ],
+    sales: []
+  };
+  const manyHtml = calc.buildPortfolioSplitWarningsForTickersHtml(['T', 'T', 'PLZL'], manyPf);
+  assert(/Сплиты в портфеле/.test(manyHtml), 'split warn many: heading');
+  assert((manyHtml.match(/\bT\b/g) || []).length >= 1, 'split warn many: T present');
+  assert(/PLZL/.test(manyHtml), 'split warn many: PLZL present');
+  assert((manyHtml.match(/1:10/g) || []).length >= 2, 'split warn many: both ratios');
+  assert(!/T, T/.test(manyHtml), 'split warn many: no duplicated T, T');
+
+  const onePartial = calc.formatPayoutPartialWarningText(['SBER'], 'FALLBACK');
+  assert(/по бумаге SBER/.test(onePartial), 'partial warn: single ticker');
+  const twoPartial = calc.formatPayoutPartialWarningText(['T', 'T', 'PLZL'], 'FALLBACK');
+  assert(/по бумагам: T, PLZL/.test(twoPartial), 'partial warn: unique T, PLZL');
+  assert(!/T, T/.test(twoPartial), 'partial warn: no duplicate ticker');
+  const manyPartial = calc.formatPayoutPartialWarningText(
+    ['T', 'PLZL', 'GMKN', 'SBER', 'LKOH', 'VTBR', 'GAZP'],
+    'FALLBACK'
+  );
+  assert(/по бумагам: T, PLZL, GMKN, SBER, LKOH и ещё 2/.test(manyPartial), 'partial warn: cap at 5 + remainder');
+  assert(calc.formatPayoutPartialWarningText([], 'FALLBACK') === 'FALLBACK', 'partial warn: empty → fallback');
+  const parsed = calc.collectPayoutPartialTickersFromWarnings([
+    'нет данных по выплатам для SBER',
+    'нет данных по выплатам для SBER',
+    'GAZP: дивиденд без суммы на 1 акцию',
+    'нет данных по купонам для OFZ_26238'
+  ]);
+  assert(parsed.join(',') === 'SBER,GAZP,OFZ_26238', 'partial warn parse: unique tickers from warnings');
 }
 
 {
@@ -3225,6 +3279,7 @@ function loadPriceAtDateHelpers() {
   cache.data = { payoutsByTicker: {}, warnings: [], isPartial: true };
   html = calc.buildTickerReturnWithPayoutsBlockHtml('SBER', false);
   assert(/Расчёт частичный/.test(html), 'twp ui missing feed: partial');
+  assert(/по бумаге SBER/.test(html), 'twp ui missing feed: names ticker');
 
   const ofzPf = {
     positions: [{
@@ -3271,7 +3326,7 @@ function loadPriceAtDateHelpers() {
   };
   cache.tickersKey = 'T';
   html = calc.buildTickerReturnWithPayoutsBlockHtml('T', false);
-  assert(/ещё не приведены к новой шкале/.test(html), 'twp ui split: extra warning');
+  assert(/T: было дробление акций 1:10 от 17\.04\.2026/.test(html), 'twp ui split: ticker ratio date');
   assert(/Расчёт частичный/.test(html), 'twp ui split: marked partial');
   assert(JSON.stringify(splitPf) === splitSnap, 'twp ui split: no JSON mutation');
 
