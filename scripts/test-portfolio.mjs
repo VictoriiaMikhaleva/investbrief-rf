@@ -372,6 +372,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__splitWarnMany = buildPortfolioSplitWarningsForTickersHtml;' +
       '\nthis.__splitWarnText = formatSingleSplitWarningText;' +
       '\nthis.__splitAffected = isPortfolioTickerSplitAffected;' +
+      '\nthis.__lotScale = diagnoseLotShareScale;' +
       '\nthis.__splitPnlHtml = buildSplitAffectedPnlHtml;' +
       '\nthis.__lotRow = buildPortfolioLotRow;' +
       '\nthis.__sectionRows = buildPortfolioSectionRows;' +
@@ -424,6 +425,7 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioSplitWarningsForTickersHtml: sandbox.__splitWarnMany,
     formatSingleSplitWarningText: sandbox.__splitWarnText,
     isPortfolioTickerSplitAffected: sandbox.__splitAffected,
+    diagnoseLotShareScale: sandbox.__lotScale,
     buildSplitAffectedPnlHtml: sandbox.__splitPnlHtml,
     buildPortfolioLotRow: sandbox.__lotRow,
     buildPortfolioSectionRows: sandbox.__sectionRows,
@@ -3332,6 +3334,80 @@ function loadPriceAtDateHelpers() {
   const tAfterSection = calc.buildPortfolioSectionRows(tAfterPf.positions, 'stocks', {}, tAfterPf.sales);
   assert(!/требует проверки/.test(tAfterSection), 'T after split: section uses ordinary PnL');
   assert(/%/.test(tAfterSection), 'T after split: section still has percent');
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const opts = { splitEvents: events, currentDate: '2026-09-04' };
+
+  function scaleOf(lot, ticker, extra) {
+    return calc.diagnoseLotShareScale(lot, ticker, Object.assign({}, opts, extra || {}));
+  }
+
+  const sberBefore = { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2021-06-04', currentPrice: 280 };
+  const sberAfter = { ticker: 'SBER', lotId: 'S2', qty: 10, avgPrice: 250, buyDate: '2026-09-04', currentPrice: 280 };
+  const sberSnap = JSON.stringify({ positions: [sberBefore, sberAfter], sales: [] });
+  let d = scaleOf(sberBefore, 'SBER');
+  assert(d.scale === 'n/a' && d.confidence === 'high' && d.factor === 1, 'lot scale: SBER before → n/a high');
+  d = scaleOf(sberAfter, 'SBER');
+  assert(d.scale === 'n/a' && d.confidence === 'high', 'lot scale: SBER after → n/a high');
+
+  const gmknHist = { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 };
+  const gmknHistSnap = JSON.stringify(gmknHist);
+  d = scaleOf(gmknHist, 'GMKN');
+  assert(d.scale === 'historical', 'lot scale: GMKN 22000/130 → historical');
+  assert(d.confidence === 'high' || d.confidence === 'partial', 'lot scale: GMKN historical confidence high|partial');
+  assert(d.factor === 100 && d.splitEvent && d.splitEvent.ticker === 'GMKN', 'lot scale: GMKN historical factor 100');
+  assert(JSON.stringify(gmknHist) === gmknHistSnap, 'lot scale: GMKN historical lot not mutated');
+
+  const gmknCurr = { ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 130 };
+  d = scaleOf(gmknCurr, 'GMKN');
+  assert(d.scale === 'current', 'lot scale: GMKN 220/130 → current');
+  assert(d.confidence === 'high' || d.confidence === 'partial', 'lot scale: GMKN current confidence high|partial');
+  assert(d.factor === 100, 'lot scale: GMKN current still knows factor 100');
+
+  const gmknAfter = { ticker: 'GMKN', lotId: 'G3', qty: 10, avgPrice: 130, buyDate: '2026-09-04', currentPrice: 130 };
+  d = scaleOf(gmknAfter, 'GMKN');
+  assert(d.scale === 'current' && d.confidence === 'high', 'lot scale: GMKN after split → current high');
+  assert(d.reason.indexOf('после сплита') !== -1, 'lot scale: GMKN after split reason');
+
+  const tHist = { ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3126, buyDate: '2025-12-01', currentPrice: 262 };
+  d = scaleOf(tHist, 'T');
+  assert(d.scale === 'historical', 'lot scale: T 3126/262 → historical');
+  assert(d.factor === 10, 'lot scale: T historical factor 10');
+
+  const tCurr = { ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262 };
+  d = scaleOf(tCurr, 'T');
+  assert(d.scale === 'current', 'lot scale: T 312/262 → current');
+
+  const plzlHist = { ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 19000, buyDate: '2024-06-01', currentPrice: 1900 };
+  d = scaleOf(plzlHist, 'PLZL');
+  assert(d.scale === 'historical' && d.confidence === 'high', 'lot scale: PLZL 19000/1900 → historical high');
+  assert(d.factor === 10, 'lot scale: PLZL factor 10');
+
+  const noDate = { ticker: 'GMKN', lotId: 'GX', qty: 10, avgPrice: 22000, currentPrice: 130 };
+  const noDateSnap = JSON.stringify(noDate);
+  d = scaleOf(noDate, 'GMKN');
+  assert(d.scale === 'unknown' && d.confidence === 'unknown', 'lot scale: missing buyDate → unknown');
+  assert((d.warnings || []).some((w) => /нет корректной даты покупки/.test(w)), 'lot scale: missing date warning');
+  assert(JSON.stringify(noDate) === noDateSnap, 'lot scale: missing date lot not mutated');
+
+  const badDate = { ticker: 'GMKN', lotId: 'GY', qty: 10, avgPrice: 22000, buyDate: 'не дата', currentPrice: 130 };
+  d = scaleOf(badDate, 'GMKN');
+  assert(d.scale === 'unknown' && d.confidence === 'unknown', 'lot scale: invalid buyDate → unknown');
+
+  const ofz = { ticker: 'SU26238RMFS9', lotId: 'B1', qty: 10, avgPrice: 97.5, buyDate: '2021-06-04', currentPrice: 98 };
+  d = scaleOf(ofz, 'SU26238RMFS9');
+  assert(d.scale === 'n/a' && d.confidence === 'high', 'lot scale: OFZ → n/a');
+
+  const pf = { positions: [gmknHist, tHist], sales: [] };
+  const pfSnap = JSON.stringify(pf);
+  scaleOf(pf.positions[0], 'GMKN');
+  scaleOf(pf.positions[1], 'T');
+  assert(JSON.stringify(pf) === pfSnap, 'lot scale: portfolio JSON not mutated');
+  assert(JSON.stringify({ positions: [sberBefore, sberAfter], sales: [] }) === sberSnap, 'lot scale: SBER fixture untouched');
 }
 
 {

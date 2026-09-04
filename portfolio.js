@@ -356,6 +356,199 @@
     return !!portfolioTickerNeedsSplitWarning(ticker, portfolio, events);
   }
 
+  var PF_LOT_SCALE_HIGH_TOLERANCE_PCT = 40;
+  var PF_LOT_SCALE_NO_DATE_WARNING = 'нет корректной даты покупки';
+  var PF_LOT_SCALE_NO_PRICE_WARNING = 'нет цены покупки или текущей цены для диагностики шкалы';
+  var PF_LOT_SCALE_UNKNOWN_WARNING = 'шкала лота не определена';
+
+  function lotShareScaleResult(scale, confidence, extra) {
+    extra = extra || {};
+    return {
+      scale: scale,
+      confidence: confidence,
+      splitEvent: extra.splitEvent || null,
+      factor: extra.factor != null && isFinite(Number(extra.factor)) ? Number(extra.factor) : 1,
+      warnings: extra.warnings ? extra.warnings.slice() : [],
+      reason: extra.reason || ''
+    };
+  }
+
+  function lotShareScaleHighMult(priceTolerancePct) {
+    var pct = Number(priceTolerancePct);
+    if (!isFinite(pct)) pct = PF_LOT_SCALE_HIGH_TOLERANCE_PCT;
+    if (pct < 25) pct = 25;
+    if (pct > 50) pct = 50;
+    return 1 + pct / 100;
+  }
+
+  function lotShareScalePartialMult(factor) {
+    var f = Number(factor);
+    if (!isFinite(f) || f <= 1) return 1;
+    /* ratio 10: уже полоса, чтобы движение цены не пересеклось с historical. ratio 100: шире. */
+    return f >= 50 ? 2.6 : 2.15;
+  }
+
+  function lotShareScaleInBand(rel, center, mult) {
+    var r = Number(rel);
+    var c = Number(center);
+    var m = Number(mult);
+    if (!isFinite(r) || !(r > 0) || !isFinite(c) || !(c > 0) || !isFinite(m) || !(m > 1)) {
+      return false;
+    }
+    return r <= c * m && r >= c / m;
+  }
+
+  function lotShareScaleForwardEvents(ticker, buyIso, events) {
+    if (typeof getSplitEventsForTicker !== 'function') return [];
+    var list = getSplitEventsForTicker(ticker, events);
+    var out = [];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var ev = list[i];
+      if (!ev || !ev.effectiveDate) continue;
+      var type = ev.type != null ? String(ev.type).trim().toLowerCase() : 'split';
+      if (type === 'reverse') continue;
+      var ratio = Number(ev.ratio);
+      if (!isFinite(ratio) || ratio <= 1) continue;
+      if (!buyIso || buyIso < ev.effectiveDate) out.push(ev);
+    }
+    out.sort(function (a, b) {
+      var da = a.effectiveDate || '';
+      var db = b.effectiveDate || '';
+      if (da !== db) return da < db ? -1 : 1;
+      return Number(a.ratio) - Number(b.ratio);
+    });
+    return out;
+  }
+
+  /**
+   * Read-only диагностика шкалы лота относительно сплита.
+   * Не меняет lot / portfolio JSON и не используется в выплатах/UI на этом шаге.
+   */
+  function diagnoseLotShareScale(lot, ticker, options) {
+    options = options || {};
+    var t = ticker || (lot && lot.ticker);
+    t = typeof normalizeTicker === 'function' ? normalizeTicker(t) : String(t || '').trim().toUpperCase();
+    var instrumentType = options.instrumentType != null
+      ? String(options.instrumentType).toLowerCase()
+      : '';
+    var asBond = instrumentType === 'bond' || instrumentType === 'ofz' ||
+      isPortfolioBondPosition({ ticker: t }) ||
+      isPortfolioBondPosition(lot || {});
+    if (asBond || !t) {
+      return lotShareScaleResult('n/a', 'high', { factor: 1, reason: asBond ? 'облигация' : 'нет тикера' });
+    }
+
+    var events = options.splitEvents ||
+      (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    var covering = typeof getSplitEventsForTicker === 'function'
+      ? getSplitEventsForTicker(t, events)
+      : [];
+    covering = covering.filter(function (ev) {
+      if (!ev) return false;
+      var type = ev.type != null ? String(ev.type).trim().toLowerCase() : 'split';
+      if (type === 'reverse') return false;
+      var ratio = Number(ev.ratio);
+      return isFinite(ratio) && ratio > 1;
+    });
+    if (!covering.length) {
+      return lotShareScaleResult('n/a', 'high', { factor: 1, reason: 'нет сплита' });
+    }
+
+    var buyIso = pfSplitIsoDate(lot && lot.buyDate);
+    var hintEvent = covering[0] || null;
+    if (!buyIso) {
+      return lotShareScaleResult('unknown', 'unknown', {
+        splitEvent: hintEvent,
+        factor: hintEvent && isFinite(Number(hintEvent.ratio)) ? Number(hintEvent.ratio) : 1,
+        warnings: [PF_LOT_SCALE_NO_DATE_WARNING],
+        reason: PF_LOT_SCALE_NO_DATE_WARNING
+      });
+    }
+
+    var targetIso = pfSplitIsoDate(options.currentDate || options.targetDate);
+    if (!targetIso && typeof localPortfolioTodayYmd === 'function') {
+      targetIso = pfSplitIsoDate(localPortfolioTodayYmd());
+    }
+    if (!targetIso) {
+      var now = new Date();
+      targetIso = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+    }
+
+    var forward = lotShareScaleForwardEvents(t, buyIso, events);
+    var factor = 1;
+    if (typeof getSplitAdjustmentFactor === 'function') {
+      factor = Number(getSplitAdjustmentFactor(t, buyIso, targetIso, events));
+    }
+    if (!isFinite(factor) || factor < 1) factor = 1;
+    var splitEvent = forward.length ? forward[0] : (covering[covering.length - 1] || hintEvent);
+
+    if (!forward.length || factor <= 1) {
+      return lotShareScaleResult('current', 'high', {
+        splitEvent: splitEvent,
+        factor: 1,
+        reason: 'покупка после сплита'
+      });
+    }
+
+    var avg = Number(lot && lot.avgPrice);
+    var cur = options.currentPrice != null ? Number(options.currentPrice) : Number(lot && lot.currentPrice);
+    if (!isFinite(avg) || !(avg > 0) || !isFinite(cur) || !(cur > 0)) {
+      return lotShareScaleResult('unknown', 'unknown', {
+        splitEvent: splitEvent,
+        factor: factor,
+        warnings: [PF_LOT_SCALE_NO_PRICE_WARNING],
+        reason: PF_LOT_SCALE_NO_PRICE_WARNING
+      });
+    }
+
+    var rel = avg / cur;
+    var highMult = lotShareScaleHighMult(options.priceTolerancePct);
+    var partialMult = lotShareScalePartialMult(factor);
+    var highCurrent = lotShareScaleInBand(rel, 1, highMult);
+    var partialCurrent = lotShareScaleInBand(rel, 1, partialMult);
+    var highHist = lotShareScaleInBand(rel, factor, highMult);
+    var partialHist = lotShareScaleInBand(rel, factor, partialMult);
+
+    if (highHist && !partialCurrent) {
+      return lotShareScaleResult('historical', 'high', {
+        splitEvent: splitEvent,
+        factor: factor,
+        reason: 'историческая шкала'
+      });
+    }
+    if (highCurrent && !partialHist) {
+      return lotShareScaleResult('current', 'high', {
+        splitEvent: splitEvent,
+        factor: factor,
+        reason: 'уже приведённая шкала'
+      });
+    }
+    if (partialHist && !partialCurrent) {
+      return lotShareScaleResult('historical', 'partial', {
+        splitEvent: splitEvent,
+        factor: factor,
+        reason: 'историческая шкала'
+      });
+    }
+    if (partialCurrent && !partialHist) {
+      return lotShareScaleResult('current', 'partial', {
+        splitEvent: splitEvent,
+        factor: factor,
+        reason: 'уже приведённая шкала'
+      });
+    }
+
+    return lotShareScaleResult('unknown', 'unknown', {
+      splitEvent: splitEvent,
+      factor: factor,
+      warnings: [PF_LOT_SCALE_UNKNOWN_WARNING],
+      reason: PF_LOT_SCALE_UNKNOWN_WARNING
+    });
+  }
+
   function buildSplitAffectedPnlHtml(variant) {
     var titleAttr = ' title="' + escapeHtml(PF_SPLIT_PNL_TITLE) + '"';
     var badge = '<span class="pf-split-badge">сплит</span>';
