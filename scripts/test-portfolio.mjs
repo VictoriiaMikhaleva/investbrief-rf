@@ -3661,6 +3661,59 @@ function loadPriceAtDateHelpers() {
   const tAfterSection = calc.buildPortfolioSectionRows(tAfterPf.positions, 'stocks', {}, tAfterPf.sales);
   assert(!/требует проверки/.test(tAfterSection), 'T after split: section uses ordinary PnL');
   assert(/%/.test(tAfterSection), 'T after split: section still has percent');
+  const tAfterDetail = calc.buildPortfolioTickerDetailHtml('T', tAfterPf.positions, tAfterPf.sales, null, false);
+  const tAfterRemain = tAfterDetail.split('Остаток')[1].split('Куплено всего')[0];
+  assert(/10 шт\./.test(tAfterRemain), 'T after split: remain still JSON qty');
+  assert(!/по операциям/.test(tAfterRemain), 'T after split: no ops-qty hint');
+  assert(!/с учётом сплита/.test(tAfterRemain), 'T after split: remain has no split badge');
+
+  const gmknMixedPf = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92 },
+      { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 129.74, buyDate: '2026-09-04', currentPrice: 129.92 }
+    ],
+    sales: []
+  };
+  const gmknMixedSnap = JSON.stringify(gmknMixedPf);
+  const gmknMixedDetail = calc.buildPortfolioTickerDetailHtml(
+    'GMKN', gmknMixedPf.positions, gmknMixedPf.sales, null, false
+  );
+  const gmknRemain = gmknMixedDetail.split('Остаток')[1].split('Куплено всего')[0];
+  assert(/1010 шт\./.test(gmknRemain), 'GMKN detail qty: split-aware 1010');
+  assert(/по операциям: 20 шт\./.test(gmknRemain), 'GMKN detail qty: ops 20 labeled');
+  assert(/с учётом сплита/.test(gmknRemain), 'GMKN detail qty: split-aware badge');
+  const gmknBought = gmknMixedDetail.split('Куплено всего')[1].split('Продано')[0];
+  assert(/20 шт\./.test(gmknBought), 'GMKN detail bought: 20 still shown');
+  assert(/в истории операций/.test(gmknBought), 'GMKN detail bought: history hint');
+  assert(JSON.stringify(gmknMixedPf) === gmknMixedSnap, 'GMKN detail qty: JSON not mutated');
+
+  const tHistDetail = calc.buildPortfolioTickerDetailHtml('T', tPf.positions, tPf.sales, null, false);
+  const tRemain = tHistDetail.split('Остаток')[1].split('Куплено всего')[0];
+  assert(/10 шт\./.test(tRemain), 'T detail qty: split-aware 10');
+  assert(/по операциям: 1 шт\./.test(tRemain), 'T detail qty: ops 1 labeled');
+  assert(/с учётом сплита/.test(tRemain), 'T detail qty: split-aware badge');
+
+  const sberRemain = sberDetail.split('Остаток')[1].split('Куплено всего')[0];
+  assert(/10 шт\./.test(sberRemain), 'SBER detail qty: unchanged 10');
+  assert(!/по операциям/.test(sberRemain), 'SBER detail qty: no ops hint');
+  assert(!/с учётом сплита/.test(sberRemain), 'SBER detail qty: no split badge');
+  const sberBought = sberDetail.split('Куплено всего')[1].split('Продано')[0];
+  assert(!/в истории операций/.test(sberBought), 'SBER detail bought: no history hint');
+
+  const ofzPf = {
+    positions: [{
+      ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01',
+      faceValue: 1000, currentPrice: 95
+    }],
+    sales: []
+  };
+  const ofzDetail = calc.buildPortfolioTickerDetailHtml(
+    'OFZ_26238', ofzPf.positions, ofzPf.sales, { faceValue: 1000 }, true
+  );
+  const ofzRemain = ofzDetail.split('Остаток')[1].split('Куплено всего')[0];
+  assert(/10 шт\./.test(ofzRemain), 'OFZ detail qty: unchanged 10');
+  assert(!/по операциям/.test(ofzRemain), 'OFZ detail qty: no ops hint');
+  assert(!/с учётом сплита/.test(ofzRemain), 'OFZ detail qty: no split badge');
 }
 
 {

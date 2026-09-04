@@ -289,6 +289,8 @@
   var PF_SPLIT_AWARE_BADGE = 'с учётом сплита';
   var PF_SPLIT_AWARE_PNL_TITLE = 'Результат пересчитан к текущей шкале акции после дробления. Количество и средняя цена в JSON не менялись.';
   var PF_ASOF_SPLIT_BADGE_TITLE = 'Количество и стоимость на дату приведены к шкале цены этой даты. Количество и средняя цена в JSON не менялись.';
+  var PF_SPLIT_QTY_OPS_HINT_PREFIX = 'по операциям: ';
+  var PF_SPLIT_BOUGHT_OPS_HINT = 'в истории операций';
   var PF_LOT_SCALE_UNKNOWN_SUFFIX = ': не удалось определить шкалу лота после сплита.';
   var _pfSplitEventsTried = false;
 
@@ -7323,6 +7325,24 @@
     return html;
   }
 
+  function formatPortfolioQtyPcsLabel(n) {
+    if (n == null || !isFinite(Number(n))) return '—';
+    return String(asOfRoundQty(n)) + ' шт.';
+  }
+
+  function buildSplitAwareDetailRemainQtyHtml(splitQty, opsQty, confidence) {
+    var badge = pfSplitAwareBadgeHtml({
+      splitAdjusted: true,
+      splitConfidence: confidence || 'high'
+    });
+    var html = '<span class="val">' + escapeHtml(formatPortfolioQtyPcsLabel(splitQty)) + badge + '</span>';
+    if (opsQty != null && isFinite(Number(opsQty))) {
+      html += '<span class="pf-ticker-detail-kpi-hint muted">' +
+        escapeHtml(PF_SPLIT_QTY_OPS_HINT_PREFIX + formatPortfolioQtyPcsLabel(opsQty)) + '</span>';
+    }
+    return html;
+  }
+
   function buildPortfolioTickerDetailHtml(ticker, positions, sales, bondMeta, isBond, opts) {
     opts = opts || {};
     var stack = opts.layout === 'stack';
@@ -7351,12 +7371,23 @@
         : '') +
       buildPortfolioSplitWarningHtml(ticker, pfSlice) +
       '<div class="pf-ticker-detail-summary">' +
-        '<div class="pf-ticker-detail-kpi"><span class="lbl">Остаток</span><span class="val">' +
-          escapeHtml(String(hist.openQty)) + ' шт.</span></div>' +
-        '<div class="pf-ticker-detail-kpi"><span class="lbl">Куплено всего</span><span class="val">' +
-          escapeHtml(String(hist.totalBoughtQty)) + ' шт.</span></div>' +
+        '<div class="pf-ticker-detail-kpi"><span class="lbl">Остаток</span>' +
+          (splitOk
+            ? buildSplitAwareDetailRemainQtyHtml(
+              splitMetrics.currentQty,
+              hist.openQty,
+              splitMetrics.confidence
+            )
+            : ('<span class="val">' + escapeHtml(formatPortfolioQtyPcsLabel(hist.openQty)) + '</span>')) +
+        '</div>' +
+        '<div class="pf-ticker-detail-kpi"><span class="lbl">Куплено всего</span>' +
+          '<span class="val">' + escapeHtml(formatPortfolioQtyPcsLabel(hist.totalBoughtQty)) + '</span>' +
+          (splitOk
+            ? '<span class="pf-ticker-detail-kpi-hint muted">' + escapeHtml(PF_SPLIT_BOUGHT_OPS_HINT) + '</span>'
+            : '') +
+        '</div>' +
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Продано</span><span class="val">' +
-          escapeHtml(String(hist.totalSoldQty)) + ' шт.</span></div>' +
+          escapeHtml(formatPortfolioQtyPcsLabel(hist.totalSoldQty)) + '</span></div>' +
         '<div class="pf-ticker-detail-kpi"><span class="lbl">Текущая стоимость</span><span class="val">' +
           (splitAffected && !splitOk
             ? buildSplitAffectedPnlHtml('kpi')
