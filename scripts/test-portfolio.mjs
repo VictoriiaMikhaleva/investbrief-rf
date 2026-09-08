@@ -5419,9 +5419,332 @@ function loadPriceAtDateHelpers() {
   sb.setPortfolio = prevSet;
 }
 
+{
+  const prodSrc = [
+    'portfolio.js',
+    'split-events.js'
+  ].map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
+  assert(!/ticker\s*===\s*['"]GMKN['"]/.test(prodSrc), 'hardcode: no ticker===GMKN in production split path');
+  assert(!/ticker\s*===\s*['"]PLZL['"]/.test(prodSrc), 'hardcode: no ticker===PLZL');
+  assert(!/ticker\s*===\s*['"]TRNFP['"]/.test(prodSrc), 'hardcode: no ticker===TRNFP');
+  assert(!/ticker\s*===\s*['"]T['"]/.test(prodSrc), 'hardcode: no ticker===T');
+  assert(!/\.includes\(\s*['"]GMKN['"]/.test(prodSrc), 'hardcode: no includes GMKN');
+  assert(!/case\s+['"]GMKN['"]/.test(prodSrc), 'hardcode: no case GMKN');
+}
+
+await (async () => {
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  assert(!/FAKE_SPLIT/.test(JSON.stringify(catalog)), 'matrix: production catalog has no FAKE_SPLIT');
+  const prodEvents = (catalog.events || []).filter((ev) => {
+    if (!ev || !ev.ticker || !ev.effectiveDate) return false;
+    const type = String(ev.type || 'split').trim().toLowerCase();
+    if (type === 'reverse') return false;
+    const ratio = Number(ev.ratio);
+    return isFinite(ratio) && ratio > 1;
+  });
+  assert(prodEvents.length >= 1, 'matrix: catalog has forward splits');
+  const catalogTickers = prodEvents.map((ev) => String(ev.ticker).toUpperCase());
+  ['T', 'GMKN', 'PLZL', 'TRNFP'].forEach((t) => {
+    assert(catalogTickers.indexOf(t) !== -1, 'matrix: catalog includes ' + t);
+  });
+
+  function addDays(iso, days) {
+    const d = new Date(String(iso).slice(0, 10) + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  function almost(a, b, eps, msg) {
+    assert(Math.abs(Number(a) - Number(b)) < (eps || 0.05), msg);
+  }
+  function priceOk(price, date) {
+    return { status: 'ok', price: price, priceDate: date, priceType: 'close', unit: 'rub' };
+  }
+  function mockPrices(ticker, byDate) {
+    return function (t, date) {
+      if (String(t || '').toUpperCase() !== ticker) {
+        return Promise.resolve({ status: 'missing', price: null, priceDate: null });
+      }
+      const iso = String(date || '').slice(0, 10);
+      const row = byDate[iso];
+      return Promise.resolve(row || { status: 'missing', price: null, priceDate: null });
+    };
+  }
+
+  function fixtureFor(ev) {
+    const t = String(ev.ticker).toUpperCase();
+    const E = ev.effectiveDate;
+    const R = Number(ev.ratio);
+    const before = addDays(E, -10);
+    const asofBefore = addDays(E, -1);
+    const after = addDays(E, 10);
+    const now = addDays(E, 40);
+    const CUR = 1000;
+    const hist = {
+      ticker: t, lotId: t + '_H', qty: 10, avgPrice: 1000 * R, buyDate: before, currentPrice: CUR
+    };
+    const curr = {
+      ticker: t, lotId: t + '_C', qty: 5, avgPrice: 1000, buyDate: after, currentPrice: CUR
+    };
+    return { t, E, R, before, asofBefore, after, now, CUR, hist, curr };
+  }
+
+  async function runEventMatrix(ev, events, label) {
+    const fx = fixtureFor(ev);
+    const t = fx.t;
+    const R = fx.R;
+    const tag = 'matrix ' + label + '/' + t;
+    const mixed = { positions: [JSON.parse(JSON.stringify(fx.hist)), JSON.parse(JSON.stringify(fx.curr))], sales: [] };
+    const histOnly = { positions: [JSON.parse(JSON.stringify(fx.hist))], sales: [] };
+    const snapMixed = JSON.stringify(mixed);
+    const snapHist = JSON.stringify(histOnly);
+    const opts = { splitEvents: events, now: fx.now, currentDate: fx.now };
+
+    let d = calc.diagnoseLotShareScale(fx.hist, t, opts);
+    assert(d.scale === 'historical', tag + ': hist lot scale historical');
+    almost(d.factor, R, 1e-9, tag + ': hist factor = ratio');
+    d = calc.diagnoseLotShareScale(fx.curr, t, opts);
+    assert(d.scale === 'current', tag + ': after-split lot current');
+    assert(d.scale !== 'historical', tag + ': after-split not re-multiplied');
+
+    let held = calc.getSplitAwareQtyHeldOnDate(t, histOnly, fx.asofBefore, opts);
+    almost(held.qty, 10, 1e-6, tag + ': qtyHeld before split = 10');
+    held = calc.getSplitAwareQtyHeldOnDate(t, histOnly, fx.after, opts);
+    almost(held.qty, 10 * R, 1e-6, tag + ': qtyHeld after split = 10×ratio');
+    held = calc.getSplitAwareQtyHeldOnDate(t, mixed, fx.now, opts);
+    almost(held.qty, 10 * R + 5, 1e-6, tag + ': mixed after = 10×ratio+5');
+
+    const cur = calc.getSplitAwareCurrentQty(t, mixed, opts);
+    almost(cur.qty, 10 * R + 5, 1e-6, tag + ': currentQty 10×ratio+5');
+
+    const m = calc.getSplitAwareCurrentPositionMetrics(t, mixed, opts);
+    almost(m.currentQty, 10 * R + 5, 1e-6, tag + ': metrics qty');
+    almost(m.currentMarketValueRub, (10 * R + 5) * fx.CUR, 0.05, tag + ': MV split-aware');
+    almost(m.remainingCostRub, (10 * R + 5) * 1000, 0.05, tag + ': remaining cost');
+    assert(m.unrealizedPnlPct == null || Math.abs(m.unrealizedPnlPct) < 5, tag + ': no false −90/−99%');
+    assert(JSON.stringify(mixed) === snapMixed, tag + ': metrics JSON immutable');
+
+    const asofOpts = {
+      splitEvents: events,
+      currentDate: fx.now,
+      getInstrumentPriceAtDate: mockPrices(t, {
+        [fx.asofBefore]: priceOk(1000 * R, fx.asofBefore),
+        [fx.now]: priceOk(1000, fx.now)
+      })
+    };
+    const beforeVal = await calc.buildPortfolioValueAtDate(histOnly, fx.asofBefore, asofOpts);
+    const beforeRow = (beforeVal.items || []).find((x) => x.ticker === t);
+    assert(beforeRow && beforeRow.qtyAtDate === 10, tag + ': as-of before qty 10');
+    almost(beforeRow.valueRub, 10 * 1000 * R, 0.05, tag + ': as-of before old-scale value');
+    const afterVal = await calc.buildPortfolioValueAtDate(mixed, fx.now, asofOpts);
+    const afterRow = (afterVal.items || []).find((x) => x.ticker === t);
+    assert(afterRow && Math.abs(afterRow.qtyAtDate - (10 * R + 5)) < 1e-6, tag + ': as-of after new qty');
+    almost(afterRow.valueRub, (10 * R + 5) * 1000, 0.05, tag + ': as-of after split-aware value');
+    assert(Math.abs(afterRow.valueRub - 15 * 1000) > 1, tag + ': after value ≠ JSON qty × price');
+    assert(JSON.stringify(histOnly) === snapHist, tag + ': as-of JSON immutable');
+
+    const cmp = await calc.buildPortfolioValueChangeBetweenDates(mixed, fx.asofBefore, fx.now, asofOpts);
+    const cmpRow = (cmp.items || []).find((x) => x.ticker === t);
+    assert(cmpRow && cmpRow.qtyFrom === 10, tag + ': change from qty 10');
+    almost(cmpRow.qtyTo, 10 * R + 5, 1e-6, tag + ': change to qty 10×ratio+5');
+    assert(cmp.changePct == null || cmp.changePct > -90, tag + ': changePct not technical −99%');
+
+    const payoutsFrom = fx.before;
+    const preDiv = addDays(fx.E, -5);
+    const postDiv = addDays(fx.after, 5);
+    const payOpts = {
+      now: fx.now,
+      splitEvents: events,
+      payoutsByTicker: {
+        [t]: { kind: 'stock', source: 'test', dividends: [{ date: preDiv, value: 10 }] }
+      }
+    };
+    let pay = calc.buildTickerPayoutsForHoldingPeriod(t, mixed, payoutsFrom, fx.now, payOpts);
+    assert(pay.items.length === 1 && pay.items[0].qtyHeld === 10, tag + ': dividend before split uses old qty');
+    assert(pay.items[0].payoutPerUnit === 10, tag + ': DPS not split twice');
+    almost(pay.items[0].amountRub, 100, 0.05, tag + ': pre-split dividend 10×10');
+    pay = calc.buildTickerPayoutsForHoldingPeriod(t, mixed, payoutsFrom, fx.now, {
+      now: fx.now,
+      splitEvents: events,
+      payoutsByTicker: {
+        [t]: { kind: 'stock', source: 'test', dividends: [{ date: postDiv, value: 10 }] }
+      }
+    });
+    assert(pay.items.length === 1, tag + ': post-split dividend present');
+    almost(pay.items[0].qtyHeld, 10 * R + 5, 1e-6, tag + ': dividend after split uses new qty');
+    assert(pay.items[0].payoutPerUnit === 10, tag + ': post-split DPS unchanged');
+    almost(pay.items[0].amountRub, (10 * R + 5) * 10, 0.05, tag + ': post-split dividend amount');
+
+    const up = calc.buildUpcomingPortfolioPayouts(mixed, {
+      now: fx.now,
+      horizonDays: 365,
+      splitEvents: events,
+      payoutsByTicker: {
+        [t]: { kind: 'stock', source: 'test', dividends: [{ date: addDays(fx.now, 20), value: 4 }] }
+      }
+    });
+    const upItem = (up.items || []).find((x) => x.ticker === t);
+    assert(upItem, tag + ': upcoming item');
+    almost(upItem.qtyHeld, 10 * R + 5, 1e-6, tag + ': upcoming qty split-aware');
+    almost(upItem.amountRub, (10 * R + 5) * 4, 0.05, tag + ': upcoming = qty × DPS');
+
+    const preCurr = {
+      positions: [{
+        ticker: t, lotId: t + '_CURPRE', qty: 5, avgPrice: 1000, buyDate: fx.before, currentPrice: 1000
+      }],
+      sales: []
+    };
+    const preHeld = calc.getSplitAwareQtyHeldOnDate(t, preCurr, fx.asofBefore, opts);
+    assert(preHeld.confidence === 'unknown' || preHeld.confidence === 'partial', tag + ': current lot before split fail-safe');
+    assert(!(preHeld.confidence === 'high' && Math.abs((preHeld.qty || 0) - 5 / R) < 1e-6), tag + ': not auto-divided');
+
+    const sb = calc.sandbox;
+    const prevGet = sb.getPortfolio;
+    const prevSet = sb.setPortfolio;
+    let live = JSON.parse(JSON.stringify(mixed));
+    sb.getPortfolio = () => live;
+    sb.setPortfolio = (p) => { live = p; };
+    const take = R * 2;
+    const sold = calc.commitPortfolioSale(t, { qty: take, price: 1000, date: fx.now, comment: '' });
+    assert(sold && sold.ok, tag + ': split-sale accepted');
+    const oldLot = (live.positions || []).find((p) => p.lotId === fx.hist.lotId);
+    const newLot = (live.positions || []).find((p) => p.lotId === fx.curr.lotId);
+    almost(oldLot && oldLot.qty, 8, 1e-6, tag + ': hist lot qty −2');
+    almost(newLot && newLot.qty, 5, 1e-6, tag + ': current lot unchanged');
+    assert(Number(oldLot.qty) <= 10, tag + ': lot qty did not increase');
+    assert(live.sales[0].qty === take, tag + ': sale.qty in sale-date scale');
+    almost(live.sales[0].allocations[0].lotQtyDelta, 2, 1e-9, tag + ': lotQtyDelta = take/ratio');
+    almost(live.sales[0].allocations[0].splitFactor, R, 1e-9, tag + ': splitFactor');
+    almost(live.sales[0].allocations[0].adjustedBuyPrice, 1000, 0.05, tag + ': adjustedBuyPrice');
+    const pnl = calc.getSplitAwareSaleRealizedPnl(live.sales[0], live, opts);
+    almost(pnl.realizedPnlRub, 0, 0.05, tag + ': realized via adjustedBuyPrice');
+    const histSum = calc.summarizeTickerHistory(t, live.positions, live.sales);
+    almost(histSum.totalBoughtQty, 15, 1e-6, tag + ': bought stays 15 not open+sale.qty');
+    almost(histSum.totalSoldQty, take, 1e-6, tag + ': sold in sale-date scale');
+    assert(Math.abs(histSum.totalBoughtQty - (13 + take)) > 0.5, tag + ': bought not mixed scales');
+
+    calc.removePortfolioSale(live.sales[0].saleId);
+    almost((live.positions.find((p) => p.lotId === fx.hist.lotId) || {}).qty, 10, 1e-6, tag + ': cancel restores lotQtyDelta');
+    almost((live.positions.find((p) => p.lotId === fx.curr.lotId) || {}).qty, 5, 1e-6, tag + ': cancel keeps current lot');
+    assert(!(live.sales || []).length, tag + ': cancel removes sale');
+    almost(calc.summarizeTickerHistory(t, live.positions, live.sales).totalBoughtQty, 15, 1e-6, tag + ': bought 15 after cancel');
+
+    live = JSON.parse(JSON.stringify(mixed));
+    const allQty = 10 * R + 5;
+    const soldAll = calc.commitPortfolioSale(t, { qty: allQty, price: 1000, date: fx.now, comment: '' });
+    assert(soldAll && soldAll.ok, tag + ': sell all accepted');
+    assert(!(live.positions || []).some((p) => p.ticker === t && Number(p.qty) > 1e-9), tag + ': lots emptied');
+    const closed = calc.listClosedPortfolioPositions(live.positions, live.sales);
+    assert(closed.some((c) => c.ticker === t), tag + ': closed position');
+    const closedPnl = calc.getSplitAwareTickerRealizedPnl(t, live, opts);
+    assert(closedPnl.confidence !== 'unknown', tag + ': closed realized not unknown');
+    assert(closedPnl.realizedPnlRub == null || Math.abs(closedPnl.realizedPnlRub) < 1 ||
+      Math.abs(closedPnl.realizedPnlRub) < 0.2 * (10 * R + 5) * 1000, tag + ': closed not raw −99%');
+
+    const legacySale = {
+      saleId: 'LEG_' + t,
+      ticker: t,
+      qty: take,
+      buyPrice: 1000 * R,
+      salePrice: 1000,
+      saleDate: fx.now,
+      allocations: [{ lotId: fx.hist.lotId, qty: take, buyPrice: 1000 * R, buyDate: fx.before }]
+    };
+    const legacyRow = calc.getSplitAwareSaleRealizedPnl(legacySale, {
+      positions: mixed.positions,
+      sales: [legacySale]
+    }, opts);
+    assert(legacyRow.isPartial || legacyRow.confidence === 'partial' || legacyRow.confidence === 'unknown',
+      tag + ': legacy after-split sale not confident');
+    const raw = (1000 - 1000 * R) * take;
+    if (legacyRow.realizedPnlRub != null) {
+      assert(Math.abs(legacyRow.realizedPnlRub - raw) > 1, tag + ': legacy not raw realized');
+    }
+
+    const unkPf = {
+      positions: [{ ticker: t, lotId: t + '_U', qty: 10, avgPrice: 1000 * R, currentPrice: 1000 }],
+      sales: []
+    };
+    const unkSnap = JSON.stringify(unkPf);
+    sb.getPortfolio = () => unkPf;
+    sb.setPortfolio = (p) => { Object.keys(p).forEach((k) => { unkPf[k] = p[k]; }); };
+    assert(calc.getPortfolioSplitSaleWriteState(t, unkPf, fx.now, { splitEvents: events }).mode === 'unknown',
+      tag + ': unknown blocked');
+    const unkCommit = calc.commitPortfolioSale(t, { qty: take, price: 1000, date: fx.now, comment: '' });
+    assert(unkCommit && unkCommit.ok === false && unkCommit.blocked, tag + ': unknown not committed');
+    assert(JSON.stringify(unkPf) === unkSnap, tag + ': unknown JSON unchanged');
+
+    sb.getPortfolio = prevGet;
+    sb.setPortfolio = prevSet;
+  }
+
+  const prodParsed = calc.sandbox.parseSplitEventsCatalog(catalog);
+  calc.setSplitEventsCatalog(catalog);
+  let i;
+  for (i = 0; i < prodEvents.length; i++) {
+    await runEventMatrix(prodEvents[i], prodParsed, 'prod');
+  }
+
+  const fakeRaw = {
+    ticker: 'FAKE_SPLIT',
+    aliases: ['FAKE'],
+    effectiveDate: '2030-01-15',
+    ratio: 5,
+    type: 'split'
+  };
+  const fakeEvents = calc.sandbox.parseSplitEventsCatalog({
+    version: 1,
+    events: (catalog.events || []).concat([fakeRaw])
+  });
+  calc.setSplitEventsCatalog({ version: 1, events: fakeEvents });
+  await runEventMatrix(fakeRaw, fakeEvents, 'fake');
+
+  const sberPf = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+    sales: []
+  };
+  const sberSnap = JSON.stringify(sberPf);
+  calc.setSplitEventsCatalog(catalog);
+  const sberHeld = calc.getSplitAwareCurrentQty('SBER', sberPf, { splitEvents: prodParsed, now: '2026-09-04' });
+  almost(sberHeld.qty, 10, 1e-6, 'matrix SBER: qty unchanged');
+  const sb = calc.sandbox;
+  const prevGet = sb.getPortfolio;
+  const prevSet = sb.setPortfolio;
+  let sberLive = JSON.parse(sberSnap);
+  sb.getPortfolio = () => sberLive;
+  sb.setPortfolio = (p) => { sberLive = p; };
+  const sberSale = calc.commitPortfolioSale('SBER', { qty: 2, price: 280, date: '2026-09-04', comment: '' });
+  assert(sberSale && sberSale.ok, 'matrix SBER: sale as before');
+  almost(sberLive.positions[0].qty, 8, 1e-6, 'matrix SBER: qty −2');
+  almost(calc.getSaleRealizedPnl(sberLive.sales[0]).amount, 60, 0.05, 'matrix SBER: realized old formula');
+  assert(JSON.stringify({ positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }], sales: [] }) === sberSnap, 'matrix SBER: original fixture not mutated');
+
+  const ofzPf = {
+    positions: [{
+      ticker: 'SU26238RMFS9', lotId: 'B1', qty: 10, avgPrice: 95, currentPrice: 98, buyDate: '2023-01-01'
+    }],
+    sales: []
+  };
+  let ofzLive = JSON.parse(JSON.stringify(ofzPf));
+  sb.getPortfolio = () => ofzLive;
+  sb.setPortfolio = (p) => { ofzLive = p; };
+  const ofzSale = calc.commitPortfolioSale('SU26238RMFS9', { qty: 2, price: 98, date: '2026-09-04', comment: '' });
+  assert(ofzSale && ofzSale.ok, 'matrix OFZ: sale as before');
+  almost(ofzLive.positions[0].qty, 8, 1e-6, 'matrix OFZ: qty −2');
+  const ofzScale = calc.diagnoseLotShareScale(ofzPf.positions[0], 'SU26238RMFS9', { splitEvents: prodParsed });
+  assert(ofzScale.scale === 'n/a', 'matrix OFZ: no split scale');
+  sb.getPortfolio = prevGet;
+  sb.setPortfolio = prevSet;
+
+  const src = Function.prototype.toString.call(calc.allocateSplitAwareSaleAcrossLots) +
+    Function.prototype.toString.call(calc.getSplitAwareCurrentQty) +
+    Function.prototype.toString.call(calc.summarizeTickerHistory);
+  assert(!/iss\.moex/.test(src) && !/fetch\s*\(/.test(src), 'matrix: no new MOEX fetch');
+  calc.setSplitEventsCatalog(catalog);
+})();
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix');
