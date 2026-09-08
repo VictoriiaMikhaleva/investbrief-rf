@@ -3567,7 +3567,7 @@ function loadPriceAtDateHelpers() {
     sales: []
   };
   const manyHtml = calc.buildPortfolioSplitWarningsForTickersHtml(['T', 'T', 'PLZL'], manyPf);
-  assert(/Сплиты в портфеле/.test(manyHtml), 'split warn many: heading');
+  assert(/Дробление акций в портфеле/.test(manyHtml), 'split warn many: heading');
   assert((manyHtml.match(/\bT\b/g) || []).length >= 1, 'split warn many: T present');
   assert(/PLZL/.test(manyHtml), 'split warn many: PLZL present');
   assert((manyHtml.match(/1:10/g) || []).length >= 2, 'split warn many: both ratios');
@@ -4338,12 +4338,12 @@ function loadPriceAtDateHelpers() {
   cache.tickersKey = 'T';
   html = calc.buildTickerReturnWithPayoutsBlockHtml('T', false);
   assert(/T: было дробление акций 1:10 от 17\.04\.2026/.test(html), 'twp ui split: ticker ratio date');
-  assert(/Текущая стоимость и результат показаны в текущей шкале акции/.test(html), 'twp ui split: applied warning');
+  assert(/Текущая стоимость и результат показаны в текущих акциях после дробления/.test(html), 'twp ui split: applied warning');
   assert(/с учётом сплита/.test(html), 'twp ui split: split-aware badge');
   assert(/2[\s\u00a0]?550/.test(html), 'twp ui split: current value 2550');
   assert(!/-2[\s\u00a0]?945/.test(html), 'twp ui split: no false JSON-qty result');
   assert(/Вложено в покупки/.test(html) && /Найденные выплаты/.test(html), 'twp ui split: purchase and payouts remain');
-  assert(/текущей шкале акции/.test(html), 'twp ui split: how-to note');
+  assert(/текущих акциях/.test(html), 'twp ui split: how-to note');
   assert(JSON.stringify(splitPf) === splitSnap, 'twp ui split: no JSON mutation');
 
   const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
@@ -4373,7 +4373,7 @@ function loadPriceAtDateHelpers() {
   const gmknSnap = JSON.stringify(gmknPf);
   html = twpReady('GMKN', gmknPf);
   assert(/GMKN: было дробление акций 1:100 от 08\.04\.2024/.test(html), 'twp ui GMKN: warning ticker/ratio/date');
-  assert(/Текущая стоимость и результат показаны в текущей шкале акции/.test(html), 'twp ui GMKN: applied warning');
+  assert(/Текущая стоимость и результат показаны в текущих акциях после дробления/.test(html), 'twp ui GMKN: applied warning');
   assert(/с учётом сплита/.test(html), 'twp ui GMKN: split-aware badge');
   assert(/130[\s\u00a0]?000/.test(html), 'twp ui GMKN: current value 1000×130');
   assert(!/-98/.test(html) && !/-99/.test(html), 'twp ui GMKN: no false -98%/-99%');
@@ -4910,8 +4910,8 @@ function loadPriceAtDateHelpers() {
     positions: [{ ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 }],
     sales: []
   }, { splitEvents: events, now: NOW, saleDate: '2025-06-01' });
-  assert(/Бумага была сплитирована/.test(hintText), 'sale write: hint head');
-  assert(/Остаток с учётом сплита/.test(hintText) && /по операциям/.test(hintText), 'sale write: hint qty labels');
+  assert(/По бумаге было дробление акций/.test(hintText), 'sale write: hint head');
+  assert(/Остаток с учётом дробления/.test(hintText) && /по операциям/.test(hintText), 'sale write: hint qty labels');
 
   let sberLive = {
     positions: [{
@@ -5017,7 +5017,7 @@ function loadPriceAtDateHelpers() {
   let blocked = calc.updatePortfolioSplitSaleBlockUi('GMKN', mixedPf);
   assert(blocked === false, 'sale form ui: GMKN split mode not blocked');
   assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: GMKN hint visible');
-  assert(/Бумага была сплитирована/.test(nodes.pfSaleSplitBlock.textContent), 'sale form ui: GMKN hint text');
+  assert(/По бумаге было дробление акций/.test(nodes.pfSaleSplitBlock.textContent), 'sale form ui: GMKN hint text');
   assert(nodes.pfSaleBtn.disabled === false, 'sale form ui: GMKN sale btn enabled');
   assert(nodes.pfSaleQty.disabled === false, 'sale form ui: GMKN qty enabled');
 
@@ -5099,7 +5099,7 @@ function loadPriceAtDateHelpers() {
   assert(stErr.status === 'error' && stErr.unavailable === true, 'split catalog: error status');
   assert(calc.isPortfolioSplitCatalogUnavailable(), 'split catalog: portfolio unavailable');
   const warnHtml = calc.buildPortfolioSplitCatalogUnavailableHtml();
-  assert(/Справочник сплитов временно недоступен/.test(warnHtml), 'split catalog: banner on error');
+  assert(/Список дроблений акций временно недоступен/.test(warnHtml), 'split catalog: banner on error');
   assert(/часть расчётов может быть неполной/.test(warnHtml), 'split catalog: banner copy');
   assert(JSON.stringify(gmknPf) === snap, 'split catalog: error does not mutate JSON');
   const gmknHtmlErr = calc.buildPortfolioTickerDetailHtml('GMKN', gmknPf.positions, gmknPf.sales, null, false);
@@ -5128,7 +5128,7 @@ function loadPriceAtDateHelpers() {
   calc.sandbox.state.pfSaleTicker = 'SBER';
   calc.updatePortfolioSplitCatalogWarnUi();
   assert(catalogNodes.pfSplitCatalogWarn.hidden === false, 'split catalog ui: table warn shown');
-  assert(/Справочник сплитов временно недоступен/.test(catalogNodes.pfSplitCatalogWarn.textContent), 'split catalog ui: table text');
+  assert(/Список дроблений акций временно недоступен/.test(catalogNodes.pfSplitCatalogWarn.textContent), 'split catalog ui: table text');
   assert(catalogNodes.pfSaleSplitCatalogWarn.hidden === false, 'split catalog ui: sale warn shown');
   assert(/проверьте количество вручную/.test(catalogNodes.pfSaleSplitCatalogWarn.textContent), 'split catalog ui: sale text');
   assert(!calc.isPortfolioTickerSaleCommitBlocked('SBER', sberPf), 'split catalog: SBER still sellable');
@@ -5193,8 +5193,8 @@ function loadPriceAtDateHelpers() {
   };
   sb.state.pfSaleTicker = 'GMKN';
   calc.updatePortfolioSalePreview();
-  assert(/Доступно: 1010 шт\. с учётом сплита/.test(nodes.pfSaleAvailableHint.textContent), 'p1b hint: Доступно 1010 not 20');
-  assert(!/Доступно: 20 шт\. с учётом сплита/.test(nodes.pfSaleAvailableHint.textContent), 'p1b hint: Доступно not JSON 20');
+  assert(/Доступно: 1010 шт\. с учётом дробления/.test(nodes.pfSaleAvailableHint.textContent), 'p1b hint: Доступно 1010 not 20');
+  assert(!/Доступно: 20 шт\. с учётом дробления/.test(nodes.pfSaleAvailableHint.textContent), 'p1b hint: Доступно not JSON 20');
   sb.document.getElementById = prevGetEl;
   sb.state.pfSaleTicker = '';
 
@@ -5228,6 +5228,10 @@ function loadPriceAtDateHelpers() {
   const heldTwo = calc.getSplitAwareCurrentQty('GMKN', sellTwo, { splitEvents: events, now: NOW });
   almost(heldTwo.qty, 1008, 1e-6, 'p1b sell2: split-aware remaining 1008');
   almost(calc.getSplitAwareSaleRealizedPnl(sellTwo.sales[0], sellTwo, { splitEvents: events, now: NOW }).realizedPnlRub, -173.76, 0.05, 'p1b sell2: realized -173.76');
+  const sellTwoHtml = calc.buildPortfolioTickerDetailHtml('GMKN', sellTwo.positions, sellTwo.sales, null, false);
+  assert(/Продажа записана как в брокере/.test(sellTwoHtml), 'p1b sell2 ui: new sale copy');
+  assert(/Количество указано в акциях после дробления/.test(sellTwoHtml), 'p1b sell2 ui: qty after split');
+  assert(!/split-aware/.test(sellTwoHtml), 'p1b sell2 ui: no split-aware');
   const openHist = calc.summarizeTickerHistory('GMKN', sellTwo.positions, sellTwo.sales);
   const openOld = openHist.openLots.find((p) => p.lotId === 'G1');
   almost(openOld.qty, 9.98, 1e-6, 'p1b sell2: open purchases 9.98');
@@ -5347,7 +5351,7 @@ function loadPriceAtDateHelpers() {
   const unkCommit = calc.commitPortfolioSale('GMKN', { qty: 200, price: 130, date: '2025-06-01', comment: '' });
   assert(unkCommit && unkCommit.ok === false && unkCommit.blocked, 'p1b unknown: not committed');
   assert(JSON.stringify(unk) === unkSnap, 'p1b unknown: JSON unchanged');
-  assert(/Не удалось определить шкалу/.test(calc.formatSplitSaleUnknownText()), 'p1b unknown: warning text');
+  assert(/Не удалось понять, в каких акциях указан старый лот/.test(calc.formatSplitSaleUnknownText()), 'p1b unknown: warning text');
 
   let cancelPf = {
     positions: [{
@@ -5378,7 +5382,7 @@ function loadPriceAtDateHelpers() {
   }, { splitEvents: events, now: NOW });
   assert(legacyRow.isPartial || legacyRow.confidence === 'partial', 'p1b legacy: partial');
   assert(legacyRow.confidence !== 'high', 'p1b legacy: not confident');
-  assert((legacyRow.warnings || []).some((w) => /до поддержки split-aware/.test(w)), 'p1b legacy: warning');
+  assert((legacyRow.warnings || []).some((w) => /до обновления расчётов по дроблению/.test(w)), 'p1b legacy: warning');
   if (legacyRow.realizedPnlRub != null) {
     assert(Math.abs(legacyRow.realizedPnlRub - (130 - 22000) * 200) > 1, 'p1b legacy: not raw (130-22000)×200');
   }
