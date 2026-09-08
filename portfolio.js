@@ -2897,13 +2897,15 @@
           if (!alloc) return;
           var aq = Number(alloc.qty);
           if (!isFinite(aq) || aq <= 1e-9) return;
+          var jsonSold = Number(alloc.lotQtyDelta);
+          if (!(isFinite(jsonSold) && jsonSold > 0)) jsonSold = aq;
           var lotId = alloc.lotId ? String(alloc.lotId) : '';
           var date = timelineIsoDate(alloc.buyDate);
           var price = Number(alloc.buyPrice);
           var face = takeFace(alloc) != null ? takeFace(alloc) : saleFace;
           var key = lotId ? ('lot:' + lotId) : fallbackBuyKey(date, price, '', face);
           var g = getOrCreateGroup(key, { lotId: lotId });
-          g.soldQty += aq;
+          g.soldQty += jsonSold;
           if (lotId && !g.lotId) g.lotId = lotId;
           if (date && !g.date) g.date = date;
           if (g.faceValue == null && face != null) g.faceValue = face;
@@ -3218,13 +3220,15 @@
           if (!alloc) return;
           var aq = Number(alloc.qty);
           if (!isFinite(aq) || aq <= 1e-9) return;
+          var jsonSold = Number(alloc.lotQtyDelta);
+          if (!(isFinite(jsonSold) && jsonSold > 0)) jsonSold = aq;
           var lotId = alloc.lotId ? String(alloc.lotId) : '';
           var date = timelineIsoDate(alloc.buyDate);
           var price = Number(alloc.buyPrice);
           var face = asOfTakeFace(alloc) != null ? asOfTakeFace(alloc) : saleFace;
           var key = lotId ? ('lot:' + lotId) : fallbackBuyKey(date, price, '', face);
           var g = getOrCreateGroup(key, { lotId: lotId });
-          g.soldAllQty += aq;
+          g.soldAllQty += jsonSold;
           if (lotId && !g.lotId) g.lotId = lotId;
           if (date && !g.date) g.date = date;
           if (g.faceValue == null && face != null) g.faceValue = face;
@@ -3293,12 +3297,14 @@
           if (!alloc) return;
           var aq = Number(alloc.qty);
           if (!isFinite(aq) || aq <= 1e-9) return;
+          var jsonSold = Number(alloc.lotQtyDelta);
+          if (!(isFinite(jsonSold) && jsonSold > 0)) jsonSold = aq;
           var lotId = alloc.lotId ? String(alloc.lotId) : '';
           var date = timelineIsoDate(alloc.buyDate);
           var price = Number(alloc.buyPrice);
           var face = asOfTakeFace(alloc) != null ? asOfTakeFace(alloc) : asOfTakeFace(sale);
           var g = reconstructed.findGroup(lotId, date, price, face);
-          if (g) g.soldUpToDate += aq;
+          if (g) g.soldUpToDate += jsonSold;
           else lotsReliable = false;
         });
         return;
@@ -6922,7 +6928,12 @@
       var lotQtyOnly = Number(lot.qty);
       var lotDelta = 0;
       if (take > 1e-12) {
-        lotDelta = take * cap.jsonPerSale;
+        if (cap.scale === 'historical' && cap.factor > 1) {
+          lotDelta = take / cap.factor;
+        } else {
+          lotDelta = take;
+        }
+        if (!(lotDelta > 0)) lotDelta = 0;
         var buy = isFinite(Number(lot.avgPrice)) ? Number(lot.avgPrice) : null;
         var adjBuy = buy;
         if (cap.scale === 'historical' && cap.factor > 1 && buy != null) adjBuy = buy / cap.factor;
@@ -6943,6 +6954,7 @@
         left -= take;
       }
       var remainQty = lotQtyOnly - lotDelta;
+      if (remainQty > lotQtyOnly) remainQty = lotQtyOnly;
       if (isFinite(remainQty) && remainQty > 1e-9) {
         remaining.push(normalizePosition({
           lotId: lot.lotId,
@@ -7047,17 +7059,27 @@
     var ok = isFinite(totalQty) && totalQty > 0;
     var pf = typeof getPortfolio === 'function' ? getPortfolio() : null;
     var blocked = !!(state.pfSaleTicker && isPortfolioTickerSaleCommitBlocked(state.pfSaleTicker, pf));
-    var write = state.pfSaleTicker
-      ? getPortfolioSplitSaleWriteState(state.pfSaleTicker, pf, null)
-      : { mode: 'ordinary' };
+    var write = { mode: 'ordinary' };
+    if (state.pfSaleTicker) {
+      var dateElHint = document.getElementById('pfSaleDate');
+      var saleIsoHint = '';
+      if (dateElHint && dateElHint.value) {
+        saleIsoHint = typeof normalizePortfolioDate === 'function'
+          ? normalizePortfolioDate(dateElHint.value)
+          : String(dateElHint.value || '').slice(0, 10);
+      }
+      write = getPortfolioSplitSaleWriteState(state.pfSaleTicker, pf, saleIsoHint);
+    }
     var blockText = blocked ? formatSplitSaleUnknownText() : '';
     if (hint) {
       if (!state.pfSaleTicker) {
         hint.hidden = true;
         hint.textContent = '';
       } else if (write.mode === 'split') {
+        var avail = Number(write.availableSaleQty);
+        if (!(isFinite(avail) && avail > 0)) avail = totalQty;
         hint.hidden = false;
-        hint.textContent = 'Доступно: ' + (ok ? String(totalQty) : '0') +
+        hint.textContent = 'Доступно: ' + (isFinite(avail) && avail > 0 ? String(avail) : '0') +
           ' шт. с учётом сплита; по операциям: ' + String(write.jsonOpsQty) + ' шт.';
       } else {
         hint.hidden = false;
@@ -7175,12 +7197,7 @@
     var ticker = normalizeTicker(state.pfSaleTicker);
     var pfNow = typeof getPortfolio === 'function' ? getPortfolio() : null;
     if (isPortfolioTickerSaleCommitBlocked(ticker, pfNow)) {
-      var lotsBlocked = findPortfolioLots(ticker).filter(function (l) {
-        var q = Number(l.qty);
-        return isFinite(q) && q > 0;
-      });
-      var blockedQty = lotsBlocked.reduce(function (s, l) { return s + Number(l.qty); }, 0);
-      updatePortfolioSellAllBtn(blockedQty);
+      updatePortfolioSellAllBtn(0);
       return;
     }
     var lots = findPortfolioLots(ticker).filter(function (l) {
@@ -7191,7 +7208,7 @@
       updatePortfolioSellAllBtn(0);
       return;
     }
-    var totalQty = lots.reduce(function (s, l) { return s + Number(l.qty); }, 0);
+    var totalQty = getPortfolioSellableQty(ticker);
     updatePortfolioSellAllBtn(totalQty);
     var agg = aggregatePortfolioLots(lots);
     var avgBefore = computeLotsWeightedAvg(lots);

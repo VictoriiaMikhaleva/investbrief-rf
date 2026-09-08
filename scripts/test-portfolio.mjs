@@ -389,6 +389,9 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__splitSaleUi = updatePortfolioSplitSaleBlockUi;' +
       '\nthis.__startSale = startSalePortfolioTicker;' +
       '\nthis.__splitWrite = getPortfolioSplitSaleWriteState;' +
+      '\nthis.__sellableQty = getPortfolioSellableQty;' +
+      '\nthis.__saleAvailHint = updatePortfolioSaleAvailableHint;' +
+      '\nthis.__salePreview = updatePortfolioSalePreview;' +
       '\nthis.__allocSplit = allocateSplitAwareSaleAcrossLots;' +
       '\nthis.__removeSale = removePortfolioSale;' +
       '\nthis.__splitSaleHint = formatSplitSaleHintText;' +
@@ -463,6 +466,9 @@ function loadPortfolioCalcHelpers() {
     updatePortfolioSplitSaleBlockUi: sandbox.__splitSaleUi,
     startSalePortfolioTicker: sandbox.__startSale,
     getPortfolioSplitSaleWriteState: sandbox.__splitWrite,
+    getPortfolioSellableQty: sandbox.__sellableQty,
+    updatePortfolioSaleAvailableHint: sandbox.__saleAvailHint,
+    updatePortfolioSalePreview: sandbox.__salePreview,
     allocateSplitAwareSaleAcrossLots: sandbox.__allocSplit,
     removePortfolioSale: sandbox.__removeSale,
     formatSplitSaleHintText: sandbox.__splitSaleHint,
@@ -5158,6 +5164,83 @@ function loadPriceAtDateHelpers() {
   assert(metaKeep.qtyScale === 'sale-date', 'p1b storage: sale qtyScale kept');
   assert(metaKeep.allocations[0].lotQtyDelta === 2 && metaKeep.allocations[0].splitFactor === 100, 'p1b storage: alloc meta kept');
   assert(metaKeep.allocations[0].adjustedBuyPrice === 220, 'p1b storage: adjustedBuyPrice kept');
+
+  const mixedBefore = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 },
+      { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 129.74, buyDate: '2026-09-04', currentPrice: 130 }
+    ],
+    sales: []
+  };
+  sb.getPortfolio = () => mixedBefore;
+  sb.setPortfolio = (p) => { mixedBefore = p; };
+  const mixedWrite = calc.getPortfolioSplitSaleWriteState('GMKN', mixedBefore, '2026-09-08', { splitEvents: events });
+  almost(mixedWrite.availableSaleQty, 1010, 1e-6, 'p1b hint: split-aware available 1010');
+  almost(mixedWrite.jsonOpsQty, 20, 1e-6, 'p1b hint: operations qty 20');
+  almost(calc.getPortfolioSellableQty('GMKN'), 1010, 1e-6, 'p1b hint: sellable 1010 not 20');
+  const warnHint = calc.formatSplitSaleHintText('GMKN', mixedBefore, { splitEvents: events, saleDate: '2026-09-08' });
+  assert(/1010/.test(warnHint) && /по операциям: 20/.test(warnHint), 'p1b hint: warning has 1010 and 20');
+  const nodes = {};
+  const prevGetEl = sb.document.getElementById;
+  sb.document.getElementById = (id) => {
+    if (!nodes[id]) {
+      nodes[id] = {
+        hidden: true, textContent: '', disabled: false, value: id === 'pfSaleDate' ? '2026-09-08' : '',
+        style: {}, setAttribute() {}, removeAttribute() {}
+      };
+    }
+    return nodes[id];
+  };
+  sb.state.pfSaleTicker = 'GMKN';
+  calc.updatePortfolioSalePreview();
+  assert(/Доступно: 1010 шт\. с учётом сплита/.test(nodes.pfSaleAvailableHint.textContent), 'p1b hint: Доступно 1010 not 20');
+  assert(!/Доступно: 20 шт\. с учётом сплита/.test(nodes.pfSaleAvailableHint.textContent), 'p1b hint: Доступно not JSON 20');
+  sb.document.getElementById = prevGetEl;
+  sb.state.pfSaleTicker = '';
+
+  let sellTwo = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 133.12 },
+      { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 129.74, buyDate: '2026-09-04', currentPrice: 133.12 }
+    ],
+    sales: []
+  };
+  const qtyBefore = sellTwo.positions.map((p) => ({ lotId: p.lotId, qty: Number(p.qty) }));
+  sb.getPortfolio = () => sellTwo;
+  sb.setPortfolio = (p) => { sellTwo = p; };
+  const twoSale = calc.commitPortfolioSale('GMKN', { qty: 2, price: 133.12, date: '2026-09-08', comment: '' });
+  assert(twoSale && twoSale.ok, 'p1b sell2: accepted');
+  const oldAfter = (sellTwo.positions || []).find((p) => p.lotId === 'G1');
+  const newAfter = (sellTwo.positions || []).find((p) => p.lotId === 'G2');
+  almost(oldAfter.qty, 9.98, 1e-6, 'p1b sell2: old lot 9.98');
+  almost(newAfter.qty, 10, 1e-6, 'p1b sell2: new lot 10');
+  assert(Number(oldAfter.qty) < 10, 'p1b sell2: old lot decreased');
+  qtyBefore.forEach((b) => {
+    const now = (sellTwo.positions || []).find((p) => p.lotId === b.lotId);
+    assert(!now || Number(now.qty) <= b.qty + 1e-9, 'p1b sell2: no lot qty increase ' + b.lotId);
+  });
+  assert(sellTwo.sales[0].qty === 2, 'p1b sell2: sale.qty 2');
+  assert(sellTwo.sales[0].qtyScale === 'sale-date', 'p1b sell2: qtyScale');
+  almost(sellTwo.sales[0].allocations[0].qty, 2, 1e-9, 'p1b sell2: alloc qty 2');
+  almost(sellTwo.sales[0].allocations[0].lotQtyDelta, 0.02, 1e-9, 'p1b sell2: lotQtyDelta 0.02');
+  almost(sellTwo.sales[0].allocations[0].splitFactor, 100, 1e-9, 'p1b sell2: splitFactor 100');
+  almost(sellTwo.sales[0].allocations[0].adjustedBuyPrice, 220, 0.02, 'p1b sell2: adjustedBuyPrice 220');
+  const heldTwo = calc.getSplitAwareCurrentQty('GMKN', sellTwo, { splitEvents: events, now: NOW });
+  almost(heldTwo.qty, 1008, 1e-6, 'p1b sell2: split-aware remaining 1008');
+  almost(calc.getSplitAwareSaleRealizedPnl(sellTwo.sales[0], sellTwo, { splitEvents: events, now: NOW }).realizedPnlRub, -173.76, 0.05, 'p1b sell2: realized -173.76');
+  const openHist = calc.summarizeTickerHistory('GMKN', sellTwo.positions, sellTwo.sales);
+  const openOld = openHist.openLots.find((p) => p.lotId === 'G1');
+  almost(openOld.qty, 9.98, 1e-6, 'p1b sell2: open purchases 9.98');
+  const tl = calc.buildTickerOperationTimeline('GMKN', sellTwo.positions, sellTwo.sales);
+  const buyOld = tl.find((op) => op.type === 'buy' && op.lotId === 'G1');
+  assert(buyOld && Math.abs(Number(buyOld.qty) - 10) < 1e-6, 'p1b sell2: timeline buy qty 10 not 11.98');
+  assert(Math.abs(Number(buyOld.qty) - 11.98) > 0.1, 'p1b sell2: timeline not 11.98');
+  calc.removePortfolioSale(sellTwo.sales[0].saleId);
+  const oldRestored = (sellTwo.positions || []).find((p) => p.lotId === 'G1');
+  const newRestored = (sellTwo.positions || []).find((p) => p.lotId === 'G2');
+  almost(oldRestored.qty, 10, 1e-6, 'p1b sell2 cancel: old lot 10');
+  almost(newRestored.qty, 10, 1e-6, 'p1b sell2 cancel: new lot 10');
+  assert(!(sellTwo.sales || []).length, 'p1b sell2 cancel: sale removed');
 
   let mixed = {
     positions: [
