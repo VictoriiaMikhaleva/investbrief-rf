@@ -407,6 +407,9 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__partialWarnText = formatPayoutPartialWarningText;' +
       '\nthis.__partialTickers = collectPayoutPartialTickersFromWarnings;' +
       '\nthis.__twpBlock = buildTickerReturnWithPayoutsBlockHtml;' +
+      '\nthis.__summaryTotals = computePortfolioSummaryTotals;' +
+      '\nthis.__incomeTotals = loadPortfolioIncomeTotals;' +
+      '\nthis.__renderSummary = renderPortfolioSummary;' +
       '\nthis.__ensureFeeds = ensurePortfolioPayoutFeedsLoaded;' +
       '\nthis.__feedsCache = getPfPayoutFeedsCache;' +
       '\nthis.__twpDetail = buildPortfolioTickerDetailHtml;',
@@ -485,6 +488,9 @@ function loadPortfolioCalcHelpers() {
     collectPayoutPartialTickersFromWarnings: sandbox.__partialTickers,
     buildTickerReturnWithPayoutsBlockHtml: sandbox.__twpBlock,
     ensurePortfolioPayoutFeedsLoaded: sandbox.__ensureFeeds,
+    computePortfolioSummaryTotals: sandbox.__summaryTotals,
+    loadPortfolioIncomeTotals: sandbox.__incomeTotals,
+    renderPortfolioSummary: sandbox.__renderSummary,
     getPfPayoutFeedsCache: sandbox.__feedsCache,
     buildPortfolioTickerDetailHtml: sandbox.__twpDetail,
     setSplitEventsCatalog: sandbox.setSplitEventsCatalog,
@@ -5527,6 +5533,17 @@ await (async () => {
     assert(m.unrealizedPnlPct == null || Math.abs(m.unrealizedPnlPct) < 5, tag + ': no false −90/−99%');
     assert(JSON.stringify(mixed) === snapMixed, tag + ': metrics JSON immutable');
 
+    const sum = calc.computePortfolioSummaryTotals(mixed.positions, {}, mixed.sales, {
+      splitEvents: events, now: fx.now, currentDate: fx.now
+    });
+    almost(sum.stockValue, (10 * R + 5) * fx.CUR, 0.05, tag + ': summary MV split-aware');
+    assert(Math.abs(sum.stockValue - 15 * fx.CUR) > 1, tag + ': summary MV ≠ JSON qty × price');
+    almost(sum.remainCost, (10 * R + 5) * 1000, 0.05, tag + ': summary remaining cost');
+    const sumPct = sum.remainCost > 0 ? (sum.totalValue - sum.remainCost) / sum.remainCost * 100 : 0;
+    assert(sumPct > -90, tag + ': summary result not −90/−99%');
+    assert(!sum.onlyUnknown, tag + ': summary not unknown-only');
+    assert(JSON.stringify(mixed) === snapMixed, tag + ': summary JSON immutable');
+
     const asofOpts = {
       splitEvents: events,
       currentDate: fx.now,
@@ -5741,9 +5758,166 @@ await (async () => {
 
   const src = Function.prototype.toString.call(calc.allocateSplitAwareSaleAcrossLots) +
     Function.prototype.toString.call(calc.getSplitAwareCurrentQty) +
-    Function.prototype.toString.call(calc.summarizeTickerHistory);
+    Function.prototype.toString.call(calc.summarizeTickerHistory) +
+    Function.prototype.toString.call(calc.computePortfolioSummaryTotals) +
+    Function.prototype.toString.call(calc.loadPortfolioIncomeTotals);
   assert(!/iss\.moex/.test(src) && !/fetch\s*\(/.test(src), 'matrix: no new MOEX fetch');
   calc.setSplitEventsCatalog(catalog);
+
+  {
+    const PX = 129.74;
+    const gmknMixed = {
+      positions: [
+        { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: PX },
+        { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 129.74, buyDate: '2026-09-04', currentPrice: PX }
+      ],
+      sales: []
+    };
+    const gmknSnap = JSON.stringify(gmknMixed);
+    calc.setSplitEventsCatalog(catalog);
+    let totals = calc.computePortfolioSummaryTotals(gmknMixed.positions, {}, gmknMixed.sales);
+    almost(totals.stockValue, 1010 * PX, 0.05, 'summary GMKN: MV 1010×price');
+    assert(Math.abs(totals.stockValue - 20 * PX) > 1, 'summary GMKN: not 20×price');
+    const resultPct = (totals.totalValue - totals.remainCost) / totals.remainCost * 100;
+    assert(resultPct > -90 && resultPct < -10, 'summary GMKN: result about −38/−41%, not −99%');
+    assert(!/-99/.test(String(resultPct)), 'summary GMKN: pct not −99');
+    assert(JSON.stringify(gmknMixed) === gmknSnap, 'summary GMKN: JSON immutable');
+
+    const sberOnly = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+      sales: []
+    };
+    const sberSnapSum = JSON.stringify(sberOnly);
+    const sberTot = calc.computePortfolioSummaryTotals(sberOnly.positions, {}, []);
+    almost(sberTot.stockValue, 10 * 280, 0.02, 'summary SBER: JSON qty × price');
+    almost(sberTot.remainCost, 10 * 250, 0.02, 'summary SBER: cost unchanged');
+    assert(JSON.stringify(sberOnly) === sberSnapSum, 'summary SBER: JSON immutable');
+
+    const ofzMeta = { OFZ26241: { faceValue: 1000 } };
+    const ofzOnly = {
+      positions: [{ ticker: 'OFZ26241', lotId: 'B1', qty: 10, avgPrice: 95, currentPrice: 98, buyDate: '2023-01-01' }],
+      sales: []
+    };
+    const ofzSnapSum = JSON.stringify(ofzOnly);
+    const ofzTot = calc.computePortfolioSummaryTotals(ofzOnly.positions, ofzMeta, []);
+    almost(ofzTot.bondValue, 10 * 0.98 * 1000, 0.05, 'summary OFZ: % of face');
+    almost(ofzTot.remainCost, 10 * 0.95 * 1000, 0.05, 'summary OFZ: cost % of face');
+    almost(ofzTot.stockValue, 0, 1e-9, 'summary OFZ: not in stocks');
+    assert(JSON.stringify(ofzOnly) === ofzSnapSum, 'summary OFZ: JSON immutable');
+
+    const mixedSleeve = {
+      positions: gmknMixed.positions.concat(ofzOnly.positions),
+      sales: []
+    };
+    const sleeve = calc.computePortfolioSummaryTotals(mixedSleeve.positions, ofzMeta, []);
+    almost(sleeve.stockValue, 1010 * PX, 0.05, 'summary share: stocks split-aware');
+    almost(sleeve.bondValue, 10 * 0.98 * 1000, 0.05, 'summary share: bonds unchanged');
+    const stockShare = sleeve.stockValue / sleeve.totalValue;
+    const jsonShare = (20 * PX) / (20 * PX + ofzTot.bondValue);
+    assert(Math.abs(stockShare - jsonShare) > 0.01, 'summary share: not JSON-qty GMKN weight');
+
+    const unkPf = {
+      positions: [{ ticker: 'GMKN', lotId: 'U1', qty: 10, avgPrice: 22000, currentPrice: PX }],
+      sales: []
+    };
+    const unkSnap = JSON.stringify(unkPf);
+    const unkTot = calc.computePortfolioSummaryTotals(unkPf.positions, {}, []);
+    assert(unkTot.skippedUnknown && unkTot.isPartial, 'summary unknown: partial');
+    assert(unkTot.onlyUnknown, 'summary unknown: not a confident total');
+    assert(!(unkTot.stockValue > 0), 'summary unknown: not raw JSON MV');
+    assert(JSON.stringify(unkPf) === unkSnap, 'summary unknown: JSON immutable');
+
+    const nodes = { portfolioTotals: { hidden: true, innerHTML: '' } };
+    const prevEl = calc.sandbox.document.getElementById;
+    calc.sandbox.document.getElementById = (id) => nodes[id] || null;
+    calc.renderPortfolioSummary(unkPf.positions, {}, { paid12m: 0, forecast12m: 0, isPartial: true, skippedSplit: true, hasIncluded: false }, []);
+    assert(/Часть расчётов по бумагам с дроблением акций может быть неполной/.test(nodes.portfolioTotals.innerHTML), 'summary unknown ui: warning');
+    assert(!/split-aware|metadata|writer|helper/.test(nodes.portfolioTotals.innerHTML), 'summary unknown ui: no technical terms');
+    calc.sandbox.document.getElementById = prevEl;
+
+    const sb = calc.sandbox;
+    const prevGet = sb.getPortfolio;
+    const prevSet = sb.setPortfolio;
+    let live = JSON.parse(gmknSnap);
+    sb.getPortfolio = () => live;
+    sb.setPortfolio = (p) => { live = p; };
+    const sale1 = calc.commitPortfolioSale('GMKN', { qty: 1, price: PX, date: '2026-09-08', comment: '' });
+    assert(sale1 && sale1.ok, 'summary sale1: accepted');
+    totals = calc.computePortfolioSummaryTotals(live.positions, {}, live.sales);
+    almost(totals.stockValue, 1009 * PX, 0.05, 'summary sale1: MV 1009×price');
+    const real1 = calc.getTotalRealizedPnl(live.sales, {});
+    almost(real1, (PX - 220) * 1, 0.05, 'summary sale1: realized split-aware');
+
+    live = JSON.parse(gmknSnap);
+    const sale2 = calc.commitPortfolioSale('GMKN', { qty: 2, price: PX, date: '2026-09-08', comment: '' });
+    assert(sale2 && sale2.ok, 'summary sale2: accepted');
+    totals = calc.computePortfolioSummaryTotals(live.positions, {}, live.sales);
+    almost(totals.stockValue, 1008 * PX, 0.05, 'summary sale2: MV 1008×price');
+    const real2 = calc.getTotalRealizedPnl(live.sales, {});
+    almost(real2, (PX - 220) * 2, 0.08, 'summary sale2: realized 2 current shares');
+
+    live = JSON.parse(gmknSnap);
+    const soldAll = calc.commitPortfolioSale('GMKN', { qty: 1010, price: PX, date: '2026-09-08', comment: '' });
+    assert(soldAll && soldAll.ok, 'summary sell-all: accepted');
+    totals = calc.computePortfolioSummaryTotals(live.positions, {}, live.sales);
+    almost(totals.stockValue, 0, 0.05, 'summary sell-all: GMKN value 0');
+    const closed = calc.listClosedPortfolioPositions(live.positions, live.sales);
+    assert(closed.some((c) => c.ticker === 'GMKN'), 'summary sell-all: closed');
+    const realAll = calc.getSplitAwareTickerRealizedPnl('GMKN', live);
+    assert(realAll.confidence !== 'unknown', 'summary sell-all: realized not unknown');
+
+    const tHist = {
+      positions: [{ ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3200, buyDate: '2025-01-10', currentPrice: 255 }],
+      sales: []
+    };
+    const tTot = calc.computePortfolioSummaryTotals(tHist.positions, {}, []);
+    almost(tTot.stockValue, 10 * 255, 0.05, 'summary T: historical ×10');
+    assert(Math.abs(tTot.stockValue - 1 * 255) > 1, 'summary T: not JSON 1×price');
+
+    const analyticsCalls = [];
+    const prevAnalytics = sb.buildSecurityAnalytics;
+    sb.buildSecurityAnalytics = (ticker) => {
+      analyticsCalls.push(ticker);
+      return Promise.resolve({
+        ticker: ticker,
+        divForecast: { paid12m: 2, upcoming12m: 3, amount: 3 }
+      });
+    };
+    const incGmkn = await calc.loadPortfolioIncomeTotals(JSON.parse(gmknSnap).positions, []);
+    almost(incGmkn.paid12m, 1010 * 2, 0.05, 'income 12m: GMKN split-aware qty');
+    almost(incGmkn.forecast12m, 1010 * 3, 0.05, 'forecast 12m: GMKN split-aware qty');
+    assert(Math.abs(incGmkn.paid12m - 20 * 2) > 1, 'income 12m: not JSON 20');
+    assert(analyticsCalls.filter((x) => x === 'GMKN').length === 1, 'income 12m: one analytics call per ticker');
+
+    const incSber = await calc.loadPortfolioIncomeTotals(sberOnly.positions, []);
+    almost(incSber.paid12m, 10 * 2, 0.02, 'income 12m: SBER JSON qty');
+    almost(incSber.forecast12m, 10 * 3, 0.02, 'forecast 12m: SBER JSON qty');
+
+    const prevBond = sb.computeBondCoupons12m;
+    const prevFetchBond = sb.fetchOfzBondSnapshot;
+    sb.fetchOfzBondSnapshot = () => Promise.resolve({
+      coupons: [{ date: '2026-01-01', value: 35 }],
+      faceValue: 1000
+    });
+    sb.computeBondCoupons12m = (coupons, qty, face) => ({
+      paid12m: 35 * qty,
+      upcoming12m: 40 * qty
+    });
+    const incOfz = await calc.loadPortfolioIncomeTotals(ofzOnly.positions, []);
+    almost(incOfz.paid12m, 350, 0.05, 'income 12m: OFZ coupons × JSON qty');
+    almost(incOfz.forecast12m, 400, 0.05, 'forecast 12m: OFZ coupons unchanged');
+
+    const incUnk = await calc.loadPortfolioIncomeTotals(unkPf.positions, []);
+    assert(incUnk.isPartial && incUnk.skippedSplit, 'income unknown: partial');
+    assert(!incUnk.hasIncluded, 'income unknown: not included as earned 0');
+    almost(incUnk.paid12m, 0, 1e-9, 'income unknown: no confident amount');
+
+    sb.buildSecurityAnalytics = prevAnalytics;
+    sb.computeBondCoupons12m = prevBond;
+    sb.fetchOfzBondSnapshot = prevFetchBond;
+    sb.getPortfolio = prevGet;
+    sb.setPortfolio = prevSet;
+  }
 })();
 
 if (errors.length) {

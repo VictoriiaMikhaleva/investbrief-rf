@@ -151,35 +151,169 @@
     })).then(function () { return map; });
   }
 
-  function loadPortfolioIncomeTotals(positions) {
+  var PF_SUMMARY_SPLIT_PARTIAL_WARNING =
+    'Часть расчётов по бумагам с дроблением акций может быть неполной.';
+
+  function loadPortfolioIncomeTotals(positions, sales) {
     var paid = 0;
     var forecast = 0;
-    var jobs = (positions || []).map(function (p) {
+    var isPartial = false;
+    var skippedSplit = false;
+    var hasIncluded = false;
+    positions = positions || [];
+    if (sales == null && typeof getPortfolio === 'function') {
+      sales = (getPortfolio() || {}).sales || [];
+    }
+    sales = sales || [];
+    var pf = { positions: positions, sales: sales };
+    var seenStock = {};
+    var jobs = [];
+    (positions || []).forEach(function (p) {
       if (isPortfolioBondPosition(p)) {
-        if (typeof fetchOfzBondSnapshot !== 'function') return Promise.resolve();
-        return fetchOfzBondSnapshot({ ticker: p.ticker }).then(function (bond) {
+        if (typeof fetchOfzBondSnapshot !== 'function') return;
+        jobs.push(fetchOfzBondSnapshot({ ticker: p.ticker }).then(function (bond) {
           if (!bond || typeof computeBondCoupons12m !== 'function') return;
           var sums = computeBondCoupons12m(bond.coupons, p.qty, bond.faceValue || 1000);
-          if (sums.paid12m != null && isFinite(sums.paid12m)) paid += sums.paid12m;
-          if (sums.upcoming12m != null && isFinite(sums.upcoming12m)) forecast += sums.upcoming12m;
-        }).catch(function () {});
+          if (sums.paid12m != null && isFinite(sums.paid12m)) {
+            paid += sums.paid12m;
+            hasIncluded = true;
+          }
+          if (sums.upcoming12m != null && isFinite(sums.upcoming12m)) {
+            forecast += sums.upcoming12m;
+            hasIncluded = true;
+          }
+        }).catch(function () {}));
+        return;
       }
-      if (typeof isRuStockForAnalytics === 'function' && !isRuStockForAnalytics(p.ticker)) {
-        return Promise.resolve();
-      }
-      if (typeof buildSecurityAnalytics !== 'function') return Promise.resolve();
-      return buildSecurityAnalytics(p.ticker).then(function (a) {
+      var t = typeof normalizeTicker === 'function' ? normalizeTicker(p.ticker) : String(p.ticker || '').toUpperCase();
+      if (!t || seenStock[t]) return;
+      seenStock[t] = true;
+      if (typeof isRuStockForAnalytics === 'function' && !isRuStockForAnalytics(t)) return;
+      if (typeof buildSecurityAnalytics !== 'function') return;
+      jobs.push(buildSecurityAnalytics(t).then(function (a) {
+        var q = 0;
+        var splitAffected = !isPortfolioSplitCatalogUnavailable() &&
+          isPortfolioTickerSplitAffected(t, pf);
+        if (splitAffected) {
+          var held = typeof getSplitAwareCurrentQty === 'function'
+            ? getSplitAwareCurrentQty(t, pf)
+            : null;
+          if (!held || held.confidence === 'unknown') {
+            isPartial = true;
+            skippedSplit = true;
+            return;
+          }
+          q = Number(held.qty);
+          if (held.confidence === 'partial') isPartial = true;
+        } else {
+          q = jsonOpenQtyForTicker(t, pf);
+        }
+        if (!isFinite(q) || !(q > 0)) return;
         var fc = a && a.divForecast;
-        var q = isFinite(Number(p.qty)) && Number(p.qty) > 0 ? Number(p.qty) : 0;
-        if (!q || !fc) return;
-        if (fc.paid12m != null && isFinite(fc.paid12m)) paid += fc.paid12m * q;
+        if (!fc) return;
+        if (fc.paid12m != null && isFinite(fc.paid12m)) {
+          paid += fc.paid12m * q;
+          hasIncluded = true;
+        }
         var upcoming = fc.upcoming12m != null && isFinite(fc.upcoming12m) ? fc.upcoming12m : fc.amount;
-        if (upcoming != null && isFinite(upcoming)) forecast += upcoming * q;
-      }).catch(function () {});
+        if (upcoming != null && isFinite(upcoming)) {
+          forecast += upcoming * q;
+          hasIncluded = true;
+        }
+      }).catch(function () {}));
     });
     return Promise.all(jobs).then(function () {
-      return { paid12m: paid, forecast12m: forecast };
+      return {
+        paid12m: paid,
+        forecast12m: forecast,
+        isPartial: isPartial,
+        skippedSplit: skippedSplit,
+        hasIncluded: hasIncluded
+      };
     });
+  }
+
+  function computePortfolioSummaryTotals(positions, bondMetaMap, sales, options) {
+    options = options || {};
+    if (positions && !Array.isArray(positions) && Array.isArray(positions.positions)) {
+      if (sales == null) sales = positions.sales || [];
+      positions = positions.positions;
+    }
+    positions = positions || [];
+    sales = sales || [];
+    bondMetaMap = bondMetaMap || {};
+    var stockValue = 0;
+    var bondValue = 0;
+    var remainCost = 0;
+    var isPartial = false;
+    var skippedUnknown = false;
+    var byTicker = {};
+    var order = [];
+    positions.forEach(function (p) {
+      if (!p) return;
+      var t = typeof asOfNormTicker === 'function' ? asOfNormTicker(p.ticker) : String(p.ticker || '').toUpperCase();
+      if (!t) return;
+      if (!byTicker[t]) {
+        byTicker[t] = [];
+        order.push(t);
+      }
+      byTicker[t].push(p);
+    });
+    var pf = { positions: positions, sales: sales };
+    order.forEach(function (t) {
+      var lots = byTicker[t];
+      var sample = lots[0];
+      if (isPortfolioBondPosition(sample)) {
+        lots.forEach(function (p) {
+          var meta = bondMetaMap[t] || bondMetaMap[p.ticker];
+          bondValue += getPositionMarketValue(p, meta);
+          remainCost += getPositionCostRub(p, meta);
+        });
+        return;
+      }
+      var splitAffected = !isPortfolioSplitCatalogUnavailable() &&
+        isPortfolioTickerSplitAffected(t, pf, options.splitEvents);
+      if (splitAffected) {
+        var metrics = null;
+        try {
+          metrics = getSplitAwareCurrentPositionMetrics(t, pf, {
+            bondMeta: bondMetaMap[t] || bondMetaMap[sample.ticker],
+            splitEvents: options.splitEvents,
+            now: options.now,
+            currentDate: options.currentDate || options.now
+          });
+        } catch (e) { metrics = null; }
+        if (splitAwareMetricsUsable(metrics)) {
+          stockValue += Number(metrics.currentMarketValueRub);
+          if (metrics.remainingCostRub != null && isFinite(Number(metrics.remainingCostRub))) {
+            remainCost += Number(metrics.remainingCostRub);
+          } else {
+            isPartial = true;
+          }
+          if (metrics.confidence === 'partial') isPartial = true;
+          return;
+        }
+        skippedUnknown = true;
+        isPartial = true;
+        return;
+      }
+      lots.forEach(function (p) {
+        var meta = bondMetaMap[t] || bondMetaMap[p.ticker];
+        stockValue += getPositionMarketValue(p, meta);
+        remainCost += getPositionCostRub(p, meta);
+      });
+    });
+    var totalValue = stockValue + bondValue;
+    var onlyUnknown = skippedUnknown && !(stockValue > 0) && !(bondValue > 0);
+    return {
+      stockValue: stockValue,
+      bondValue: bondValue,
+      remainCost: remainCost,
+      totalValue: totalValue,
+      isPartial: isPartial,
+      skippedUnknown: skippedUnknown,
+      onlyUnknown: onlyUnknown
+    };
   }
 
   function renderPortfolioSummary(positions, bondMetaMap, incomeTotals, sales) {
@@ -194,23 +328,32 @@
       el.innerHTML = '';
       return;
     }
-    var stockValue = 0;
-    var bondValue = 0;
-    var remainCost = 0;
-    (positions || []).forEach(function (p) {
-      var meta = bondMetaMap[p.ticker];
-      var val = getPositionMarketValue(p, meta);
-      if (isPortfolioBondPosition(p)) bondValue += val;
-      else stockValue += val;
-      remainCost += getPositionCostRub(p, meta);
-    });
-    var totalValue = stockValue + bondValue;
-    var stockShare = totalValue > 0 ? stockValue / totalValue * 100 : 0;
-    var bondShare = totalValue > 0 ? bondValue / totalValue * 100 : 0;
-    var unrealized = remainCost > 0 && totalValue > 0 ? totalValue - remainCost : null;
-    var pricePlusPayouts = computePricePlusPayoutsPct(unrealized, incomeTotals.paid12m, remainCost);
+    var totals = computePortfolioSummaryTotals(positions, bondMetaMap, sales);
+    var stockValue = totals.stockValue;
+    var bondValue = totals.bondValue;
+    var remainCost = totals.remainCost;
+    var totalValue = totals.onlyUnknown ? null : totals.totalValue;
+    var stockShare = totals.totalValue > 0 ? stockValue / totals.totalValue * 100 : null;
+    var bondShare = totals.totalValue > 0 ? bondValue / totals.totalValue * 100 : null;
+    var unrealized = null;
+    if (!totals.onlyUnknown && remainCost > 0 && totals.totalValue > 0) {
+      unrealized = totals.totalValue - remainCost;
+    }
+    var paid12m = incomeTotals.paid12m;
+    var forecast12m = incomeTotals.forecast12m;
+    if (incomeTotals.isPartial && incomeTotals.skippedSplit && !incomeTotals.hasIncluded) {
+      paid12m = null;
+      forecast12m = null;
+    }
+    var pricePlusPayouts = computePricePlusPayoutsPct(unrealized, paid12m, remainCost);
+    var summaryPartial = !!(totals.isPartial || incomeTotals.isPartial);
+    var displayStock = totals.onlyUnknown ? null : stockValue;
+    var displayBond = bondValue;
     el.hidden = false;
     el.innerHTML =
+      (summaryPartial
+        ? '<p class="muted portfolio-totals-partial-warn">' + escapeHtml(PF_SUMMARY_SPLIT_PARTIAL_WARNING) + '</p>'
+        : '') +
       '<div class="portfolio-totals-grid">' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Текущая стоимость</span>' +
@@ -240,22 +383,26 @@
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Акции</span>' +
-          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(stockValue)) + '</span>' +
-          '<span class="portfolio-total-sub muted">' + escapeHtml(stockShare.toFixed(1).replace('.', ',') + '% портфеля') + '</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(displayStock)) + '</span>' +
+          '<span class="portfolio-total-sub muted">' +
+            escapeHtml(stockShare != null ? stockShare.toFixed(1).replace('.', ',') + '% портфеля' : '—') +
+          '</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Облигации</span>' +
-          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(bondValue)) + '</span>' +
-          '<span class="portfolio-total-sub muted">' + escapeHtml(bondShare.toFixed(1).replace('.', ',') + '% портфеля') + '</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(displayBond)) + '</span>' +
+          '<span class="portfolio-total-sub muted">' +
+            escapeHtml(bondShare != null ? bondShare.toFixed(1).replace('.', ',') + '% портфеля' : '—') +
+          '</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Выплаты за 12 мес.</span>' +
-          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.paid12m)) + '</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(paid12m)) + '</span>' +
           '<span class="portfolio-total-sub muted">история по текущему количеству</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Прогноз на 12 мес.</span>' +
-          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(incomeTotals.forecast12m)) + '</span>' +
+          '<span class="portfolio-total-val">' + escapeHtml(formatPortfolioRubAmount(forecast12m)) + '</span>' +
           '<span class="portfolio-total-sub muted">расчёт по текущему количеству</span>' +
         '</div>' +
       '</div>';
@@ -9142,7 +9289,7 @@
 
     Promise.all([
       loadPortfolioBondMetaMap(bondMetaSeed),
-      loadPortfolioIncomeTotals(positions)
+      loadPortfolioIncomeTotals(positions, sales)
     ]).then(function (parts) {
       if (renderId !== state.pfTableRenderId) return;
       positions = getFilteredPortfolioPositions();
