@@ -6589,6 +6589,7 @@
     }
     if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
     if (commentEl) commentEl.value = '';
+    updatePortfolioSplitSaleBlockUi(ticker);
     updatePortfolioSellAllBtn(totalQty);
     if (form) {
       form.hidden = false;
@@ -6648,23 +6649,38 @@
     var dateEl = document.getElementById('pfSaleDate');
     var commentEl = document.getElementById('pfSaleComment');
     var allBtn = document.getElementById('pfSaleAllBtn');
+    var saleBtn = document.getElementById('pfSaleBtn');
     var blocked = !!(ticker && isPortfolioTickerSaleCommitBlocked(ticker, portfolio));
     var text = blocked ? formatSplitSaleBlockedText(ticker, portfolio) : '';
     if (note) {
-      note.hidden = !blocked;
       note.textContent = text;
+      note.hidden = !blocked;
+      if (blocked) {
+        if (typeof note.removeAttribute === 'function') note.removeAttribute('hidden');
+        if (note.style) note.style.display = '';
+      } else {
+        if (typeof note.setAttribute === 'function') note.setAttribute('hidden', '');
+        if (note.style) note.style.display = 'none';
+      }
     }
     if (qtyEl) qtyEl.disabled = !!blocked;
     if (priceEl) priceEl.disabled = !!blocked;
     if (dateEl) dateEl.disabled = !!blocked;
     if (commentEl) commentEl.disabled = !!blocked;
     if (allBtn) {
-      allBtn.disabled = !!blocked || allBtn.hidden;
+      allBtn.disabled = !!blocked || !!allBtn.hidden;
     }
-    var saleBtn = document.getElementById('pfSaleBtn');
-    if (saleBtn && blocked) {
-      saleBtn.disabled = true;
-      saleBtn.title = text;
+    if (saleBtn) {
+      if (blocked) {
+        saleBtn.disabled = true;
+        saleBtn.title = text;
+      } else {
+        var sellable = ticker ? getPortfolioSellableQty(ticker) : 0;
+        var canSell = !!ticker && isFinite(sellable) && sellable > 0;
+        saleBtn.disabled = !canSell;
+        if (typeof saleBtn.removeAttribute === 'function') saleBtn.removeAttribute('title');
+        else saleBtn.title = '';
+      }
     }
     return blocked;
   }
@@ -6802,8 +6818,10 @@
     }
     var splitNote = document.getElementById('pfSaleSplitBlock');
     if (splitNote) {
-      splitNote.hidden = true;
       splitNote.textContent = '';
+      splitNote.hidden = true;
+      if (typeof splitNote.setAttribute === 'function') splitNote.setAttribute('hidden', '');
+      if (splitNote.style) splitNote.style.display = 'none';
     }
     updatePortfolioSellAllBtn(0);
   }

@@ -386,6 +386,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__saleBlocked = isPortfolioTickerSaleCommitBlocked;' +
       '\nthis.__saleBlockText = formatSplitSaleBlockedText;' +
       '\nthis.__commitSale = commitPortfolioSale;' +
+      '\nthis.__splitSaleUi = updatePortfolioSplitSaleBlockUi;' +
+      '\nthis.__startSale = startSalePortfolioTicker;' +
       '\nthis.__splitPnlHtml = buildSplitAffectedPnlHtml;' +
       '\nthis.__lotRow = buildPortfolioLotRow;' +
       '\nthis.__sectionRows = buildPortfolioSectionRows;' +
@@ -450,6 +452,8 @@ function loadPortfolioCalcHelpers() {
     isPortfolioTickerSaleCommitBlocked: sandbox.__saleBlocked,
     formatSplitSaleBlockedText: sandbox.__saleBlockText,
     commitPortfolioSale: sandbox.__commitSale,
+    updatePortfolioSplitSaleBlockUi: sandbox.__splitSaleUi,
+    startSalePortfolioTicker: sandbox.__startSale,
     buildSplitAffectedPnlHtml: sandbox.__splitPnlHtml,
     buildPortfolioLotRow: sandbox.__lotRow,
     buildPortfolioSectionRows: sandbox.__sectionRows,
@@ -4917,6 +4921,115 @@ function loadPriceAtDateHelpers() {
 
   sb.getPortfolio = prevGet;
   sb.setPortfolio = prevSet;
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const mixedPf = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 },
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      { ticker: 'OFZ26241', lotId: 'O1', qty: 10, avgPrice: 95, buyDate: '2024-01-01', currentPrice: 98 },
+      { ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 260, buyDate: '2026-05-01', currentPrice: 260 }
+    ],
+    sales: []
+  };
+  function makeSaleDom() {
+    function node(extra) {
+      const n = {
+        hidden: true,
+        textContent: '',
+        disabled: false,
+        value: '',
+        title: '',
+        style: { display: '' },
+        attributes: {},
+        setAttribute(name, val) {
+          this.attributes[name] = val;
+          if (name === 'hidden') this.hidden = true;
+        },
+        removeAttribute(name) {
+          delete this.attributes[name];
+          if (name === 'hidden') this.hidden = false;
+          if (name === 'title') this.title = '';
+        },
+        scrollIntoView() {},
+        focus() {}
+      };
+      return Object.assign(n, extra || {});
+    }
+    return {
+      pfSaleSplitBlock: node({ hidden: true, className: 'pf-split-warn pf-wide-warning' }),
+      pfSaleBtn: node({ hidden: false, disabled: false }),
+      pfSaleQty: node({ hidden: false }),
+      pfSalePrice: node({ hidden: false }),
+      pfSaleDate: node({ hidden: false }),
+      pfSaleComment: node({ hidden: false }),
+      pfSaleAllBtn: node({ hidden: true, disabled: true }),
+      pfSaleAvailableHint: node({ hidden: true }),
+      pfSaleLotHint: node({ hidden: false, textContent: '' }),
+      portfolioSaleForm: node({ hidden: true })
+    };
+  }
+  const nodes = makeSaleDom();
+  const sb = calc.sandbox;
+  const prevGetEl = sb.document.getElementById;
+  const prevGet = sb.getPortfolio;
+  sb.document.getElementById = (id) => (Object.prototype.hasOwnProperty.call(nodes, id) ? nodes[id] : null);
+  sb.getPortfolio = () => mixedPf;
+  sb.state.pfSaleTicker = 'GMKN';
+
+  let blocked = calc.updatePortfolioSplitSaleBlockUi('GMKN', mixedPf);
+  assert(blocked === true, 'sale form ui: GMKN blocked');
+  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: GMKN block visible');
+  assert(/По бумаге было дробление акций/.test(nodes.pfSaleSplitBlock.textContent), 'sale form ui: GMKN block text');
+  assert(nodes.pfSaleBtn.disabled === true, 'sale form ui: GMKN sale btn disabled');
+  assert(nodes.pfSaleQty.disabled === true, 'sale form ui: GMKN qty disabled');
+
+  sb.state.pfSaleTicker = 'SBER';
+  blocked = calc.updatePortfolioSplitSaleBlockUi('SBER', mixedPf);
+  assert(blocked === false, 'sale form ui: SBER not blocked');
+  assert(nodes.pfSaleSplitBlock.hidden === true, 'sale form ui: SBER block hidden');
+  assert(nodes.pfSaleSplitBlock.textContent === '', 'sale form ui: SBER block empty');
+  assert(nodes.pfSaleSplitBlock.style.display === 'none', 'sale form ui: SBER block display none');
+  assert(nodes.pfSaleQty.disabled === false, 'sale form ui: SBER qty enabled');
+  assert(nodes.pfSaleBtn.disabled === false, 'sale form ui: SBER sale btn enabled');
+
+  sb.state.pfSaleTicker = 'OFZ26241';
+  blocked = calc.updatePortfolioSplitSaleBlockUi('OFZ26241', mixedPf);
+  assert(blocked === false, 'sale form ui: OFZ not blocked');
+  assert(nodes.pfSaleSplitBlock.hidden === true, 'sale form ui: OFZ block hidden');
+  assert(nodes.pfSaleSplitBlock.textContent === '', 'sale form ui: OFZ block empty');
+  assert(nodes.pfSaleBtn.disabled === false, 'sale form ui: OFZ sale btn enabled');
+
+  sb.state.pfSaleTicker = 'T';
+  blocked = calc.updatePortfolioSplitSaleBlockUi('T', mixedPf);
+  assert(blocked === false, 'sale form ui: T after split not blocked');
+  assert(nodes.pfSaleSplitBlock.hidden === true, 'sale form ui: T block hidden');
+  assert(nodes.pfSaleSplitBlock.textContent === '', 'sale form ui: T block empty');
+  assert(nodes.pfSaleBtn.disabled === false, 'sale form ui: T sale btn enabled');
+
+  sb.state.pfSaleTicker = 'GMKN';
+  blocked = calc.updatePortfolioSplitSaleBlockUi('GMKN', mixedPf);
+  assert(blocked === true, 'sale form ui: GMKN blocked again');
+  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: GMKN block visible again');
+  assert(/Продажа через форму пока отключена/.test(nodes.pfSaleSplitBlock.textContent), 'sale form ui: GMKN text again');
+  assert(nodes.pfSaleBtn.disabled === true, 'sale form ui: GMKN btn disabled again');
+
+  calc.startSalePortfolioTicker('SBER');
+  assert(sb.state.pfSaleTicker === 'SBER', 'sale form ui: startSale switches to SBER');
+  assert(nodes.pfSaleSplitBlock.hidden === true, 'sale form ui: startSale SBER hides block');
+  assert(nodes.pfSaleSplitBlock.textContent === '', 'sale form ui: startSale SBER clears text');
+  assert(nodes.pfSaleBtn.disabled === false, 'sale form ui: startSale SBER enables btn');
+  assert(nodes.portfolioSaleForm.hidden === false, 'sale form ui: startSale shows form');
+
+  calc.startSalePortfolioTicker('GMKN');
+  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: startSale GMKN shows block');
+  assert(nodes.pfSaleBtn.disabled === true, 'sale form ui: startSale GMKN disables btn');
+
+  sb.document.getElementById = prevGetEl;
+  sb.getPortfolio = prevGet;
 }
 
 if (errors.length) {

@@ -4224,6 +4224,18 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   white-space: normal;
 }
 
+#tab-portfolio .pf-split-warn[hidden],
+#tab-portfolio .pf-pay-result .pf-split-warn[hidden],
+#tab-portfolio .pf-wide-warning[hidden],
+#tab-portfolio .pf-twp-split-warn[hidden],
+#tab-portfolio #pfSaleSplitBlock[hidden] {
+  display: none !important;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
 #tab-portfolio .pf-split-pnl {
   display: inline-flex;
   align-items: center;
