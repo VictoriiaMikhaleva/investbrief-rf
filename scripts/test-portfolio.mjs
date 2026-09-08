@@ -378,6 +378,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__splitWarnText = formatSingleSplitWarningText;' +
       '\nthis.__splitAffected = isPortfolioTickerSplitAffected;' +
       '\nthis.__lotScale = diagnoseLotShareScale;' +
+      '\nthis.__lotAlreadyCurrent = lotLooksAlreadyCurrentAfterSplit;' +
       '\nthis.__qtyHeld = getSplitAwareQtyHeldOnDate;' +
       '\nthis.__currentQty = getSplitAwareCurrentQty;' +
       '\nthis.__splitMetrics = getSplitAwareCurrentPositionMetrics;' +
@@ -459,6 +460,7 @@ function loadPortfolioCalcHelpers() {
     formatSingleSplitWarningText: sandbox.__splitWarnText,
     isPortfolioTickerSplitAffected: sandbox.__splitAffected,
     diagnoseLotShareScale: sandbox.__lotScale,
+    lotLooksAlreadyCurrentAfterSplit: sandbox.__lotAlreadyCurrent,
     getSplitAwareQtyHeldOnDate: sandbox.__qtyHeld,
     getSplitAwareCurrentQty: sandbox.__currentQty,
     getSplitAwareCurrentPositionMetrics: sandbox.__splitMetrics,
@@ -3850,6 +3852,88 @@ function loadPriceAtDateHelpers() {
   const tCurr = { ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262 };
   d = scaleOf(tCurr, 'T');
   assert(d.scale === 'current', 'lot scale: T 312/262 → current');
+  assert(calc.lotLooksAlreadyCurrentAfterSplit(tCurr, 'T', opts), 'lot scale: T 10×312 pre-split looks already current');
+
+  {
+    const NOTE = 'Позиция выглядит уже приведённой к текущим акциям после дробления';
+    function close(a, b, eps, msg) {
+      assert(Math.abs(Number(a) - Number(b)) < (eps || 0.02), msg);
+    }
+    const caseA = {
+      positions: [{ ticker: 'T', lotId: 'TA', qty: 1, avgPrice: 2600, buyDate: '2026-03-01', currentPrice: 261.7 }],
+      sales: []
+    };
+    const snapA = JSON.stringify(caseA);
+    const heldA = calc.getSplitAwareCurrentQty('T', caseA, opts);
+    close(heldA.qty, 10, 1e-6, 'T UX A: 1 old → 10 current');
+    const tlA = calc.buildTickerOperationTimeline('T', caseA.positions, caseA.sales);
+    const buyA = tlA.find((op) => op.type === 'buy');
+    assert(buyA && buyA.qty === 1, 'T UX A: history qty as entered 1');
+    close(buyA.price, 2600, 0.02, 'T UX A: history price as entered 2600');
+    assert(!new RegExp(NOTE).test(buyA.note || ''), 'T UX A: not already-current note');
+    assert(JSON.stringify(caseA) === snapA, 'T UX A: JSON not mutated');
+
+    const caseB = {
+      positions: [{ ticker: 'T', lotId: 'TB', qty: 10, avgPrice: 2600, buyDate: '2026-03-01', currentPrice: 261.7 }],
+      sales: []
+    };
+    const snapB = JSON.stringify(caseB);
+    const heldB = calc.getSplitAwareCurrentQty('T', caseB, opts);
+    close(heldB.qty, 100, 1e-6, 'T UX B: 10 old → 100 current');
+    const tlB = calc.buildTickerOperationTimeline('T', caseB.positions, caseB.sales);
+    const buyB = tlB.find((op) => op.type === 'buy');
+    assert(buyB && buyB.qty === 10, 'T UX B: history qty as entered 10');
+    close(buyB.price, 2600, 0.02, 'T UX B: history price 2600');
+    assert(!new RegExp(NOTE).test(buyB.note || ''), 'T UX B: historical not already-current');
+    assert(JSON.stringify(caseB) === snapB, 'T UX B: JSON not mutated');
+
+    const caseC = {
+      positions: [{ ticker: 'T', lotId: 'TC', qty: 10, avgPrice: 262, buyDate: '2026-05-01', currentPrice: 261.7 }],
+      sales: []
+    };
+    const snapC = JSON.stringify(caseC);
+    const heldC = calc.getSplitAwareCurrentQty('T', caseC, opts);
+    close(heldC.qty, 10, 1e-6, 'T UX C: after split stays 10');
+    const tlC = calc.buildTickerOperationTimeline('T', caseC.positions, caseC.sales);
+    const buyC = tlC.find((op) => op.type === 'buy');
+    assert(buyC && buyC.qty === 10, 'T UX C: history qty 10');
+    assert(!new RegExp(NOTE).test(buyC.note || ''), 'T UX C: post-split buy no already-current note');
+    assert(JSON.stringify(caseC) === snapC, 'T UX C: JSON not mutated');
+
+    const caseD = {
+      positions: [{ ticker: 'T', lotId: 'TD', qty: 10, avgPrice: 262.08, buyDate: '2026-03-01', currentPrice: 261.7 }],
+      sales: []
+    };
+    const snapD = JSON.stringify(caseD);
+    const heldD = calc.getSplitAwareCurrentQty('T', caseD, opts);
+    close(heldD.qty, 10, 1e-6, 'T UX D: already-current not ×10 again');
+    assert(Math.abs(heldD.qty - 100) > 1, 'T UX D: not 100 shares');
+    const tlD = calc.buildTickerOperationTimeline('T', caseD.positions, caseD.sales);
+    const buyD = tlD.find((op) => op.type === 'buy');
+    assert(buyD && buyD.qty === 10, 'T UX D: history shows JSON 10');
+    close(buyD.price, 262.08, 0.02, 'T UX D: history price JSON 262.08');
+    assert(new RegExp(NOTE).test(buyD.note || ''), 'T UX D: already-current note');
+    assert(!/split-aware/.test(buyD.note || ''), 'T UX D: no technical term');
+    const htmlD = calc.buildPortfolioTickerDetailHtml('T', caseD.positions, caseD.sales, null, false);
+    assert(new RegExp(NOTE).test(htmlD), 'T UX D: detail shows already-current copy');
+    assert(!/100 шт/.test(htmlD.split('Остаток')[1].split('Куплено')[0] || ''), 'T UX D: remainder not 100');
+    assert(JSON.stringify(caseD) === snapD, 'T UX D: JSON not mutated');
+
+    const sberUx = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2026-03-01', currentPrice: 280 }],
+      sales: []
+    };
+    const tlS = calc.buildTickerOperationTimeline('SBER', sberUx.positions, sberUx.sales);
+    const buyS = tlS.find((op) => op.type === 'buy');
+    assert(!new RegExp(NOTE).test(buyS.note || ''), 'T UX: SBER no already-current note');
+    const ofzUx = {
+      positions: [{ ticker: 'OFZ26241', lotId: 'O1', qty: 10, avgPrice: 95, buyDate: '2026-03-01', currentPrice: 98 }],
+      sales: []
+    };
+    const tlO = calc.buildTickerOperationTimeline('OFZ26241', ofzUx.positions, ofzUx.sales);
+    const buyO = tlO.find((op) => op.type === 'buy');
+    assert(!new RegExp(NOTE).test(buyO && buyO.note || ''), 'T UX: OFZ no already-current note');
+  }
 
   const plzlHist = { ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 19000, buyDate: '2024-06-01', currentPrice: 1900 };
   d = scaleOf(plzlHist, 'PLZL');

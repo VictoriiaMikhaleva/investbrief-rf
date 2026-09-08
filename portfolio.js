@@ -446,6 +446,7 @@
   var PF_SPLIT_SALE_UNKNOWN_TEXT = 'Не удалось понять, в каких акциях указан старый лот. Продажа через форму временно недоступна для этой бумаги.';
   var PF_SPLIT_SALE_LEGACY_TEXT = 'Продажа была добавлена до обновления расчётов по дроблению. Проверьте количество сделки.';
   var PF_SPLIT_SALE_DATE_QTY_HINT = 'Продажа записана как в брокере. Количество указано в акциях после дробления.';
+  var PF_SPLIT_LOT_ALREADY_CURRENT_TEXT = 'Позиция выглядит уже приведённой к текущим акциям после дробления. Если покупка была внесена в старой шкале, проверьте количество и среднюю цену.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_TEXT = 'Список дроблений акций временно недоступен. Если в портфеле есть бумаги с дроблением акций, часть расчётов может быть неполной.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT = 'Список дроблений акций временно недоступен. Перед продажей бумаг, по которым было дробление акций, проверьте количество вручную.';
   var PF_LOT_SCALE_UNKNOWN_SUFFIX = ': не удалось понять, в каких акциях указан лот после дробления.';
@@ -710,6 +711,14 @@
       warnings: [PF_LOT_SCALE_UNKNOWN_WARNING],
       reason: PF_LOT_SCALE_UNKNOWN_WARNING
     });
+  }
+
+  function lotLooksAlreadyCurrentAfterSplit(lot, ticker, options) {
+    if (!lot || isPortfolioBondPosition(lot) || isPortfolioBondPosition({ ticker: ticker || lot.ticker })) {
+      return false;
+    }
+    var diag = diagnoseLotShareScale(lot, ticker || lot.ticker, options);
+    return !!(diag && diag.scale === 'current' && isFinite(Number(diag.factor)) && Number(diag.factor) > 1);
   }
 
   var PF_QTY_HELD_BAD_DATE_WARNING = 'нет корректной даты';
@@ -3123,6 +3132,37 @@
       if (!g.lotId || (g.key && g.key.indexOf('fb:') === 0)) {
         g.quality = 'partial';
         g.note = RECONSTRUCTED_NOTE;
+      }
+
+      if (!isBond) {
+        var lotForScale = null;
+        (positions || []).some(function (p) {
+          if (!p) return false;
+          if (g.lotId && p.lotId && String(p.lotId) === String(g.lotId)) {
+            lotForScale = p;
+            return true;
+          }
+          return false;
+        });
+        if (!lotForScale) {
+          lotForScale = {
+            ticker: ticker,
+            qty: qty,
+            avgPrice: price,
+            buyDate: g.date
+          };
+          (positions || []).some(function (p) {
+            var px = Number(p && p.currentPrice);
+            if (p && asOfNormTicker(p.ticker) === ticker && isFinite(px) && px > 0) {
+              lotForScale.currentPrice = px;
+              return true;
+            }
+            return false;
+          });
+        }
+        if (lotLooksAlreadyCurrentAfterSplit(lotForScale, ticker)) {
+          g.note = PF_SPLIT_LOT_ALREADY_CURRENT_TEXT;
+        }
       }
 
       var faceHint = g.faceValue;
@@ -8701,6 +8741,9 @@
     } else if (stack) {
       html += '<div class="pf-stack-list">';
       hist.openLots.forEach(function (lot) {
+        var alreadyCurrentNote = !isBond && lotLooksAlreadyCurrentAfterSplit(lot, ticker)
+          ? '<div class="muted pf-timeline-note">' + escapeHtml(PF_SPLIT_LOT_ALREADY_CURRENT_TEXT) + '</div>'
+          : '';
         html += '<div class="pf-stack-item pf-op-card pf-open-lot">' +
           '<div class="pf-stack-meta">' +
             '<span class="pf-op-badge pf-op-badge--buy">покупка</span>' +
@@ -8708,6 +8751,7 @@
             '<span><span class="lbl">Кол-во</span> ' + escapeHtml(formatPortfolioQty(lot)) + '</span>' +
             '<span><span class="lbl">Цена</span> ' + escapeHtml(formatPositionAvg(lot, { bond: isBond })) + '</span>' +
           '</div>' +
+          alreadyCurrentNote +
           (lot.comment
             ? '<div class="pf-stack-comment muted">' + escapeHtml(lot.comment) + '</div>'
             : '') +
