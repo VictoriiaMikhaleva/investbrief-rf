@@ -2736,9 +2736,20 @@
     });
 
     var totalSoldQty = 0;
+    var soldJsonQty = 0;
     tickerSales.forEach(function (sale) {
       var q = Number(sale.qty);
       if (isFinite(q) && q > 0) totalSoldQty += q;
+      if (sale.allocations && sale.allocations.length) {
+        sale.allocations.forEach(function (alloc) {
+          if (!alloc) return;
+          var jsonSold = Number(alloc.lotQtyDelta);
+          if (!(isFinite(jsonSold) && jsonSold > 0)) jsonSold = Number(alloc.qty);
+          if (isFinite(jsonSold) && jsonSold > 0) soldJsonQty += jsonSold;
+        });
+      } else if (isFinite(q) && q > 0) {
+        soldJsonQty += q;
+      }
     });
     var splitRealized = getSplitAwareTickerRealizedPnl(ticker, {
       positions: positions,
@@ -2764,7 +2775,7 @@
       realizedConfidence: splitRealized ? splitRealized.confidence : 'high',
       realizedIsPartial: !!(splitRealized && splitRealized.isPartial),
       realizedWarnings: splitRealized && splitRealized.warnings ? splitRealized.warnings : [],
-      totalBoughtQty: openQty + totalSoldQty,
+      totalBoughtQty: openQty + soldJsonQty,
       totalSoldQty: totalSoldQty,
       saleCount: tickerSales.length,
       lotCount: openLots.length

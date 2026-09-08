@@ -5231,6 +5231,9 @@ function loadPriceAtDateHelpers() {
   const openHist = calc.summarizeTickerHistory('GMKN', sellTwo.positions, sellTwo.sales);
   const openOld = openHist.openLots.find((p) => p.lotId === 'G1');
   almost(openOld.qty, 9.98, 1e-6, 'p1b sell2: open purchases 9.98');
+  almost(openHist.totalBoughtQty, 20, 1e-6, 'p1b sell2: bought 20 not 21.98');
+  almost(openHist.totalSoldQty, 2, 1e-6, 'p1b sell2: sold 2 in sale-date scale');
+  assert(Math.abs(openHist.totalBoughtQty - 21.98) > 0.1, 'p1b sell2: bought not mixed 21.98');
   const tl = calc.buildTickerOperationTimeline('GMKN', sellTwo.positions, sellTwo.sales);
   const buyOld = tl.find((op) => op.type === 'buy' && op.lotId === 'G1');
   assert(buyOld && Math.abs(Number(buyOld.qty) - 10) < 1e-6, 'p1b sell2: timeline buy qty 10 not 11.98');
@@ -5241,6 +5244,25 @@ function loadPriceAtDateHelpers() {
   almost(oldRestored.qty, 10, 1e-6, 'p1b sell2 cancel: old lot 10');
   almost(newRestored.qty, 10, 1e-6, 'p1b sell2 cancel: new lot 10');
   assert(!(sellTwo.sales || []).length, 'p1b sell2 cancel: sale removed');
+  almost(calc.summarizeTickerHistory('GMKN', sellTwo.positions, sellTwo.sales).totalBoughtQty, 20, 1e-6, 'p1b sell2 cancel: bought 20');
+
+  let sellOne = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 133.12 },
+      { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 129.74, buyDate: '2026-09-04', currentPrice: 133.12 }
+    ],
+    sales: []
+  };
+  sb.getPortfolio = () => sellOne;
+  sb.setPortfolio = (p) => { sellOne = p; };
+  const oneSale = calc.commitPortfolioSale('GMKN', { qty: 1, price: 133.12, date: '2026-09-08', comment: '' });
+  assert(oneSale && oneSale.ok, 'p1b sell1: accepted');
+  almost((sellOne.positions.find((p) => p.lotId === 'G1') || {}).qty, 9.99, 1e-6, 'p1b sell1: old lot 9.99');
+  const histOne = calc.summarizeTickerHistory('GMKN', sellOne.positions, sellOne.sales);
+  almost(histOne.totalBoughtQty, 20, 1e-6, 'p1b sell1: bought 20 not 20.99');
+  almost(histOne.totalSoldQty, 1, 1e-6, 'p1b sell1: sold 1');
+  almost(calc.getSplitAwareCurrentQty('GMKN', sellOne, { splitEvents: events, now: NOW }).qty, 1009, 1e-6, 'p1b sell1: remaining 1009');
+  assert(Math.abs(histOne.totalBoughtQty - 20.99) > 0.1, 'p1b sell1: bought not mixed 20.99');
 
   let mixed = {
     positions: [
