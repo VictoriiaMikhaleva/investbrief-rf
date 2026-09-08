@@ -388,6 +388,11 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__commitSale = commitPortfolioSale;' +
       '\nthis.__splitSaleUi = updatePortfolioSplitSaleBlockUi;' +
       '\nthis.__startSale = startSalePortfolioTicker;' +
+      '\nthis.__splitWrite = getPortfolioSplitSaleWriteState;' +
+      '\nthis.__allocSplit = allocateSplitAwareSaleAcrossLots;' +
+      '\nthis.__removeSale = removePortfolioSale;' +
+      '\nthis.__splitSaleHint = formatSplitSaleHintText;' +
+      '\nthis.__splitSaleUnknown = formatSplitSaleUnknownText;' +
       '\nthis.__splitCatalogHtml = buildPortfolioSplitCatalogUnavailableHtml;' +
       '\nthis.__splitCatalogUnavail = isPortfolioSplitCatalogUnavailable;' +
       '\nthis.__splitCatalogWarnUi = updatePortfolioSplitCatalogWarnUi;' +
@@ -457,6 +462,11 @@ function loadPortfolioCalcHelpers() {
     commitPortfolioSale: sandbox.__commitSale,
     updatePortfolioSplitSaleBlockUi: sandbox.__splitSaleUi,
     startSalePortfolioTicker: sandbox.__startSale,
+    getPortfolioSplitSaleWriteState: sandbox.__splitWrite,
+    allocateSplitAwareSaleAcrossLots: sandbox.__allocSplit,
+    removePortfolioSale: sandbox.__removeSale,
+    formatSplitSaleHintText: sandbox.__splitSaleHint,
+    formatSplitSaleUnknownText: sandbox.__splitSaleUnknown,
     buildPortfolioSplitCatalogUnavailableHtml: sandbox.__splitCatalogHtml,
     isPortfolioSplitCatalogUnavailable: sandbox.__splitCatalogUnavail,
     updatePortfolioSplitCatalogWarnUi: sandbox.__splitCatalogWarnUi,
@@ -4876,14 +4886,26 @@ function loadPriceAtDateHelpers() {
   const gmknLiveSnap = JSON.stringify(gmknLive);
   sb.getPortfolio = () => gmknLive;
   sb.setPortfolio = (p) => { gmknLive = p; };
-  assert(calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknLive, events), 'sale block: GMKN old lot blocked');
+  assert(!calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknLive, events), 'sale write: GMKN high/partial not blocked');
   const gmknCommit = calc.commitPortfolioSale('GMKN', { qty: 200, price: 130, date: '2025-06-01', comment: '' });
-  assert(gmknCommit && gmknCommit.ok === false && gmknCommit.blocked, 'sale block: GMKN commit blocked');
-  assert(JSON.stringify(gmknLive) === gmknLiveSnap, 'sale block: GMKN JSON not written');
-  const blockText = calc.formatSplitSaleBlockedText('GMKN', gmknLive, { splitEvents: events, now: NOW });
-  assert(/По бумаге было дробление акций/.test(blockText), 'sale block: text head');
-  assert(/Продажа через форму пока отключена/.test(blockText), 'sale block: text reason');
-  assert(/Остаток с учётом сплита/.test(blockText) && /по операциям/.test(blockText), 'sale block: qty labels');
+  assert(gmknCommit && gmknCommit.ok === true, 'sale write: GMKN commit accepted');
+  assert(gmknLive.positions[0].qty === 8, 'sale write: GMKN JSON qty 8');
+  assert(gmknLive.positions[0].avgPrice === 22000, 'sale write: GMKN avgPrice unchanged');
+  assert(gmknLive.sales[0].qty === 200, 'sale write: GMKN sale.qty 200');
+  assert(gmknLive.sales[0].qtyScale === 'sale-date', 'sale write: GMKN qtyScale sale-date');
+  assert(gmknLive.sales[0].allocations[0].qty === 200, 'sale write: alloc qty 200');
+  assert(Math.abs(gmknLive.sales[0].allocations[0].lotQtyDelta - 2) < 1e-9, 'sale write: lotQtyDelta 2');
+  assert(gmknLive.sales[0].allocations[0].splitFactor === 100, 'sale write: splitFactor 100');
+  const gmknPnl = calc.getSplitAwareSaleRealizedPnl(gmknLive.sales[0], gmknLive, { splitEvents: events, now: NOW });
+  almost(gmknPnl.realizedPnlRub, -18000, 0.05, 'sale write: GMKN realized -18000');
+  const gmknHeld = calc.getSplitAwareCurrentQty('GMKN', gmknLive, { splitEvents: events, now: NOW });
+  almost(gmknHeld.qty, 800, 1e-6, 'sale write: remaining split-aware 800');
+  const hintText = calc.formatSplitSaleHintText('GMKN', {
+    positions: [{ ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 }],
+    sales: []
+  }, { splitEvents: events, now: NOW, saleDate: '2025-06-01' });
+  assert(/Бумага была сплитирована/.test(hintText), 'sale write: hint head');
+  assert(/Остаток с учётом сплита/.test(hintText) && /по операциям/.test(hintText), 'sale write: hint qty labels');
 
   let sberLive = {
     positions: [{
@@ -4987,11 +5009,11 @@ function loadPriceAtDateHelpers() {
   sb.state.pfSaleTicker = 'GMKN';
 
   let blocked = calc.updatePortfolioSplitSaleBlockUi('GMKN', mixedPf);
-  assert(blocked === true, 'sale form ui: GMKN blocked');
-  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: GMKN block visible');
-  assert(/По бумаге было дробление акций/.test(nodes.pfSaleSplitBlock.textContent), 'sale form ui: GMKN block text');
-  assert(nodes.pfSaleBtn.disabled === true, 'sale form ui: GMKN sale btn disabled');
-  assert(nodes.pfSaleQty.disabled === true, 'sale form ui: GMKN qty disabled');
+  assert(blocked === false, 'sale form ui: GMKN split mode not blocked');
+  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: GMKN hint visible');
+  assert(/Бумага была сплитирована/.test(nodes.pfSaleSplitBlock.textContent), 'sale form ui: GMKN hint text');
+  assert(nodes.pfSaleBtn.disabled === false, 'sale form ui: GMKN sale btn enabled');
+  assert(nodes.pfSaleQty.disabled === false, 'sale form ui: GMKN qty enabled');
 
   sb.state.pfSaleTicker = 'SBER';
   blocked = calc.updatePortfolioSplitSaleBlockUi('SBER', mixedPf);
@@ -5018,10 +5040,10 @@ function loadPriceAtDateHelpers() {
 
   sb.state.pfSaleTicker = 'GMKN';
   blocked = calc.updatePortfolioSplitSaleBlockUi('GMKN', mixedPf);
-  assert(blocked === true, 'sale form ui: GMKN blocked again');
-  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: GMKN block visible again');
-  assert(/Продажа через форму пока отключена/.test(nodes.pfSaleSplitBlock.textContent), 'sale form ui: GMKN text again');
-  assert(nodes.pfSaleBtn.disabled === true, 'sale form ui: GMKN btn disabled again');
+  assert(blocked === false, 'sale form ui: GMKN split again not blocked');
+  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: GMKN hint visible again');
+  assert(/в текущих акциях/.test(nodes.pfSaleSplitBlock.textContent), 'sale form ui: GMKN hint again');
+  assert(nodes.pfSaleBtn.disabled === false, 'sale form ui: GMKN btn enabled again');
 
   calc.startSalePortfolioTicker('SBER');
   assert(sb.state.pfSaleTicker === 'SBER', 'sale form ui: startSale switches to SBER');
@@ -5031,8 +5053,8 @@ function loadPriceAtDateHelpers() {
   assert(nodes.portfolioSaleForm.hidden === false, 'sale form ui: startSale shows form');
 
   calc.startSalePortfolioTicker('GMKN');
-  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: startSale GMKN shows block');
-  assert(nodes.pfSaleBtn.disabled === true, 'sale form ui: startSale GMKN disables btn');
+  assert(nodes.pfSaleSplitBlock.hidden === false, 'sale form ui: startSale GMKN shows hint');
+  assert(nodes.pfSaleBtn.disabled === false, 'sale form ui: startSale GMKN enables btn');
 
   sb.document.getElementById = prevGetEl;
   sb.getPortfolio = prevGet;
@@ -5063,7 +5085,7 @@ function loadPriceAtDateHelpers() {
   assert(calc.buildPortfolioSplitCatalogUnavailableHtml() === '', 'split catalog: no banner when loaded');
   const gmknHtmlOk = calc.buildPortfolioTickerDetailHtml('GMKN', gmknPf.positions, gmknPf.sales, null, false);
   assert(/с учётом сплита/.test(gmknHtmlOk), 'split catalog: GMKN loaded shows split-aware');
-  assert(calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: GMKN blocked when loaded');
+  assert(!calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: GMKN sellable when catalog loaded');
 
   calc.sandbox.resetSplitEventsLoadState();
   calc.sandbox.markSplitEventsCatalogError('split-events http');
@@ -5111,6 +5133,185 @@ function loadPriceAtDateHelpers() {
   assert(catalogNodes.pfSplitCatalogWarn.hidden === true, 'split catalog ui: hidden after restore');
   calc.sandbox.document.getElementById = prevEl;
   calc.sandbox.state.pfSaleTicker = '';
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const NOW = '2026-09-04';
+  function almost(a, b, eps, msg) {
+    assert(Math.abs(Number(a) - Number(b)) < (eps || 0.02), msg);
+  }
+  const sb = calc.sandbox;
+  const prevGet = sb.getPortfolio;
+  const prevSet = sb.setPortfolio;
+
+  const metaKeep = h.normalizeSale({
+    ticker: 'GMKN', qty: 200, buyPrice: 220, salePrice: 130, saleDate: '2025-06-01',
+    qtyScale: 'sale-date',
+    allocations: [{
+      lotId: 'G1', qty: 200, buyPrice: 22000, buyDate: '2021-06-04',
+      qtyScale: 'sale-date', lotQtyDelta: 2, splitFactor: 100, adjustedBuyPrice: 220, scale: 'historical'
+    }]
+  });
+  assert(metaKeep.qtyScale === 'sale-date', 'p1b storage: sale qtyScale kept');
+  assert(metaKeep.allocations[0].lotQtyDelta === 2 && metaKeep.allocations[0].splitFactor === 100, 'p1b storage: alloc meta kept');
+  assert(metaKeep.allocations[0].adjustedBuyPrice === 220, 'p1b storage: adjustedBuyPrice kept');
+
+  let mixed = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 },
+      { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 220, buyDate: '2025-01-15', currentPrice: 130 }
+    ],
+    sales: []
+  };
+  sb.getPortfolio = () => mixed;
+  sb.setPortfolio = (p) => { mixed = p; };
+  const mixedAll = calc.commitPortfolioSale('GMKN', { qty: 1010, price: 130, date: '2025-06-01', comment: '' });
+  assert(mixedAll && mixedAll.ok, 'p1b mixed: sell 1010 accepted');
+  assert(!(mixed.positions || []).some((p) => p.ticker === 'GMKN' && Number(p.qty) > 1e-9), 'p1b mixed: no open GMKN lots');
+  const closed = calc.listClosedPortfolioPositions(mixed.positions, mixed.sales);
+  assert(closed.some((c) => c.ticker === 'GMKN'), 'p1b mixed: GMKN in closed');
+  const mixedPnl = calc.getSplitAwareTickerRealizedPnl('GMKN', mixed, { splitEvents: events, now: NOW });
+  assert(mixedPnl.realizedPnlRub != null && mixedPnl.confidence !== 'unknown', 'p1b mixed: split-aware realized');
+
+  let partial = {
+    positions: [
+      { ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 },
+      { ticker: 'GMKN', lotId: 'G2', qty: 10, avgPrice: 220, buyDate: '2025-01-15', currentPrice: 130 }
+    ],
+    sales: []
+  };
+  sb.getPortfolio = () => partial;
+  sb.setPortfolio = (p) => { partial = p; };
+  const partSale = calc.commitPortfolioSale('GMKN', { qty: 1005, price: 130, date: '2025-06-01', comment: '' });
+  assert(partSale && partSale.ok, 'p1b partial: sell 1005 accepted');
+  const oldLot = (partial.positions || []).find((p) => p.lotId === 'G1');
+  const newLot = (partial.positions || []).find((p) => p.lotId === 'G2');
+  assert(!oldLot || !(Number(oldLot.qty) > 1e-9), 'p1b partial: old lot 0');
+  assert(newLot && Math.abs(Number(newLot.qty) - 5) < 1e-6, 'p1b partial: new lot 5');
+
+  let before = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  sb.getPortfolio = () => before;
+  sb.setPortfolio = (p) => { before = p; };
+  const beforeSale = calc.commitPortfolioSale('GMKN', { qty: 2, price: 25000, date: '2023-06-01', comment: '' });
+  assert(beforeSale && beforeSale.ok, 'p1b before: sale accepted');
+  assert(Math.abs(Number(before.positions[0].qty) - 8) < 1e-6, 'p1b before: qty -2');
+  const beforePnl = calc.getSaleRealizedPnl(before.sales[0]);
+  almost(beforePnl.amount, 6000, 0.05, 'p1b before: realized 6000');
+
+  let curr = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  sb.getPortfolio = () => curr;
+  sb.setPortfolio = (p) => { curr = p; };
+  const currSale = calc.commitPortfolioSale('GMKN', { qty: 200, price: 130, date: '2025-06-01', comment: '' });
+  assert(currSale && currSale.ok, 'p1b current: accepted');
+  almost(curr.positions[0].qty, 800, 1e-6, 'p1b current: qty -200 not /100');
+  almost(calc.getSplitAwareSaleRealizedPnl(curr.sales[0], curr, { splitEvents: events, now: NOW }).realizedPnlRub, -18000, 0.05, 'p1b current: -18000');
+
+  let tPf = {
+    positions: [{ ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3126, buyDate: '2025-12-01', currentPrice: 260 }],
+    sales: []
+  };
+  sb.getPortfolio = () => tPf;
+  sb.setPortfolio = (p) => { tPf = p; };
+  const tSale = calc.commitPortfolioSale('T', { qty: 5, price: 260, date: '2026-06-01', comment: '' });
+  assert(tSale && tSale.ok, 'p1b T: accepted');
+  almost(tPf.sales[0].allocations[0].lotQtyDelta, 0.5, 1e-9, 'p1b T: lotQtyDelta 0.5');
+  almost(tPf.positions[0].qty, 0.5, 1e-9, 'p1b T: remaining 0.5');
+  almost(calc.getSplitAwareSaleRealizedPnl(tPf.sales[0], tPf, { splitEvents: events, now: NOW }).realizedPnlRub, (260 - 312.6) * 5, 0.05, 'p1b T: realized');
+
+  let unk = {
+    positions: [{ ticker: 'GMKN', lotId: 'U1', qty: 10, avgPrice: 22000, currentPrice: 130 }],
+    sales: []
+  };
+  const unkSnap = JSON.stringify(unk);
+  sb.getPortfolio = () => unk;
+  sb.setPortfolio = (p) => { unk = p; };
+  assert(calc.isPortfolioTickerSaleCommitBlocked('GMKN', unk, events), 'p1b unknown: blocked');
+  const unkCommit = calc.commitPortfolioSale('GMKN', { qty: 200, price: 130, date: '2025-06-01', comment: '' });
+  assert(unkCommit && unkCommit.ok === false && unkCommit.blocked, 'p1b unknown: not committed');
+  assert(JSON.stringify(unk) === unkSnap, 'p1b unknown: JSON unchanged');
+  assert(/Не удалось определить шкалу/.test(calc.formatSplitSaleUnknownText()), 'p1b unknown: warning text');
+
+  let cancelPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  sb.getPortfolio = () => cancelPf;
+  sb.setPortfolio = (p) => { cancelPf = p; };
+  const sold = calc.commitPortfolioSale('GMKN', { qty: 200, price: 130, date: '2025-06-01', comment: '' });
+  assert(sold && sold.ok && Math.abs(cancelPf.positions[0].qty - 8) < 1e-9, 'p1b cancel: sold to 8');
+  calc.removePortfolioSale(cancelPf.sales[0].saleId);
+  assert(Math.abs(cancelPf.positions[0].qty - 10) < 1e-9, 'p1b cancel: restored 2 not 200');
+  assert(!(cancelPf.sales || []).length, 'p1b cancel: sale removed');
+
+  const legacySale = {
+    saleId: 'LEG',
+    ticker: 'GMKN',
+    qty: 200,
+    buyPrice: 22000,
+    salePrice: 130,
+    saleDate: '2025-06-01',
+    allocations: [{ lotId: 'G1', qty: 200, buyPrice: 22000, buyDate: '2021-06-04' }]
+  };
+  const legacyRow = calc.getSplitAwareSaleRealizedPnl(legacySale, {
+    positions: [{ ticker: 'GMKN', lotId: 'G1', qty: 8, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 }],
+    sales: [legacySale]
+  }, { splitEvents: events, now: NOW });
+  assert(legacyRow.isPartial || legacyRow.confidence === 'partial', 'p1b legacy: partial');
+  assert(legacyRow.confidence !== 'high', 'p1b legacy: not confident');
+  assert((legacyRow.warnings || []).some((w) => /до поддержки split-aware/.test(w)), 'p1b legacy: warning');
+  if (legacyRow.realizedPnlRub != null) {
+    assert(Math.abs(legacyRow.realizedPnlRub - (130 - 22000) * 200) > 1, 'p1b legacy: not raw (130-22000)×200');
+  }
+
+  const prodText = fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8');
+  const fakeEvents = calc.sandbox.parseSplitEventsCatalog({
+    version: 1,
+    events: (JSON.parse(prodText).events || []).concat([{
+      ticker: 'FAKE_SPLIT', aliases: ['FAKE'], effectiveDate: '2030-01-15', ratio: 5, type: 'split'
+    }])
+  });
+  calc.setSplitEventsCatalog({ version: 1, events: fakeEvents });
+  let fakePf = {
+    positions: [{ ticker: 'FAKE_SPLIT', lotId: 'F1', qty: 2, avgPrice: 500, buyDate: '2029-06-01', currentPrice: 90 }],
+    sales: []
+  };
+  const fakeSnap = JSON.stringify(fakePf);
+  sb.getPortfolio = () => fakePf;
+  sb.setPortfolio = (p) => { fakePf = p; };
+  const fakeSale = calc.commitPortfolioSale('FAKE_SPLIT', { qty: 5, price: 90, date: '2031-01-01', comment: '' });
+  assert(fakeSale && fakeSale.ok, 'p1b generic: FAKE_SPLIT sale');
+  almost(fakePf.sales[0].allocations[0].lotQtyDelta, 1, 1e-9, 'p1b generic: lotQtyDelta 1');
+  almost(fakePf.positions[0].qty, 1, 1e-9, 'p1b generic: remaining 1');
+  calc.getSplitAwareSaleRealizedPnl(fakePf.sales[0], fakePf, { splitEvents: fakeEvents, now: '2031-06-01' });
+  assert(JSON.stringify({ ticker: 'FAKE_SPLIT' }) !== fakeSnap, 'p1b generic: writer changed fake pf');
+  const helperPf = JSON.parse(fakeSnap);
+  const helperSnap = JSON.stringify(helperPf);
+  calc.getSplitAwareSaleRealizedPnl({
+    ticker: 'FAKE_SPLIT', qty: 5, buyPrice: 500, salePrice: 90, saleDate: '2031-01-01',
+    allocations: [{ lotId: 'F1', qty: 5, buyPrice: 500, buyDate: '2029-06-01' }]
+  }, helperPf, { splitEvents: fakeEvents, now: '2031-06-01' });
+  assert(JSON.stringify(helperPf) === helperSnap, 'p1b helpers: JSON immutable');
+  const allocSrc = Function.prototype.toString.call(calc.allocateSplitAwareSaleAcrossLots);
+  assert(!/iss\.moex/.test(allocSrc) && !/fetch\s*\(/.test(allocSrc), 'p1b: no fetch in split writer');
+
+  calc.setSplitEventsCatalog(catalog);
+  sb.getPortfolio = prevGet;
+  sb.setPortfolio = prevSet;
 }
 
 if (errors.length) {

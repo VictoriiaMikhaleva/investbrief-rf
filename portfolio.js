@@ -295,6 +295,10 @@
   var PF_SPLIT_SALE_OPS_QTY_HINT = 'количество как в операции';
   var PF_SALE_SPLIT_UNKNOWN_SUFFIX = ': не удалось определить шкалу продажи после сплита.';
   var PF_SPLIT_SALE_BLOCK_HEAD = 'По бумаге было дробление акций. Продажа через форму пока отключена, чтобы не записать операцию в неверной шкале.';
+  var PF_SPLIT_SALE_HINT_HEAD = 'Бумага была сплитирована. Количество продажи укажите как в брокере, в текущих акциях.';
+  var PF_SPLIT_SALE_UNKNOWN_TEXT = 'Не удалось определить шкалу старого лота. Продажа через форму временно недоступна для этой бумаги.';
+  var PF_SPLIT_SALE_LEGACY_TEXT = 'Продажа была записана до поддержки split-aware режима. Проверьте количество сделки.';
+  var PF_SPLIT_SALE_DATE_QTY_HINT = 'количество в шкале даты продажи';
   var PF_SPLIT_CATALOG_UNAVAILABLE_TEXT = 'Справочник сплитов временно недоступен. Если в портфеле есть бумаги с дроблением акций, часть расчётов может быть неполной.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT = 'Справочник сплитов временно недоступен. Перед продажей бумаг, по которым было дробление акций, проверьте количество вручную.';
   var PF_LOT_SCALE_UNKNOWN_SUFFIX = ': не удалось определить шкалу лота после сплита.';
@@ -635,7 +639,9 @@
             qty: q,
             lotId: alloc.lotId ? String(alloc.lotId) : '',
             buyIso: pfSplitIsoDate(alloc.buyDate),
-            buyPrice: Number(alloc.buyPrice)
+            buyPrice: Number(alloc.buyPrice),
+            lotQtyDelta: Number(alloc.lotQtyDelta),
+            qtyScale: alloc.qtyScale || sale.qtyScale || ''
           });
         });
         return;
@@ -883,8 +889,11 @@
             if (!isNewScale) jsonSoldAfter += row.qty;
             return;
           }
-          if (isNewScale) newSoldToTarget += row.qty;
-          else jsonSoldToTarget += row.qty;
+          if (isNewScale) {
+            var jsonDelta = Number(row.lotQtyDelta);
+            var saleDateScale = String(row.qtyScale || '') === 'sale-date';
+            if (!(isFinite(jsonDelta) && jsonDelta > 0) && !saleDateScale) newSoldToTarget += row.qty;
+          } else jsonSoldToTarget += row.qty;
         });
       }
 
@@ -2124,6 +2133,13 @@
       }, q, buy, sell);
     }
 
+    var hasSplitMeta = !!(alloc && (
+      String(alloc.qtyScale || '') === 'sale-date' ||
+      (isFinite(Number(alloc.lotQtyDelta)) && Number(alloc.lotQtyDelta) > 0) ||
+      (isFinite(Number(alloc.splitFactor)) && Number(alloc.splitFactor) > 1) ||
+      (isFinite(Number(alloc.adjustedBuyPrice)) && Number(alloc.adjustedBuyPrice) > 0)
+    )) || (sale && String(sale.qtyScale || '') === 'sale-date');
+
     var parts = splitAwarePortfolioParts(portfolio, options);
     var pos = splitAwareFindPosition(parts.positions, t, {
       lotId: alloc && alloc.lotId ? String(alloc.lotId) : '',
@@ -2158,7 +2174,7 @@
       splitAwarePushUniqueSplit(applied, ev);
     });
 
-    if (diag.scale === 'unknown') {
+    if (diag.scale === 'unknown' && !hasSplitMeta) {
       if (warnings.indexOf(t + PF_SALE_SPLIT_UNKNOWN_SUFFIX) === -1) {
         warnings.push(t + PF_SALE_SPLIT_UNKNOWN_SUFFIX);
       }
@@ -2176,10 +2192,27 @@
 
     var adjBuy = buy;
     var qtyScale = diag.scale === 'historical' ? 'historical' : 'current';
-    if (diag.scale === 'historical') {
+    var metaScale = alloc && alloc.scale ? String(alloc.scale) : '';
+    if (hasSplitMeta) {
+      qtyScale = 'sale-date';
+      if (metaScale === 'current' || diag.scale === 'current') {
+        adjBuy = buy;
+        if (metaScale === 'current') qtyScale = 'sale-date';
+      } else {
+        var metaAdj = Number(alloc && alloc.adjustedBuyPrice);
+        if (isFinite(metaAdj) && metaAdj > 0) adjBuy = metaAdj;
+        else adjBuy = buy / factor;
+      }
+    } else if (diag.scale === 'historical') {
       adjBuy = buy / factor;
     }
     var confidence = diag.confidence === 'partial' ? 'partial' : 'high';
+    if (!hasSplitMeta) {
+      confidence = 'partial';
+      if (warnings.indexOf(PF_SPLIT_SALE_LEGACY_TEXT) === -1) {
+        warnings.push(PF_SPLIT_SALE_LEGACY_TEXT);
+      }
+    }
     return splitAwareFinishAllocMoney(t, {
       saleDate: saleIso,
       buyDate: buyIso,
@@ -2331,10 +2364,198 @@
     return asOfRoundQty(sum);
   }
 
+  function splitSaleHasWriterMeta(sale, alloc) {
+    if (sale && String(sale.qtyScale || '') === 'sale-date') return true;
+    if (!alloc) return false;
+    if (String(alloc.qtyScale || '') === 'sale-date') return true;
+    if (isFinite(Number(alloc.lotQtyDelta)) && Number(alloc.lotQtyDelta) > 0) return true;
+    return false;
+  }
+
+  function getLotSplitSaleCapacity(lot, ticker, saleIso, options) {
+    options = options || {};
+    var events = options.splitEvents ||
+      (typeof getSplitEventsSync === 'function' ? getSplitEventsSync() : []);
+    var q = Number(lot && lot.qty);
+    if (!isFinite(q) || q <= 1e-9) {
+      return { scale: 'n/a', factor: 1, availableSaleQty: 0, jsonPerSale: 1, confidence: 'high' };
+    }
+    var covering = typeof getSplitEventsForTicker === 'function'
+      ? getSplitEventsForTicker(ticker, events)
+      : [];
+    covering = (covering || []).filter(function (ev) {
+      if (!ev) return false;
+      var type = ev.type != null ? String(ev.type).trim().toLowerCase() : 'split';
+      if (type === 'reverse') return false;
+      var ratio = Number(ev.ratio);
+      return isFinite(ratio) && ratio > 1;
+    });
+    var firstEff = '';
+    covering.forEach(function (ev) {
+      if (!ev || !ev.effectiveDate) return;
+      if (!firstEff || ev.effectiveDate < firstEff) firstEff = ev.effectiveDate;
+    });
+    var buyIso = pfSplitIsoDate(lot && lot.buyDate);
+    if (covering.length && !buyIso && (!saleIso || !firstEff || saleIso >= firstEff)) {
+      return {
+        scale: 'unknown',
+        factor: 1,
+        availableSaleQty: 0,
+        jsonPerSale: 1,
+        confidence: 'unknown'
+      };
+    }
+    var factor = 1;
+    if (buyIso && saleIso && typeof getSplitAdjustmentFactor === 'function') {
+      factor = Number(getSplitAdjustmentFactor(ticker, buyIso, saleIso, events));
+    }
+    if (!isFinite(factor) || factor < 1) factor = 1;
+    if (factor <= 1) {
+      return {
+        scale: 'n/a',
+        factor: 1,
+        availableSaleQty: q,
+        jsonPerSale: 1,
+        confidence: 'high'
+      };
+    }
+    if (!buyIso) {
+      return {
+        scale: 'unknown',
+        factor: factor,
+        availableSaleQty: 0,
+        jsonPerSale: 1,
+        confidence: 'unknown'
+      };
+    }
+    var salePx = options.salePrice;
+    var diag = diagnoseLotShareScale(lot, ticker, {
+      splitEvents: events,
+      currentDate: saleIso,
+      currentPrice: (isFinite(Number(salePx)) && Number(salePx) > 0)
+        ? Number(salePx)
+        : (lot && lot.currentPrice),
+      instrumentType: options.instrumentType
+    });
+    if (diag.scale === 'unknown') {
+      return {
+        scale: 'unknown',
+        factor: factor,
+        availableSaleQty: 0,
+        jsonPerSale: 1,
+        confidence: 'unknown'
+      };
+    }
+    if (diag.scale === 'historical') {
+      return {
+        scale: 'historical',
+        factor: factor,
+        availableSaleQty: q * factor,
+        jsonPerSale: 1 / factor,
+        confidence: diag.confidence === 'partial' ? 'partial' : 'high'
+      };
+    }
+    return {
+      scale: 'current',
+      factor: factor,
+      availableSaleQty: q,
+      jsonPerSale: 1,
+      confidence: diag.confidence === 'partial' ? 'partial' : 'high'
+    };
+  }
+
+  function getPortfolioSplitSaleWriteState(ticker, portfolio, saleDate, options) {
+    options = options || {};
+    var t = asOfNormTicker(ticker);
+    var empty = {
+      ticker: t,
+      mode: 'ordinary',
+      blocked: false,
+      availableSaleQty: 0,
+      jsonOpsQty: 0,
+      lots: []
+    };
+    if (!t || isPortfolioBondPosition({ ticker: t })) return empty;
+    if (isPortfolioSplitCatalogUnavailable() && !(options && options.splitEvents)) {
+      return empty;
+    }
+    var covering = splitAwareSaleCoveringEvents(t, options);
+    var parts = splitAwarePortfolioParts(portfolio, options);
+    var jsonOpsQty = jsonOpenQtyForTicker(t, parts);
+    empty.jsonOpsQty = jsonOpsQty;
+    var lots = (parts.positions || []).filter(function (l) {
+      return l && asOfNormTicker(l.ticker) === t && isFinite(Number(l.qty)) && Number(l.qty) > 1e-9;
+    });
+    empty.availableSaleQty = jsonOpsQty;
+    if (!covering.length) return empty;
+    var saleIso = pfSplitIsoDate(saleDate);
+    if (!saleIso && typeof localPortfolioTodayYmd === 'function') {
+      saleIso = pfSplitIsoDate(localPortfolioTodayYmd());
+    }
+    var firstEff = '';
+    covering.forEach(function (ev) {
+      if (!ev || !ev.effectiveDate) return;
+      if (!firstEff || ev.effectiveDate < firstEff) firstEff = ev.effectiveDate;
+    });
+    if (saleIso && firstEff && saleIso < firstEff) return empty;
+    var rows = [];
+    var available = 0;
+    var hasUnknown = false;
+    var needsSplit = false;
+    lots.forEach(function (lot) {
+      var cap = getLotSplitSaleCapacity(lot, t, saleIso, options);
+      rows.push({ lot: lot, capacity: cap });
+      if (cap.scale === 'unknown') hasUnknown = true;
+      if (cap.scale === 'historical' || cap.scale === 'current') needsSplit = true;
+      if (cap.availableSaleQty > 0) available += cap.availableSaleQty;
+    });
+    if (!lots.length) return empty;
+    if (hasUnknown) {
+      return {
+        ticker: t,
+        mode: 'unknown',
+        blocked: true,
+        availableSaleQty: 0,
+        jsonOpsQty: jsonOpsQty,
+        lots: rows
+      };
+    }
+    if (!needsSplit && !isPortfolioTickerSplitAffected(t, parts, options.splitEvents)) {
+      return empty;
+    }
+    if (!needsSplit) return empty;
+    return {
+      ticker: t,
+      mode: 'split',
+      blocked: false,
+      availableSaleQty: asOfRoundQty(available),
+      jsonOpsQty: jsonOpsQty,
+      lots: rows
+    };
+  }
+
   function isPortfolioTickerSaleCommitBlocked(ticker, portfolio, events) {
     var t = asOfNormTicker(ticker);
     if (!t || isPortfolioBondPosition({ ticker: t })) return false;
-    return isPortfolioTickerSplitAffected(t, portfolio, events);
+    var st = getPortfolioSplitSaleWriteState(ticker, portfolio, null, { splitEvents: events });
+    return st.mode === 'unknown';
+  }
+
+  function formatSplitSaleHintText(ticker, portfolio, options) {
+    options = options || {};
+    var t = asOfNormTicker(ticker);
+    var st = getPortfolioSplitSaleWriteState(t, portfolio, options.saleDate || options.now, options);
+    var opsQty = st.jsonOpsQty;
+    var splitQtyLbl = (st.availableSaleQty != null && isFinite(Number(st.availableSaleQty)))
+      ? String(asOfRoundQty(st.availableSaleQty)) + ' шт.'
+      : 'проверьте';
+    return PF_SPLIT_SALE_HINT_HEAD +
+      ' Остаток с учётом сплита: ' + splitQtyLbl +
+      '; по операциям: ' + String(opsQty) + ' шт.';
+  }
+
+  function formatSplitSaleUnknownText() {
+    return PF_SPLIT_SALE_UNKNOWN_TEXT;
   }
 
   function formatSplitSaleBlockedText(ticker, portfolio, options) {
@@ -2385,9 +2606,11 @@
     return html;
   }
 
-  function formatSaleOpsQtyHintHtml(splitUi) {
+  function formatSaleOpsQtyHintHtml(splitUi, sale) {
     if (!splitUi) return '';
-    return ' <span class="muted pf-split-qty-ops-hint">' + escapeHtml(PF_SPLIT_SALE_OPS_QTY_HINT) + '</span>';
+    var hint = PF_SPLIT_SALE_OPS_QTY_HINT;
+    if (sale && splitSaleHasWriterMeta(sale)) hint = PF_SPLIT_SALE_DATE_QTY_HINT;
+    return ' <span class="muted pf-split-qty-ops-hint">' + escapeHtml(hint) + '</span>';
   }
 
   function saleUsesSplitAwareRealized(sale, options) {
@@ -2427,13 +2650,14 @@
       var t = typeof normalizeTicker === 'function' ? normalizeTicker(s.ticker) : String(s.ticker || '').toUpperCase();
       var meta = bondMetaMap[t] || bondMetaMap[s.ticker];
       var split = getSplitAwareSaleRealizedPnl(s, { sales: sales }, { bondMeta: meta });
-      if (split && split.confidence === 'unknown' && (split.realizedPnlRub == null || !isFinite(Number(split.realizedPnlRub)))) {
+      if (split && (split.confidence === 'unknown' || split.confidence === 'partial') &&
+          (split.realizedPnlRub == null || !isFinite(Number(split.realizedPnlRub)))) {
         return;
       }
       var amount = split && split.realizedPnlRub != null && isFinite(Number(split.realizedPnlRub))
         ? Number(split.realizedPnlRub)
         : null;
-      if (amount == null) {
+      if (amount == null && !(split && split.confidence === 'partial')) {
         var pnl = getSaleRealizedPnl(s, meta);
         amount = pnl.amount != null && isFinite(pnl.amount) ? pnl.amount : null;
       }
@@ -2785,6 +3009,12 @@
       if (splitPnl && splitPnl.confidence === 'unknown' && splitPnl.realizedPnlRub == null) {
         pnl = { amount: null, pct: null };
       }
+      var sellQuality = 'ok';
+      var sellNote = '';
+      if (splitPnl && (splitPnl.isPartial || splitPnl.confidence === 'partial' || splitPnl.confidence === 'unknown')) {
+        sellQuality = splitPnl.confidence === 'unknown' ? 'partial' : 'partial';
+        sellNote = (splitPnl.warnings && splitPnl.warnings[0]) || PF_SPLIT_SALE_LEGACY_TEXT;
+      }
       var fee = sale.fee != null && isFinite(Number(sale.fee)) ? Number(sale.fee) : null;
       var faceHint = takeFace(sale);
       ops.push({
@@ -2808,9 +3038,10 @@
         realizedPnlPct: pnl && pnl.pct != null && isFinite(pnl.pct) ? pnl.pct : null,
         realizedConfidence: splitPnl ? splitPnl.confidence : 'high',
         realizedIsPartial: !!(splitPnl && splitPnl.isPartial),
+        splitWriterMeta: splitSaleHasWriterMeta(sale),
         remainingQtyAfter: null,
-        note: '',
-        quality: 'ok',
+        note: sellNote,
+        quality: sellQuality,
         isBond: isBond,
         _seq: seq++
       });
@@ -3644,6 +3875,18 @@
   }
 
   function twpOpenMarketValue(ticker, positions, bondMeta) {
+    if (!isPortfolioBondPosition({ ticker: ticker }) && !isPortfolioSplitCatalogUnavailable()) {
+      try {
+        var splitMv = getSplitAwareCurrentPositionMetrics(ticker, { positions: positions }, { bondMeta: bondMeta });
+        if (splitAwareMetricsUsable(splitMv)) {
+          return {
+            openQty: splitMv.currentQty != null ? Number(splitMv.currentQty) : 0,
+            value: splitMv.currentMarketValueRub,
+            missingPrice: false
+          };
+        }
+      } catch (e) { /* */ }
+    }
     var openQty = 0;
     var value = 0;
     var missingPrice = false;
@@ -5445,7 +5688,19 @@
     var out = [];
     Object.keys(tickers).forEach(function (t) {
       var hist = summarizeTickerHistory(t, positions, sales, bondMetaMap[t] || null);
-      if (hist.openQty > 1e-9) return;
+      if (hist.openQty > 1e-9) {
+        var forceClosed = false;
+        if (!isPortfolioBondPosition({ ticker: t }) && splitAwareSaleCoveringEvents(t).length) {
+          try {
+            var heldOpen = getSplitAwareCurrentQty(t, { positions: positions, sales: sales }, {});
+            if (heldOpen && heldOpen.confidence === 'high' && heldOpen.qty != null &&
+                isFinite(Number(heldOpen.qty)) && Number(heldOpen.qty) <= 1e-9) {
+              forceClosed = true;
+            }
+          } catch (e) { /* */ }
+        }
+        if (!forceClosed) return;
+      }
       if (!hist.sales.length) return;
       var lastSaleDate = '';
       hist.sales.forEach(function (s) {
@@ -5570,6 +5825,7 @@
         realizedPnlRub: pnl && pnl.amount != null && isFinite(pnl.amount) ? pnl.amount : null,
         realizedConfidence: splitPnl ? splitPnl.confidence : 'high',
         realizedSplitUi: saleUsesSplitAwareRealized(s),
+        splitWriterMeta: splitSaleHasWriterMeta(s),
         comment: s.comment ? String(s.comment) : '',
         isBond: isPortfolioBondPosition(s),
         lotId: s.lotId ? String(s.lotId) : '',
@@ -6620,6 +6876,105 @@
     };
   }
 
+  function allocateSplitAwareSaleAcrossLots(portfolio, ticker, sellQty, salePricePerShare, saleDate, options) {
+    options = options || {};
+    ticker = normalizeTicker(ticker);
+    var saleIso = pfSplitIsoDate(saleDate);
+    var lots = findPortfolioLots(ticker, portfolio.positions).filter(function (l) {
+      var q = Number(l.qty);
+      return isFinite(q) && q > 0;
+    });
+    if (!lots.length) return { error: 'empty' };
+    lots = lots.slice().sort(function (a, b) {
+      var da = pfSplitIsoDate(a.buyDate) || '';
+      var db = pfSplitIsoDate(b.buyDate) || '';
+      if (da !== db) return da < db ? -1 : 1;
+      return String(a.lotId || '').localeCompare(String(b.lotId || ''));
+    });
+    var caps = [];
+    var i;
+    for (i = 0; i < lots.length; i++) {
+      var cap = getLotSplitSaleCapacity(lots[i], ticker, saleIso, {
+        splitEvents: options.splitEvents,
+        salePrice: salePricePerShare,
+        instrumentType: options.instrumentType
+      });
+      if (cap.scale === 'unknown') return { error: 'unknown' };
+      caps.push(cap);
+    }
+    var available = 0;
+    caps.forEach(function (c) { available += c.availableSaleQty; });
+    if (!isFinite(sellQty) || sellQty <= 0 || sellQty > available + 1e-6) {
+      return { error: 'qty' };
+    }
+    var salePx = isFinite(Number(salePricePerShare)) && Number(salePricePerShare) > 0
+      ? Number(salePricePerShare) : null;
+    var left = sellQty;
+    var allocations = [];
+    var remaining = [];
+    var adjCost = 0;
+    var saleQtyDone = 0;
+    lots.forEach(function (lot, idx) {
+      var cap = caps[idx];
+      var take = left > cap.availableSaleQty ? cap.availableSaleQty : left;
+      if (take < 0) take = 0;
+      if (take > 0 && take > left) take = left;
+      var lotQtyOnly = Number(lot.qty);
+      var lotDelta = 0;
+      if (take > 1e-12) {
+        lotDelta = take * cap.jsonPerSale;
+        var buy = isFinite(Number(lot.avgPrice)) ? Number(lot.avgPrice) : null;
+        var adjBuy = buy;
+        if (cap.scale === 'historical' && cap.factor > 1 && buy != null) adjBuy = buy / cap.factor;
+        allocations.push({
+          lotId: lot.lotId,
+          qty: take,
+          qtyScale: 'sale-date',
+          lotQtyDelta: lotDelta,
+          splitFactor: cap.factor,
+          adjustedBuyPrice: adjBuy,
+          scale: cap.scale,
+          buyPrice: buy,
+          salePrice: salePx,
+          buyDate: lot.buyDate || ''
+        });
+        if (adjBuy != null && isFinite(adjBuy)) adjCost += adjBuy * take;
+        saleQtyDone += take;
+        left -= take;
+      }
+      var remainQty = lotQtyOnly - lotDelta;
+      if (isFinite(remainQty) && remainQty > 1e-9) {
+        remaining.push(normalizePosition({
+          lotId: lot.lotId,
+          ticker: lot.ticker,
+          qty: remainQty,
+          avgPrice: lot.avgPrice,
+          currentPrice: lot.currentPrice,
+          buyDate: lot.buyDate,
+          comment: lot.comment,
+          market: lot.market,
+          currency: lot.currency,
+          dayChangePct: lot.dayChangePct
+        }));
+      }
+    });
+    if (left > 1e-6) return { error: 'qty' };
+    remaining = remaining.filter(Boolean);
+    portfolio.positions = portfolio.positions.filter(function (p) {
+      return normalizeTicker(p.ticker) !== ticker;
+    }).concat(remaining);
+    var weightedAdj = saleQtyDone > 0 ? adjCost / saleQtyDone : null;
+    var weightedAvgAfter = computeLotsWeightedAvg(findPortfolioLots(ticker, portfolio.positions));
+    return {
+      allocations: allocations,
+      weightedAvgBefore: weightedAdj,
+      weightedAvgAfter: weightedAvgAfter,
+      realizedPnl: salePx != null && weightedAdj != null ? (salePx - weightedAdj) * sellQty : null,
+      salePricePerShare: salePx,
+      qtyScale: 'sale-date'
+    };
+  }
+
 
 
   function startSalePortfolioTicker(ticker) {
@@ -6629,11 +6984,11 @@
       return;
     }
     var lots = findPortfolioLots(ticker);
-    var totalQty = lots.reduce(function (s, l) {
+    var jsonQty = lots.reduce(function (s, l) {
       var q = Number(l.qty);
       return s + (isFinite(q) && q > 0 ? q : 0);
     }, 0);
-    if (totalQty <= 0) {
+    if (jsonQty <= 0) {
       showToast('По ' + ticker + ' нечего продавать');
       return;
     }
@@ -6653,7 +7008,7 @@
     if (commentEl) commentEl.value = '';
     updatePortfolioSplitSaleBlockUi(ticker);
     updatePortfolioSplitCatalogWarnUi();
-    updatePortfolioSellAllBtn(totalQty);
+    updatePortfolioSellAllBtn(getPortfolioSellableQty(ticker));
     if (form) {
       form.hidden = false;
       form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -6668,6 +7023,17 @@
   function getPortfolioSellableQty(ticker) {
     ticker = normalizeTicker(ticker || state.pfSaleTicker || '');
     if (!ticker) return 0;
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : null;
+    var saleIso = '';
+    var dateEl = document.getElementById('pfSaleDate');
+    if (dateEl && dateEl.value) {
+      saleIso = typeof normalizePortfolioDate === 'function'
+        ? normalizePortfolioDate(dateEl.value)
+        : String(dateEl.value || '').slice(0, 10);
+    }
+    var st = getPortfolioSplitSaleWriteState(ticker, pf, saleIso);
+    if (st.mode === 'unknown') return 0;
+    if (st.mode === 'split') return Number(st.availableSaleQty) || 0;
     return findPortfolioLots(ticker).reduce(function (s, l) {
       var q = Number(l.qty);
       return s + (isFinite(q) && q > 0 ? q : 0);
@@ -6681,11 +7047,18 @@
     var ok = isFinite(totalQty) && totalQty > 0;
     var pf = typeof getPortfolio === 'function' ? getPortfolio() : null;
     var blocked = !!(state.pfSaleTicker && isPortfolioTickerSaleCommitBlocked(state.pfSaleTicker, pf));
-    var blockText = blocked ? formatSplitSaleBlockedText(state.pfSaleTicker, pf) : '';
+    var write = state.pfSaleTicker
+      ? getPortfolioSplitSaleWriteState(state.pfSaleTicker, pf, null)
+      : { mode: 'ordinary' };
+    var blockText = blocked ? formatSplitSaleUnknownText() : '';
     if (hint) {
       if (!state.pfSaleTicker) {
         hint.hidden = true;
         hint.textContent = '';
+      } else if (write.mode === 'split') {
+        hint.hidden = false;
+        hint.textContent = 'Доступно: ' + (ok ? String(totalQty) : '0') +
+          ' шт. с учётом сплита; по операциям: ' + String(write.jsonOpsQty) + ' шт.';
       } else {
         hint.hidden = false;
         hint.textContent = 'Доступно: ' + (ok ? String(totalQty) : '0') + ' шт.';
@@ -6714,12 +7087,19 @@
     var commentEl = document.getElementById('pfSaleComment');
     var allBtn = document.getElementById('pfSaleAllBtn');
     var saleBtn = document.getElementById('pfSaleBtn');
-    var blocked = !!(ticker && isPortfolioTickerSaleCommitBlocked(ticker, portfolio));
-    var text = blocked ? formatSplitSaleBlockedText(ticker, portfolio) : '';
+    var saleIso = dateEl && dateEl.value
+      ? (typeof normalizePortfolioDate === 'function' ? normalizePortfolioDate(dateEl.value) : String(dateEl.value).slice(0, 10))
+      : '';
+    var write = getPortfolioSplitSaleWriteState(ticker, portfolio, saleIso);
+    var blocked = write.mode === 'unknown';
+    var showNote = write.mode === 'split' || write.mode === 'unknown';
+    var text = write.mode === 'unknown'
+      ? formatSplitSaleUnknownText()
+      : (write.mode === 'split' ? formatSplitSaleHintText(ticker, portfolio, { saleDate: saleIso }) : '');
     if (note) {
       note.textContent = text;
-      note.hidden = !blocked;
-      if (blocked) {
+      note.hidden = !showNote;
+      if (showNote) {
         if (typeof note.removeAttribute === 'function') note.removeAttribute('hidden');
         if (note.style) note.style.display = '';
       } else {
@@ -6928,17 +7308,18 @@
       cancelPortfolioSale();
       return { ok: false };
     }
-    if (isPortfolioTickerSaleCommitBlocked(ticker, portfolio)) {
-      var blockedText = formatSplitSaleBlockedText(ticker, portfolio);
-      showToast(blockedText);
-      updatePortfolioSplitSaleBlockUi(ticker, portfolio);
-      return { ok: false, blocked: true };
-    }
     var qty = captured.qty;
     var salePrice = captured.price;
     var saleDate = typeof normalizePortfolioDate === 'function'
       ? (normalizePortfolioDate(captured.date) || new Date().toISOString().slice(0, 10))
       : (captured.date || new Date().toISOString().slice(0, 10));
+    var writeState = getPortfolioSplitSaleWriteState(ticker, portfolio, saleDate);
+    if (writeState.mode === 'unknown' || isPortfolioTickerSaleCommitBlocked(ticker, portfolio)) {
+      var blockedText = formatSplitSaleUnknownText();
+      showToast(blockedText);
+      updatePortfolioSplitSaleBlockUi(ticker, portfolio);
+      return { ok: false, blocked: true, unknown: true };
+    }
     if (qty == null || !isFinite(qty) || qty <= 0) {
       showToast('Укажите количество для продажи');
       return;
@@ -6947,18 +7328,25 @@
       showToast('Укажите цену продажи');
       return;
     }
-    var totalQty = lots.reduce(function (s, l) { return s + Number(l.qty); }, 0);
+    var splitMode = writeState.mode === 'split';
+    var totalQty = splitMode ? writeState.availableSaleQty : lots.reduce(function (s, l) { return s + Number(l.qty); }, 0);
     if (qty > totalQty + 1e-6) {
       showToast('Нельзя продать больше остатка по ' + ticker + ': ' + formatPortfolioQty({ qty: totalQty }) + ' шт.');
       return;
     }
-    var allocResult = allocateSaleAcrossLots(portfolio, ticker, qty, salePrice);
-    if (!allocResult || !allocResult.allocations.length) {
+    var allocResult = splitMode
+      ? allocateSplitAwareSaleAcrossLots(portfolio, ticker, qty, salePrice, saleDate)
+      : allocateSaleAcrossLots(portfolio, ticker, qty, salePrice);
+    if (!allocResult || allocResult.error || !allocResult.allocations || !allocResult.allocations.length) {
+      if (allocResult && allocResult.error === 'unknown') {
+        showToast(formatSplitSaleUnknownText());
+        return { ok: false, blocked: true, unknown: true };
+      }
       showToast('Не удалось распределить продажу по покупкам');
       return;
     }
     var refLot = lots[0];
-    var sale = normalizeSale({
+    var saleRaw = {
       ticker: ticker,
       qty: qty,
       buyPrice: allocResult.weightedAvgBefore,
@@ -6968,7 +7356,9 @@
       market: refLot.market,
       currency: refLot.currency,
       allocations: allocResult.allocations
-    });
+    };
+    if (splitMode) saleRaw.qtyScale = 'sale-date';
+    var sale = normalizeSale(saleRaw);
     if (!sale) {
       showToast('Не удалось зафиксировать продажу');
       return;
@@ -6976,7 +7366,9 @@
     if (!portfolio.sales) portfolio.sales = [];
     portfolio.sales.push(sale);
     setPortfolio(portfolio);
-    var pnl = getSaleRealizedPnl(sale, null);
+    var pnl = splitMode
+      ? { amount: (getSplitAwareSaleRealizedPnl(sale, portfolio) || {}).realizedPnlRub }
+      : getSaleRealizedPnl(sale, null);
     cancelPortfolioSale();
     var msg = 'Продажа зафиксирована: ' + ticker;
     if (salePrice != null && isFinite(salePrice)) {
@@ -7002,15 +7394,17 @@
     portfolio.sales = (portfolio.sales || []).filter(function (s) { return s.saleId !== saleId; });
 
     function restoreAlloc(alloc) {
+      var restoreQty = Number(alloc.lotQtyDelta);
+      if (!(isFinite(restoreQty) && restoreQty > 0)) restoreQty = Number(alloc.qty);
       var lot = findPortfolioLot(alloc.lotId, portfolio.positions);
       if (lot) {
         var q = Number(lot.qty);
-        lot.qty = (isFinite(q) && q > 0 ? q : 0) + alloc.qty;
+        lot.qty = (isFinite(q) && q > 0 ? q : 0) + restoreQty;
       } else {
         portfolio.positions.push(normalizePosition({
           lotId: alloc.lotId,
           ticker: sale.ticker,
-          qty: alloc.qty,
+          qty: restoreQty,
           avgPrice: alloc.buyPrice,
           currentPrice: sale.salePrice,
           buyDate: alloc.buyDate || '',
@@ -7033,7 +7427,7 @@
     }
     setPortfolio(portfolio);
     showToast('Продажа отменена: ' + sale.ticker);
-    renderPortfolio();
+    try { renderPortfolio(); } catch (e) { /* noop */ }
   }
 
 
@@ -7661,7 +8055,7 @@
           '</div>' +
           '<div class="pf-stack-meta pf-timeline-card-meta">' +
             '<span><span class="lbl">Кол-во</span> ' + escapeHtml(formatTimelineOpQty(op.qty, op.type)) +
-              (isBuy ? '' : formatSaleOpsQtyHintHtml(timelineSplitUi)) + '</span>' +
+              (isBuy ? '' : formatSaleOpsQtyHintHtml(timelineSplitUi, op.splitWriterMeta ? { qtyScale: 'sale-date' } : null)) + '</span>' +
             '<span><span class="lbl">Цена</span> ' +
               escapeHtml(formatPortfolioHistoryPrice(op.price, ticker, isBond)) + '</span>' +
             '<span><span class="lbl">Сумма</span> ' +
@@ -7706,7 +8100,7 @@
         '<td>' + escapeHtml(formatTimelineOpDate(op.date)) + '</td>' +
         '<td>' + badge + '</td>' +
         '<td>' + escapeHtml(formatTimelineOpQty(op.qty, op.type)) +
-          (isBuy ? '' : formatSaleOpsQtyHintHtml(timelineSplitUi)) + '</td>' +
+          (isBuy ? '' : formatSaleOpsQtyHintHtml(timelineSplitUi, op.splitWriterMeta ? { qtyScale: 'sale-date' } : null)) + '</td>' +
         '<td>' + escapeHtml(formatPortfolioHistoryPrice(op.price, ticker, isBond)) + '</td>' +
         '<td>' + escapeHtml(formatPortfolioRubAmount(op.amountRub)) + '</td>' +
         '<td>' + (isBuy ? '<span class="muted">—</span>' : formatSplitAwareRealizedHtml({
@@ -8177,7 +8571,7 @@
               '<span class="pf-op-badge pf-op-badge--sale">продажа</span>' +
               '<span><span class="lbl">Дата</span> ' + escapeHtml(formatPortfolioSaleDate(sale)) + '</span>' +
               '<span class="pf-sale-qty"><span class="lbl">Кол-во</span> −' + escapeHtml(String(sale.qty)) +
-                formatSaleOpsQtyHintHtml(splitUi) + '</span>' +
+                formatSaleOpsQtyHintHtml(splitUi, sale) + '</span>' +
               '<span><span class="lbl">Продажа</span> ' + escapeHtml(sellLbl) + '</span>' +
               '<span><span class="lbl">Покупка</span> ' + escapeHtml(buyLbl) + '</span>' +
               '<span><span class="lbl">Результат</span> ' +
@@ -8223,7 +8617,7 @@
             '<td><span class="pf-op-badge pf-op-badge--sale">продажа</span> ' +
               escapeHtml(formatPortfolioSaleDate(sale)) + '</td>' +
             '<td class="pf-sale-qty">−' + escapeHtml(String(sale.qty)) +
-              formatSaleOpsQtyHintHtml(splitUi) + '</td>' +
+              formatSaleOpsQtyHintHtml(splitUi, sale) + '</td>' +
             '<td>' + escapeHtml(sellLbl) + '</td>' +
             '<td>' + escapeHtml(buyLbl) + '</td>' +
             '<td>' + formatSplitAwareRealizedHtml(splitPnl, { splitUi: splitUi }) + '</td>' +
@@ -8642,7 +9036,7 @@
       '</div>' +
       '<div class="portfolio-recent-kpis">' +
         '<span class="portfolio-recent-kpi"><span class="lbl">Кол-во</span> ' + escapeHtml(qtyLbl) +
-          (!isBuy ? formatSaleOpsQtyHintHtml(!!op.realizedSplitUi) : '') + '</span>' +
+          (!isBuy ? formatSaleOpsQtyHintHtml(!!op.realizedSplitUi, op.splitWriterMeta ? { qtyScale: 'sale-date' } : null) : '') + '</span>' +
         '<span class="portfolio-recent-kpi"><span class="lbl">' + (isBuy ? 'Цена' : 'Продажа') + '</span> ' +
           escapeHtml(priceLbl) + '</span>' +
         buyPxHtml +

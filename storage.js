@@ -335,13 +335,24 @@
         var aq = parseFloat(a.qty);
         if (!isFinite(aq) || aq <= 0) return;
         var ab = parseFloat(a.buyPrice);
-        allocations.push({
+        var row = {
           lotId: a.lotId ? String(a.lotId) : '',
           qty: aq,
           buyPrice: isFinite(ab) ? ab : null,
           salePrice: isFinite(parseFloat(a.salePrice)) ? parseFloat(a.salePrice) : null,
           buyDate: normalizePortfolioDate(a.buyDate)
-        });
+        };
+        var qtyScale = a.qtyScale != null ? String(a.qtyScale).trim() : '';
+        if (qtyScale) row.qtyScale = qtyScale;
+        var lotQtyDelta = parseFloat(a.lotQtyDelta);
+        if (isFinite(lotQtyDelta) && lotQtyDelta > 0) row.lotQtyDelta = lotQtyDelta;
+        var splitFactor = parseFloat(a.splitFactor);
+        if (isFinite(splitFactor) && splitFactor > 0) row.splitFactor = splitFactor;
+        var adjBuy = parseFloat(a.adjustedBuyPrice);
+        if (isFinite(adjBuy) && adjBuy > 0) row.adjustedBuyPrice = adjBuy;
+        var lotScale = a.scale != null ? String(a.scale).trim() : '';
+        if (lotScale) row.scale = lotScale;
+        allocations.push(row);
       });
     }
     var out = {
@@ -358,6 +369,8 @@
       currency: mk.currency
     };
     if (allocations.length) out.allocations = allocations;
+    var saleQtyScale = raw.qtyScale != null ? String(raw.qtyScale).trim() : '';
+    if (saleQtyScale) out.qtyScale = saleQtyScale;
     var fee = optionalNonNegNumber(raw.fee);
     if (fee != null) out.fee = fee;
     var source = optionalSource(raw.source);
