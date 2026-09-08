@@ -415,6 +415,17 @@ assert(!/iss\.moex/.test(seSrc) && !/iss\.moex\.com/.test(seSrc), 'no MOEX fetch
 SplitEvents.setSplitEventsCatalog(catalog);
 assert(SplitEvents.getSplitEventsLoadState().status === 'ok', 'setSplitEventsCatalog recovers to ok');
 assert(SplitEvents.getSplitEventsForTicker('GMKN', SplitEvents.getSplitEventsSync()).length === 1, 'catalog restored after error');
+const gmknCount = SplitEvents.getSplitEventsForTicker('GMKN').length;
+const lastGoodCount = SplitEvents.getSplitEventsSync().length;
+const failAgain = await SplitEvents.loadSplitEvents({
+  force: true,
+  fetch: function () {
+    return Promise.resolve({ ok: false, json: function () { return Promise.resolve({}); } });
+  }
+});
+assert(SplitEvents.getSplitEventsLoadState().status === 'ok', 'last-known-good survives later fetch error');
+assert(SplitEvents.getSplitEventsForTicker('GMKN').length === gmknCount, 'last-known-good GMKN events kept');
+assert(Array.isArray(failAgain) && failAgain.length === lastGoodCount, 'failed refetch returns last-known-good');
 
 if (errors.length) {
   console.error('FAIL');

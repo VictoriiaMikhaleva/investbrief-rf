@@ -10,10 +10,12 @@
   var SPLIT_BADGE_TEXT = 'сплит';
 
   var _splitEventsCache = null;
+  var _splitEventsLastGood = null;
   var _splitEventsLoaded = false;
   var _splitEventsInflight = null;
   var _splitEventsStatus = 'idle';
   var _splitEventsError = '';
+  var _splitKnownTickers = {};
 
   function splitEventsLoadState() {
     var count = (_splitEventsCache && _splitEventsCache.length) || 0;
@@ -31,28 +33,62 @@
     return splitEventsLoadState();
   }
 
+  function rememberSplitCatalogTickers(events) {
+    (events || []).forEach(function (ev) {
+      if (!ev) return;
+      var t = splitNormTicker(ev.ticker);
+      if (t) _splitKnownTickers[t] = true;
+      (ev.aliases || []).forEach(function (a) {
+        var al = splitNormTicker(a);
+        if (al) _splitKnownTickers[al] = true;
+      });
+    });
+  }
+
+  function isKnownSplitCatalogTicker(ticker) {
+    var t = splitNormTicker(ticker);
+    return !!(t && _splitKnownTickers[t]);
+  }
+
+  function hasUsableSplitEventsCache() {
+    return !!(Array.isArray(_splitEventsCache) && _splitEventsCache.length);
+  }
+
   function isSplitEventsCatalogUnavailable() {
     return _splitEventsStatus === 'error';
   }
 
   function resetSplitEventsLoadState() {
     _splitEventsCache = null;
+    _splitEventsLastGood = null;
     _splitEventsLoaded = false;
     _splitEventsStatus = 'idle';
     _splitEventsError = '';
     _splitEventsInflight = null;
   }
 
+  function markSplitEventsCatalogLoading() {
+    if (hasUsableSplitEventsCache() && _splitEventsStatus === 'ok') {
+      return getSplitEventsSync();
+    }
+    _splitEventsStatus = 'loading';
+    _splitEventsError = '';
+    return getSplitEventsSync();
+  }
+
   function markSplitEventsCatalogError(message) {
-    if (_splitEventsStatus === 'ok') {
-      _splitEventsInflight = null;
+    _splitEventsInflight = null;
+    if (_splitEventsLastGood && _splitEventsLastGood.length) {
+      _splitEventsCache = _splitEventsLastGood;
+      _splitEventsLoaded = true;
+      _splitEventsStatus = 'ok';
+      _splitEventsError = '';
       return getSplitEventsSync();
     }
     _splitEventsCache = [];
     _splitEventsLoaded = true;
     _splitEventsStatus = 'error';
     _splitEventsError = message ? String(message) : 'split-events-unavailable';
-    _splitEventsInflight = null;
     return getSplitEventsSync();
   }
 
@@ -159,6 +195,8 @@
 
   function setSplitEventsCatalog(json) {
     _splitEventsCache = parseSplitEventsCatalog(json);
+    _splitEventsLastGood = _splitEventsCache.slice();
+    rememberSplitCatalogTickers(_splitEventsCache);
     _splitEventsLoaded = true;
     _splitEventsStatus = 'ok';
     _splitEventsError = '';
@@ -468,9 +506,12 @@
     parseSplitEventsCatalog: parseSplitEventsCatalog,
     setSplitEventsCatalog: setSplitEventsCatalog,
     resetSplitEventsLoadState: resetSplitEventsLoadState,
+    markSplitEventsCatalogLoading: markSplitEventsCatalogLoading,
     markSplitEventsCatalogError: markSplitEventsCatalogError,
     getSplitEventsLoadState: getSplitEventsLoadState,
     isSplitEventsCatalogUnavailable: isSplitEventsCatalogUnavailable,
+    hasUsableSplitEventsCache: hasUsableSplitEventsCache,
+    isKnownSplitCatalogTicker: isKnownSplitCatalogTicker,
     hasSplitEventsLoaded: hasSplitEventsLoaded,
     getSplitEventsSync: getSplitEventsSync,
     loadSplitEvents: loadSplitEvents,
@@ -498,9 +539,12 @@
   root.parseSplitEventsCatalog = parseSplitEventsCatalog;
   root.setSplitEventsCatalog = setSplitEventsCatalog;
   root.resetSplitEventsLoadState = resetSplitEventsLoadState;
+  root.markSplitEventsCatalogLoading = markSplitEventsCatalogLoading;
   root.markSplitEventsCatalogError = markSplitEventsCatalogError;
   root.getSplitEventsLoadState = getSplitEventsLoadState;
   root.isSplitEventsCatalogUnavailable = isSplitEventsCatalogUnavailable;
+  root.hasUsableSplitEventsCache = hasUsableSplitEventsCache;
+  root.isKnownSplitCatalogTicker = isKnownSplitCatalogTicker;
   root.hasSplitEventsLoaded = hasSplitEventsLoaded;
   root.getSplitEventsSync = getSplitEventsSync;
   root.loadSplitEvents = loadSplitEvents;

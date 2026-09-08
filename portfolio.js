@@ -449,6 +449,7 @@
   var PF_SPLIT_LOT_ALREADY_CURRENT_TEXT = 'Позиция выглядит уже приведённой к текущим акциям после дробления. Если покупка была внесена в старой шкале, проверьте количество и среднюю цену.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_TEXT = 'Список дроблений акций временно недоступен. Если в портфеле есть бумаги с дроблением акций, часть расчётов может быть неполной.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT = 'Список дроблений акций временно недоступен. Перед продажей бумаг, по которым было дробление акций, проверьте количество вручную.';
+  var PF_SPLIT_CATALOG_SALE_BLOCK_TEXT = 'Список дроблений акций временно недоступен. Продажа этой бумаги сейчас недоступна, чтобы не списать неверное количество. Обновите страницу или попробуйте позже.';
   var PF_LOT_SCALE_UNKNOWN_SUFFIX = ': не удалось понять, в каких акциях указан лот после дробления.';
   var _pfSplitEventsTried = false;
 
@@ -1687,6 +1688,73 @@
     return PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT;
   }
 
+  function formatSplitCatalogSaleBlockedText() {
+    return PF_SPLIT_CATALOG_SALE_BLOCK_TEXT;
+  }
+
+  function isPortfolioSplitCatalogPending() {
+    if (typeof getSplitEventsLoadState !== 'function') return false;
+    try {
+      var st = getSplitEventsLoadState();
+      if (!st || st.status !== 'loading') return false;
+      if (typeof hasUsableSplitEventsCache === 'function' && hasUsableSplitEventsCache()) return false;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isPortfolioSplitCatalogUnusable(options) {
+    options = options || {};
+    if (options.splitEvents && Array.isArray(options.splitEvents) && options.splitEvents.length) return false;
+    if (typeof hasUsableSplitEventsCache === 'function') {
+      try { if (hasUsableSplitEventsCache()) return false; } catch (e) { /* */ }
+    } else if (typeof getSplitEventsSync === 'function') {
+      try {
+        var list = getSplitEventsSync();
+        if (list && list.length) return false;
+      } catch (e2) { /* */ }
+    }
+    if (isPortfolioSplitCatalogPending()) return true;
+    return isPortfolioSplitCatalogUnavailable();
+  }
+
+  function tickerHasSplitWriterMetaInPortfolio(ticker, portfolio) {
+    var t = asOfNormTicker(ticker);
+    var parts = splitAwarePortfolioParts(portfolio, {});
+    var found = false;
+    (parts.sales || []).some(function (sale) {
+      if (!sale || asOfNormTicker(sale.ticker) !== t) return false;
+      if (splitSaleHasWriterMeta(sale)) {
+        found = true;
+        return true;
+      }
+      (sale.allocations || []).some(function (alloc) {
+        if (splitSaleHasWriterMeta(sale, alloc)) {
+          found = true;
+          return true;
+        }
+        return false;
+      });
+      return found;
+    });
+    return found;
+  }
+
+  function tickerHasSplitCatalogSaleRisk(ticker, portfolio, options) {
+    options = options || {};
+    var t = asOfNormTicker(ticker);
+    if (!t || isPortfolioBondPosition({ ticker: t })) return false;
+    if (typeof isKnownSplitCatalogTicker === 'function') {
+      try { if (isKnownSplitCatalogTicker(t)) return true; } catch (e) { /* */ }
+    }
+    if (tickerHasSplitWriterMetaInPortfolio(t, portfolio)) return true;
+    try {
+      if (isPortfolioTickerSplitAffected(t, portfolio, options.splitEvents)) return true;
+    } catch (e2) { /* */ }
+    return false;
+  }
+
   function buildPortfolioSplitCatalogUnavailableHtml() {
     if (!isPortfolioSplitCatalogUnavailable()) return '';
     return '<p class="pf-split-warn pf-wide-warning pf-split-catalog-warn" role="status">' +
@@ -1713,10 +1781,19 @@
       formatSplitCatalogUnavailableText(),
       unavailable
     );
+    var saleText = formatSplitCatalogUnavailableSaleText();
+    var showSale = unavailable && !!state.pfSaleTicker;
+    if (state.pfSaleTicker && typeof getPortfolio === 'function') {
+      var wst = getPortfolioSplitSaleWriteState(state.pfSaleTicker, getPortfolio(), null);
+      if (wst && wst.mode === 'catalog-blocked') {
+        saleText = formatSplitCatalogSaleBlockedText();
+        showSale = true;
+      }
+    }
     syncSplitCatalogWarnEl(
       document.getElementById('pfSaleSplitCatalogWarn'),
-      formatSplitCatalogUnavailableSaleText(),
-      unavailable && !!state.pfSaleTicker
+      saleText,
+      showSale
     );
     return unavailable;
   }
@@ -2632,7 +2709,18 @@
       lots: []
     };
     if (!t || isPortfolioBondPosition({ ticker: t })) return empty;
-    if (isPortfolioSplitCatalogUnavailable() && !(options && options.splitEvents)) {
+    if (isPortfolioSplitCatalogUnusable(options)) {
+      var pending = isPortfolioSplitCatalogPending();
+      var risk = pending || tickerHasSplitCatalogSaleRisk(t, portfolio, options);
+      if (risk) {
+        empty.mode = 'catalog-blocked';
+        empty.blocked = true;
+        empty.availableSaleQty = 0;
+        empty.jsonOpsQty = jsonOpenQtyForTicker(t, portfolio);
+        return empty;
+      }
+      empty.jsonOpsQty = jsonOpenQtyForTicker(t, portfolio);
+      empty.availableSaleQty = empty.jsonOpsQty;
       return empty;
     }
     var covering = splitAwareSaleCoveringEvents(t, options);
@@ -2694,7 +2782,7 @@
     var t = asOfNormTicker(ticker);
     if (!t || isPortfolioBondPosition({ ticker: t })) return false;
     var st = getPortfolioSplitSaleWriteState(ticker, portfolio, null, { splitEvents: events });
-    return st.mode === 'unknown';
+    return !!(st.blocked || st.mode === 'unknown' || st.mode === 'catalog-blocked');
   }
 
   function formatSplitSaleHintText(ticker, portfolio, options) {
@@ -7253,7 +7341,7 @@
         : String(dateEl.value || '').slice(0, 10);
     }
     var st = getPortfolioSplitSaleWriteState(ticker, pf, saleIso);
-    if (st.mode === 'unknown') return 0;
+    if (st.mode === 'unknown' || st.mode === 'catalog-blocked') return 0;
     if (st.mode === 'split') return Number(st.availableSaleQty) || 0;
     return findPortfolioLots(ticker).reduce(function (s, l) {
       var q = Number(l.qty);
@@ -7278,8 +7366,11 @@
           : String(dateElHint.value || '').slice(0, 10);
       }
       write = getPortfolioSplitSaleWriteState(state.pfSaleTicker, pf, saleIsoHint);
+      blocked = blocked || write.mode === 'catalog-blocked' || write.mode === 'unknown';
     }
-    var blockText = blocked ? formatSplitSaleUnknownText() : '';
+    var blockText = write.mode === 'catalog-blocked'
+      ? formatSplitCatalogSaleBlockedText()
+      : (blocked ? formatSplitSaleUnknownText() : '');
     if (hint) {
       if (!state.pfSaleTicker) {
         hint.hidden = true;
@@ -7290,6 +7381,9 @@
         hint.hidden = false;
         hint.textContent = 'Доступно: ' + (isFinite(avail) && avail > 0 ? String(avail) : '0') +
           ' шт. с учётом дробления; по операциям: ' + String(write.jsonOpsQty) + ' шт.';
+      } else if (write.mode === 'catalog-blocked' || write.mode === 'unknown') {
+        hint.hidden = false;
+        hint.textContent = 'Доступно: 0 шт.';
       } else {
         hint.hidden = false;
         hint.textContent = 'Доступно: ' + (ok ? String(totalQty) : '0') + ' шт.';
@@ -7322,11 +7416,13 @@
       ? (typeof normalizePortfolioDate === 'function' ? normalizePortfolioDate(dateEl.value) : String(dateEl.value).slice(0, 10))
       : '';
     var write = getPortfolioSplitSaleWriteState(ticker, portfolio, saleIso);
-    var blocked = write.mode === 'unknown';
-    var showNote = write.mode === 'split' || write.mode === 'unknown';
-    var text = write.mode === 'unknown'
-      ? formatSplitSaleUnknownText()
-      : (write.mode === 'split' ? formatSplitSaleHintText(ticker, portfolio, { saleDate: saleIso }) : '');
+    var blocked = write.mode === 'unknown' || write.mode === 'catalog-blocked';
+    var showNote = write.mode === 'split' || write.mode === 'unknown' || write.mode === 'catalog-blocked';
+    var text = write.mode === 'catalog-blocked'
+      ? formatSplitCatalogSaleBlockedText()
+      : (write.mode === 'unknown'
+        ? formatSplitSaleUnknownText()
+        : (write.mode === 'split' ? formatSplitSaleHintText(ticker, portfolio, { saleDate: saleIso }) : ''));
     if (note) {
       note.textContent = text;
       note.hidden = !showNote;
@@ -7540,11 +7636,14 @@
       ? (normalizePortfolioDate(captured.date) || new Date().toISOString().slice(0, 10))
       : (captured.date || new Date().toISOString().slice(0, 10));
     var writeState = getPortfolioSplitSaleWriteState(ticker, portfolio, saleDate);
-    if (writeState.mode === 'unknown' || isPortfolioTickerSaleCommitBlocked(ticker, portfolio)) {
-      var blockedText = formatSplitSaleUnknownText();
+    if (writeState.mode === 'unknown' || writeState.mode === 'catalog-blocked' ||
+        isPortfolioTickerSaleCommitBlocked(ticker, portfolio)) {
+      var blockedText = writeState.mode === 'catalog-blocked'
+        ? formatSplitCatalogSaleBlockedText()
+        : formatSplitSaleUnknownText();
       showToast(blockedText);
       updatePortfolioSplitSaleBlockUi(ticker, portfolio);
-      return { ok: false, blocked: true, unknown: true };
+      return { ok: false, blocked: true, unknown: writeState.mode === 'unknown', catalogBlocked: writeState.mode === 'catalog-blocked' };
     }
     if (qty == null || !isFinite(qty) || qty <= 0) {
       showToast('Укажите количество для продажи');

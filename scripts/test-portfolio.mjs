@@ -5185,6 +5185,23 @@ function loadPriceAtDateHelpers() {
   assert(/с учётом сплита/.test(gmknHtmlOk), 'split catalog: GMKN loaded shows split-aware');
   assert(!calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: GMKN sellable when catalog loaded');
 
+  const lastGoodErr = calc.sandbox.markSplitEventsCatalogError('split-events http');
+  assert(Array.isArray(lastGoodErr) && lastGoodErr.length > 0, 'split catalog: last-known-good kept on error');
+  assert(calc.sandbox.getSplitEventsLoadState().status === 'ok', 'split catalog: last-known-good stays ok');
+  assert(!calc.isPortfolioSplitCatalogUnavailable(), 'split catalog: last-known-good not unavailable');
+  assert(!calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: last-known-good GMKN sellable');
+  const prevGetLg = calc.sandbox.getPortfolio;
+  const prevSetLg = calc.sandbox.setPortfolio;
+  let lastGoodLive = JSON.parse(snap);
+  calc.sandbox.getPortfolio = () => lastGoodLive;
+  calc.sandbox.setPortfolio = (p) => { lastGoodLive = p; };
+  const lastGoodSale = calc.commitPortfolioSale('GMKN', { qty: 1, price: 130, date: '2026-09-08', comment: '' });
+  assert(lastGoodSale && lastGoodSale.ok, 'split catalog: last-known-good GMKN sale');
+  assert(Math.abs(Number((lastGoodLive.positions.find((p) => p.lotId === 'G1') || {}).qty) - 9.99) < 1e-6, 'split catalog: last-known-good lotQtyDelta');
+  assert(lastGoodLive.sales[0] && lastGoodLive.sales[0].qty === 1, 'split catalog: last-known-good sale.qty 1');
+  calc.sandbox.getPortfolio = prevGetLg;
+  calc.sandbox.setPortfolio = prevSetLg;
+
   calc.sandbox.resetSplitEventsLoadState();
   calc.sandbox.markSplitEventsCatalogError('split-events http');
   const stErr = calc.sandbox.getSplitEventsLoadState();
@@ -5196,7 +5213,30 @@ function loadPriceAtDateHelpers() {
   assert(JSON.stringify(gmknPf) === snap, 'split catalog: error does not mutate JSON');
   const gmknHtmlErr = calc.buildPortfolioTickerDetailHtml('GMKN', gmknPf.positions, gmknPf.sales, null, false);
   assert(!/с учётом сплита/.test(gmknHtmlErr), 'split catalog: GMKN error has no split-aware badge');
-  assert(!calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: GMKN not blocked without catalog');
+  assert(calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: GMKN blocked without catalog');
+  assert(calc.getPortfolioSplitSaleWriteState('GMKN', gmknPf).mode === 'catalog-blocked', 'split catalog: GMKN mode catalog-blocked');
+  const tErrPf = {
+    positions: [{ ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 2600, buyDate: '2026-03-01', currentPrice: 261.7 }],
+    sales: []
+  };
+  const tErrSnap = JSON.stringify(tErrPf);
+  assert(calc.isPortfolioTickerSaleCommitBlocked('T', tErrPf), 'split catalog: T blocked without catalog');
+  const prevGetErr = calc.sandbox.getPortfolio;
+  const prevSetErr = calc.sandbox.setPortfolio;
+  let gmknErrLive = JSON.parse(snap);
+  calc.sandbox.getPortfolio = () => gmknErrLive;
+  calc.sandbox.setPortfolio = (p) => { gmknErrLive = p; };
+  const gmknErrSale = calc.commitPortfolioSale('GMKN', { qty: 1, price: 130, date: '2026-09-08', comment: '' });
+  assert(gmknErrSale && gmknErrSale.ok === false && gmknErrSale.blocked, 'split catalog: GMKN sale not committed');
+  assert(JSON.stringify(gmknErrLive) === snap, 'split catalog: GMKN JSON unchanged after blocked sale');
+  let tErrLive = JSON.parse(tErrSnap);
+  calc.sandbox.getPortfolio = () => tErrLive;
+  calc.sandbox.setPortfolio = (p) => { tErrLive = p; };
+  const tErrSale = calc.commitPortfolioSale('T', { qty: 1, price: 261.7, date: '2026-09-08', comment: '' });
+  assert(tErrSale && tErrSale.ok === false && tErrSale.blocked, 'split catalog: T sale not committed');
+  assert(JSON.stringify(tErrLive) === tErrSnap, 'split catalog: T JSON unchanged');
+  calc.sandbox.getPortfolio = prevGetErr;
+  calc.sandbox.setPortfolio = prevSetErr;
   const sberWarn = calc.buildPortfolioSplitWarningHtml('SBER', sberPf);
   assert(!sberWarn, 'split catalog: SBER has no ticker split-warning');
   const sberSale = { ticker: 'SBER', qty: 10, buyPrice: 250, salePrice: 280 };
@@ -5224,6 +5264,53 @@ function loadPriceAtDateHelpers() {
   assert(catalogNodes.pfSaleSplitCatalogWarn.hidden === false, 'split catalog ui: sale warn shown');
   assert(/проверьте количество вручную/.test(catalogNodes.pfSaleSplitCatalogWarn.textContent), 'split catalog ui: sale text');
   assert(!calc.isPortfolioTickerSaleCommitBlocked('SBER', sberPf), 'split catalog: SBER still sellable');
+  const ofzPfErr = {
+    positions: [{ ticker: 'OFZ26241', lotId: 'B1', qty: 10, avgPrice: 95, currentPrice: 98, buyDate: '2023-01-01' }],
+    sales: []
+  };
+  const ofzErrSnap = JSON.stringify(ofzPfErr);
+  assert(!calc.isPortfolioTickerSaleCommitBlocked('OFZ26241', ofzPfErr), 'split catalog: OFZ not blocked');
+  let sberErrLive = JSON.parse(JSON.stringify(sberPf));
+  const sberErrSnap = JSON.stringify(sberErrLive);
+  calc.sandbox.getPortfolio = () => sberErrLive;
+  calc.sandbox.setPortfolio = (p) => { sberErrLive = p; };
+  const sberErrCommit = calc.commitPortfolioSale('SBER', { qty: 2, price: 280, date: '2026-09-08', comment: '' });
+  assert(sberErrCommit && sberErrCommit.ok, 'split catalog: SBER ordinary sale on error');
+  assert(Math.abs(Number(sberErrLive.positions[0].qty) - 8) < 1e-6, 'split catalog: SBER qty −2');
+  let ofzErrLive = JSON.parse(ofzErrSnap);
+  calc.sandbox.getPortfolio = () => ofzErrLive;
+  calc.sandbox.setPortfolio = (p) => { ofzErrLive = p; };
+  const ofzErrCommit = calc.commitPortfolioSale('OFZ26241', { qty: 2, price: 98, date: '2026-09-08', comment: '' });
+  assert(ofzErrCommit && ofzErrCommit.ok, 'split catalog: OFZ ordinary sale on error');
+  assert(Math.abs(Number(ofzErrLive.positions[0].qty) - 8) < 1e-6, 'split catalog: OFZ qty −2');
+  calc.sandbox.getPortfolio = prevGetErr;
+  calc.sandbox.setPortfolio = prevSetErr;
+
+  calc.sandbox.resetSplitEventsLoadState();
+  calc.sandbox.markSplitEventsCatalogLoading();
+  assert(calc.sandbox.getSplitEventsLoadState().status === 'loading', 'split catalog: loading status');
+  assert(calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: loading blocks GMKN');
+  let gmknLoadLive = JSON.parse(snap);
+  calc.sandbox.getPortfolio = () => gmknLoadLive;
+  calc.sandbox.setPortfolio = (p) => { gmknLoadLive = p; };
+  const gmknLoadSale = calc.commitPortfolioSale('GMKN', { qty: 1, price: 130, date: '2026-09-08', comment: '' });
+  assert(gmknLoadSale && gmknLoadSale.blocked, 'split catalog: loading does not commit GMKN');
+  assert(JSON.stringify(gmknLoadLive) === snap, 'split catalog: loading JSON unchanged');
+  calc.sandbox.getPortfolio = prevGetErr;
+  calc.sandbox.setPortfolio = prevSetErr;
+
+  calc.sandbox.markSplitEventsCatalogError('split-events http');
+  calc.sandbox.state.pfSaleTicker = 'GMKN';
+  calc.sandbox.getPortfolio = () => gmknPf;
+  calc.updatePortfolioSplitCatalogWarnUi();
+  assert(/не списать неверное количество/.test(catalogNodes.pfSaleSplitCatalogWarn.textContent), 'split catalog ui: GMKN block copy');
+  assert(!/split-aware|metadata|writer|helper/.test(catalogNodes.pfSaleSplitCatalogWarn.textContent), 'split catalog ui: no technical terms');
+  calc.sandbox.getPortfolio = prevGetErr;
+  calc.sandbox.setPortfolio = prevSetErr;
+
+  const writeSrc = Function.prototype.toString.call(calc.getPortfolioSplitSaleWriteState) +
+    Function.prototype.toString.call(calc.commitPortfolioSale);
+  assert(!/iss\.moex/.test(writeSrc) && !/fetch\s*\(/.test(writeSrc), 'split catalog fail-safe: no new MOEX fetch');
 
   calc.setSplitEventsCatalog(catalog);
   assert(!calc.isPortfolioSplitCatalogUnavailable(), 'split catalog: restored ok');
