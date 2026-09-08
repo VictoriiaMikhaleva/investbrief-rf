@@ -3171,9 +3171,17 @@
       }
       var sellQuality = 'ok';
       var sellNote = '';
-      if (splitPnl && (splitPnl.isPartial || splitPnl.confidence === 'partial' || splitPnl.confidence === 'unknown')) {
+      var hasWriterMeta = splitSaleHasWriterMeta(sale);
+      if (hasWriterMeta) {
+        sellNote = PF_SPLIT_SALE_DATE_QTY_HINT;
+        if (splitPnl && splitPnl.confidence === 'unknown' &&
+            (splitPnl.realizedPnlRub == null || !isFinite(Number(splitPnl.realizedPnlRub)))) {
+          sellQuality = 'partial';
+          sellNote = (splitPnl.warnings && splitPnl.warnings[0]) || PF_SPLIT_SALE_UNKNOWN_TEXT;
+        }
+      } else if (splitPnl && (splitPnl.isPartial || splitPnl.confidence === 'partial' || splitPnl.confidence === 'unknown')) {
         sellQuality = splitPnl.confidence === 'unknown' ? 'partial' : 'partial';
-        sellNote = (splitPnl.warnings && splitPnl.warnings[0]) || PF_SPLIT_SALE_LEGACY_TEXT;
+        sellNote = PF_SPLIT_SALE_LEGACY_TEXT;
       }
       var fee = sale.fee != null && isFinite(Number(sale.fee)) ? Number(sale.fee) : null;
       var faceHint = takeFace(sale);
@@ -3270,6 +3278,9 @@
         saleId: op.saleId,
         realizedPnlRub: op.realizedPnlRub,
         realizedPnlPct: op.realizedPnlPct,
+        realizedConfidence: op.realizedConfidence,
+        realizedIsPartial: op.realizedIsPartial,
+        splitWriterMeta: !!op.splitWriterMeta,
         remainingQtyAfter: op.remainingQtyAfter,
         note: op.note,
         quality: op.quality,

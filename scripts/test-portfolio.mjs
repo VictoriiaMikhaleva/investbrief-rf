@@ -359,6 +359,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__collectRecent = collectRecentPortfolioOperations;' +
       '\nthis.__resolveNav = resolvePortfolioHistoryNavTarget;' +
       '\nthis.__timeline = buildTickerOperationTimeline;' +
+      '\nthis.__timelineHtml = buildPortfolioTickerTimelineHtml;' +
       '\nthis.__asOf = buildPortfolioCompositionAtDate;' +
       '\nthis.__asOfValue = buildPortfolioValueAtDate;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
@@ -439,6 +440,7 @@ function loadPortfolioCalcHelpers() {
     collectRecentPortfolioOperations: sandbox.__collectRecent,
     resolvePortfolioHistoryNavTarget: sandbox.__resolveNav,
     buildTickerOperationTimeline: sandbox.__timeline,
+    buildPortfolioTickerTimelineHtml: sandbox.__timelineHtml,
     buildPortfolioCompositionAtDate: sandbox.__asOf,
     buildPortfolioValueAtDate: sandbox.__asOfValue,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
@@ -5237,6 +5239,7 @@ function loadPriceAtDateHelpers() {
   const sellTwoHtml = calc.buildPortfolioTickerDetailHtml('GMKN', sellTwo.positions, sellTwo.sales, null, false);
   assert(/Продажа записана как в брокере/.test(sellTwoHtml), 'p1b sell2 ui: new sale copy');
   assert(/Количество указано в акциях после дробления/.test(sellTwoHtml), 'p1b sell2 ui: qty after split');
+  assert(!/Продажа была добавлена до обновления расчётов по дроблению/.test(sellTwoHtml), 'p1b sell2 ui: not legacy');
   assert(!/split-aware/.test(sellTwoHtml), 'p1b sell2 ui: no split-aware');
   const openHist = calc.summarizeTickerHistory('GMKN', sellTwo.positions, sellTwo.sales);
   const openOld = openHist.openLots.find((p) => p.lotId === 'G1');
@@ -5248,6 +5251,13 @@ function loadPriceAtDateHelpers() {
   const buyOld = tl.find((op) => op.type === 'buy' && op.lotId === 'G1');
   assert(buyOld && Math.abs(Number(buyOld.qty) - 10) < 1e-6, 'p1b sell2: timeline buy qty 10 not 11.98');
   assert(Math.abs(Number(buyOld.qty) - 11.98) > 0.1, 'p1b sell2: timeline not 11.98');
+  const sellTl = tl.find((op) => op.type === 'sell');
+  assert(sellTl && sellTl.splitWriterMeta, 'p1b sell2: timeline keeps writer meta');
+  assert(sellTl.note === 'Продажа записана как в брокере. Количество указано в акциях после дробления.', 'p1b sell2: timeline broker note');
+  assert(!/до обновления расчётов по дроблению/.test(sellTl.note || ''), 'p1b sell2: timeline not legacy');
+  const tlHtml = calc.buildPortfolioTickerTimelineHtml(tl, 'GMKN', false, true);
+  assert(/Продажа записана как в брокере/.test(tlHtml), 'p1b sell2: timeline html broker copy');
+  assert(!/Продажа была добавлена до обновления расчётов по дроблению/.test(tlHtml), 'p1b sell2: timeline html not legacy');
   calc.removePortfolioSale(sellTwo.sales[0].saleId);
   const oldRestored = (sellTwo.positions || []).find((p) => p.lotId === 'G1');
   const newRestored = (sellTwo.positions || []).find((p) => p.lotId === 'G2');
@@ -5392,6 +5402,13 @@ function loadPriceAtDateHelpers() {
   if (legacyRow.realizedPnlRub != null) {
     assert(Math.abs(legacyRow.realizedPnlRub - (130 - 22000) * 200) > 1, 'p1b legacy: not raw (130-22000)×200');
   }
+  const legacyTl = calc.buildTickerOperationTimeline('GMKN', [
+    { ticker: 'GMKN', lotId: 'G1', qty: 8, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 }
+  ], [legacySale]);
+  const legacySell = legacyTl.find((op) => op.type === 'sell');
+  assert(legacySell && !legacySell.splitWriterMeta, 'p1b legacy: timeline no writer meta');
+  assert(/до обновления расчётов по дроблению/.test(legacySell.note || ''), 'p1b legacy: timeline legacy note');
+  assert(!/записана как в брокере/.test(legacySell.note || ''), 'p1b legacy: timeline not broker copy');
 
   const prodText = fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8');
   const fakeEvents = calc.sandbox.parseSplitEventsCatalog({
