@@ -392,7 +392,11 @@ assert(events.filter((e) => e.ticker === 'T').length === 1, 'T not duplicated');
 
 const loadOk = await SplitEvents.loadSplitEvents({ catalog: { events: [] } });
 assert(Array.isArray(loadOk) && loadOk.length === 0, 'loadSplitEvents catalog []');
+const stEmptyOk = SplitEvents.getSplitEventsLoadState();
+assert(stEmptyOk.status === 'ok' && stEmptyOk.available === true && stEmptyOk.eventsCount === 0, 'empty catalog is successful load');
+assert(!SplitEvents.isSplitEventsCatalogUnavailable(), 'empty catalog is not unavailable');
 
+SplitEvents.resetSplitEventsLoadState();
 const loadFail = await SplitEvents.loadSplitEvents({
   force: true,
   fetch: function () {
@@ -400,6 +404,17 @@ const loadFail = await SplitEvents.loadSplitEvents({
   }
 });
 assert(Array.isArray(loadFail), 'failed fetch still returns array');
+const stFail = SplitEvents.getSplitEventsLoadState();
+assert(stFail.status === 'error' && stFail.unavailable === true, 'failed fetch status error');
+assert(SplitEvents.isSplitEventsCatalogUnavailable(), 'failed fetch unavailable');
+assert(SplitEvents.getSplitEventsForTicker('GMKN').length === 0, 'failed fetch: no ticker events');
+const seSrc = fs.readFileSync(path.join(__dirname, '..', 'split-events.js'), 'utf8');
+assert(/split-events\.json/.test(seSrc), 'loadSplitEvents uses local split-events.json');
+assert(!/iss\.moex/.test(seSrc) && !/iss\.moex\.com/.test(seSrc), 'no MOEX fetch in split-events.js');
+
+SplitEvents.setSplitEventsCatalog(catalog);
+assert(SplitEvents.getSplitEventsLoadState().status === 'ok', 'setSplitEventsCatalog recovers to ok');
+assert(SplitEvents.getSplitEventsForTicker('GMKN', SplitEvents.getSplitEventsSync()).length === 1, 'catalog restored after error');
 
 if (errors.length) {
   console.error('FAIL');

@@ -12,6 +12,49 @@
   var _splitEventsCache = null;
   var _splitEventsLoaded = false;
   var _splitEventsInflight = null;
+  var _splitEventsStatus = 'idle';
+  var _splitEventsError = '';
+
+  function splitEventsLoadState() {
+    var count = (_splitEventsCache && _splitEventsCache.length) || 0;
+    return {
+      status: _splitEventsStatus,
+      loaded: !!_splitEventsLoaded,
+      available: _splitEventsStatus === 'ok',
+      unavailable: _splitEventsStatus === 'error',
+      eventsCount: count,
+      error: _splitEventsError || ''
+    };
+  }
+
+  function getSplitEventsLoadState() {
+    return splitEventsLoadState();
+  }
+
+  function isSplitEventsCatalogUnavailable() {
+    return _splitEventsStatus === 'error';
+  }
+
+  function resetSplitEventsLoadState() {
+    _splitEventsCache = null;
+    _splitEventsLoaded = false;
+    _splitEventsStatus = 'idle';
+    _splitEventsError = '';
+    _splitEventsInflight = null;
+  }
+
+  function markSplitEventsCatalogError(message) {
+    if (_splitEventsStatus === 'ok') {
+      _splitEventsInflight = null;
+      return getSplitEventsSync();
+    }
+    _splitEventsCache = [];
+    _splitEventsLoaded = true;
+    _splitEventsStatus = 'error';
+    _splitEventsError = message ? String(message) : 'split-events-unavailable';
+    _splitEventsInflight = null;
+    return getSplitEventsSync();
+  }
 
   function splitNormTicker(raw) {
     if (typeof normalizeTicker === 'function') {
@@ -117,6 +160,8 @@
   function setSplitEventsCatalog(json) {
     _splitEventsCache = parseSplitEventsCatalog(json);
     _splitEventsLoaded = true;
+    _splitEventsStatus = 'ok';
+    _splitEventsError = '';
     _splitEventsInflight = null;
     return _splitEventsCache;
   }
@@ -155,12 +200,10 @@
     if (_splitEventsInflight && !options.force) return _splitEventsInflight;
     var fetchFn = options.fetch || (typeof fetch === 'function' ? fetch : null);
     if (typeof fetchFn !== 'function') {
-      if (!_splitEventsLoaded) {
-        _splitEventsCache = [];
-        _splitEventsLoaded = true;
-      }
+      markSplitEventsCatalogError('no-fetch');
       return Promise.resolve(getSplitEventsSync());
     }
+    if (_splitEventsStatus !== 'ok') _splitEventsStatus = 'loading';
     _splitEventsInflight = Promise.resolve()
       .then(function () {
         return fetchFn(splitEventsUrl(), { cache: 'no-store', credentials: 'omit' });
@@ -173,12 +216,8 @@
         setSplitEventsCatalog(json);
         return getSplitEventsSync();
       })
-      .catch(function () {
-        if (!_splitEventsLoaded) {
-          _splitEventsCache = [];
-          _splitEventsLoaded = true;
-        }
-        _splitEventsInflight = null;
+      .catch(function (err) {
+        markSplitEventsCatalogError(err && err.message ? err.message : 'split-events-unavailable');
         return getSplitEventsSync();
       });
     return _splitEventsInflight;
@@ -428,6 +467,10 @@
     SPLIT_NEXT_SESSION_MAX_DAYS: SPLIT_NEXT_SESSION_MAX_DAYS,
     parseSplitEventsCatalog: parseSplitEventsCatalog,
     setSplitEventsCatalog: setSplitEventsCatalog,
+    resetSplitEventsLoadState: resetSplitEventsLoadState,
+    markSplitEventsCatalogError: markSplitEventsCatalogError,
+    getSplitEventsLoadState: getSplitEventsLoadState,
+    isSplitEventsCatalogUnavailable: isSplitEventsCatalogUnavailable,
     hasSplitEventsLoaded: hasSplitEventsLoaded,
     getSplitEventsSync: getSplitEventsSync,
     loadSplitEvents: loadSplitEvents,
@@ -454,6 +497,10 @@
   root.SplitEvents = api;
   root.parseSplitEventsCatalog = parseSplitEventsCatalog;
   root.setSplitEventsCatalog = setSplitEventsCatalog;
+  root.resetSplitEventsLoadState = resetSplitEventsLoadState;
+  root.markSplitEventsCatalogError = markSplitEventsCatalogError;
+  root.getSplitEventsLoadState = getSplitEventsLoadState;
+  root.isSplitEventsCatalogUnavailable = isSplitEventsCatalogUnavailable;
   root.hasSplitEventsLoaded = hasSplitEventsLoaded;
   root.getSplitEventsSync = getSplitEventsSync;
   root.loadSplitEvents = loadSplitEvents;

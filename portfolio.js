@@ -295,6 +295,8 @@
   var PF_SPLIT_SALE_OPS_QTY_HINT = 'количество как в операции';
   var PF_SALE_SPLIT_UNKNOWN_SUFFIX = ': не удалось определить шкалу продажи после сплита.';
   var PF_SPLIT_SALE_BLOCK_HEAD = 'По бумаге было дробление акций. Продажа через форму пока отключена, чтобы не записать операцию в неверной шкале.';
+  var PF_SPLIT_CATALOG_UNAVAILABLE_TEXT = 'Справочник сплитов временно недоступен. Если в портфеле есть бумаги с дроблением акций, часть расчётов может быть неполной.';
+  var PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT = 'Справочник сплитов временно недоступен. Перед продажей бумаг, по которым было дробление акций, проверьте количество вручную.';
   var PF_LOT_SCALE_UNKNOWN_SUFFIX = ': не удалось определить шкалу лота после сплита.';
   var _pfSplitEventsTried = false;
 
@@ -1230,6 +1232,7 @@
   }
 
   function splitAwareMetricsUsable(metrics) {
+    if (isPortfolioSplitCatalogUnavailable()) return false;
     return !!(metrics && metrics.splitAdjusted && metrics.confidence !== 'unknown' &&
       metrics.currentMarketValueRub != null && isFinite(Number(metrics.currentMarketValueRub)));
   }
@@ -1491,8 +1494,66 @@
     if (typeof loadSplitEvents !== 'function') return;
     _pfSplitEventsTried = true;
     loadSplitEvents().then(function () {
+      updatePortfolioSplitCatalogWarnUi();
       renderPortfolioTableBody();
-    }).catch(function () { /* справочник необязателен */ });
+    }).catch(function () {
+      updatePortfolioSplitCatalogWarnUi();
+    });
+  }
+
+  function isPortfolioSplitCatalogUnavailable() {
+    if (typeof isSplitEventsCatalogUnavailable === 'function') {
+      try { return !!isSplitEventsCatalogUnavailable(); } catch (e) { /* */ }
+    }
+    if (typeof getSplitEventsLoadState === 'function') {
+      try {
+        var st = getSplitEventsLoadState();
+        return !!(st && st.unavailable);
+      } catch (e2) { /* */ }
+    }
+    return false;
+  }
+
+  function formatSplitCatalogUnavailableText() {
+    return PF_SPLIT_CATALOG_UNAVAILABLE_TEXT;
+  }
+
+  function formatSplitCatalogUnavailableSaleText() {
+    return PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT;
+  }
+
+  function buildPortfolioSplitCatalogUnavailableHtml() {
+    if (!isPortfolioSplitCatalogUnavailable()) return '';
+    return '<p class="pf-split-warn pf-wide-warning pf-split-catalog-warn" role="status">' +
+      escapeHtml(formatSplitCatalogUnavailableText()) + '</p>';
+  }
+
+  function syncSplitCatalogWarnEl(el, text, show) {
+    if (!el) return;
+    el.textContent = show ? (text || '') : '';
+    el.hidden = !show;
+    if (show) {
+      if (typeof el.removeAttribute === 'function') el.removeAttribute('hidden');
+      if (el.style) el.style.display = '';
+    } else {
+      if (typeof el.setAttribute === 'function') el.setAttribute('hidden', '');
+      if (el.style) el.style.display = 'none';
+    }
+  }
+
+  function updatePortfolioSplitCatalogWarnUi() {
+    var unavailable = isPortfolioSplitCatalogUnavailable();
+    syncSplitCatalogWarnEl(
+      document.getElementById('pfSplitCatalogWarn'),
+      formatSplitCatalogUnavailableText(),
+      unavailable
+    );
+    syncSplitCatalogWarnEl(
+      document.getElementById('pfSaleSplitCatalogWarn'),
+      formatSplitCatalogUnavailableSaleText(),
+      unavailable && !!state.pfSaleTicker
+    );
+    return unavailable;
   }
 
 
@@ -2331,6 +2392,7 @@
 
   function saleUsesSplitAwareRealized(sale, options) {
     if (!sale || isPortfolioBondPosition(sale)) return false;
+    if (isPortfolioSplitCatalogUnavailable() && !(options && options.splitEvents)) return false;
     return splitAwareSaleCoveringEvents(sale.ticker, options || {}).length > 0;
   }
 
@@ -6590,6 +6652,7 @@
     if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
     if (commentEl) commentEl.value = '';
     updatePortfolioSplitSaleBlockUi(ticker);
+    updatePortfolioSplitCatalogWarnUi();
     updatePortfolioSellAllBtn(totalQty);
     if (form) {
       form.hidden = false;
@@ -6599,6 +6662,7 @@
     }
     updatePortfolioSalePreview();
     updatePortfolioSplitSaleBlockUi(ticker);
+    updatePortfolioSplitCatalogWarnUi();
   }
 
   function getPortfolioSellableQty(ticker) {
@@ -6682,6 +6746,7 @@
         else saleBtn.title = '';
       }
     }
+    updatePortfolioSplitCatalogWarnUi();
     return blocked;
   }
 
@@ -6823,6 +6888,7 @@
       if (typeof splitNote.setAttribute === 'function') splitNote.setAttribute('hidden', '');
       if (splitNote.style) splitNote.style.display = 'none';
     }
+    updatePortfolioSplitCatalogWarnUi();
     updatePortfolioSellAllBtn(0);
   }
 
@@ -8622,6 +8688,7 @@
   function renderPortfolioTableBody() {
     var renderId = ++state.pfTableRenderId;
     ensurePortfolioSplitEvents();
+    updatePortfolioSplitCatalogWarnUi();
     maybeEnsurePayoutFeedsForOpenDetails();
     var positions = getFilteredPortfolioPositions();
     var sales = getPortfolio().sales || [];

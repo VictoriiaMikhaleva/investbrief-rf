@@ -388,6 +388,9 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__commitSale = commitPortfolioSale;' +
       '\nthis.__splitSaleUi = updatePortfolioSplitSaleBlockUi;' +
       '\nthis.__startSale = startSalePortfolioTicker;' +
+      '\nthis.__splitCatalogHtml = buildPortfolioSplitCatalogUnavailableHtml;' +
+      '\nthis.__splitCatalogUnavail = isPortfolioSplitCatalogUnavailable;' +
+      '\nthis.__splitCatalogWarnUi = updatePortfolioSplitCatalogWarnUi;' +
       '\nthis.__splitPnlHtml = buildSplitAffectedPnlHtml;' +
       '\nthis.__lotRow = buildPortfolioLotRow;' +
       '\nthis.__sectionRows = buildPortfolioSectionRows;' +
@@ -454,6 +457,9 @@ function loadPortfolioCalcHelpers() {
     commitPortfolioSale: sandbox.__commitSale,
     updatePortfolioSplitSaleBlockUi: sandbox.__splitSaleUi,
     startSalePortfolioTicker: sandbox.__startSale,
+    buildPortfolioSplitCatalogUnavailableHtml: sandbox.__splitCatalogHtml,
+    isPortfolioSplitCatalogUnavailable: sandbox.__splitCatalogUnavail,
+    updatePortfolioSplitCatalogWarnUi: sandbox.__splitCatalogWarnUi,
     buildSplitAffectedPnlHtml: sandbox.__splitPnlHtml,
     buildPortfolioLotRow: sandbox.__lotRow,
     buildPortfolioSectionRows: sandbox.__sectionRows,
@@ -5030,6 +5036,81 @@ function loadPriceAtDateHelpers() {
 
   sb.document.getElementById = prevGetEl;
   sb.getPortfolio = prevGet;
+}
+
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  const gmknPf = {
+    positions: [{
+      ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130
+    }],
+    sales: []
+  };
+  const sberPf = {
+    positions: [{
+      ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280
+    }],
+    sales: []
+  };
+  const ofzSale = { ticker: 'OFZ26241', qty: 5, buyPrice: 95, salePrice: 98, saleDate: '2025-06-01' };
+  const ofzMeta = { faceValue: 1000 };
+  const snap = JSON.stringify(gmknPf);
+
+  calc.setSplitEventsCatalog(catalog);
+  const stOk = calc.sandbox.getSplitEventsLoadState();
+  assert(stOk && stOk.status === 'ok' && stOk.available === true && !stOk.unavailable, 'split catalog: loaded ok');
+  assert(!calc.isPortfolioSplitCatalogUnavailable(), 'split catalog: portfolio not unavailable');
+  assert(calc.buildPortfolioSplitCatalogUnavailableHtml() === '', 'split catalog: no banner when loaded');
+  const gmknHtmlOk = calc.buildPortfolioTickerDetailHtml('GMKN', gmknPf.positions, gmknPf.sales, null, false);
+  assert(/с учётом сплита/.test(gmknHtmlOk), 'split catalog: GMKN loaded shows split-aware');
+  assert(calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: GMKN blocked when loaded');
+
+  calc.sandbox.resetSplitEventsLoadState();
+  calc.sandbox.markSplitEventsCatalogError('split-events http');
+  const stErr = calc.sandbox.getSplitEventsLoadState();
+  assert(stErr.status === 'error' && stErr.unavailable === true, 'split catalog: error status');
+  assert(calc.isPortfolioSplitCatalogUnavailable(), 'split catalog: portfolio unavailable');
+  const warnHtml = calc.buildPortfolioSplitCatalogUnavailableHtml();
+  assert(/Справочник сплитов временно недоступен/.test(warnHtml), 'split catalog: banner on error');
+  assert(/часть расчётов может быть неполной/.test(warnHtml), 'split catalog: banner copy');
+  assert(JSON.stringify(gmknPf) === snap, 'split catalog: error does not mutate JSON');
+  const gmknHtmlErr = calc.buildPortfolioTickerDetailHtml('GMKN', gmknPf.positions, gmknPf.sales, null, false);
+  assert(!/с учётом сплита/.test(gmknHtmlErr), 'split catalog: GMKN error has no split-aware badge');
+  assert(!calc.isPortfolioTickerSaleCommitBlocked('GMKN', gmknPf), 'split catalog: GMKN not blocked without catalog');
+  const sberWarn = calc.buildPortfolioSplitWarningHtml('SBER', sberPf);
+  assert(!sberWarn, 'split catalog: SBER has no ticker split-warning');
+  const sberSale = { ticker: 'SBER', qty: 10, buyPrice: 250, salePrice: 280 };
+  const sberOld = calc.getSaleRealizedPnl(sberSale, null);
+  const sberNew = calc.getSplitAwareSaleRealizedPnl(sberSale, sberPf, {});
+  assert(Math.abs(sberNew.realizedPnlRub - sberOld.amount) < 1e-6, 'split catalog: SBER math intact on error');
+  const ofzOld = calc.getSaleRealizedPnl(ofzSale, ofzMeta);
+  const ofzNew = calc.getSplitAwareSaleRealizedPnl(ofzSale, { sales: [ofzSale] }, { bondMeta: ofzMeta });
+  assert(Math.abs(ofzNew.realizedPnlRub - ofzOld.amount) < 0.05, 'split catalog: OFZ unchanged on error');
+
+  const srcLoad = fs.readFileSync(path.join(__dirname, '..', 'split-events.js'), 'utf8');
+  assert(/split-events\.json/.test(srcLoad), 'split catalog: local file load');
+  assert(!/iss\.moex\.com/.test(srcLoad), 'split catalog: loadSplitEvents has no MOEX ISS');
+
+  const catalogNodes = {
+    pfSplitCatalogWarn: { hidden: true, textContent: '', style: { display: '' }, setAttribute(n) { if (n === 'hidden') this.hidden = true; }, removeAttribute(n) { if (n === 'hidden') this.hidden = false; } },
+    pfSaleSplitCatalogWarn: { hidden: true, textContent: '', style: { display: '' }, setAttribute(n) { if (n === 'hidden') this.hidden = true; }, removeAttribute(n) { if (n === 'hidden') this.hidden = false; } }
+  };
+  const prevEl = calc.sandbox.document.getElementById;
+  calc.sandbox.document.getElementById = (id) => catalogNodes[id] || (typeof prevEl === 'function' ? prevEl(id) : null);
+  calc.sandbox.state.pfSaleTicker = 'SBER';
+  calc.updatePortfolioSplitCatalogWarnUi();
+  assert(catalogNodes.pfSplitCatalogWarn.hidden === false, 'split catalog ui: table warn shown');
+  assert(/Справочник сплитов временно недоступен/.test(catalogNodes.pfSplitCatalogWarn.textContent), 'split catalog ui: table text');
+  assert(catalogNodes.pfSaleSplitCatalogWarn.hidden === false, 'split catalog ui: sale warn shown');
+  assert(/проверьте количество вручную/.test(catalogNodes.pfSaleSplitCatalogWarn.textContent), 'split catalog ui: sale text');
+  assert(!calc.isPortfolioTickerSaleCommitBlocked('SBER', sberPf), 'split catalog: SBER still sellable');
+
+  calc.setSplitEventsCatalog(catalog);
+  assert(!calc.isPortfolioSplitCatalogUnavailable(), 'split catalog: restored ok');
+  calc.updatePortfolioSplitCatalogWarnUi();
+  assert(catalogNodes.pfSplitCatalogWarn.hidden === true, 'split catalog ui: hidden after restore');
+  calc.sandbox.document.getElementById = prevEl;
+  calc.sandbox.state.pfSaleTicker = '';
 }
 
 if (errors.length) {
