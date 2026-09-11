@@ -447,6 +447,12 @@
   var PF_SPLIT_SALE_LEGACY_TEXT = 'Продажа была добавлена до обновления расчётов по дроблению. Проверьте количество сделки.';
   var PF_SPLIT_SALE_DATE_QTY_HINT = 'Продажа записана как в брокере. Количество указано в акциях после дробления.';
   var PF_SPLIT_LOT_ALREADY_CURRENT_TEXT = 'Позиция выглядит уже приведённой к текущим акциям после дробления. Если покупка была внесена в старой шкале, проверьте количество и среднюю цену.';
+  var PF_SPLIT_SCALE_CONFIRM_LOOK_TEXT = 'Покупка выглядит уже приведённой к текущим акциям после дробления. Уточните, как внесены количество и средняя цена.';
+  var PF_SPLIT_SCALE_CONFIRM_UNKNOWN_TEXT = 'Не удалось однозначно понять шкалу покупки после дробления. Уточните, как внесены количество и средняя цена.';
+  var PF_SPLIT_SCALE_BTN_CURRENT = 'Как в брокере сейчас';
+  var PF_SPLIT_SCALE_BTN_HISTORICAL = 'Как было на дату покупки';
+  var PF_SPLIT_SCALE_DONE_CURRENT = 'Количество и средняя цена учтены как в брокере сейчас, в текущих акциях после дробления.';
+  var PF_SPLIT_SCALE_DONE_HISTORICAL = 'Количество и средняя цена учтены как на дату покупки, до дробления.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_TEXT = 'Список дроблений акций временно недоступен. Если в портфеле есть бумаги с дроблением акций, часть расчётов может быть неполной.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT = 'Список дроблений акций временно недоступен. Перед продажей бумаг, по которым было дробление акций, проверьте количество вручную.';
   var PF_SPLIT_CATALOG_SALE_BLOCK_TEXT = 'Список дроблений акций временно недоступен. Продажа этой бумаги сейчас недоступна, чтобы не списать неверное количество. Обновите страницу или попробуйте позже.';
@@ -536,6 +542,12 @@
       warnings: extra.warnings ? extra.warnings.slice() : [],
       reason: extra.reason || ''
     };
+  }
+
+  function normalizeSplitLotScale(value) {
+    var s = String(value == null ? '' : value).trim().toLowerCase();
+    if (s === 'current' || s === 'historical') return s;
+    return '';
   }
 
   function lotShareScaleHighMult(priceTolerancePct) {
@@ -658,6 +670,17 @@
       });
     }
 
+    var confirmed = normalizeSplitLotScale(lot && lot.splitLotScale);
+    if (confirmed === 'current' || confirmed === 'historical') {
+      return lotShareScaleResult(confirmed, 'high', {
+        splitEvent: splitEvent,
+        factor: factor,
+        reason: confirmed === 'current'
+          ? 'шкала подтверждена: текущие акции'
+          : 'шкала подтверждена: дата покупки'
+      });
+    }
+
     var avg = Number(lot && lot.avgPrice);
     var cur = options.currentPrice != null ? Number(options.currentPrice) : Number(lot && lot.currentPrice);
     if (!isFinite(avg) || !(avg > 0) || !isFinite(cur) || !(cur > 0)) {
@@ -720,6 +743,75 @@
     }
     var diag = diagnoseLotShareScale(lot, ticker || lot.ticker, options);
     return !!(diag && diag.scale === 'current' && isFinite(Number(diag.factor)) && Number(diag.factor) > 1);
+  }
+
+  function lotNeedsSplitScaleConfirmation(lot, ticker, options) {
+    if (!lot || isPortfolioBondPosition(lot) || isPortfolioBondPosition({ ticker: ticker || lot.ticker })) {
+      return false;
+    }
+    if (normalizeSplitLotScale(lot.splitLotScale)) return false;
+    var diag = diagnoseLotShareScale(lot, ticker || lot.ticker, options);
+    if (!diag || diag.scale === 'n/a') return false;
+    if (!(isFinite(Number(diag.factor)) && Number(diag.factor) > 1)) return false;
+    if (diag.scale === 'unknown') return true;
+    return diag.scale === 'current';
+  }
+
+  function lotShowsSplitScaleConfirmUi(lot, ticker, options) {
+    if (!lot || isPortfolioBondPosition(lot) || isPortfolioBondPosition({ ticker: ticker || lot.ticker })) {
+      return false;
+    }
+    var confirmed = normalizeSplitLotScale(lot.splitLotScale);
+    var diag = diagnoseLotShareScale(lot, ticker || lot.ticker, options);
+    if (!diag || diag.scale === 'n/a') return false;
+    if (!(isFinite(Number(diag.factor)) && Number(diag.factor) > 1)) return false;
+    if (confirmed) return true;
+    if (diag.scale === 'unknown') return true;
+    return diag.scale === 'current';
+  }
+
+  function buildLotSplitScaleConfirmHtml(lot, ticker, options) {
+    if (!lotShowsSplitScaleConfirmUi(lot, ticker, options)) return '';
+    var lotId = escapeHtml(lot.lotId || '');
+    var confirmed = normalizeSplitLotScale(lot.splitLotScale);
+    var look = lotLooksAlreadyCurrentAfterSplit(lot, ticker, options);
+    var text = confirmed === 'current'
+      ? PF_SPLIT_SCALE_DONE_CURRENT
+      : (confirmed === 'historical'
+        ? PF_SPLIT_SCALE_DONE_HISTORICAL
+        : (look ? PF_SPLIT_SCALE_CONFIRM_LOOK_TEXT : PF_SPLIT_SCALE_CONFIRM_UNKNOWN_TEXT));
+    var curActive = confirmed === 'current' ? ' is-active' : '';
+    var histActive = confirmed === 'historical' ? ' is-active' : '';
+    return '<div class="pf-split-scale-confirm">' +
+      '<p class="pf-split-scale-confirm-text">' + escapeHtml(text) + '</p>' +
+      '<div class="pf-split-scale-confirm-actions">' +
+        '<button type="button" class="ghost small pf-btn pf-split-scale-btn' + curActive +
+          '" data-pf-split-lot-scale="current" data-pf-lot-id="' + lotId +
+          '" aria-pressed="' + (confirmed === 'current' ? 'true' : 'false') + '">' +
+          escapeHtml(PF_SPLIT_SCALE_BTN_CURRENT) + '</button>' +
+        '<button type="button" class="ghost small pf-btn pf-split-scale-btn' + histActive +
+          '" data-pf-split-lot-scale="historical" data-pf-lot-id="' + lotId +
+          '" aria-pressed="' + (confirmed === 'historical' ? 'true' : 'false') + '">' +
+          escapeHtml(PF_SPLIT_SCALE_BTN_HISTORICAL) + '</button>' +
+      '</div></div>';
+  }
+
+  function setPortfolioLotSplitScale(lotId, scale) {
+    scale = normalizeSplitLotScale(scale);
+    if (!scale) return false;
+    lotId = String(lotId || '');
+    if (!lotId) return false;
+    var portfolio = typeof getPortfolio === 'function' ? getPortfolio() : null;
+    if (!portfolio || !portfolio.positions) return false;
+    var lot = findPortfolioLot(lotId, portfolio.positions);
+    if (!lot) return false;
+    lot.splitLotScale = scale;
+    if (typeof setPortfolio === 'function') setPortfolio(portfolio);
+    try {
+      if (typeof renderPortfolio === 'function') renderPortfolio();
+    } catch (e) { /* noop */ }
+    if (typeof showToast === 'function') showToast('Шкала покупки учтена');
+    return true;
   }
 
   var PF_QTY_HELD_BAD_DATE_WARNING = 'нет корректной даты';
@@ -981,7 +1073,8 @@
         buyDate: buyIso || (pos && pos.buyDate) || '',
         avgPrice: g.avgPrice != null ? g.avgPrice : (pos && pos.avgPrice),
         currentPrice: pos && pos.currentPrice,
-        qty: g.openQty
+        qty: g.openQty,
+        splitLotScale: pos && pos.splitLotScale
       };
       if (options.currentPrice != null) lotLike.currentPrice = options.currentPrice;
       var diag = diagnoseLotShareScale(lotLike, t, diagOpts);
@@ -1074,6 +1167,7 @@
       if (!isFinite(factorToTarget) || factorToTarget < 1) factorToTarget = 1;
 
       var qtyAt = heldJson;
+      var confirmedScale = normalizeSplitLotScale(lotLike.splitLotScale);
       if (diag.scale === 'historical') {
         qtyAt = heldJson * factorToTarget - newSoldToTarget;
         splitAwareForwardSplitsToTarget(t, buyIso, targetIso, events).forEach(function (ev) {
@@ -1083,17 +1177,21 @@
         var factorToNow = diag.factor;
         if (!isFinite(factorToNow) || factorToNow < 1) factorToNow = 1;
         if (factorToTarget + 1e-9 < factorToNow) {
-          skippedLots += 1;
-          confidence = splitAwareWorseConfidence(confidence, 'unknown');
-          diagRow.warnings.push(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING);
-          if (warnings.indexOf(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING) === -1) {
-            warnings.push(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING);
+          if (confirmedScale !== 'current') {
+            skippedLots += 1;
+            confidence = splitAwareWorseConfidence(confidence, 'unknown');
+            diagRow.warnings.push(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING);
+            if (warnings.indexOf(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING) === -1) {
+              warnings.push(PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING);
+            }
+            diagRow.reason = PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING;
+            lotDiagnostics.push(diagRow);
+            return;
           }
-          diagRow.reason = PF_QTY_HELD_PRE_SPLIT_CURRENT_WARNING;
-          lotDiagnostics.push(diagRow);
-          return;
+          qtyAt = factorToNow > 0 ? heldJson * (factorToTarget / factorToNow) : 0;
+        } else {
+          qtyAt = heldJson - newSoldToTarget;
         }
-        qtyAt = heldJson - newSoldToTarget;
       }
 
       qtyAt = asOfRoundQty(qtyAt);
@@ -3284,7 +3382,8 @@
             return false;
           });
         }
-        if (lotLooksAlreadyCurrentAfterSplit(lotForScale, ticker)) {
+        if (lotLooksAlreadyCurrentAfterSplit(lotForScale, ticker) &&
+            !normalizeSplitLotScale(lotForScale.splitLotScale)) {
           g.note = PF_SPLIT_LOT_ALREADY_CURRENT_TEXT;
         }
       }
@@ -8364,6 +8463,7 @@
       '[data-pf-expand-lots], [data-pf-collapse-lots],' +
       '[data-pf-sell-ticker], [data-pf-sell-lot], [data-pf-undo-sale],' +
       '[data-pf-edit-lot], [data-pf-remove-lot],' +
+      '[data-pf-split-lot-scale],' +
       '.portfolio-card-actions, .portfolio-closed-card-actions,' +
       '.portfolio-card-detail, .portfolio-closed-card-detail,' +
       '.pf-row-actions, .pf-lot-toggle-row, .pf-sale-row, .pf-ticker-detail-row,' +
@@ -8480,6 +8580,16 @@
       if (confirm('Удалить эту покупку из портфеля?')) {
         removePortfolioLot(lotId);
       }
+      return;
+    }
+    var splitScaleBtn = e.target.closest('[data-pf-split-lot-scale]');
+    if (splitScaleBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      setPortfolioLotSplitScale(
+        splitScaleBtn.getAttribute('data-pf-lot-id'),
+        splitScaleBtn.getAttribute('data-pf-split-lot-scale')
+      );
       return;
     }
     if (e.target.closest('summary, .pf-ticker-manage-summary, .pf-twp-how-summary')) {
@@ -9224,9 +9334,7 @@
     } else if (stack) {
       html += '<div class="pf-stack-list">';
       hist.openLots.forEach(function (lot) {
-        var alreadyCurrentNote = !isBond && lotLooksAlreadyCurrentAfterSplit(lot, ticker)
-          ? '<div class="muted pf-timeline-note">' + escapeHtml(PF_SPLIT_LOT_ALREADY_CURRENT_TEXT) + '</div>'
-          : '';
+        var scaleConfirm = !isBond ? buildLotSplitScaleConfirmHtml(lot, ticker) : '';
         html += '<div class="pf-stack-item pf-op-card pf-open-lot">' +
           '<div class="pf-stack-meta">' +
             '<span class="pf-op-badge pf-op-badge--buy">покупка</span>' +
@@ -9234,7 +9342,7 @@
             '<span><span class="lbl">Кол-во</span> ' + escapeHtml(formatPortfolioQty(lot)) + '</span>' +
             '<span><span class="lbl">Цена</span> ' + escapeHtml(formatPositionAvg(lot, { bond: isBond })) + '</span>' +
           '</div>' +
-          alreadyCurrentNote +
+          scaleConfirm +
           (lot.comment
             ? '<div class="pf-stack-comment muted">' + escapeHtml(lot.comment) + '</div>'
             : '') +
@@ -9249,6 +9357,7 @@
         '<th>Дата</th><th>Кол-во</th><th>Цена покупки</th><th>Комментарий</th><th></th>' +
         '</tr></thead><tbody>';
       hist.openLots.forEach(function (lot) {
+        var scaleConfirm = !isBond ? buildLotSplitScaleConfirmHtml(lot, ticker) : '';
         html += '<tr class="pf-open-lot-row">' +
           '<td>' + escapeHtml(formatPortfolioDate(lot)) + '</td>' +
           '<td>' + escapeHtml(formatPortfolioQty(lot)) + '</td>' +
@@ -9258,6 +9367,9 @@
             '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-edit-lot="' + escapeHtml(lot.lotId || '') + '">Изменить</button> ' +
             '<button type="button" class="small pf-btn pf-btn-danger" data-pf-remove-lot="' + escapeHtml(lot.lotId || '') + '">Удалить</button>' +
           '</td></tr>';
+        if (scaleConfirm) {
+          html += '<tr class="pf-split-scale-confirm-row"><td colspan="5">' + scaleConfirm + '</td></tr>';
+        }
       });
       html += '</tbody></table>';
     }
@@ -9414,6 +9526,12 @@
           : buildSplitAffectedPnlHtml('row'))
         : '<span>Доходность</span><span class="' + cls + '">' + escapeHtml(formatSignedPct(pnl, 2)) + '</span>');
     var open = !!(state.pfHistoryTickers && state.pfHistoryTickers[ticker]);
+    var closedScaleHtml = '';
+    if (!open && !isBond) {
+      (typeof findPortfolioLots === 'function' ? findPortfolioLots(ticker, allPositions) : []).forEach(function (lot) {
+        closedScaleHtml += buildLotSplitScaleConfirmHtml(lot, ticker);
+      });
+    }
     var sellable = getPortfolioSellableQty(ticker);
     var actions = '<div class="portfolio-card-actions pf-row-actions">' +
       (sellable > 0
@@ -9433,6 +9551,7 @@
       '<span>Текущая</span><span>' + escapeHtml(cur) + '</span>' +
       extra + '</div>' +
       actions +
+      (closedScaleHtml ? '<div class="portfolio-card-split-scale">' + closedScaleHtml + '</div>' : '') +
       (detail ? '<div class="portfolio-card-detail">' + detail + '</div>' : '') +
       '</div>';
   }
@@ -9527,6 +9646,15 @@
             (isEnd ? ' pf-ticker-group-end' : '')
         });
       });
+
+      if (!hasDetail && !isBond) {
+        visibleLots.forEach(function (p) {
+          var scaleHtml = buildLotSplitScaleConfirmHtml(p, group.ticker);
+          if (!scaleHtml) return;
+          html += '<tr class="pf-split-scale-confirm-row' + groupBase +
+            '"><td colspan="' + PF_TABLE_COLS + '">' + scaleHtml + '</td></tr>';
+        });
+      }
 
       if (hiddenCount > 0) {
         html += '<tr class="pf-lot-toggle-row' + groupBase +

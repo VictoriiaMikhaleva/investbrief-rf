@@ -414,7 +414,15 @@
     if (faceValue != null) out.faceValue = faceValue;
     var source = optionalSource(raw.source);
     if (source) out.source = source;
+    var splitLotScale = normalizeSplitLotScale(raw.splitLotScale);
+    if (splitLotScale) out.splitLotScale = splitLotScale;
     return out;
+  }
+
+  function normalizeSplitLotScale(value) {
+    var s = String(value == null ? '' : value).trim().toLowerCase();
+    if (s === 'current' || s === 'historical') return s;
+    return '';
   }
 
 

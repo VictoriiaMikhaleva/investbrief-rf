@@ -222,6 +222,44 @@ const h = loadStorageHelpers();
 }
 
 {
+  const withScale = h.normalizePosition({
+    ticker: 'T',
+    qty: 10,
+    avgPrice: 262,
+    lotId: 'T_SCALE',
+    splitLotScale: 'current'
+  });
+  assert(withScale.splitLotScale === 'current', 'optional splitLotScale current kept');
+  assert(withScale.qty === 10 && withScale.avgPrice === 262, 'splitLotScale does not change qty/avgPrice');
+
+  const histScale = h.normalizePosition({
+    ticker: 'T', qty: 10, avgPrice: 262, lotId: 'T_HIST', splitLotScale: 'historical'
+  });
+  assert(histScale.splitLotScale === 'historical', 'optional splitLotScale historical kept');
+
+  const oldLot = h.normalizePosition({ ticker: 'T', qty: 10, avgPrice: 262, lotId: 'T_OLD' });
+  assert(oldLot.splitLotScale == null, 'splitLotScale absent on old lots');
+
+  const badScale = h.normalizePosition({
+    ticker: 'T', qty: 10, avgPrice: 262, lotId: 'T_BAD', splitLotScale: 'broker'
+  });
+  assert(badScale.splitLotScale == null, 'invalid splitLotScale dropped');
+
+  const scalePf = h.normalizePortfolio({
+    positions: [{ ticker: 'T', qty: 10, avgPrice: 262, lotId: 'T_EX', splitLotScale: 'current' }]
+  });
+  assert(scalePf.positions[0].splitLotScale === 'current', 'normalizePortfolio keeps splitLotScale');
+  h.setPortfolio(scalePf);
+  const fromStore = h.getPortfolio();
+  assert(fromStore.positions[0].splitLotScale === 'current', 'getPortfolio keeps splitLotScale');
+  assert(fromStore.positions[0].qty === 10 && fromStore.positions[0].avgPrice === 262, 'stored qty/avg unchanged');
+  h.importAll(JSON.stringify({ version: '1.0.0', portfolio: fromStore }));
+  const afterScale = h.getPortfolio();
+  assert(afterScale.positions[0].splitLotScale === 'current', 'import keeps splitLotScale');
+  assert(afterScale.positions[0].qty === 10 && afterScale.positions[0].avgPrice === 262, 'import qty/avg unchanged');
+}
+
+{
   const marker = { positions: [{ ticker: 'T', qty: 1, avgPrice: 1, lotId: 'KEEP_ME' }] };
   h.store[h.KEYS.portfolio] = JSON.stringify(marker);
   h.importAll('{not-json');
@@ -402,6 +440,11 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__splitAffected = isPortfolioTickerSplitAffected;' +
       '\nthis.__lotScale = diagnoseLotShareScale;' +
       '\nthis.__lotAlreadyCurrent = lotLooksAlreadyCurrentAfterSplit;' +
+      '\nthis.__lotNeedsScale = lotNeedsSplitScaleConfirmation;' +
+      '\nthis.__lotShowsScale = lotShowsSplitScaleConfirmUi;' +
+      '\nthis.__lotScaleHtml = buildLotSplitScaleConfirmHtml;' +
+      '\nthis.__setLotScale = setPortfolioLotSplitScale;' +
+      '\nthis.__normLotScale = normalizeSplitLotScale;' +
       '\nthis.__qtyHeld = getSplitAwareQtyHeldOnDate;' +
       '\nthis.__currentQty = getSplitAwareCurrentQty;' +
       '\nthis.__splitMetrics = getSplitAwareCurrentPositionMetrics;' +
@@ -505,6 +548,11 @@ function loadPortfolioCalcHelpers() {
     isPortfolioTickerSplitAffected: sandbox.__splitAffected,
     diagnoseLotShareScale: sandbox.__lotScale,
     lotLooksAlreadyCurrentAfterSplit: sandbox.__lotAlreadyCurrent,
+    lotNeedsSplitScaleConfirmation: sandbox.__lotNeedsScale,
+    lotShowsSplitScaleConfirmUi: sandbox.__lotShowsScale,
+    buildLotSplitScaleConfirmHtml: sandbox.__lotScaleHtml,
+    setPortfolioLotSplitScale: sandbox.__setLotScale,
+    normalizeSplitLotScale: sandbox.__normLotScale,
     getSplitAwareQtyHeldOnDate: sandbox.__qtyHeld,
     getSplitAwareCurrentQty: sandbox.__currentQty,
     getSplitAwareCurrentPositionMetrics: sandbox.__splitMetrics,
@@ -3959,7 +4007,9 @@ function loadPriceAtDateHelpers() {
     assert(new RegExp(NOTE).test(buyD.note || ''), 'T UX D: already-current note');
     assert(!/split-aware/.test(buyD.note || ''), 'T UX D: no technical term');
     const htmlD = calc.buildPortfolioTickerDetailHtml('T', caseD.positions, caseD.sales, null, false);
-    assert(new RegExp(NOTE).test(htmlD), 'T UX D: detail shows already-current copy');
+    assert(/Покупка выглядит уже приведённой к текущим акциям после дробления/.test(htmlD), 'T UX D: detail asks to confirm scale');
+    assert(/Как в брокере сейчас/.test(htmlD) && /Как было на дату покупки/.test(htmlD), 'T UX D: both scale buttons');
+    assert(!new RegExp(NOTE).test(htmlD.split('Открытые покупки')[1] || htmlD), 'T UX D: open lots use confirm copy, not timeline note');
     assert(!/100 шт/.test(htmlD.split('Остаток')[1].split('Куплено')[0] || ''), 'T UX D: remainder not 100');
     assert(JSON.stringify(caseD) === snapD, 'T UX D: JSON not mutated');
 
@@ -4005,6 +4055,45 @@ function loadPriceAtDateHelpers() {
   scaleOf(pf.positions[1], 'T');
   assert(JSON.stringify(pf) === pfSnap, 'lot scale: portfolio JSON not mutated');
   assert(JSON.stringify({ positions: [sberBefore, sberAfter], sales: [] }) === sberSnap, 'lot scale: SBER fixture untouched');
+
+  const tCurrConfirmed = Object.assign({}, tCurr, { splitLotScale: 'current' });
+  d = scaleOf(tCurrConfirmed, 'T');
+  assert(d.scale === 'current' && d.confidence === 'high', 'lot scale: T confirmed current → high');
+  assert(/текущие акции/.test(d.reason), 'lot scale: T confirmed current reason');
+  assert(tCurrConfirmed.qty === 10 && tCurrConfirmed.avgPrice === 312, 'lot scale: confirm does not change qty/avg');
+
+  const tHistConfirmed = Object.assign({}, tCurr, { lotId: 'T2H', splitLotScale: 'historical' });
+  d = scaleOf(tHistConfirmed, 'T');
+  assert(d.scale === 'historical' && d.confidence === 'high', 'lot scale: T confirmed historical → high');
+  assert(/дата покупки/.test(d.reason), 'lot scale: T confirmed historical reason');
+
+  assert(calc.lotNeedsSplitScaleConfirmation(tCurr, 'T', opts) === true, 'confirm ui: T already-current needs confirm');
+  assert(calc.lotNeedsSplitScaleConfirmation(tCurrConfirmed, 'T', opts) === false, 'confirm ui: confirmed T does not need confirm');
+  assert(calc.lotShowsSplitScaleConfirmUi(tCurrConfirmed, 'T', opts) === true, 'confirm ui: confirmed T still shows choice');
+  assert(calc.lotNeedsSplitScaleConfirmation(gmknHist, 'GMKN', opts) === false, 'confirm ui: GMKN clean historical no prompt');
+  assert(calc.lotShowsSplitScaleConfirmUi(gmknHist, 'GMKN', opts) === false, 'confirm ui: GMKN historical no block');
+  assert(calc.lotNeedsSplitScaleConfirmation(plzlHist, 'PLZL', opts) === false, 'confirm ui: PLZL clean historical no prompt');
+  assert(calc.lotNeedsSplitScaleConfirmation(sberBefore, 'SBER', opts) === false, 'confirm ui: SBER no prompt');
+  assert(calc.lotNeedsSplitScaleConfirmation(ofz, 'SU26238RMFS9', opts) === false, 'confirm ui: OFZ no prompt');
+  assert(calc.lotNeedsSplitScaleConfirmation(noDate, 'GMKN', opts) === true, 'confirm ui: unknown GMKN needs confirm');
+
+  const htmlNeed = calc.buildLotSplitScaleConfirmHtml(tCurr, 'T', opts);
+  assert(/Покупка выглядит уже приведённой к текущим акциям после дробления/.test(htmlNeed), 'confirm html: look text');
+  assert(/Как в брокере сейчас/.test(htmlNeed) && /Как было на дату покупки/.test(htmlNeed), 'confirm html: buttons');
+  assert(!calc.buildLotSplitScaleConfirmHtml(gmknHist, 'GMKN', opts), 'confirm html: GMKN historical empty');
+  assert(!calc.buildLotSplitScaleConfirmHtml(sberBefore, 'SBER', opts), 'confirm html: SBER empty');
+  const htmlDone = calc.buildLotSplitScaleConfirmHtml(tCurrConfirmed, 'T', opts);
+  assert(/как в брокере сейчас/.test(htmlDone), 'confirm html: done current');
+  const gmknHistHtml = calc.buildPortfolioTickerDetailHtml('GMKN', [gmknHist], [], null, false);
+  assert(!/Как в брокере сейчас/.test(gmknHistHtml), 'confirm html: GMKN detail has no scale buttons');
+  const plzlHtml = calc.buildPortfolioTickerDetailHtml('PLZL', [plzlHist], [], null, false);
+  assert(!/Как в брокере сейчас/.test(plzlHtml), 'confirm html: PLZL detail has no scale buttons');
+  const sberHtmlScale = calc.buildPortfolioTickerDetailHtml('SBER', [sberBefore], [], null, false);
+  assert(!/Как в брокере сейчас/.test(sberHtmlScale), 'confirm html: SBER detail has no scale buttons');
+  const ofzHtmlScale = calc.buildPortfolioTickerDetailHtml('OFZ_26238', [{
+    ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000, currentPrice: 95
+  }], [], { faceValue: 1000 }, true);
+  assert(!/Как в брокере сейчас/.test(ofzHtmlScale), 'confirm html: OFZ detail has no scale buttons');
 }
 
 {
@@ -4104,6 +4193,51 @@ function loadPriceAtDateHelpers() {
   };
   r = held('T', tCurrPf, '2026-09-04');
   assert(r.qty === 10, 'qtyHeld: T current after split → 10');
+
+  r = held('T', tCurrPf, '2026-04-01');
+  assert(!(r.qty > 0) || r.confidence === 'unknown', 'qtyHeld: T unconfirmed current pre-split skipped');
+
+  const tCurrConfirmedPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262,
+      splitLotScale: 'current'
+    }],
+    sales: []
+  };
+  const tCurrConfirmedSnap = JSON.stringify(tCurrConfirmedPf);
+  r = held('T', tCurrConfirmedPf, '2026-04-01');
+  assert(Math.abs(r.qty - 1) < 1e-6, 'qtyHeld: T confirmed current pre-split → 1 old share');
+  assert(r.confidence === 'high', 'qtyHeld: T confirmed current pre-split high');
+  r = held('T', tCurrConfirmedPf, '2026-09-04');
+  assert(r.qty === 10, 'qtyHeld: T confirmed current after split stays 10');
+  assert(JSON.stringify(tCurrConfirmedPf) === tCurrConfirmedSnap, 'qtyHeld: T confirmed current JSON not mutated');
+
+  const tHistConfirmedPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T2H', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262,
+      splitLotScale: 'historical'
+    }],
+    sales: []
+  };
+  const tHistConfirmedSnap = JSON.stringify(tHistConfirmedPf);
+  r = held('T', tHistConfirmedPf, '2026-04-01');
+  assert(r.qty === 10, 'qtyHeld: T confirmed historical pre-split → 10');
+  r = held('T', tHistConfirmedPf, '2026-09-04');
+  assert(r.qty === 100, 'qtyHeld: T confirmed historical after split → 100');
+  assert(tHistConfirmedPf.positions[0].qty === 10 && tHistConfirmedPf.positions[0].avgPrice === 312,
+    'qtyHeld: T confirmed historical qty/avg untouched');
+  assert(JSON.stringify(tHistConfirmedPf) === tHistConfirmedSnap, 'qtyHeld: T confirmed historical JSON not mutated');
+
+  const plzlHistPf = {
+    positions: [{
+      ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 19000, buyDate: '2024-06-01', currentPrice: 1900
+    }],
+    sales: []
+  };
+  r = held('PLZL', plzlHistPf, '2026-09-04');
+  assert(r.qty === 10, 'qtyHeld: PLZL historical after split → 10');
+  r = held('PLZL', plzlHistPf, '2025-03-01');
+  assert(r.qty === 1, 'qtyHeld: PLZL historical before split → 1');
 
   const unknownPf = {
     positions: [{
@@ -6354,6 +6488,80 @@ await (async () => {
   assert(tSpanBefore && tSpanBefore.isPartial === true, 'series T span: pre-split ambiguous is partial');
   assert(tSpanAfter && tSpanAfter.isPartial === false, 'series T span: after split not incomplete');
   assert(tSpanSeries.some((p) => !p.isPartial), 'series T span: not entire series incomplete');
+
+  const tCurrScalePf = {
+    positions: [{
+      ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262,
+      splitLotScale: 'current'
+    }],
+    sales: []
+  };
+  const tCurrScaleSnap = JSON.stringify(tCurrScalePf);
+  const tCurrScaleSeries = await calc.buildPortfolioValueSeries(
+    tCurrScalePf, '2026-04-01', '2026-04-20',
+    seriesOpts({
+      T: {
+        '2026-04-01': priceOk(262, { date: '2026-04-01' }),
+        '2026-04-17': priceOk(262, { date: '2026-04-17' })
+      }
+    }, { includePositions: true })
+  );
+  const tCurrScaleBefore = pointOn(tCurrScaleSeries, '2026-04-01');
+  const tCurrScaleAfter = pointOn(tCurrScaleSeries, '2026-04-17');
+  assert(tCurrScaleBefore && tCurrScaleBefore.isPartial === false, 'series T current confirm: pre-split full if priced');
+  assert(tCurrScaleBefore.positions[0].qty === 1, 'series T current confirm: pre-split qty 1 old share');
+  assert(tCurrScaleBefore.totalValueRub === 262, 'series T current confirm: 1×262');
+  assert(tCurrScaleAfter && tCurrScaleAfter.isPartial === false, 'series T current confirm: after split full');
+  assert(tCurrScaleAfter.positions[0].qty === 10, 'series T current confirm: after split stays 10');
+  assert(tCurrScaleAfter.totalValueRub === 2620, 'series T current confirm: 10×262 not 100×262');
+  assert(JSON.stringify(tCurrScalePf) === tCurrScaleSnap, 'series JSON: T current confirm not mutated');
+
+  const tHistScalePf = {
+    positions: [{
+      ticker: 'T', lotId: 'T2H', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262,
+      splitLotScale: 'historical'
+    }],
+    sales: []
+  };
+  const tHistScaleSnap = JSON.stringify(tHistScalePf);
+  const tHistScaleSeries = await calc.buildPortfolioValueSeries(
+    tHistScalePf, '2026-04-01', '2026-04-20',
+    seriesOpts({
+      T: {
+        '2026-04-01': priceOk(262, { date: '2026-04-01' }),
+        '2026-04-17': priceOk(262, { date: '2026-04-17' })
+      }
+    }, { includePositions: true })
+  );
+  const tHistScaleBefore = pointOn(tHistScaleSeries, '2026-04-01');
+  const tHistScaleAfter = pointOn(tHistScaleSeries, '2026-04-17');
+  assert(tHistScaleBefore && tHistScaleBefore.isPartial === false, 'series T historical confirm: pre-split full if priced');
+  assert(tHistScaleBefore.positions[0].qty === 10, 'series T historical confirm: pre-split qty 10');
+  assert(tHistScaleAfter && tHistScaleAfter.positions[0].qty === 100, 'series T historical confirm: after split 100');
+  assert(tHistScaleAfter.totalValueRub === 26200, 'series T historical confirm: 100×262');
+  assert(tHistScaleAfter.isPartial === false, 'series T historical confirm: after split full');
+  assert(JSON.stringify(tHistScalePf) === tHistScaleSnap, 'series JSON: T historical confirm not mutated');
+
+  const prevGetScale = calc.sandbox.getPortfolio;
+  const prevSetScale = calc.sandbox.setPortfolio;
+  let scaleLive = {
+    positions: [{
+      ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262
+    }],
+    sales: [],
+    cashFlows: [],
+    schemaVersion: 1
+  };
+  calc.sandbox.getPortfolio = () => scaleLive;
+  calc.sandbox.setPortfolio = (p) => { scaleLive = p; };
+  assert(calc.setPortfolioLotSplitScale('T2', 'current') === true, 'set scale: current saved');
+  assert(scaleLive.positions[0].splitLotScale === 'current', 'set scale: field current');
+  assert(scaleLive.positions[0].qty === 10 && scaleLive.positions[0].avgPrice === 312, 'set scale: qty/avg unchanged');
+  assert(calc.setPortfolioLotSplitScale('T2', 'historical') === true, 'set scale: historical saved');
+  assert(scaleLive.positions[0].splitLotScale === 'historical', 'set scale: field historical');
+  assert(scaleLive.positions[0].qty === 10 && scaleLive.positions[0].avgPrice === 312, 'set scale: still no qty/avg change');
+  calc.sandbox.getPortfolio = prevGetScale;
+  calc.sandbox.setPortfolio = prevSetScale;
 
   const ofzPf = {
     positions: [{ ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000, currentPrice: 95 }],
