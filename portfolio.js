@@ -5037,14 +5037,26 @@
     return meta;
   }
 
+  function asOfHistoryRowsForTicker(map, ticker) {
+    if (!map || typeof map !== 'object') return null;
+    if (Array.isArray(map[ticker])) return map[ticker];
+    var t = asOfNormTicker(ticker);
+    if (t && Array.isArray(map[t])) return map[t];
+    var keys = Object.keys(map);
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      if (asOfNormTicker(keys[i]) === t && Array.isArray(map[keys[i]])) return map[keys[i]];
+    }
+    return null;
+  }
+
   function asOfFetchPriceAtDate(ticker, targetDate, meta, options) {
     if (options && typeof options.getInstrumentPriceAtDate === 'function') {
       return Promise.resolve(options.getInstrumentPriceAtDate(ticker, targetDate, meta, options));
     }
     var priceOpts = {};
-    if (options && options.historyByTicker && options.historyByTicker[ticker]) {
-      priceOpts.history = options.historyByTicker[ticker];
-    }
+    var hist = asOfHistoryRowsForTicker(options && options.historyByTicker, ticker);
+    if (hist) priceOpts.history = hist;
     if (typeof getInstrumentPriceAtDate === 'function') {
       return Promise.resolve(getInstrumentPriceAtDate(ticker, targetDate, meta, priceOpts));
     }
@@ -5478,6 +5490,271 @@
         fromResult: fromResult,
         toResult: toResult
       };
+    });
+  }
+
+  var SERIES_HISTORY_BUFFER_DAYS = 14;
+  var SERIES_CASH_VALUE_RUB = 0;
+
+  function seriesIsoAddDays(iso, days) {
+    var d = new Date(String(iso) + 'T12:00:00');
+    if (isNaN(d.getTime())) return iso;
+    d.setDate(d.getDate() + Number(days) || 0);
+    var y = d.getFullYear();
+    var mo = d.getMonth() + 1;
+    var day = d.getDate();
+    return y + '-' + String(mo).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  }
+
+  function seriesLastDayOfMonth(year, month1to12) {
+    var d = new Date(year, month1to12, 0);
+    var y = d.getFullYear();
+    var mo = d.getMonth() + 1;
+    var day = d.getDate();
+    return y + '-' + String(mo).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  }
+
+  function seriesDownsampleDates(dates, maxPoints) {
+    var n = (dates || []).length;
+    var cap = Number(maxPoints);
+    if (!n || !isFinite(cap) || cap < 2 || n <= cap) return (dates || []).slice();
+    var out = [dates[0]];
+    var inner = cap - 2;
+    var i;
+    for (i = 1; i <= inner; i++) {
+      var idx = Math.round(i * (n - 1) / (cap - 1));
+      if (idx <= 0) idx = 1;
+      if (idx >= n - 1) idx = n - 2;
+      if (out[out.length - 1] !== dates[idx]) out.push(dates[idx]);
+    }
+    if (out[out.length - 1] !== dates[n - 1]) out.push(dates[n - 1]);
+    return out;
+  }
+
+  function buildPortfolioValueSeriesDates(fromIso, toIso, interval, maxPoints) {
+    var dates = [];
+    if (!fromIso || !toIso || fromIso > toIso) return dates;
+    var kind = interval === 'week' ? 'week' : interval === 'month' ? 'month' : 'day';
+    var cur;
+    if (kind === 'day') {
+      cur = fromIso;
+      while (cur <= toIso) {
+        dates.push(cur);
+        cur = seriesIsoAddDays(cur, 1);
+      }
+    } else if (kind === 'week') {
+      dates.push(fromIso);
+      cur = seriesIsoAddDays(fromIso, 7);
+      while (cur < toIso) {
+        dates.push(cur);
+        cur = seriesIsoAddDays(cur, 7);
+      }
+      if (dates[dates.length - 1] !== toIso) dates.push(toIso);
+    } else {
+      dates.push(fromIso);
+      var y = Number(fromIso.slice(0, 4));
+      var m = Number(fromIso.slice(5, 7));
+      cur = seriesLastDayOfMonth(y, m);
+      if (cur <= fromIso) {
+        m += 1;
+        if (m > 12) { m = 1; y += 1; }
+        cur = seriesLastDayOfMonth(y, m);
+      }
+      while (cur < toIso) {
+        dates.push(cur);
+        m += 1;
+        if (m > 12) { m = 1; y += 1; }
+        cur = seriesLastDayOfMonth(y, m);
+      }
+      if (dates[dates.length - 1] !== toIso) dates.push(toIso);
+    }
+    return seriesDownsampleDates(dates, maxPoints);
+  }
+
+  function seriesCollectTickers(portfolio, options) {
+    var ps = payoutsPositionsSales(portfolio, options);
+    return payoutsCollectTickers(ps.positions, ps.sales);
+  }
+
+  function seriesLookupHistory(map, ticker) {
+    return asOfHistoryRowsForTicker(map, ticker);
+  }
+
+  function seriesPickClose(rows, iso) {
+    if (typeof pickCloseOnOrBefore === 'function') return pickCloseOnOrBefore(rows, iso);
+    var target = String(iso || '').slice(0, 10);
+    if (target.length < 10) return null;
+    var picked = null;
+    (rows || []).forEach(function (h) {
+      var d = String(h && h.date || '').slice(0, 10);
+      if (d.length < 10 || d > target || !isFinite(h.close) || h.close <= 0) return;
+      if (!picked || d > picked.date) picked = { date: d, close: Number(h.close) };
+    });
+    return picked;
+  }
+
+  function seriesPriceFromHistoryRows(ticker, date, meta, rows) {
+    if (typeof getInstrumentPriceAtDate === 'function') {
+      return getInstrumentPriceAtDate(ticker, date, meta, { history: rows });
+    }
+    var picked = seriesPickClose(rows, date);
+    var kind = String((meta && (meta.type || meta.kind)) || '').toLowerCase();
+    var isBond = kind === 'ofz' || kind === 'bond' || kind === 'bonds';
+    if (!picked) {
+      return {
+        ticker: ticker,
+        requestedDate: date,
+        price: null,
+        priceDate: null,
+        status: 'missing',
+        unit: isBond ? 'pct-of-face-value' : 'rub',
+        note: ASOF_MISSING_PRICE_NOTE
+      };
+    }
+    return {
+      ticker: ticker,
+      requestedDate: date,
+      price: picked.close,
+      priceDate: picked.date,
+      priceType: 'close',
+      unit: isBond ? 'pct-of-face-value' : 'rub',
+      currency: 'RUB',
+      status: 'ok',
+      note: picked.date !== date ? 'Ближайший торговый день не позже выбранной даты' : ''
+    };
+  }
+
+  function seriesInstrumentMeta(ticker) {
+    if (isPortfolioBondPosition({ ticker: ticker })) {
+      return { type: 'ofz', board: 'TQOB' };
+    }
+    return { type: 'stock' };
+  }
+
+  function seriesEnsureHistoryByTicker(tickers, fromIso, toIso, options) {
+    if (options && options.historyByTicker) {
+      return Promise.resolve(options.historyByTicker);
+    }
+    if (options && typeof options.getInstrumentPriceAtDate === 'function') {
+      return Promise.resolve(null);
+    }
+    var loadFn = options && typeof options.loadInstrumentHistoryForDateRange === 'function'
+      ? options.loadInstrumentHistoryForDateRange
+      : (typeof loadInstrumentHistoryForDateRange === 'function' ? loadInstrumentHistoryForDateRange : null);
+    if (typeof loadFn !== 'function') return Promise.resolve(null);
+    var fromBuf = seriesIsoAddDays(fromIso, -SERIES_HISTORY_BUFFER_DAYS);
+    var loadOpts = {};
+    if (options && typeof options.fetchJson === 'function') loadOpts.fetchJson = options.fetchJson;
+    if (options && typeof options.fetchHistory === 'function') loadOpts.fetchHistory = options.fetchHistory;
+    var jobs = (tickers || []).map(function (ticker) {
+      return loadFn(ticker, fromBuf, toIso, seriesInstrumentMeta(ticker), loadOpts).then(function (rows) {
+        return { ticker: ticker, rows: rows || [] };
+      });
+    });
+    return Promise.all(jobs).then(function (pairs) {
+      var map = {};
+      pairs.forEach(function (p) { map[p.ticker] = p.rows; });
+      return map;
+    });
+  }
+
+  function seriesMakeCachedPriceFn(historyByTicker, options) {
+    var userFn = options && typeof options.getInstrumentPriceAtDate === 'function'
+      ? options.getInstrumentPriceAtDate
+      : null;
+    return function (ticker, targetDate, meta, priceOpts) {
+      var rows = seriesLookupHistory(historyByTicker, ticker);
+      if (rows) return Promise.resolve(seriesPriceFromHistoryRows(ticker, targetDate, meta, rows));
+      if (userFn) return Promise.resolve(userFn(ticker, targetDate, meta, priceOpts));
+      return asOfFetchPriceAtDate(ticker, targetDate, meta, options);
+    };
+  }
+
+  function seriesPointFromValueResult(iso, valueRes, includePositions) {
+    var stocks = 0;
+    var bonds = 0;
+    var items = (valueRes && valueRes.items) || [];
+    items.forEach(function (row) {
+      if (!asOfItemValueUsable(row)) return;
+      var v = Number(row.valueRub) || 0;
+      if (row.type === 'bond') bonds += v;
+      else stocks += v;
+    });
+    stocks = asOfRoundRub(stocks) || 0;
+    bonds = asOfRoundRub(bonds) || 0;
+    var cash = SERIES_CASH_VALUE_RUB;
+    var total = asOfRoundRub(stocks + bonds + cash);
+    if (valueRes && !valueRes.invalidDate && valueRes.totalValueRub != null && isFinite(Number(valueRes.totalValueRub))) {
+      total = Number(valueRes.totalValueRub);
+    }
+    var warnings = ((valueRes && valueRes.notes) || []).slice();
+    var point = {
+      date: iso,
+      totalValueRub: total,
+      stocksValueRub: stocks,
+      bondsValueRub: bonds,
+      cashValueRub: cash,
+      isPartial: !!(valueRes && valueRes.isPartial),
+      warnings: warnings,
+      pricedItemsCount: valueRes && valueRes.pricedItemsCount != null ? valueRes.pricedItemsCount : 0,
+      missingItemsCount: valueRes && valueRes.missingItemsCount != null ? valueRes.missingItemsCount : 0,
+      unsupportedItemsCount: valueRes && valueRes.unsupportedItemsCount != null ? valueRes.unsupportedItemsCount : 0,
+      positions: []
+    };
+    if (includePositions) {
+      point.positions = items.map(function (row) {
+        return {
+          ticker: row.ticker,
+          type: row.type,
+          qty: row.qtyAtDate,
+          price: row.price,
+          valueRub: row.valueRub,
+          status: row.status
+        };
+      });
+    }
+    return point;
+  }
+
+  /**
+   * Read-only ряд оценок портфеля по датам (qty × CLOSE / % номинала).
+   * History грузится один раз на тикер; дивиденды/купоны/realized/cash flow не входят в Y.
+   */
+  function buildPortfolioValueSeries(portfolio, fromDate, toDate, options) {
+    options = options || {};
+    var fromIso = timelineIsoDate(fromDate);
+    var toIso = timelineIsoDate(toDate);
+    if (!fromIso || !toIso || fromIso > toIso) return Promise.resolve([]);
+
+    var dates = buildPortfolioValueSeriesDates(fromIso, toIso, options.interval, options.maxPoints);
+    if (!dates.length) return Promise.resolve([]);
+
+    var tickers = seriesCollectTickers(portfolio, options);
+    var valueFn = typeof options.buildPortfolioValueAtDate === 'function'
+      ? options.buildPortfolioValueAtDate
+      : buildPortfolioValueAtDate;
+    var includePositions = !!options.includePositions;
+
+    return seriesEnsureHistoryByTicker(tickers, fromIso, toIso, options).then(function (historyByTicker) {
+      var asOfOpts = {};
+      Object.keys(options).forEach(function (key) {
+        if (key === 'interval' || key === 'maxPoints' || key === 'includePositions') return;
+        asOfOpts[key] = options[key];
+      });
+      if (historyByTicker) {
+        asOfOpts.historyByTicker = historyByTicker;
+        delete asOfOpts.fetchJson;
+        delete asOfOpts.fetchHistory;
+        asOfOpts.getInstrumentPriceAtDate = seriesMakeCachedPriceFn(historyByTicker, {
+          getInstrumentPriceAtDate: options.getInstrumentPriceAtDate
+        });
+      }
+      var jobs = dates.map(function (iso) {
+        return Promise.resolve(valueFn(portfolio, iso, asOfOpts)).then(function (valueRes) {
+          return seriesPointFromValueResult(iso, valueRes, includePositions);
+        });
+      });
+      return Promise.all(jobs);
     });
   }
 

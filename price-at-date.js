@@ -357,6 +357,39 @@
     });
   }
 
+  /**
+   * Один ISS history-запрос на тикер за [from, till] (те же boards/CLOSE, что as-of).
+   * Без новых endpoint’ов и без поминутной истории.
+   */
+  function loadInstrumentHistoryForDateRange(ticker, fromDate, toDate, instrumentMeta, options) {
+    options = options || {};
+    var fromIso = isoDate(fromDate);
+    var tillIso = isoDate(toDate);
+    if (!fromIso || !tillIso) return Promise.resolve([]);
+    if (fromIso > tillIso) {
+      var tmp = fromIso;
+      fromIso = tillIso;
+      tillIso = tmp;
+    }
+    var t = normTicker(ticker);
+    if (!t) return Promise.resolve([]);
+    var cls = classifyInstrument(t, instrumentMeta || {});
+    if (cls.className === 'bond') {
+      return fetchIssHistoryRange('bonds', BOND_BOARD, cls.secid || t, fromIso, tillIso, options);
+    }
+    if (cls.className !== 'share') return Promise.resolve([]);
+    var chain = Promise.resolve([]);
+    SHARE_BOARDS.forEach(function (board) {
+      chain = chain.then(function (merged) {
+        return fetchIssHistoryRange('shares', board, t, fromIso, tillIso, options).then(function (rows) {
+          return mergeHistoryByDate(merged, rows);
+        });
+      });
+    });
+    return chain.catch(function () { return []; });
+  }
+
   root.pickCloseOnOrBefore = pickCloseOnOrBefore;
   root.getInstrumentPriceAtDate = getInstrumentPriceAtDate;
+  root.loadInstrumentHistoryForDateRange = loadInstrumentHistoryForDateRange;
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));

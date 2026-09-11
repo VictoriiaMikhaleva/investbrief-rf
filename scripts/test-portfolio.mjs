@@ -334,7 +334,9 @@ function loadPortfolioCalcHelpers() {
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   const splitCode = fs.readFileSync(path.join(__dirname, '..', 'split-events.js'), 'utf8');
+  const priceAtDateCode = fs.readFileSync(path.join(__dirname, '..', 'price-at-date.js'), 'utf8');
   vm.runInNewContext(splitCode, sandbox, { timeout: 5000 });
+  vm.runInNewContext(priceAtDateCode, sandbox, { timeout: 5000 });
   vm.runInNewContext(
     code +
       '\nthis.__bondRub = bondRubFromPct;' +
@@ -364,6 +366,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__timelineHtml = buildPortfolioTickerTimelineHtml;' +
       '\nthis.__asOf = buildPortfolioCompositionAtDate;' +
       '\nthis.__asOfValue = buildPortfolioValueAtDate;' +
+      '\nthis.__asOfSeries = buildPortfolioValueSeries;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
       '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;' +
       '\nthis.__asOfTable = buildPortfolioAsOfTableHtml;' +
@@ -448,6 +451,7 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioTickerTimelineHtml: sandbox.__timelineHtml,
     buildPortfolioCompositionAtDate: sandbox.__asOf,
     buildPortfolioValueAtDate: sandbox.__asOfValue,
+    buildPortfolioValueSeries: sandbox.__asOfSeries,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
     buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
     buildPortfolioAsOfTableHtml: sandbox.__asOfTable,
@@ -6147,9 +6151,268 @@ await (async () => {
   }
 })();
 
+{
+  // v1.1 wave 1: buildPortfolioValueSeries — ряд оценок, без UI и без сети
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const NOW = '2026-09-04';
+
+  function priceOk(price, extra) {
+    extra = extra || {};
+    return {
+      status: 'ok',
+      price: price,
+      priceDate: extra.priceDate || extra.date || '2024-06-01',
+      priceType: 'close',
+      unit: extra.unit || 'rub',
+      source: extra.source || (extra.unit === 'pct-of-face-value' ? 'moex-iss-history-bonds' : 'moex-iss-history-shares')
+    };
+  }
+  function mockPricesOnOrBefore(map) {
+    return function (ticker, date) {
+      const t = String(ticker || '').toUpperCase();
+      const iso = String(date || '').slice(0, 10);
+      const byTicker = map[t];
+      if (!byTicker) return Promise.resolve({ status: 'missing', price: null, priceDate: null });
+      const keys = Object.keys(byTicker).filter((d) => d <= iso).sort();
+      const key = keys.length ? keys[keys.length - 1] : null;
+      const row = key ? byTicker[key] : null;
+      return Promise.resolve(row || { status: 'missing', price: null, priceDate: null });
+    };
+  }
+  function seriesOpts(priceMap, extra) {
+    return Object.assign({
+      interval: 'day',
+      splitEvents: events,
+      currentDate: NOW,
+      getInstrumentPriceAtDate: mockPricesOnOrBefore(priceMap)
+    }, extra || {});
+  }
+  function pointOn(series, iso) {
+    return (series || []).find((p) => p.date === iso);
+  }
+
+  const sberPf = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+    sales: []
+  };
+  const sberSnap = JSON.stringify(sberPf);
+  const sberSeries = await calc.buildPortfolioValueSeries(
+    sberPf, '2024-06-03', '2024-06-05',
+    seriesOpts({ SBER: { '2024-06-03': priceOk(100, { date: '2024-06-03' }) } }, { includePositions: true })
+  );
+  assert(sberSeries.length === 3, 'series SBER: 3 daily points');
+  sberSeries.forEach((p) => {
+    assert(p.date >= '2024-06-03' && p.date <= '2024-06-05', 'series SBER: date in range');
+    assert(p.totalValueRub === 1000, 'series SBER: 10×100');
+    assert(p.stocksValueRub === 1000 && p.bondsValueRub === 0 && p.cashValueRub === 0, 'series SBER: stocks only');
+    assert(p.positions[0].qty === 10 && p.positions[0].valueRub === 1000, 'series SBER: qty×close');
+    assert(!p.isPartial, 'series SBER: not partial');
+  });
+  assert(JSON.stringify(sberPf) === sberSnap, 'series JSON: SBER not mutated');
+
+  const buyInsidePf = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-06-04', currentPrice: 280 }],
+    sales: []
+  };
+  const buyInside = await calc.buildPortfolioValueSeries(
+    buyInsidePf, '2024-06-03', '2024-06-05',
+    seriesOpts({ SBER: { '2024-06-03': priceOk(100, { date: '2024-06-03' }) } }, { includePositions: true })
+  );
+  assert(pointOn(buyInside, '2024-06-03').totalValueRub === 0, 'series buy inside: before buy = 0');
+  assert(pointOn(buyInside, '2024-06-04').totalValueRub === 1000, 'series buy inside: on buy > 0');
+  assert(pointOn(buyInside, '2024-06-05').totalValueRub === 1000, 'series buy inside: after buy > 0');
+
+  const saleInsidePf = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 6, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+    sales: [{
+      saleId: 'SALE1', ticker: 'SBER', qty: 4, buyPrice: 250, salePrice: 280, saleDate: '2024-06-04',
+      allocations: [{ lotId: 'S1', qty: 4, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  };
+  const saleInside = await calc.buildPortfolioValueSeries(
+    saleInsidePf, '2024-06-03', '2024-06-05',
+    seriesOpts({ SBER: { '2024-06-03': priceOk(100, { date: '2024-06-03' }) } }, { includePositions: true })
+  );
+  assert(pointOn(saleInside, '2024-06-03').positions[0].qty === 10, 'series sale: before sale qty 10');
+  assert(pointOn(saleInside, '2024-06-03').totalValueRub === 1000, 'series sale: before value 1000');
+  assert(pointOn(saleInside, '2024-06-04').positions[0].qty === 6, 'series sale: after sale qty 6');
+  assert(pointOn(saleInside, '2024-06-05').totalValueRub === 600, 'series sale: after value 600');
+
+  const gmknPf = {
+    positions: [{ ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92 }],
+    sales: []
+  };
+  const gmknSnap = JSON.stringify(gmknPf);
+  const gmknSeries = await calc.buildPortfolioValueSeries(
+    gmknPf, '2024-04-01', '2024-04-10',
+    seriesOpts({
+      GMKN: {
+        '2024-04-05': priceOk(25014, { date: '2024-04-05' }),
+        '2024-04-08': priceOk(129.92, { date: '2024-04-08' })
+      }
+    }, { includePositions: true })
+  );
+  const gmknBefore = pointOn(gmknSeries, '2024-04-05');
+  const gmknAfter = pointOn(gmknSeries, '2024-04-08');
+  assert(gmknBefore && gmknBefore.positions[0].qty === 10, 'series GMKN: before split qty 10');
+  assert(gmknBefore.totalValueRub === 250140, 'series GMKN: before 10×25014');
+  assert(gmknAfter && gmknAfter.positions[0].qty === 1000, 'series GMKN: after split qty ×100');
+  assert(Math.abs(gmknAfter.totalValueRub - 129920) < 1e-6, 'series GMKN: after 1000×129.92');
+  assert(gmknAfter.totalValueRub !== 1299.2 && gmknAfter.positions[0].qty !== 10, 'series GMKN: not raw qty × new price');
+  const gmknDropPct = (gmknAfter.totalValueRub - gmknBefore.totalValueRub) / gmknBefore.totalValueRub * 100;
+  assert(gmknDropPct > -90, 'series GMKN: no technical −99%');
+  assert(JSON.stringify(gmknPf) === gmknSnap, 'series JSON: GMKN not mutated');
+
+  const tCurrPf = {
+    positions: [{ ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 312, buyDate: '2025-12-01', currentPrice: 262 }],
+    sales: []
+  };
+  const tCurrSnap = JSON.stringify(tCurrPf);
+  const tSeries = await calc.buildPortfolioValueSeries(
+    tCurrPf, '2026-04-01', '2026-04-10',
+    seriesOpts({
+      T: { '2026-04-01': priceOk(262, { date: '2026-04-01' }) }
+    }, { includePositions: true })
+  );
+  const tPt = pointOn(tSeries, '2026-04-01');
+  assert(tPt, 'series T: has point before split');
+  assert(tPt.positions[0].qty !== 100, 'series T: already-current not ×10 again');
+  if (tPt.positions[0].qty != null && tPt.positions[0].status === 'ok') {
+    assert(tPt.positions[0].qty === 10, 'series T: qty stays 10');
+    assert(tPt.totalValueRub === 2620, 'series T: 10×262 not 100×262');
+  } else {
+    assert(tPt.isPartial === true, 'series T: partial/warning allowed');
+    assert(tPt.totalValueRub !== 26200, 'series T: not double-counted 100×262');
+  }
+  assert(JSON.stringify(tCurrPf) === tCurrSnap, 'series JSON: T not mutated');
+
+  const ofzPf = {
+    positions: [{ ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000, currentPrice: 95 }],
+    sales: []
+  };
+  const ofzSeries = await calc.buildPortfolioValueSeries(
+    ofzPf, '2024-06-03', '2024-06-05',
+    seriesOpts({
+      OFZ_26238: { '2024-06-03': priceOk(95, { date: '2024-06-03', unit: 'pct-of-face-value' }) }
+    }, { includePositions: true })
+  );
+  ofzSeries.forEach((p) => {
+    assert(p.bondsValueRub === 9500 && p.stocksValueRub === 0, 'series OFZ: bond formula 10×95%×1000');
+    assert(p.totalValueRub === 9500, 'series OFZ: total 9500');
+    assert(p.positions[0].qty === 10, 'series OFZ: split logic not applied');
+    assert(p.cashValueRub === 0, 'series OFZ: coupons not on Y');
+  });
+
+  const missingPf = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' },
+      { ticker: 'GAZP', lotId: 'G1', qty: 4, avgPrice: 140, buyDate: '2024-02-01' }
+    ],
+    sales: []
+  };
+  let threw = false;
+  let missingSeries;
+  try {
+    missingSeries = await calc.buildPortfolioValueSeries(
+      missingPf, '2024-06-03', '2024-06-04',
+      seriesOpts({ SBER: { '2024-06-03': priceOk(100, { date: '2024-06-03' }) } })
+    );
+  } catch (e) {
+    threw = true;
+  }
+  assert(!threw, 'series missing: no throw');
+  assert(missingSeries && missingSeries[0].isPartial === true, 'series missing: isPartial');
+  assert(missingSeries[0].totalValueRub === 1000, 'series missing: priced SBER only');
+  assert(missingSeries[0].missingItemsCount >= 1, 'series missing: missingItemsCount');
+
+  let fetchCalls = 0;
+  const histCache = {
+    SBER: [
+      { date: '2024-06-03', close: 110 },
+      { date: '2024-06-04', close: 111 },
+      { date: '2024-06-05', close: 112 }
+    ]
+  };
+  const cachedSeries = await calc.buildPortfolioValueSeries(
+    sberPf, '2024-06-03', '2024-06-05',
+    {
+      interval: 'day',
+      splitEvents: events,
+      currentDate: NOW,
+      historyByTicker: histCache,
+      fetchHistory: function () { fetchCalls += 1; return []; },
+      fetchJson: function () { fetchCalls += 1; return {}; },
+      includePositions: true
+    }
+  );
+  assert(fetchCalls === 0, 'series historyByTicker: fetch not called');
+  assert(cachedSeries[0].totalValueRub === 1100, 'series historyByTicker: uses cached CLOSE');
+  assert(cachedSeries[2].totalValueRub === 1120, 'series historyByTicker: last point from cache');
+
+  const ready = await calc.buildPortfolioValueSeries(
+    sberPf, '2024-06-03', '2024-06-05',
+    seriesOpts({ SBER: { '2024-06-03': priceOk(100, { date: '2024-06-03' }) } })
+  );
+  assert(Array.isArray(ready) && ready.length === 3, 'series no hover fetch: full series in memory');
+  assert(ready.every((p) => p.date && p.totalValueRub != null), 'series no hover fetch: each point complete');
+
+  let loadOnceCalls = 0;
+  const loadOnceSeries = await calc.buildPortfolioValueSeries(
+    sberPf, '2024-06-03', '2024-06-10',
+    {
+      interval: 'day',
+      splitEvents: events,
+      currentDate: NOW,
+      fetchHistory: function (q) {
+        loadOnceCalls += 1;
+        assert(q && q.market === 'shares', 'series loader: shares market only');
+        return [
+          { date: '2024-06-03', close: 100 },
+          { date: '2024-06-10', close: 101 }
+        ];
+      }
+    }
+  );
+  assert(loadOnceCalls <= 2, 'series loader: history once per ticker (≤2 boards), not per date');
+  assert(loadOnceCalls < 8, 'series loader: not N dates × ISS');
+  assert(loadOnceSeries.length === 8, 'series loader: daily points still built from cache');
+
+  const weekSeries = await calc.buildPortfolioValueSeries(
+    sberPf, '2024-06-01', '2024-06-29',
+    seriesOpts({ SBER: { '2024-06-01': priceOk(100, { date: '2024-06-01' }) } }, { interval: 'week' })
+  );
+  const monthSeries = await calc.buildPortfolioValueSeries(
+    sberPf, '2024-01-15', '2024-06-15',
+    seriesOpts({ SBER: { '2024-01-15': priceOk(100, { date: '2024-01-15' }) } }, { interval: 'month' })
+  );
+  assert(weekSeries.length >= 2 && weekSeries.length <= 6, 'series week: one point per week');
+  assert(monthSeries.length >= 2 && monthSeries.length <= 8, 'series month: one point per month');
+  assert(weekSeries.length < 29, 'series week: not daily');
+
+  const priceAtSrc = fs.readFileSync(path.join(__dirname, '..', 'price-at-date.js'), 'utf8');
+  const portfolioSrc = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  assert(/\/history\/engines\/stock\/markets\/' \+ market \+ '\/boards\//.test(priceAtSrc),
+    'series ISS: existing history shares/bonds path remains');
+  assert(!/candles\.json|\/iss\/engines\/futures/.test(priceAtSrc),
+    'series ISS: price-at-date has no candle/futures endpoints');
+  assert(!/iss\.moex\.com|\/history\/engines\//.test(portfolioSrc),
+    'series ISS: portfolio.js does not add MOEX endpoints');
+  assert(!/candlestick|intraday/.test(Function.prototype.toString.call(calc.buildPortfolioValueSeries)),
+    'series helper: no candlestick/intraday');
+
+  const frozenStore = JSON.stringify(calc.memStore);
+  await calc.buildPortfolioValueSeries(
+    sberPf, '2024-06-03', '2024-06-05',
+    seriesOpts({ SBER: { '2024-06-03': priceOk(100, { date: '2024-06-03' }) } })
+  );
+  assert(JSON.stringify(calc.memStore) === frozenStore, 'series: storage not written');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1');
