@@ -995,6 +995,17 @@ button.primary.brief-read-btn:active {
 .chart-canvas-wrap { background: #f7f8fb; border-color: var(--border); }
 .modal-overlay { background: rgba(17, 25, 38, 0.38); }
 
+#tab-portfolio {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+#tab-portfolio .table-wrap {
+  max-width: 100%;
+  min-width: 0;
+}
+
 /* ╨С╤Л╤Б╤В╤А╤Л╨╣ ╨▓╤Л╨▒╨╛╤А ╨▒╤Г╨╝╨░╨│╨╕ тАФ ╤Б╨╛╨▒╤А╨░╨╜╨╜╨░╤П luxury-╨║╨░╤А╤В╨╛╤З╨║╨░ ╨┐╨╛╤Б╨╗╨╡ ╤Б╨▓╨╛╨┤╨║╨╕ */
 #tab-portfolio .portfolio-folder-section {
   margin: 0.85rem 0 1rem;
@@ -5545,7 +5556,10 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.72) inset,
     0 4px 16px rgba(23, 34, 51, 0.035);
-  overflow: visible;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 #tab-portfolio .pf-dyn-head {
@@ -5611,6 +5625,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   align-items: center;
   gap: 0.55rem 0.85rem;
   margin: 0 0 0.55rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 #tab-portfolio .pf-dyn-periods {
@@ -5650,7 +5666,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   font-size: 0.78rem;
   line-height: 1.3;
   color: var(--text-muted);
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: 100%;
   white-space: nowrap;
   cursor: pointer;
@@ -5762,7 +5779,7 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 
 #tab-portfolio .pf-dyn-disclose summary {
   cursor: pointer;
-  list-style-position: outside;
+  list-style-position: inside;
 }
 
 #tab-portfolio .pf-dyn-disclose-list {
@@ -5778,7 +5795,9 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   position: relative;
   height: 220px;
   margin: 0 0 0.25rem;
-  overflow: visible;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   background: color-mix(in srgb, #fbfaf7 88%, var(--bronze-soft) 12%);
   border: 1px solid color-mix(in srgb, var(--bronze) 16%, #d5ddd6 84%);
   border-radius: 12px;
@@ -5787,24 +5806,30 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 #tab-portfolio .pf-dyn-chart-wrap canvas {
   display: block;
   width: 100%;
+  max-width: 100%;
   height: 100%;
+  box-sizing: border-box;
   cursor: crosshair;
 }
 
 #tab-portfolio #pfDynTip {
   background: rgba(38, 36, 32, 0.92);
   border: 1px solid color-mix(in srgb, var(--bronze) 38%, transparent);
+  max-width: min(16.5rem, calc(100% - 16px));
 }
 
 #tab-portfolio .pf-dyn-card {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(8.6rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.6rem), 1fr));
   gap: 0.55rem 0.75rem;
   padding: 0.75rem 0.85rem;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--bronze) 18%, #d0d8d2 82%);
   background: #fff;
-  overflow: visible;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 #tab-portfolio .pf-dyn-kpi {
@@ -5853,7 +5878,21 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   justify-content: space-between;
   gap: 0.6rem;
   padding: 0.12rem 0;
+  min-width: 0;
   border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+#tab-portfolio .pf-dyn-top li span {
+  min-width: 0;
+}
+
+#tab-portfolio .pf-dyn-top li span:first-child {
+  overflow-wrap: anywhere;
+}
+
+#tab-portfolio .pf-dyn-top li span:last-child {
+  flex: 0 1 auto;
+  text-align: right;
 }
 
 #tab-portfolio .pf-dyn-top li:first-child { border-top: none; }
@@ -5863,7 +5902,8 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   #tab-portfolio .pf-dyn-card {
     grid-template-columns: 1fr 1fr;
   }
-  #tab-portfolio .pf-dyn-parts {
-    white-space: nowrap;
+  #tab-portfolio .pf-dyn-parts,
+  #tab-portfolio .pf-dyn-parts-text {
+    white-space: normal;
   }
 }

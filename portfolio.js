@@ -11440,11 +11440,13 @@
     if (wrap && wrap.hidden) return;
     if (!pfDynTabActive()) return;
     var series = pfDynState.series || [];
+    var wrapW = wrap ? (wrap.clientWidth || wrap.getBoundingClientRect().width) : 0;
     var size = typeof chartCanvasSize === 'function'
-      ? chartCanvasSize(canvas, 280, 180)
-      : { w: canvas.clientWidth || 280, h: canvas.clientHeight || 180 };
+      ? chartCanvasSize(canvas, wrapW > 0 ? Math.min(280, wrapW) : 120, 180)
+      : { w: wrapW || canvas.clientWidth || 280, h: canvas.clientHeight || 180 };
     var w = size.w;
     var h = size.h;
+    if (wrapW > 0 && w > wrapW) w = wrapW;
     if ((w < 16 || h < 16) && !canvas._pfDynSizeRetry && typeof requestAnimationFrame === 'function') {
       canvas._pfDynSizeRetry = true;
       requestAnimationFrame(function () {

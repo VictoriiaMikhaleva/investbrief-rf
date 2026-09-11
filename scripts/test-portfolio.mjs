@@ -6498,8 +6498,12 @@ await (async () => {
     /data-pf-dyn-horizon="all"/.test(indexHtml), 'dyn ui: period controls');
 
   const css = fs.readFileSync(path.join(__dirname, '..', 'theme-luxury.css'), 'utf8');
-  assert(/#tab-portfolio \.pf-dyn-card \{[\s\S]*?overflow:\s*visible/.test(css), 'dyn ui: card not clipped');
-  assert(/#tab-portfolio \.pf-dyn-block \{[\s\S]*?overflow:\s*visible/.test(css), 'dyn ui: block overflow visible');
+  assert(/#tab-portfolio \.pf-dyn-card \{[\s\S]*?overflow-x:\s*clip/.test(css), 'dyn ui: card does not expand page');
+  assert(/#tab-portfolio \.pf-dyn-block \{[\s\S]*?overflow-x:\s*clip/.test(css), 'dyn ui: block clips x overflow');
+  assert(/#tab-portfolio \.pf-dyn-chart-wrap \{[\s\S]*?overflow:\s*hidden/.test(css), 'dyn ui: chart wrap contains canvas/tooltip');
+  assert(/minmax\(min\(100%, 8\.6rem\)/.test(css), 'dyn ui: card grid can shrink below 8.6rem');
+  assert(/#tab-portfolio \{\s*max-width:\s*100%;[\s\S]*?overflow-x:\s*clip/.test(css),
+    'dyn ui: portfolio tab does not page-scroll horizontally');
 
   const src = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
   assert(/Строим динамику портфеля/.test(src), 'dyn ui: loading copy');
