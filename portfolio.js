@@ -1662,8 +1662,18 @@
     loadSplitEvents().then(function () {
       updatePortfolioSplitCatalogWarnUi();
       renderPortfolioTableBody();
+      requestPortfolioDynamicsRefresh({
+        force: !!pfDynState.catalogBlocked,
+        immediate: true,
+        reason: 'catalog'
+      });
     }).catch(function () {
       updatePortfolioSplitCatalogWarnUi();
+      requestPortfolioDynamicsRefresh({
+        force: !!pfDynState.catalogBlocked,
+        immediate: true,
+        reason: 'catalog'
+      });
     });
   }
 
@@ -11011,6 +11021,610 @@
       });
   }
 
+  var PF_DYN_LOADING = 'Строим динамику портфеля…';
+  var PF_DYN_EMPTY = 'Добавьте позиции с датами покупки, чтобы построить динамику портфеля.';
+  var PF_DYN_ERROR = 'Не удалось построить динамику портфеля. Попробуйте обновить страницу.';
+  var PF_DYN_PARTIAL = 'Для части бумаг нет цены на отдельные даты, поэтому график может быть неполным.';
+  var PF_DYN_CATALOG = 'Список дроблений акций временно недоступен. Динамика может быть неполной.';
+  var PF_DYN_MAX_POINTS = 140;
+  var PF_DYN_DEBOUNCE_MS = 80;
+  var pfDynSeq = 0;
+  var pfDynTimer = 0;
+  var pfDynLastKey = '';
+  var pfDynHorizonPicked = false;
+  var pfDynState = {
+    horizon: '1y',
+    showParts: false,
+    series: [],
+    selectedIndex: -1,
+    hoverIndex: -1,
+    fromDate: '',
+    toDate: '',
+    catalogBlocked: false
+  };
+
+  function pfDynEarliestOperationDate(portfolio) {
+    var parts = payoutsPositionsSales(portfolio, {});
+    var min = '';
+    function take(raw) {
+      var iso = timelineIsoDate(raw);
+      if (!iso) return;
+      if (!min || iso < min) min = iso;
+    }
+    (parts.positions || []).forEach(function (p) { if (p) take(p.buyDate); });
+    (parts.sales || []).forEach(function (s) { if (s) take(s.saleDate); });
+    return min;
+  }
+
+  function pfDynHasBuyDates(portfolio) {
+    var parts = payoutsPositionsSales(portfolio, {});
+    return (parts.positions || []).some(function (p) {
+      return p && timelineIsoDate(p.buyDate);
+    });
+  }
+
+  function pfDynHasNonBond(portfolio) {
+    var parts = payoutsPositionsSales(portfolio, {});
+    return (parts.positions || []).some(function (p) {
+      return p && !isPortfolioBondPosition(p);
+    }) || (parts.sales || []).some(function (s) {
+      return s && !isPortfolioBondPosition(s);
+    });
+  }
+
+  function pfDynTabActive() {
+    return !(typeof state !== 'undefined' && state && state.tab && state.tab !== 'portfolio');
+  }
+
+  function pfDynPortfolioKey(portfolio, horizon) {
+    var parts = payoutsPositionsSales(portfolio || {}, {});
+    function rowKey(row, dateField) {
+      if (!row) return '';
+      return [
+        row.ticker || '',
+        row.lotId || '',
+        row.qty != null ? row.qty : '',
+        row[dateField] || '',
+        row.avgPrice != null ? row.avgPrice : ''
+      ].join(':');
+    }
+    var pos = (parts.positions || []).map(function (p) { return rowKey(p, 'buyDate'); }).join('|');
+    var sales = (parts.sales || []).map(function (s) { return rowKey(s, 'saleDate'); }).join('|');
+    return String(horizon || '') + '\n' + pos + '\n' + sales;
+  }
+
+  function resolvePortfolioDynamicsHorizon(todayIso, earliestIso, preferred) {
+    if (preferred && preferred !== '1y') return preferred;
+    if (preferred === '1y') {
+      var from1y = shiftPortfolioIsoByMonths(todayIso, -12);
+      if (earliestIso && from1y && earliestIso > from1y) return 'all';
+      return '1y';
+    }
+    var yFrom = shiftPortfolioIsoByMonths(todayIso, -12);
+    if (earliestIso && yFrom && earliestIso <= yFrom) return '1y';
+    return 'all';
+  }
+
+  function resolvePortfolioDynamicsRange(horizon, todayIso, earliestIso) {
+    var to = timelineIsoDate(todayIso) || todayIso;
+    var from = to;
+    if (horizon === '1m') from = shiftPortfolioIsoByMonths(to, -1);
+    else if (horizon === '3m') from = shiftPortfolioIsoByMonths(to, -3);
+    else if (horizon === '6m') from = shiftPortfolioIsoByMonths(to, -6);
+    else if (horizon === 'all') from = earliestIso || to;
+    else from = shiftPortfolioIsoByMonths(to, -12);
+    from = timelineIsoDate(from) || from;
+    if (!from) from = to;
+    if (from > to) from = to;
+    return { fromDate: from, toDate: to };
+  }
+
+  function resolvePortfolioDynamicsInterval(horizon, fromIso, toIso) {
+    if (horizon === 'all') {
+      var fromT = Date.parse(fromIso + 'T12:00:00');
+      var toT = Date.parse(toIso + 'T12:00:00');
+      var days = isFinite(fromT) && isFinite(toT) ? Math.round((toT - fromT) / 86400000) : 0;
+      if (days > 1400) return 'month';
+      if (days > 400) return 'week';
+      return 'day';
+    }
+    return 'day';
+  }
+
+  function pfDynPointValue(pt) {
+    if (!pt || pt.totalValueRub == null || !isFinite(Number(pt.totalValueRub))) return null;
+    return Number(pt.totalValueRub);
+  }
+
+  function buildPortfolioDynamicsChangeFromStart(series, selectedIndex) {
+    var points = series || [];
+    if (!points.length) return { changeRub: null, changePct: null };
+    var i = selectedIndex == null || selectedIndex < 0 ? points.length - 1 : selectedIndex;
+    if (i >= points.length) i = points.length - 1;
+    var start = pfDynPointValue(points[0]);
+    var cur = pfDynPointValue(points[i]);
+    if (start == null || cur == null) return { changeRub: null, changePct: null };
+    var rub = asOfRoundRub(cur - start);
+    var pct = start !== 0 ? (rub / start) * 100 : null;
+    return { changeRub: rub, changePct: pct };
+  }
+
+  function pfDynTopPositions(point, limit) {
+    limit = limit || 5;
+    var rows = ((point && point.positions) || []).slice().filter(function (row) {
+      return row && row.valueRub != null && isFinite(Number(row.valueRub));
+    });
+    rows.sort(function (a, b) { return Number(b.valueRub) - Number(a.valueRub); });
+    return rows.slice(0, limit);
+  }
+
+  function selectPortfolioDynamicsPoint(series, index) {
+    var points = series || [];
+    if (!points.length) return null;
+    var i = index == null || index < 0 ? points.length - 1 : Math.round(Number(index));
+    if (i < 0) i = 0;
+    if (i >= points.length) i = points.length - 1;
+    return { index: i, point: points[i] };
+  }
+
+  function pfDynFormatAxisRub(n) {
+    var x = Number(n);
+    if (!isFinite(x)) return '';
+    var abs = Math.abs(x);
+    if (abs >= 1e6) return (x / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' млн';
+    if (abs >= 1000) return (x / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' тыс';
+    return x.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+  }
+
+  function buildPortfolioDynamicsCardHtml(series, selectedIndex) {
+    var picked = selectPortfolioDynamicsPoint(series, selectedIndex);
+    if (!picked || !picked.point) return '';
+    var pt = picked.point;
+    var ch = buildPortfolioDynamicsChangeFromStart(series, picked.index);
+    var tone = cmpChangeTone(ch.changeRub);
+    var changeTxt = ch.changeRub == null ? '—' : formatCmpSignedRub(ch.changeRub);
+    var pctTxt = ch.changePct == null ? '' : formatCmpPctDisplay(ch.changePct);
+    var top = pfDynTopPositions(pt, 5);
+    var html = '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">Дата</span>' +
+      '<span class="pf-dyn-kpi-val">' + escapeHtml(formatAsOfDateDisplay(pt.date)) + '</span></div>' +
+      '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">Стоимость портфеля</span>' +
+      '<span class="pf-dyn-kpi-val">' + escapeHtml(formatPortfolioRubAmount(pt.totalValueRub)) + '</span></div>' +
+      '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">Акции</span>' +
+      '<span class="pf-dyn-kpi-val">' + escapeHtml(formatPortfolioRubAmount(pt.stocksValueRub)) + '</span></div>' +
+      '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">Облигации</span>' +
+      '<span class="pf-dyn-kpi-val">' + escapeHtml(formatPortfolioRubAmount(pt.bondsValueRub)) + '</span></div>' +
+      '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">С начала периода</span>' +
+      '<span class="pf-dyn-kpi-val pf-dyn-change--' + tone + (tone === 'up' ? ' pnl-pos' : tone === 'down' ? ' pnl-neg' : '') + '">' +
+        escapeHtml(changeTxt + (pctTxt ? ' · ' + pctTxt : '')) + '</span></div>';
+    if (pt.isPartial) {
+      html += '<p class="pf-dyn-warn">' + escapeHtml(PF_DYN_PARTIAL) + '</p>';
+    }
+    if (top.length) {
+      html += '<ul class="pf-dyn-top">';
+      top.forEach(function (row) {
+        html += '<li><span>' + escapeHtml(row.ticker) + '</span><span>' +
+          escapeHtml(formatPortfolioRubAmount(row.valueRub)) + '</span></li>';
+      });
+      html += '</ul>';
+    }
+    return html;
+  }
+
+  function pfDynSyncHorizonButtons(horizon) {
+    var root = document.getElementById('pfDynPeriods');
+    if (!root) return;
+    root.querySelectorAll('[data-pf-dyn-horizon]').forEach(function (btn) {
+      var on = btn.getAttribute('data-pf-dyn-horizon') === horizon;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function pfDynSetStatus(text) {
+    var el = document.getElementById('pfDynStatus');
+    if (!el) return;
+    if (!text) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    el.hidden = false;
+    el.textContent = text;
+  }
+
+  function pfDynShowChart(on) {
+    var wrap = document.getElementById('pfDynChartWrap');
+    if (wrap) wrap.hidden = !on;
+  }
+
+  function renderPortfolioDynamicsCard() {
+    var card = document.getElementById('pfDynCard');
+    if (!card) return;
+    if (pfDynState.catalogBlocked || !pfDynState.series.length) {
+      card.hidden = true;
+      card.innerHTML = '';
+      return;
+    }
+    card.hidden = false;
+    card.innerHTML = buildPortfolioDynamicsCardHtml(pfDynState.series, pfDynState.selectedIndex);
+  }
+
+  function pfDynIndexAtClientX(canvas, clientX) {
+    var meta = canvas && canvas._pfDynMeta;
+    var series = pfDynState.series || [];
+    if (!meta || series.length < 1) return -1;
+    var rect = canvas.getBoundingClientRect();
+    var x = clientX - rect.left;
+    var n = series.length;
+    if (n === 1) return 0;
+    var t = (x - meta.pad.left) / (meta.plotW || 1);
+    var idx = Math.round(t * (n - 1));
+    if (idx < 0) idx = 0;
+    if (idx >= n) idx = n - 1;
+    return idx;
+  }
+
+  function drawPortfolioDynamicsChart() {
+    var canvas = document.getElementById('pfDynChart');
+    var wrap = document.getElementById('pfDynChartWrap');
+    if (!canvas || typeof canvas.getContext !== 'function') return;
+    if (wrap && wrap.hidden) return;
+    if (!pfDynTabActive()) return;
+    var series = pfDynState.series || [];
+    var size = typeof chartCanvasSize === 'function'
+      ? chartCanvasSize(canvas, 280, 180)
+      : { w: canvas.clientWidth || 280, h: canvas.clientHeight || 180 };
+    var w = size.w;
+    var h = size.h;
+    if ((w < 16 || h < 16) && !canvas._pfDynSizeRetry && typeof requestAnimationFrame === 'function') {
+      canvas._pfDynSizeRetry = true;
+      requestAnimationFrame(function () {
+        canvas._pfDynSizeRetry = false;
+        drawPortfolioDynamicsChart();
+      });
+      return;
+    }
+    var dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 2);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (series.length < 2) {
+      canvas._pfDynMeta = null;
+      ctx.fillStyle = typeof chartThemeColor === 'function'
+        ? chartThemeColor('--chart-axis', '#5C6560')
+        : '#5C6560';
+      ctx.font = '14px Golos Text, IBM Plex Sans, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(series.length ? formatPortfolioRubAmount(series[0].totalValueRub) : 'Недостаточно данных', w / 2, h / 2);
+      return;
+    }
+    var values = series.map(function (p) { return Number(p.totalValueRub) || 0; });
+    if (pfDynState.showParts) {
+      series.forEach(function (p) {
+        values.push(Number(p.stocksValueRub) || 0);
+        values.push(Number(p.bondsValueRub) || 0);
+      });
+    }
+    var minP = Math.min.apply(null, values);
+    var maxP = Math.max.apply(null, values);
+    var range = maxP - minP || Math.abs(maxP) * 0.02 || 1;
+    minP -= range * 0.08;
+    if (minP > 0) minP = Math.max(0, minP);
+    maxP += range * 0.08;
+    var pad = { top: 14, right: 12, bottom: 28, left: 52 };
+    var plotW = w - pad.left - pad.right;
+    var plotH = h - pad.top - pad.bottom;
+    function xAt(i) { return pad.left + (i / (series.length - 1)) * plotW; }
+    function yAt(v) { return pad.top + plotH - ((v - minP) / (maxP - minP)) * plotH; }
+    canvas._pfDynMeta = { pad: pad, plotW: plotW, plotH: plotH, w: w, h: h };
+    var grid = typeof chartThemeColor === 'function' ? chartThemeColor('--chart-grid', 'rgba(106,127,112,0.14)') : 'rgba(106,127,112,0.14)';
+    var axis = typeof chartThemeColor === 'function' ? chartThemeColor('--chart-axis', '#5C6560') : '#5C6560';
+    var line = typeof chartThemeColor === 'function' ? chartThemeColor('--chart-line', '#B88952') : '#B88952';
+    var fill = typeof chartThemeColor === 'function' ? chartThemeColor('--chart-fill', 'rgba(184,149,98,0.18)') : 'rgba(184,149,98,0.18)';
+    ctx.strokeStyle = grid;
+    ctx.lineWidth = 1;
+    var g;
+    for (g = 0; g <= 4; g++) {
+      var gy = pad.top + (plotH * g) / 4;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, gy);
+      ctx.lineTo(pad.left + plotW, gy);
+      ctx.stroke();
+      ctx.fillStyle = axis;
+      ctx.font = '10px Inter, Manrope, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(pfDynFormatAxisRub(maxP - ((maxP - minP) * g) / 4), pad.left - 8, gy + 3);
+    }
+    ctx.beginPath();
+    series.forEach(function (pt, idx) {
+      var x = xAt(idx);
+      var y = yAt(Number(pt.totalValueRub) || 0);
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(xAt(series.length - 1), pad.top + plotH);
+    ctx.lineTo(xAt(0), pad.top + plotH);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    function strokeVals(getter, color, width) {
+      ctx.beginPath();
+      series.forEach(function (pt, idx) {
+        var x = xAt(idx);
+        var y = yAt(Number(getter(pt)) || 0);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+    if (pfDynState.showParts) {
+      strokeVals(function (p) { return p.stocksValueRub; }, '#6A7F70', 1.5);
+      strokeVals(function (p) { return p.bondsValueRub; }, '#8A7A62', 1.5);
+    }
+    strokeVals(function (p) { return p.totalValueRub; }, line, 2);
+    var mark = pfDynState.hoverIndex >= 0 ? pfDynState.hoverIndex : pfDynState.selectedIndex;
+    if (mark < 0) mark = series.length - 1;
+    if (mark >= 0 && mark < series.length) {
+      var hx = xAt(mark);
+      ctx.save();
+      ctx.strokeStyle = typeof chartThemeColor === 'function'
+        ? chartThemeColor('--chart-hover-guide', 'rgba(90,98,92,0.28)')
+        : 'rgba(90,98,92,0.28)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(hx, pad.top);
+      ctx.lineTo(hx, pad.top + plotH);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = line;
+      ctx.strokeStyle = '#f7f8f6';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(hx, yAt(Number(series[mark].totalValueRub) || 0), 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.fillStyle = axis;
+    ctx.font = '10px Inter, Manrope, sans-serif';
+    ctx.textAlign = 'center';
+    var labelIdx = [0, Math.round((series.length - 1) / 2), series.length - 1];
+    var seenLbl = {};
+    labelIdx.forEach(function (idx) {
+      if (idx < 0 || idx >= series.length || seenLbl[idx]) return;
+      seenLbl[idx] = true;
+      ctx.fillText(formatAsOfDateDisplay(series[idx].date), xAt(idx), h - 8);
+    });
+  }
+
+  function pfDynFillTip(idx, clientX, clientY) {
+    var tip = document.getElementById('pfDynTip');
+    var wrap = document.getElementById('pfDynChartWrap');
+    var pt = pfDynState.series[idx];
+    if (!tip || !wrap || !pt) return;
+    var lines = [
+      formatAsOfDateDisplay(pt.date),
+      formatPortfolioRubAmount(pt.totalValueRub)
+    ];
+    if (pfDynState.showParts) {
+      lines.push('Акции: ' + formatPortfolioRubAmount(pt.stocksValueRub));
+      lines.push('Облигации: ' + formatPortfolioRubAmount(pt.bondsValueRub));
+    }
+    if (pt.isPartial) lines.push('оценка неполная');
+    tip.innerHTML = lines.map(function (ln, i) {
+      return '<div class="chart-hover-tip__line' + (i ? ' chart-hover-tip__line--muted' : '') + '">' + escapeHtml(ln) + '</div>';
+    }).join('');
+    tip.hidden = false;
+    tip.classList.add('is-visible');
+    if (typeof positionChartHoverTip === 'function' && clientX != null) {
+      positionChartHoverTip(tip, wrap, clientX, clientY != null ? clientY : clientX);
+    }
+  }
+
+  function pfDynHideTip() {
+    var tip = document.getElementById('pfDynTip');
+    if (!tip) return;
+    tip.hidden = true;
+    tip.classList.remove('is-visible');
+  }
+
+  function applyPortfolioDynamicsPointer(clientX, mode, clientY) {
+    var canvas = document.getElementById('pfDynChart');
+    if (!canvas || !pfDynState.series.length) return;
+    var idx = pfDynIndexAtClientX(canvas, clientX);
+    if (idx < 0) return;
+    if (mode === 'select') {
+      pfDynState.selectedIndex = idx;
+      pfDynState.hoverIndex = idx;
+      renderPortfolioDynamicsCard();
+    } else {
+      pfDynState.hoverIndex = idx;
+    }
+    drawPortfolioDynamicsChart();
+    pfDynFillTip(idx, clientX, clientY);
+  }
+
+  function bindPortfolioDynamicsPointer() {
+    var wrap = document.getElementById('pfDynChartWrap');
+    if (!wrap || wrap._pfDynBound) return;
+    wrap._pfDynBound = true;
+    wrap.addEventListener('mousemove', function (e) {
+      applyPortfolioDynamicsPointer(e.clientX, 'hover', e.clientY);
+    });
+    wrap.addEventListener('mouseleave', function () {
+      pfDynState.hoverIndex = -1;
+      pfDynHideTip();
+      drawPortfolioDynamicsChart();
+    });
+    wrap.addEventListener('click', function (e) {
+      applyPortfolioDynamicsPointer(e.clientX, 'select', e.clientY);
+    });
+    wrap.addEventListener('touchstart', function (e) {
+      if (e.touches && e.touches.length) {
+        applyPortfolioDynamicsPointer(e.touches[0].clientX, 'select', e.touches[0].clientY);
+      }
+    }, { passive: true });
+  }
+
+  function setPortfolioDynamicsHorizon(horizon, opts) {
+    opts = opts || {};
+    horizon = String(horizon || '1y');
+    if (['1m', '3m', '6m', '1y', 'all'].indexOf(horizon) < 0) horizon = '1y';
+    pfDynState.horizon = horizon;
+    pfDynHorizonPicked = !opts.fromDefault;
+    pfDynSyncHorizonButtons(horizon);
+    if (!opts.silent) requestPortfolioDynamicsRefresh({ force: true, immediate: true, reason: 'horizon' });
+  }
+
+  function setPortfolioDynamicsShowParts(on) {
+    pfDynState.showParts = !!on;
+    drawPortfolioDynamicsChart();
+    if (pfDynState.hoverIndex >= 0) pfDynFillTip(pfDynState.hoverIndex);
+  }
+
+  function loadPortfolioDynamicsSeries(options) {
+    options = options || {};
+    var block = document.getElementById('portfolioDynamicsBlock');
+    if (!block) return Promise.resolve();
+    bindPortfolioDynamicsPointer();
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    var key = pfDynPortfolioKey(pf, pfDynState.horizon);
+    if (!pfDynHasBuyDates(pf)) {
+      pfDynLastKey = key;
+      pfDynState.series = [];
+      pfDynState.catalogBlocked = false;
+      pfDynShowChart(false);
+      renderPortfolioDynamicsCard();
+      pfDynSetStatus(PF_DYN_EMPTY);
+      return Promise.resolve();
+    }
+    if (isPortfolioSplitCatalogPending() && pfDynHasNonBond(pf)) {
+      pfDynSetStatus(PF_DYN_LOADING);
+      pfDynShowChart(false);
+      renderPortfolioDynamicsCard();
+      return Promise.resolve();
+    }
+    var catalogUnusable = isPortfolioSplitCatalogUnusable(options);
+    if (catalogUnusable && pfDynHasNonBond(pf)) {
+      pfDynLastKey = key;
+      pfDynState.series = [];
+      pfDynState.catalogBlocked = true;
+      pfDynShowChart(false);
+      renderPortfolioDynamicsCard();
+      pfDynSetStatus(PF_DYN_CATALOG);
+      return Promise.resolve();
+    }
+    pfDynState.catalogBlocked = false;
+    var today = localPortfolioTodayYmd();
+    var earliest = pfDynEarliestOperationDate(pf);
+    if (!pfDynHorizonPicked) {
+      var autoH = resolvePortfolioDynamicsHorizon(today, earliest, '1y');
+      pfDynState.horizon = autoH;
+      key = pfDynPortfolioKey(pf, pfDynState.horizon);
+      pfDynSyncHorizonButtons(autoH);
+    }
+    var range = resolvePortfolioDynamicsRange(pfDynState.horizon, today, earliest);
+    var interval = resolvePortfolioDynamicsInterval(pfDynState.horizon, range.fromDate, range.toDate);
+    var seq = ++pfDynSeq;
+    pfDynSetStatus(PF_DYN_LOADING);
+    pfDynShowChart(false);
+    var seriesOpts = {
+      interval: interval,
+      maxPoints: PF_DYN_MAX_POINTS,
+      includePositions: true,
+      bondMetaMap: options.bondMetaMap || {}
+    };
+    return Promise.resolve(buildPortfolioValueSeries(pf, range.fromDate, range.toDate, seriesOpts)).then(function (series) {
+      if (seq !== pfDynSeq) return;
+      series = series || [];
+      pfDynLastKey = key;
+      pfDynState.series = series;
+      pfDynState.fromDate = range.fromDate;
+      pfDynState.toDate = range.toDate;
+      pfDynState.selectedIndex = series.length ? series.length - 1 : -1;
+      pfDynState.hoverIndex = -1;
+      if (!series.length) {
+        pfDynShowChart(false);
+        renderPortfolioDynamicsCard();
+        pfDynSetStatus(PF_DYN_ERROR);
+        return;
+      }
+      var anyPartial = series.some(function (p) { return p && p.isPartial; });
+      pfDynSetStatus(anyPartial ? PF_DYN_PARTIAL : '');
+      pfDynShowChart(true);
+      renderPortfolioDynamicsCard();
+      drawPortfolioDynamicsChart();
+    }).catch(function () {
+      if (seq !== pfDynSeq) return;
+      pfDynLastKey = '';
+      pfDynState.series = [];
+      pfDynShowChart(false);
+      renderPortfolioDynamicsCard();
+      pfDynSetStatus(PF_DYN_ERROR);
+    });
+  }
+
+  function requestPortfolioDynamicsRefresh(options) {
+    options = options || {};
+    if (!options.force && !pfDynTabActive()) return Promise.resolve();
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    var key = pfDynPortfolioKey(pf, pfDynState.horizon);
+    if (!options.force && key && key === pfDynLastKey) {
+      if (pfDynState.series.length) drawPortfolioDynamicsChart();
+      return Promise.resolve(pfDynState.series);
+    }
+    if (pfDynTimer && typeof clearTimeout === 'function') {
+      clearTimeout(pfDynTimer);
+      pfDynTimer = 0;
+    }
+    if (options.immediate || typeof setTimeout !== 'function') {
+      return loadPortfolioDynamicsSeries(options);
+    }
+    return new Promise(function (resolve) {
+      pfDynTimer = setTimeout(function () {
+        pfDynTimer = 0;
+        resolve(loadPortfolioDynamicsSeries(options));
+      }, PF_DYN_DEBOUNCE_MS);
+    });
+  }
+
+  function refreshPortfolioDynamics(options) {
+    options = options || {};
+    options.force = true;
+    options.immediate = true;
+    options.reason = options.reason || 'explicit';
+    return requestPortfolioDynamicsRefresh(options);
+  }
+
+  function initPortfolioDynamicsUi() {
+    var parts = document.getElementById('pfDynShowParts');
+    if (parts && !parts._pfDynBound) {
+      parts._pfDynBound = true;
+      parts.checked = !!pfDynState.showParts;
+      parts.addEventListener('change', function () {
+        setPortfolioDynamicsShowParts(parts.checked);
+      });
+    }
+    var periods = document.getElementById('pfDynPeriods');
+    if (periods && !periods._pfDynBound) {
+      periods._pfDynBound = true;
+      periods.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-pf-dyn-horizon]') : null;
+        if (!btn) return;
+        setPortfolioDynamicsHorizon(btn.getAttribute('data-pf-dyn-horizon'));
+      });
+    }
+    bindPortfolioDynamicsPointer();
+    pfDynSyncHorizonButtons(pfDynState.horizon);
+  }
+
   function renderPortfolio() {
     if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
       Markets.renderBriefingMarketTabs('portfolioMarketTabs');
@@ -11018,9 +11632,11 @@
     initPortfolioAsOfDateDefault();
     initPortfolioCompareDatesDefault();
     initPortfolioPayoutsDatesDefault();
+    initPortfolioDynamicsUi();
     renderPortfolioTableBody();
     renderPortfolioFolder();
     renderPortfolioChart();
+    requestPortfolioDynamicsRefresh({ reason: 'render', immediate: true });
     refreshPortfolioQuotes().then(function () {
       renderPortfolioTableBody();
       renderPortfolioFolder();

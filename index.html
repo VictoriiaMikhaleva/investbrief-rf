@@ -696,6 +696,35 @@
 
           <div class="glass portfolio-totals-wrap" id="portfolioTotals" hidden aria-label="Сводка портфеля"></div>
 
+          <section class="glass pf-dyn-block" id="portfolioDynamicsBlock" aria-label="Динамика стоимости портфеля">
+            <div class="pf-dyn-head">
+              <span class="pf-dyn-icon" aria-hidden="true"></span>
+              <div class="pf-dyn-copy">
+                <h3 class="pf-dyn-title">Динамика стоимости портфеля</h3>
+                <p class="pf-dyn-hint">Оценка портфеля на выбранную дату с учётом покупок, продаж и дроблений акций.</p>
+              </div>
+            </div>
+            <div class="pf-dyn-toolbar">
+              <div class="pf-dyn-periods" id="pfDynPeriods" role="tablist" aria-label="Период динамики">
+                <button type="button" class="pf-dyn-period" data-pf-dyn-horizon="1m">1М</button>
+                <button type="button" class="pf-dyn-period" data-pf-dyn-horizon="3m">3М</button>
+                <button type="button" class="pf-dyn-period" data-pf-dyn-horizon="6m">6М</button>
+                <button type="button" class="pf-dyn-period is-active" data-pf-dyn-horizon="1y" aria-selected="true">1Г</button>
+                <button type="button" class="pf-dyn-period" data-pf-dyn-horizon="all">Всё</button>
+              </div>
+              <label class="pf-dyn-parts">
+                <input type="checkbox" id="pfDynShowParts" />
+                Показывать акции и облигации отдельно
+              </label>
+            </div>
+            <p class="muted pf-dyn-status" id="pfDynStatus" role="status"></p>
+            <div class="chart-canvas-wrap pf-dyn-chart-wrap" id="pfDynChartWrap" hidden>
+              <canvas id="pfDynChart" aria-label="График оценки портфеля по датам"></canvas>
+              <div class="chart-hover-tip" id="pfDynTip" hidden></div>
+            </div>
+            <div class="pf-dyn-card" id="pfDynCard" hidden></div>
+          </section>
+
           <section class="glass pf-asof-block" id="portfolioAsOfBlock" aria-label="Состав портфеля на дату">
             <div class="pf-asof-head">
               <span class="pf-asof-icon" aria-hidden="true"></span>

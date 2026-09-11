@@ -367,6 +367,19 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__asOf = buildPortfolioCompositionAtDate;' +
       '\nthis.__asOfValue = buildPortfolioValueAtDate;' +
       '\nthis.__asOfSeries = buildPortfolioValueSeries;' +
+      '\nthis.__dynCard = buildPortfolioDynamicsCardHtml;' +
+      '\nthis.__dynChange = buildPortfolioDynamicsChangeFromStart;' +
+      '\nthis.__dynSelect = selectPortfolioDynamicsPoint;' +
+      '\nthis.__dynRange = resolvePortfolioDynamicsRange;' +
+      '\nthis.__dynHorizon = resolvePortfolioDynamicsHorizon;' +
+      '\nthis.__dynInterval = resolvePortfolioDynamicsInterval;' +
+      '\nthis.__dynLoad = loadPortfolioDynamicsSeries;' +
+      '\nthis.__dynRequest = requestPortfolioDynamicsRefresh;' +
+      '\nthis.__dynDraw = drawPortfolioDynamicsChart;' +
+      '\nthis.__dynKey = pfDynPortfolioKey;' +
+      '\nthis.__dynPointer = applyPortfolioDynamicsPointer;' +
+      '\nthis.__dynEarliest = pfDynEarliestOperationDate;' +
+      '\nthis.__dynTop = pfDynTopPositions;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
       '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;' +
       '\nthis.__asOfTable = buildPortfolioAsOfTableHtml;' +
@@ -421,7 +434,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__feedsCache = getPfPayoutFeedsCache;' +
       '\nthis.__twpDetail = buildPortfolioTickerDetailHtml;',
     sandbox,
-    { timeout: 10000 }
+    { timeout: 15000 }
   );
   return {
     bondRubFromPct: sandbox.__bondRub,
@@ -452,6 +465,19 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioCompositionAtDate: sandbox.__asOf,
     buildPortfolioValueAtDate: sandbox.__asOfValue,
     buildPortfolioValueSeries: sandbox.__asOfSeries,
+    buildPortfolioDynamicsCardHtml: sandbox.__dynCard,
+    buildPortfolioDynamicsChangeFromStart: sandbox.__dynChange,
+    selectPortfolioDynamicsPoint: sandbox.__dynSelect,
+    resolvePortfolioDynamicsRange: sandbox.__dynRange,
+    resolvePortfolioDynamicsHorizon: sandbox.__dynHorizon,
+    resolvePortfolioDynamicsInterval: sandbox.__dynInterval,
+    loadPortfolioDynamicsSeries: sandbox.__dynLoad,
+    requestPortfolioDynamicsRefresh: sandbox.__dynRequest,
+    drawPortfolioDynamicsChart: sandbox.__dynDraw,
+    pfDynPortfolioKey: sandbox.__dynKey,
+    applyPortfolioDynamicsPointer: sandbox.__dynPointer,
+    pfDynEarliestOperationDate: sandbox.__dynEarliest,
+    pfDynTopPositions: sandbox.__dynTop,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
     buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
     buildPortfolioAsOfTableHtml: sandbox.__asOfTable,
@@ -6410,9 +6436,186 @@ await (async () => {
   assert(JSON.stringify(calc.memStore) === frozenStore, 'series: storage not written');
 }
 
+{
+  // v1.1 wave 2: UI динамики — HTML, карточка, без fetch на hover
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const totalsAt = indexHtml.indexOf('id="portfolioTotals"');
+  const dynAt = indexHtml.indexOf('id="portfolioDynamicsBlock"');
+  const asofAt = indexHtml.indexOf('id="portfolioAsOfBlock"');
+  assert(totalsAt > 0 && dynAt > totalsAt && asofAt > dynAt, 'dyn ui: block after summary, before as-of');
+  assert(/Динамика стоимости портфеля/.test(indexHtml), 'dyn ui: title');
+  assert(/Оценка портфеля на выбранную дату с учётом покупок, продаж и дроблений акций/.test(indexHtml), 'dyn ui: subtitle');
+  assert(!/в реальном времени|интрадей|свечной график|\blive\b/i.test(indexHtml.slice(dynAt, asofAt)),
+    'dyn ui: no live/intraday/candle copy');
+  assert(/data-pf-dyn-horizon="1m"/.test(indexHtml) && /data-pf-dyn-horizon="1y"/.test(indexHtml) &&
+    /data-pf-dyn-horizon="all"/.test(indexHtml), 'dyn ui: period controls');
+
+  const css = fs.readFileSync(path.join(__dirname, '..', 'theme-luxury.css'), 'utf8');
+  assert(/#tab-portfolio \.pf-dyn-card \{[\s\S]*?overflow:\s*visible/.test(css), 'dyn ui: card not clipped');
+  assert(/#tab-portfolio \.pf-dyn-block \{[\s\S]*?overflow:\s*visible/.test(css), 'dyn ui: block overflow visible');
+
+  const src = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  assert(/Строим динамику портфеля/.test(src), 'dyn ui: loading copy');
+  assert(/Добавьте позиции с датами покупки, чтобы построить динамику портфеля/.test(src), 'dyn ui: empty copy');
+  assert(/Не удалось построить динамику портфеля\. Попробуйте обновить страницу/.test(src), 'dyn ui: error copy');
+  assert(/Для части бумаг нет цены на отдельные даты/.test(src), 'dyn ui: partial copy');
+  assert(/Список дроблений акций временно недоступен\. Динамика может быть неполной/.test(src),
+    'dyn ui: catalog unavailable copy');
+  assert(/isPortfolioSplitCatalogUnusable/.test(src) && /PF_DYN_CATALOG/.test(src),
+    'dyn ui: catalog fail-safe wired');
+  assert(/isPortfolioSplitCatalogPending/.test(src), 'dyn ui: pending catalog waits, not empty');
+  const dynChunk = (src.match(/var PF_DYN_LOADING[\s\S]*function renderPortfolio/) || [''])[0];
+  assert(!/candlestick|OHLC|intraday|auto-refresh/i.test(dynChunk),
+    'dyn ui: no candle/intraday in dynamics block');
+  const tableStart = src.indexOf('function renderPortfolioTableBody');
+  const tableEnd = src.indexOf('var pfAsOfShown');
+  const tableFn = tableStart >= 0 && tableEnd > tableStart ? src.slice(tableStart, tableEnd) : '';
+  assert(tableFn.length > 100, 'dyn ui: table body slice found');
+  assert(!/loadPortfolioDynamicsSeries|requestPortfolioDynamicsRefresh|refreshPortfolioDynamics/.test(tableFn),
+    'dyn ui: table body does not rebuild series');
+  assert(/requestPortfolioDynamicsRefresh\(\{ reason: 'render', immediate: true \}\)/.test(src),
+    'dyn ui: series refresh on renderPortfolio, not quotes');
+  assert(!/refreshPortfolioQuotes\(\)[\s\S]{0,400}requestPortfolioDynamicsRefresh/.test(src),
+    'dyn ui: quote refresh does not rebuild series');
+
+  const ptrSrc = Function.prototype.toString.call(calc.applyPortfolioDynamicsPointer);
+  const loadSrc = Function.prototype.toString.call(calc.loadPortfolioDynamicsSeries);
+  const drawSrc = Function.prototype.toString.call(calc.drawPortfolioDynamicsChart);
+  const reqSrc = Function.prototype.toString.call(calc.requestPortfolioDynamicsRefresh);
+  assert(!/fetch\s*\(/.test(ptrSrc) && !/buildPortfolioValueAtDate/.test(ptrSrc) &&
+    !/buildPortfolioValueSeries/.test(ptrSrc), 'dyn ui: hover/click reads series, no fetch');
+  assert(/buildPortfolioValueSeries/.test(loadSrc), 'dyn ui: period load calls series helper');
+  assert(!/getInstrumentPriceAtDate/.test(ptrSrc), 'dyn ui: pointer has no price fetch');
+  assert(!/fetch\s*\(/.test(drawSrc) && !/buildPortfolioValueSeries/.test(drawSrc),
+    'dyn ui: resize/draw does not fetch or rebuild series');
+  assert(/pfDynLastKey/.test(reqSrc) && /pfDynPortfolioKey/.test(reqSrc),
+    'dyn ui: refresh skips same portfolio fingerprint');
+  assert(!/iss\.moex\.com/.test(dynChunk), 'dyn ui: no new ISS urls in dynamics UI');
+
+  let seriesCalls = 0;
+  const origSeries = calc.buildPortfolioValueSeries;
+  calc.buildPortfolioValueSeries = function () {
+    seriesCalls += 1;
+    return origSeries.apply(this, arguments);
+  };
+  calc.applyPortfolioDynamicsPointer(10, 'hover');
+  calc.applyPortfolioDynamicsPointer(10, 'select');
+  calc.drawPortfolioDynamicsChart();
+  assert(seriesCalls === 0, 'dyn ui: hover/click/draw do not call buildPortfolioValueSeries');
+  calc.buildPortfolioValueSeries = origSeries;
+
+  const mockSeries = [
+    { date: '2024-06-03', totalValueRub: 1000, stocksValueRub: 1000, bondsValueRub: 0, cashValueRub: 0, isPartial: false, positions: [{ ticker: 'SBER', type: 'stock', qty: 10, price: 100, valueRub: 1000, status: 'ok' }] },
+    { date: '2024-06-05', totalValueRub: 1200, stocksValueRub: 1200, bondsValueRub: 0, cashValueRub: 0, isPartial: false, positions: [{ ticker: 'SBER', type: 'stock', qty: 10, price: 120, valueRub: 1200, status: 'ok' }] }
+  ];
+  const picked = calc.selectPortfolioDynamicsPoint(mockSeries, 0);
+  assert(picked.index === 0 && picked.point.date === '2024-06-03', 'dyn select: from series');
+  const last = calc.selectPortfolioDynamicsPoint(mockSeries, null);
+  assert(last.point.date === '2024-06-05', 'dyn select: default last');
+  const ch = calc.buildPortfolioDynamicsChangeFromStart(mockSeries, 1);
+  assert(ch.changeRub === 200 && Math.abs(ch.changePct - 20) < 1e-9, 'dyn change: +200 / +20%');
+  const card = calc.buildPortfolioDynamicsCardHtml(mockSeries, 1);
+  assert(/05\.06\.2024|5\.06\.2024/.test(card) || /2024/.test(card), 'dyn card: date');
+  assert(/1[\s\u00a0]?200,00/.test(card) || /1200/.test(card), 'dyn card: total from series');
+  assert(/SBER/.test(card), 'dyn card: top position');
+  assert(!/fetch/.test(card), 'dyn card: html has no fetch');
+
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  function priceOk(price, extra) {
+    extra = extra || {};
+    return { status: 'ok', price: price, priceDate: extra.date || extra.priceDate, priceType: 'close', unit: extra.unit || 'rub' };
+  }
+  function mockOnOrBefore(map) {
+    return function (ticker, date) {
+      const t = String(ticker || '').toUpperCase();
+      const iso = String(date || '').slice(0, 10);
+      const by = map[t] || {};
+      const keys = Object.keys(by).filter((d) => d <= iso).sort();
+      const row = keys.length ? by[keys[keys.length - 1]] : null;
+      return Promise.resolve(row || { status: 'missing', price: null });
+    };
+  }
+  const gmknPf = {
+    positions: [{ ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92 }],
+    sales: []
+  };
+  const gmknSeries = await calc.buildPortfolioValueSeries(gmknPf, '2024-04-01', '2024-04-10', {
+    interval: 'day',
+    splitEvents: events,
+    currentDate: '2026-09-04',
+    includePositions: true,
+    getInstrumentPriceAtDate: mockOnOrBefore({
+      GMKN: {
+        '2024-04-05': priceOk(25014, { date: '2024-04-05' }),
+        '2024-04-08': priceOk(129.92, { date: '2024-04-08' })
+      }
+    })
+  });
+  const gmknCh = calc.buildPortfolioDynamicsChangeFromStart(
+    gmknSeries,
+    gmknSeries.findIndex((p) => p.date === '2024-04-08')
+  );
+  assert(gmknCh.changePct == null || gmknCh.changePct > -90, 'dyn GMKN: no technical −99%');
+  const gmknCard = calc.buildPortfolioDynamicsCardHtml(
+    gmknSeries,
+    gmknSeries.findIndex((p) => p.date === '2024-04-08')
+  );
+  assert(!/−99/.test(gmknCard) && !/-99/.test(gmknCard) && !/−98/.test(gmknCard), 'dyn GMKN card: no −99%');
+
+  const ofzPf = {
+    positions: [{ ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000 }],
+    sales: []
+  };
+  const ofzSeries = await calc.buildPortfolioValueSeries(ofzPf, '2024-06-03', '2024-06-05', {
+    interval: 'day',
+    includePositions: true,
+    getInstrumentPriceAtDate: mockOnOrBefore({
+      OFZ_26238: { '2024-06-03': priceOk(95, { date: '2024-06-03', unit: 'pct-of-face-value' }) }
+    })
+  });
+  const ofzCard = calc.buildPortfolioDynamicsCardHtml(ofzSeries, ofzSeries.length - 1);
+  assert(/9[\s\u00a0]?500/.test(ofzCard) || /9500/.test(ofzCard), 'dyn OFZ: bond formula in card');
+
+  const sberCard = calc.buildPortfolioDynamicsCardHtml(mockSeries, 0);
+  assert(/SBER/.test(sberCard) && /1[\s\u00a0]?000/.test(sberCard) || /1000/.test(sberCard), 'dyn SBER: qty×close card');
+
+  const r1y = calc.resolvePortfolioDynamicsRange('1y', '2026-09-04', '2020-01-01');
+  assert(r1y.toDate === '2026-09-04' && r1y.fromDate <= '2025-09-04', 'dyn range: 1Y');
+  const rall = calc.resolvePortfolioDynamicsRange('all', '2026-09-04', '2021-06-04');
+  assert(rall.fromDate === '2021-06-04', 'dyn range: all from first buy');
+  assert(calc.resolvePortfolioDynamicsInterval('1y', '2025-09-04', '2026-09-04') === 'day', 'dyn interval: 1Y day');
+  assert(calc.resolvePortfolioDynamicsInterval('all', '2015-01-01', '2026-09-04') !== 'day', 'dyn interval: long all not daily');
+  assert(calc.resolvePortfolioDynamicsHorizon('2026-09-04', '2020-01-01', '1y') === '1y', 'dyn default: 1Y when history long');
+  assert(calc.resolvePortfolioDynamicsHorizon('2026-09-04', '2026-08-01', '1y') === 'all', 'dyn default: all when history short');
+
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  assert(/initPortfolioDynamicsUi/.test(appSrc), 'dyn ui: bound from app.js');
+  assert(/drawPortfolioDynamicsChart/.test(appSrc) &&
+    !/loadPortfolioDynamicsSeries|requestPortfolioDynamicsRefresh|buildPortfolioValueSeries/.test(
+      (appSrc.match(/window\.addEventListener\('resize'[\s\S]*?\n    \}\);/) || [''])[0]
+    ), 'dyn ui: resize only redraws canvas');
+  assert(!/showPortfolioAsOfComposition/.test(ptrSrc), 'dyn ui: click does not drive as-of');
+
+  const k1 = calc.pfDynPortfolioKey({
+    positions: [{ ticker: 'SBER', lotId: 'L1', qty: 10, buyDate: '2024-01-01', avgPrice: 100 }],
+    sales: []
+  }, '1y');
+  const k2 = calc.pfDynPortfolioKey({
+    positions: [{ ticker: 'SBER', lotId: 'L1', qty: 11, buyDate: '2024-01-01', avgPrice: 100 }],
+    sales: []
+  }, '1y');
+  const k3 = calc.pfDynPortfolioKey({
+    positions: [{ ticker: 'SBER', lotId: 'L1', qty: 10, buyDate: '2024-01-01', avgPrice: 100 }],
+    sales: []
+  }, '3m');
+  assert(k1 && k1 !== k2 && k1 !== k3, 'dyn key: portfolio qty and horizon change fingerprint');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2');

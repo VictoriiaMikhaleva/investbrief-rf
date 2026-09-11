@@ -435,6 +435,7 @@
     if (pfAsOfBtn) pfAsOfBtn.addEventListener('click', function () {
       if (typeof showPortfolioAsOfComposition === 'function') showPortfolioAsOfComposition();
     });
+    if (typeof initPortfolioDynamicsUi === 'function') initPortfolioDynamicsUi();
     var pfAsOfDate = document.getElementById('pfAsOfDate');
     if (pfAsOfDate) {
       pfAsOfDate.addEventListener('input', function () {
@@ -556,6 +557,9 @@
       clearTimeout(chartResizeTimer);
       chartResizeTimer = setTimeout(function () {
         if (state.tab === 'portfolio' && state.chartTicker) renderPortfolioChart();
+        if (state.tab === 'portfolio' && typeof drawPortfolioDynamicsChart === 'function') {
+          drawPortfolioDynamicsChart();
+        }
         if (state.tab === 'portfolio' && state.chartTicker) {
           var pc = document.getElementById('portfolioPurchaseCandleChart');
           if (pc && pc._purchaseChartMeta && typeof drawPurchaseCandleChart === 'function') {
