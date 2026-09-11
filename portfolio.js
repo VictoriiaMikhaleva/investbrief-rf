@@ -11196,10 +11196,8 @@
       '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">С начала периода</span>' +
       '<span class="pf-dyn-kpi-val pf-dyn-change--' + tone + (tone === 'up' ? ' pnl-pos' : tone === 'down' ? ' pnl-neg' : '') + '">' +
         escapeHtml(changeTxt + (pctTxt ? ' · ' + pctTxt : '')) + '</span></div>';
-    if (pt.isPartial) {
-      html += '<p class="pf-dyn-warn">' + escapeHtml(PF_DYN_PARTIAL) + '</p>';
-    }
     if (top.length) {
+      html += '<p class="pf-dyn-top-lbl">Крупнейшие позиции на дату</p>';
       html += '<ul class="pf-dyn-top">';
       top.forEach(function (row) {
         html += '<li><span>' + escapeHtml(row.ticker) + '</span><span>' +
@@ -11235,6 +11233,8 @@
   function pfDynShowChart(on) {
     var wrap = document.getElementById('pfDynChartWrap');
     if (wrap) wrap.hidden = !on;
+    var caption = document.getElementById('pfDynCaption');
+    if (caption) caption.hidden = !on;
   }
 
   function renderPortfolioDynamicsCard() {
@@ -11315,16 +11315,30 @@
     minP -= range * 0.08;
     if (minP > 0) minP = Math.max(0, minP);
     maxP += range * 0.08;
-    var pad = { top: 14, right: 12, bottom: 28, left: 52 };
+    var pad = { top: 14, right: 44, bottom: 28, left: 52 };
     var plotW = w - pad.left - pad.right;
     var plotH = h - pad.top - pad.bottom;
     function xAt(i) { return pad.left + (i / (series.length - 1)) * plotW; }
     function yAt(v) { return pad.top + plotH - ((v - minP) / (maxP - minP)) * plotH; }
     canvas._pfDynMeta = { pad: pad, plotW: plotW, plotH: plotH, w: w, h: h };
-    var grid = typeof chartThemeColor === 'function' ? chartThemeColor('--chart-grid', 'rgba(106,127,112,0.14)') : 'rgba(106,127,112,0.14)';
-    var axis = typeof chartThemeColor === 'function' ? chartThemeColor('--chart-axis', '#5C6560') : '#5C6560';
-    var line = typeof chartThemeColor === 'function' ? chartThemeColor('--chart-line', '#B88952') : '#B88952';
-    var fill = typeof chartThemeColor === 'function' ? chartThemeColor('--chart-fill', 'rgba(184,149,98,0.18)') : 'rgba(184,149,98,0.18)';
+    function pfDynColor(name, fallback) {
+      var el = document.getElementById('portfolioDynamicsBlock') || document.documentElement;
+      try {
+        var v = getComputedStyle(el).getPropertyValue(name).trim();
+        if (v) return v;
+      } catch (e) {}
+      return typeof chartThemeColor === 'function' ? chartThemeColor(name, fallback) : fallback;
+    }
+    var grid = pfDynColor('--pf-dyn-grid', 'rgba(106,127,112,0.08)');
+    var axis = pfDynColor('--chart-axis', '#5C6560');
+    var line = pfDynColor('--pf-dyn-line', '#C08A4A');
+    var lineHover = pfDynColor('--pf-dyn-line-hover', '#D4A86A');
+    var fillTop = pfDynColor('--pf-dyn-fill-top', 'rgba(196,138,74,0.16)');
+    var fillBot = pfDynColor('--pf-dyn-fill-bot', 'rgba(196,138,74,0.02)');
+    var stocksLine = pfDynColor('--pf-dyn-stocks', '#5C7366');
+    var bondsLine = pfDynColor('--pf-dyn-bonds', '#8F806C');
+    var guide = pfDynColor('--pf-dyn-guide', 'rgba(148,122,86,0.34)');
+    var pointRing = pfDynColor('--pf-dyn-point-ring', '#f7f4ee');
     ctx.strokeStyle = grid;
     ctx.lineWidth = 1;
     var g;
@@ -11349,7 +11363,10 @@
     ctx.lineTo(xAt(series.length - 1), pad.top + plotH);
     ctx.lineTo(xAt(0), pad.top + plotH);
     ctx.closePath();
-    ctx.fillStyle = fill;
+    var areaFill = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+    areaFill.addColorStop(0, fillTop);
+    areaFill.addColorStop(1, fillBot);
+    ctx.fillStyle = areaFill;
     ctx.fill();
     function strokeVals(getter, color, width) {
       ctx.beginPath();
@@ -11365,41 +11382,43 @@
       ctx.stroke();
     }
     if (pfDynState.showParts) {
-      strokeVals(function (p) { return p.stocksValueRub; }, '#6A7F70', 1.5);
-      strokeVals(function (p) { return p.bondsValueRub; }, '#8A7A62', 1.5);
+      strokeVals(function (p) { return p.stocksValueRub; }, stocksLine, 1.4);
+      strokeVals(function (p) { return p.bondsValueRub; }, bondsLine, 1.4);
     }
-    strokeVals(function (p) { return p.totalValueRub; }, line, 2);
+    strokeVals(function (p) { return p.totalValueRub; }, line, 2.35);
     var mark = pfDynState.hoverIndex >= 0 ? pfDynState.hoverIndex : pfDynState.selectedIndex;
     if (mark < 0) mark = series.length - 1;
     if (mark >= 0 && mark < series.length) {
       var hx = xAt(mark);
+      var isHoverMark = pfDynState.hoverIndex >= 0;
       ctx.save();
-      ctx.strokeStyle = typeof chartThemeColor === 'function'
-        ? chartThemeColor('--chart-hover-guide', 'rgba(90,98,92,0.28)')
-        : 'rgba(90,98,92,0.28)';
+      ctx.strokeStyle = guide;
       ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
+      ctx.setLineDash([3, 5]);
       ctx.beginPath();
       ctx.moveTo(hx, pad.top);
       ctx.lineTo(hx, pad.top + plotH);
       ctx.stroke();
       ctx.restore();
-      ctx.fillStyle = line;
-      ctx.strokeStyle = '#f7f8f6';
+      ctx.fillStyle = isHoverMark ? lineHover : line;
+      ctx.strokeStyle = pointRing;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(hx, yAt(Number(series[mark].totalValueRub) || 0), 5, 0, Math.PI * 2);
+      ctx.arc(hx, yAt(Number(series[mark].totalValueRub) || 0), isHoverMark ? 5.5 : 5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
     ctx.fillStyle = axis;
     ctx.font = '10px Inter, Manrope, sans-serif';
-    ctx.textAlign = 'center';
-    var labelIdx = [0, Math.round((series.length - 1) / 2), series.length - 1];
+    var lastIdx = series.length - 1;
+    var labelIdx = [0, Math.round(lastIdx / 2), lastIdx];
     var seenLbl = {};
     labelIdx.forEach(function (idx) {
       if (idx < 0 || idx >= series.length || seenLbl[idx]) return;
       seenLbl[idx] = true;
+      if (idx === 0) ctx.textAlign = 'left';
+      else if (idx === lastIdx) ctx.textAlign = 'right';
+      else ctx.textAlign = 'center';
       ctx.fillText(formatAsOfDateDisplay(series[idx].date), xAt(idx), h - 8);
     });
   }

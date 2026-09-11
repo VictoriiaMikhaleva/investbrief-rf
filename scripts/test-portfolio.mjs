@@ -6518,7 +6518,29 @@ await (async () => {
   assert(/05\.06\.2024|5\.06\.2024/.test(card) || /2024/.test(card), 'dyn card: date');
   assert(/1[\s\u00a0]?200,00/.test(card) || /1200/.test(card), 'dyn card: total from series');
   assert(/SBER/.test(card), 'dyn card: top position');
+  assert(/Крупнейшие позиции на дату/.test(card), 'dyn card: top heading');
+  assert(!/Для части бумаг нет цены/.test(card), 'dyn card: no duplicate partial warning');
   assert(!/fetch/.test(card), 'dyn card: html has no fetch');
+  assert(/График строится по оценке на дату/.test(indexHtml), 'dyn ui: chart caption');
+  assert(/id="pfDynCaption"/.test(indexHtml), 'dyn ui: caption node');
+  assert(/white-space:\s*nowrap/.test(css), 'dyn ui: parts label stays inline');
+  assert(/#tab-portfolio \.pf-dyn-parts input\[type="checkbox"\][\s\S]*?appearance:\s*none/.test(css),
+    'dyn ui: checkbox is custom, not system blue');
+  assert(/#tab-portfolio \.pf-dyn-parts input\[type="checkbox"\][\s\S]*?opacity:\s*0/.test(css),
+    'dyn ui: native checkbox hidden, sage box via ::before');
+  assert(/#tab-portfolio \.pf-dyn-parts input\[type="checkbox"\][\s\S]*?accent-color:\s*var\(--accent\)/.test(css),
+    'dyn ui: checkbox sage accent fallback');
+  assert(/#tab-portfolio \.pf-dyn-parts input\[type="checkbox"\]:focus-visible[\s\S]*?var\(--bronze\)/.test(css),
+    'dyn ui: checkbox focus uses bronze/sage, not browser-blue');
+  assert(/input\[type="checkbox"\]:checked \+ \.pf-dyn-parts-text::before[\s\S]*?var\(--accent\)/.test(css),
+    'dyn ui: checked mark uses sage accent');
+  assert(!/#007|#0d6efd|#0060|#1e90ff|rgb\(\s*0\s*,\s*120/i.test(css.match(/#tab-portfolio \.pf-dyn-parts input\[type="checkbox"\][\s\S]*?#tab-portfolio \.pf-dyn-status/)?.[0] || ''),
+    'dyn ui: checkbox block has no blue hex');
+  assert(/pad = \{ top: 14, right: 44/.test(src), 'dyn ui: x-axis right inset');
+  assert(/--pf-dyn-line/.test(src) && /--pf-dyn-stocks/.test(src) && /--pf-dyn-bonds/.test(src),
+    'dyn ui: canvas uses branded color tokens');
+  assert(/createLinearGradient/.test(src), 'dyn ui: airy bronze area fill');
+  assert(!/#007|#0d6efd|#1e90ff/i.test(drawSrc), 'dyn ui: draw has no blue');
 
   const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
   calc.setSplitEventsCatalog(catalog);
