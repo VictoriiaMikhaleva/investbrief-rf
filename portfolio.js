@@ -5680,6 +5680,69 @@
     };
   }
 
+  function seriesSplitRatioLabel(ticker) {
+    if (typeof getSplitEventsForTicker !== 'function') return '';
+    var list = getSplitEventsForTicker(ticker) || [];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var ratio = Number(list[i] && list[i].ratio);
+      if (isFinite(ratio) && ratio > 1) return '1:' + String(Math.round(ratio));
+    }
+    return '';
+  }
+
+  /**
+   * Series/UI classification only. Does not change as-of totals or qty×CLOSE.
+   * Real partial: position held on the date but excluded from totalValueRub.
+   * splitPartial with priced qty/value → advisory, not isPartial.
+   */
+  function classifyPortfolioDynamicsSeriesPoint(valueRes) {
+    var items = (valueRes && valueRes.items) || [];
+    var isPartial = false;
+    var hasSplitAdvisory = false;
+    var hasBondNkdAdvisory = false;
+    var advisories = [];
+    var seen = {};
+    items.forEach(function (row) {
+      if (!row) return;
+      var usable = asOfItemValueUsable(row);
+      if (!usable && row.qtyAtDate !== 0) isPartial = true;
+      var t = String(row.ticker || '').trim();
+      if (usable && (row.splitAdjusted || row.splitConfidence === 'partial')) {
+        hasSplitAdvisory = true;
+        var skey = 'split:' + t.toUpperCase();
+        if (t && !seen[skey]) {
+          seen[skey] = true;
+          var ratio = seriesSplitRatioLabel(t);
+          advisories.push({
+            kind: 'split',
+            ticker: t,
+            text: t + ': учтено дробление акций' + (ratio ? ' ' + ratio : '') + '.'
+          });
+        }
+      }
+      var notes = row.notes || [];
+      var noteBlob = notes.join(' ') + ' ' + String(row.note || '');
+      if (usable && row.type === 'bond' && noteBlob.indexOf(ASOF_OFZ_CLEAN_NOTE) >= 0) {
+        hasBondNkdAdvisory = true;
+        if (!seen['bond-nkd']) {
+          seen['bond-nkd'] = true;
+          advisories.push({
+            kind: 'bond-nkd',
+            ticker: t,
+            text: 'ОФЗ: оценка на дату без исторического НКД.'
+          });
+        }
+      }
+    });
+    return {
+      isPartial: isPartial,
+      hasSplitAdvisory: hasSplitAdvisory,
+      hasBondNkdAdvisory: hasBondNkdAdvisory,
+      advisories: advisories
+    };
+  }
+
   function seriesPointFromValueResult(iso, valueRes, includePositions) {
     var stocks = 0;
     var bonds = 0;
@@ -5698,13 +5761,17 @@
       total = Number(valueRes.totalValueRub);
     }
     var warnings = ((valueRes && valueRes.notes) || []).slice();
+    var cls = classifyPortfolioDynamicsSeriesPoint(valueRes);
     var point = {
       date: iso,
       totalValueRub: total,
       stocksValueRub: stocks,
       bondsValueRub: bonds,
       cashValueRub: cash,
-      isPartial: !!(valueRes && valueRes.isPartial),
+      isPartial: !!cls.isPartial,
+      hasSplitAdvisory: !!cls.hasSplitAdvisory,
+      hasBondNkdAdvisory: !!cls.hasBondNkdAdvisory,
+      advisories: cls.advisories || [],
       warnings: warnings,
       pricedItemsCount: valueRes && valueRes.pricedItemsCount != null ? valueRes.pricedItemsCount : 0,
       missingItemsCount: valueRes && valueRes.missingItemsCount != null ? valueRes.missingItemsCount : 0,
@@ -5719,7 +5786,10 @@
           qty: row.qtyAtDate,
           price: row.price,
           valueRub: row.valueRub,
-          status: row.status
+          status: row.status,
+          splitAdjusted: !!row.splitAdjusted,
+          splitConfidence: row.splitConfidence || '',
+          notes: row.notes || []
         };
       });
     }
@@ -11024,8 +11094,12 @@
   var PF_DYN_LOADING = 'Строим динамику портфеля…';
   var PF_DYN_EMPTY = 'Добавьте позиции с датами покупки, чтобы построить динамику портфеля.';
   var PF_DYN_ERROR = 'Не удалось построить динамику портфеля. Попробуйте обновить страницу.';
-  var PF_DYN_PARTIAL = 'Для части бумаг нет цены на отдельные даты, поэтому график может быть неполным.';
+  var PF_DYN_PARTIAL = 'Для части бумаг нет цены или поддержки на отдельные даты, поэтому график может быть неполным.';
+  var PF_DYN_PARTIAL_MIXED = 'Для части бумаг оценка на отдельные даты неполная или требует проверки.';
+  var PF_DYN_SPLIT_ADVISORY = 'График построен с учётом дроблений акций.';
   var PF_DYN_CATALOG = 'Список дроблений акций временно недоступен. Динамика может быть неполной.';
+  var PF_DYN_DISCLOSE_PARTIAL = 'Почему оценка неполная?';
+  var PF_DYN_DISCLOSE_ADVISORY = 'Что учтено в расчёте?';
   var PF_DYN_MAX_POINTS = 140;
   var PF_DYN_DEBOUNCE_MS = 80;
   var pfDynSeq = 0;
@@ -11230,11 +11304,106 @@
     el.textContent = text;
   }
 
+  function buildPortfolioDynamicsSeriesStatusText(series) {
+    var anyPartial = false;
+    var anySplit = false;
+    (series || []).forEach(function (p) {
+      if (!p) return;
+      if (p.isPartial) anyPartial = true;
+      if (p.hasSplitAdvisory) anySplit = true;
+    });
+    if (anyPartial && anySplit) return PF_DYN_PARTIAL_MIXED;
+    if (anyPartial) return PF_DYN_PARTIAL;
+    if (anySplit) return PF_DYN_SPLIT_ADVISORY;
+    return '';
+  }
+
+  function buildPortfolioDynamicsTipLines(pt) {
+    if (!pt) return [];
+    var lines = [
+      formatAsOfDateDisplay(pt.date),
+      formatPortfolioRubAmount(pt.totalValueRub)
+    ];
+    if (pfDynState.showParts) {
+      lines.push('Акции: ' + formatPortfolioRubAmount(pt.stocksValueRub));
+      lines.push('Облигации: ' + formatPortfolioRubAmount(pt.bondsValueRub));
+    }
+    if (pt.isPartial) lines.push('оценка неполная');
+    return lines;
+  }
+
+  function buildPortfolioDynamicsDisclosureHtml(series) {
+    series = series || [];
+    var anyPartial = false;
+    var seen = {};
+    var items = [];
+    function add(text) {
+      var t = String(text || '').trim();
+      if (!t || seen[t]) return;
+      seen[t] = true;
+      items.push(t);
+    }
+    series.forEach(function (p) {
+      if (!p) return;
+      if (p.isPartial) anyPartial = true;
+      (p.advisories || []).forEach(function (adv) {
+        if (adv && adv.text) add(adv.text);
+      });
+      if (!p.isPartial) return;
+      (p.positions || []).forEach(function (row) {
+        if (!row || asOfItemValueUsable(row)) return;
+        var t = String(row.ticker || '').trim();
+        if (!t) return;
+        var st = String(row.status || '');
+        if (st === 'unsupported') add(t + ': инструмент на дату не поддерживается.');
+        else if (row.splitConfidence === 'unknown') {
+          add(t + ': на отдельные даты до дробления стоимость не удалось уверенно посчитать.');
+        } else add(t + ': нет цены закрытия на отдельные даты.');
+      });
+    });
+    if (!items.length) return '';
+    var title = anyPartial ? PF_DYN_DISCLOSE_PARTIAL : PF_DYN_DISCLOSE_ADVISORY;
+    var html = '<summary>' + escapeHtml(title) + '</summary><ul class="pf-dyn-disclose-list">';
+    items.forEach(function (line) {
+      html += '<li>' + escapeHtml(line) + '</li>';
+    });
+    html += '</ul>';
+    return html;
+  }
+
+  function pfDynRenderDisclosure() {
+    var el = document.getElementById('pfDynDisclose');
+    if (!el) return;
+    if (pfDynState.catalogBlocked || !pfDynState.series.length) {
+      el.hidden = true;
+      el.innerHTML = '';
+      el.open = false;
+      return;
+    }
+    var html = buildPortfolioDynamicsDisclosureHtml(pfDynState.series);
+    if (!html) {
+      el.hidden = true;
+      el.innerHTML = '';
+      el.open = false;
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML = html;
+  }
+
   function pfDynShowChart(on) {
     var wrap = document.getElementById('pfDynChartWrap');
     if (wrap) wrap.hidden = !on;
     var caption = document.getElementById('pfDynCaption');
     if (caption) caption.hidden = !on;
+    if (!on) {
+      var disclose = document.getElementById('pfDynDisclose');
+      if (disclose) {
+        disclose.hidden = true;
+        disclose.innerHTML = '';
+        disclose.open = false;
+      }
+    }
   }
 
   function renderPortfolioDynamicsCard() {
@@ -11428,15 +11597,7 @@
     var wrap = document.getElementById('pfDynChartWrap');
     var pt = pfDynState.series[idx];
     if (!tip || !wrap || !pt) return;
-    var lines = [
-      formatAsOfDateDisplay(pt.date),
-      formatPortfolioRubAmount(pt.totalValueRub)
-    ];
-    if (pfDynState.showParts) {
-      lines.push('Акции: ' + formatPortfolioRubAmount(pt.stocksValueRub));
-      lines.push('Облигации: ' + formatPortfolioRubAmount(pt.bondsValueRub));
-    }
-    if (pt.isPartial) lines.push('оценка неполная');
+    var lines = buildPortfolioDynamicsTipLines(pt);
     tip.innerHTML = lines.map(function (ln, i) {
       return '<div class="chart-hover-tip__line' + (i ? ' chart-hover-tip__line--muted' : '') + '">' + escapeHtml(ln) + '</div>';
     }).join('');
@@ -11575,9 +11736,9 @@
         pfDynSetStatus(PF_DYN_ERROR);
         return;
       }
-      var anyPartial = series.some(function (p) { return p && p.isPartial; });
-      pfDynSetStatus(anyPartial ? PF_DYN_PARTIAL : '');
+      pfDynSetStatus(buildPortfolioDynamicsSeriesStatusText(series));
       pfDynShowChart(true);
+      pfDynRenderDisclosure();
       renderPortfolioDynamicsCard();
       drawPortfolioDynamicsChart();
     }).catch(function () {

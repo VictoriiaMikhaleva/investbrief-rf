@@ -380,6 +380,11 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__dynPointer = applyPortfolioDynamicsPointer;' +
       '\nthis.__dynEarliest = pfDynEarliestOperationDate;' +
       '\nthis.__dynTop = pfDynTopPositions;' +
+      '\nthis.__dynClassify = classifyPortfolioDynamicsSeriesPoint;' +
+      '\nthis.__dynSeriesPoint = seriesPointFromValueResult;' +
+      '\nthis.__dynStatusText = buildPortfolioDynamicsSeriesStatusText;' +
+      '\nthis.__dynTipLines = buildPortfolioDynamicsTipLines;' +
+      '\nthis.__dynDiscloseHtml = buildPortfolioDynamicsDisclosureHtml;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
       '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;' +
       '\nthis.__asOfTable = buildPortfolioAsOfTableHtml;' +
@@ -478,6 +483,11 @@ function loadPortfolioCalcHelpers() {
     applyPortfolioDynamicsPointer: sandbox.__dynPointer,
     pfDynEarliestOperationDate: sandbox.__dynEarliest,
     pfDynTopPositions: sandbox.__dynTop,
+    classifyPortfolioDynamicsSeriesPoint: sandbox.__dynClassify,
+    seriesPointFromValueResult: sandbox.__dynSeriesPoint,
+    buildPortfolioDynamicsSeriesStatusText: sandbox.__dynStatusText,
+    buildPortfolioDynamicsTipLines: sandbox.__dynTipLines,
+    buildPortfolioDynamicsDisclosureHtml: sandbox.__dynDiscloseHtml,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
     buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
     buildPortfolioAsOfTableHtml: sandbox.__asOfTable,
@@ -6287,6 +6297,12 @@ await (async () => {
   assert(gmknAfter && gmknAfter.positions[0].qty === 1000, 'series GMKN: after split qty ×100');
   assert(Math.abs(gmknAfter.totalValueRub - 129920) < 1e-6, 'series GMKN: after 1000×129.92');
   assert(gmknAfter.totalValueRub !== 1299.2 && gmknAfter.positions[0].qty !== 10, 'series GMKN: not raw qty × new price');
+  assert(gmknBefore.positions[0].valueRub === 250140, 'series GMKN: before value included');
+  assert(Math.abs(gmknAfter.positions[0].valueRub - 129920) < 1e-6, 'series GMKN: after value included');
+  assert(gmknBefore.isPartial === false && gmknAfter.isPartial === false, 'series GMKN: splitPartial priced is not incomplete');
+  assert(gmknAfter.hasSplitAdvisory === true, 'series GMKN: split advisory');
+  assert((gmknAfter.advisories || []).some((a) => /GMKN: учтено дробление акций 1:100/.test(a.text)),
+    'series GMKN: advisory text');
   const gmknDropPct = (gmknAfter.totalValueRub - gmknBefore.totalValueRub) / gmknBefore.totalValueRub * 100;
   assert(gmknDropPct > -90, 'series GMKN: no technical −99%');
   assert(JSON.stringify(gmknPf) === gmknSnap, 'series JSON: GMKN not mutated');
@@ -6308,11 +6324,36 @@ await (async () => {
   if (tPt.positions[0].qty != null && tPt.positions[0].status === 'ok') {
     assert(tPt.positions[0].qty === 10, 'series T: qty stays 10');
     assert(tPt.totalValueRub === 2620, 'series T: 10×262 not 100×262');
+    assert(tPt.isPartial === false, 'series T: priced already-current not incomplete');
   } else {
-    assert(tPt.isPartial === true, 'series T: partial/warning allowed');
+    assert(tPt.isPartial === true, 'series T: pre-split ambiguous date may be partial');
     assert(tPt.totalValueRub !== 26200, 'series T: not double-counted 100×262');
   }
   assert(JSON.stringify(tCurrPf) === tCurrSnap, 'series JSON: T not mutated');
+
+  const tAfterSeries = await calc.buildPortfolioValueSeries(
+    tCurrPf, '2026-04-17', '2026-04-20',
+    seriesOpts({
+      T: { '2026-04-17': priceOk(262, { date: '2026-04-17' }) }
+    }, { includePositions: true })
+  );
+  const tAfter = pointOn(tAfterSeries, '2026-04-17');
+  assert(tAfter && tAfter.positions[0].valueRub != null, 'series T after: valueRub priced');
+  assert(tAfter.positions[0].qty === 10, 'series T after: qty stays 10, no ×10');
+  assert(tAfter.totalValueRub === 2620, 'series T after: 10×262');
+  assert(tAfter.isPartial === false, 'series T after: not incomplete');
+
+  const tSpanSeries = await calc.buildPortfolioValueSeries(
+    tCurrPf, '2026-04-01', '2026-04-20',
+    seriesOpts({
+      T: { '2026-04-01': priceOk(262, { date: '2026-04-01' }) }
+    }, { includePositions: true })
+  );
+  const tSpanBefore = pointOn(tSpanSeries, '2026-04-01');
+  const tSpanAfter = pointOn(tSpanSeries, '2026-04-17');
+  assert(tSpanBefore && tSpanBefore.isPartial === true, 'series T span: pre-split ambiguous is partial');
+  assert(tSpanAfter && tSpanAfter.isPartial === false, 'series T span: after split not incomplete');
+  assert(tSpanSeries.some((p) => !p.isPartial), 'series T span: not entire series incomplete');
 
   const ofzPf = {
     positions: [{ ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000, currentPrice: 95 }],
@@ -6329,6 +6370,8 @@ await (async () => {
     assert(p.totalValueRub === 9500, 'series OFZ: total 9500');
     assert(p.positions[0].qty === 10, 'series OFZ: split logic not applied');
     assert(p.cashValueRub === 0, 'series OFZ: coupons not on Y');
+    assert(p.isPartial === false, 'series OFZ: no historical NKD is not incomplete');
+    assert(p.hasBondNkdAdvisory === true, 'series OFZ: NKD advisory');
   });
 
   const missingPf = {
@@ -6425,6 +6468,10 @@ await (async () => {
     'series ISS: price-at-date has no candle/futures endpoints');
   assert(!/iss\.moex\.com|\/history\/engines\//.test(portfolioSrc),
     'series ISS: portfolio.js does not add MOEX endpoints');
+  assert(/isPartial: \(missing \+ unsupported \+ splitUnknown\) > 0 \|\| splitPartial > 0/.test(portfolioSrc),
+    'series classify: as-of isPartial formula unchanged');
+  assert(/function classifyPortfolioDynamicsSeriesPoint/.test(portfolioSrc),
+    'series classify: dynamics reclassifies partial vs advisory');
   assert(!/candlestick|intraday/.test(Function.prototype.toString.call(calc.buildPortfolioValueSeries)),
     'series helper: no candlestick/intraday');
 
@@ -6458,7 +6505,12 @@ await (async () => {
   assert(/Строим динамику портфеля/.test(src), 'dyn ui: loading copy');
   assert(/Добавьте позиции с датами покупки, чтобы построить динамику портфеля/.test(src), 'dyn ui: empty copy');
   assert(/Не удалось построить динамику портфеля\. Попробуйте обновить страницу/.test(src), 'dyn ui: error copy');
-  assert(/Для части бумаг нет цены на отдельные даты/.test(src), 'dyn ui: partial copy');
+  assert(/Для части бумаг нет цены или поддержки на отдельные даты/.test(src), 'dyn ui: real partial copy');
+  assert(/График построен с учётом дроблений акций/.test(src), 'dyn ui: split advisory copy');
+  assert(/Для части бумаг оценка на отдельные даты неполная или требует проверки/.test(src),
+    'dyn ui: mixed partial copy');
+  assert(/Что учтено в расчёте\?/.test(src) && /Почему оценка неполная\?/.test(src),
+    'dyn ui: disclosure titles');
   assert(/Список дроблений акций временно недоступен\. Динамика может быть неполной/.test(src),
     'dyn ui: catalog unavailable copy');
   assert(/isPortfolioSplitCatalogUnusable/.test(src) && /PF_DYN_CATALOG/.test(src),
@@ -6523,6 +6575,7 @@ await (async () => {
   assert(!/fetch/.test(card), 'dyn card: html has no fetch');
   assert(/График строится по оценке на дату/.test(indexHtml), 'dyn ui: chart caption');
   assert(/id="pfDynCaption"/.test(indexHtml), 'dyn ui: caption node');
+  assert(/id="pfDynDisclose"/.test(indexHtml), 'dyn ui: disclosure node');
   assert(/white-space:\s*nowrap/.test(css), 'dyn ui: parts label stays inline');
   assert(/#tab-portfolio \.pf-dyn-parts input\[type="checkbox"\][\s\S]*?appearance:\s*none/.test(css),
     'dyn ui: checkbox is custom, not system blue');
@@ -6570,6 +6623,7 @@ await (async () => {
     includePositions: true,
     getInstrumentPriceAtDate: mockOnOrBefore({
       GMKN: {
+        '2024-04-01': priceOk(25014, { date: '2024-04-01' }),
         '2024-04-05': priceOk(25014, { date: '2024-04-05' }),
         '2024-04-08': priceOk(129.92, { date: '2024-04-08' })
       }
@@ -6586,6 +6640,89 @@ await (async () => {
   );
   assert(!/−99/.test(gmknCard) && !/-99/.test(gmknCard) && !/−98/.test(gmknCard), 'dyn GMKN card: no −99%');
 
+  const gmknPriced = gmknSeries.find((p) => p.date === '2024-04-08');
+  assert(gmknPriced && gmknPriced.positions[0].valueRub != null, 'dyn GMKN priced: valueRub');
+  assert(gmknPriced.totalValueRub === gmknPriced.positions[0].valueRub, 'dyn GMKN priced: included in total');
+  assert(gmknSeries.every((p) => p.isPartial === false), 'dyn GMKN priced: no incomplete points');
+  assert(gmknPriced.isPartial === false, 'dyn GMKN priced: not incomplete');
+  assert(gmknPriced.hasSplitAdvisory === true, 'dyn GMKN priced: split advisory');
+  const gmknAsOf = await calc.buildPortfolioValueAtDate(gmknPf, '2024-04-08', {
+    splitEvents: events,
+    currentDate: '2026-09-04',
+    getInstrumentPriceAtDate: mockOnOrBefore({
+      GMKN: { '2024-04-08': priceOk(129.92, { date: '2024-04-08' }) }
+    })
+  });
+  assert(gmknAsOf.isPartial === true && gmknAsOf.totalValueRub != null, 'as-of GMKN: splitPartial still flags value-at-date');
+  assert(gmknPriced.isPartial === false, 'dyn GMKN priced: series does not copy as-of isPartial');
+  assert(!calc.buildPortfolioDynamicsTipLines(gmknPriced).some((ln) => ln === 'оценка неполная'),
+    'dyn GMKN priced: tooltip not incomplete');
+  const gmknStatus = calc.buildPortfolioDynamicsSeriesStatusText(gmknSeries);
+  assert(gmknStatus === 'График построен с учётом дроблений акций.', 'dyn GMKN priced: advisory status');
+  assert(!/нет цены/.test(gmknStatus) && !/оценка неполная/.test(gmknStatus),
+    'dyn GMKN priced: status not scary incomplete');
+  const gmknDisc = calc.buildPortfolioDynamicsDisclosureHtml(gmknSeries);
+  assert(/Что учтено в расчёте\?/.test(gmknDisc), 'dyn GMKN priced: advisory disclosure title');
+  assert(/GMKN: учтено дробление акций 1:100/.test(gmknDisc), 'dyn GMKN priced: split disclosure');
+  assert(!/Почему оценка неполная\?/.test(gmknDisc), 'dyn GMKN priced: not incomplete disclosure');
+
+  const gmknMissingSeries = await calc.buildPortfolioValueSeries(gmknPf, '2024-04-01', '2024-04-03', {
+    interval: 'day',
+    splitEvents: events,
+    currentDate: '2026-09-04',
+    includePositions: true,
+    getInstrumentPriceAtDate: function () {
+      return Promise.resolve({ status: 'missing', price: null, priceDate: null });
+    }
+  });
+  assert(gmknMissingSeries[0].isPartial === true, 'dyn GMKN missing CLOSE: isPartial');
+  assert(calc.buildPortfolioDynamicsTipLines(gmknMissingSeries[0]).some((ln) => ln === 'оценка неполная'),
+    'dyn GMKN missing CLOSE: tooltip incomplete');
+  assert(/график может быть неполным/.test(calc.buildPortfolioDynamicsSeriesStatusText(gmknMissingSeries)),
+    'dyn GMKN missing CLOSE: incomplete status');
+
+  const tHistPf = {
+    positions: [{ ticker: 'T', lotId: 'TH', qty: 1, avgPrice: 3000, buyDate: '2025-01-10', currentPrice: 300 }],
+    sales: []
+  };
+  const tHistSeries = await calc.buildPortfolioValueSeries(tHistPf, '2026-04-17', '2026-04-18', {
+    interval: 'day',
+    splitEvents: events,
+    currentDate: '2026-09-04',
+    includePositions: true,
+    getInstrumentPriceAtDate: mockOnOrBefore({
+      T: { '2026-04-17': priceOk(300, { date: '2026-04-17' }) }
+    })
+  });
+  const tHist = tHistSeries.find((p) => p.date === '2026-04-17');
+  assert(tHist && tHist.positions[0].qty === 10, 'dyn T historical: qty ×10');
+  assert(tHist.totalValueRub === 3000, 'dyn T historical: 10×300');
+  assert(tHist.isPartial === false, 'dyn T historical: full if CLOSE exists');
+
+  const unsupPf = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      { ticker: 'AAPL', lotId: 'U1', qty: 2, avgPrice: 180, buyDate: '2024-01-15', market: 'US' }
+    ],
+    sales: []
+  };
+  const unsupSeries = await calc.buildPortfolioValueSeries(unsupPf, '2024-06-03', '2024-06-04', {
+    interval: 'day',
+    includePositions: true,
+    getInstrumentPriceAtDate: function (ticker, date) {
+      const t = String(ticker || '').toUpperCase();
+      if (t === 'SBER') return Promise.resolve(priceOk(100, { date: date || '2024-06-03' }));
+      return Promise.resolve({ status: 'unsupported', price: null });
+    }
+  });
+  assert(unsupSeries[0].isPartial === true, 'dyn unsupported: isPartial');
+  assert(unsupSeries[0].totalValueRub === 1000, 'dyn unsupported: priced SBER only');
+  assert(/график может быть неполным/.test(calc.buildPortfolioDynamicsSeriesStatusText(unsupSeries)),
+    'dyn unsupported: incomplete status');
+
+  const mixedStatus = calc.buildPortfolioDynamicsSeriesStatusText([gmknPriced, unsupSeries[0]]);
+  assert(/неполная или требует проверки/.test(mixedStatus), 'dyn mixed: mixed status copy');
+
   const ofzPf = {
     positions: [{ ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000 }],
     sales: []
@@ -6599,6 +6736,14 @@ await (async () => {
   });
   const ofzCard = calc.buildPortfolioDynamicsCardHtml(ofzSeries, ofzSeries.length - 1);
   assert(/9[\s\u00a0]?500/.test(ofzCard) || /9500/.test(ofzCard), 'dyn OFZ: bond formula in card');
+  assert(ofzSeries.every((p) => p.isPartial === false), 'dyn OFZ: NKD note is not incomplete');
+  assert(ofzSeries.some((p) => p.hasBondNkdAdvisory), 'dyn OFZ: NKD advisory allowed');
+  const ofzStatus = calc.buildPortfolioDynamicsSeriesStatusText(ofzSeries);
+  assert(!/нет цены/.test(ofzStatus) && !/оценка неполная/.test(ofzStatus) && !/неполным/.test(ofzStatus),
+    'dyn OFZ: status not incomplete');
+  const ofzDisc = calc.buildPortfolioDynamicsDisclosureHtml(ofzSeries);
+  assert(/Что учтено в расчёте\?/.test(ofzDisc), 'dyn OFZ: advisory disclosure title');
+  assert(/ОФЗ: оценка на дату без исторического НКД/.test(ofzDisc), 'dyn OFZ: NKD disclosure');
 
   const sberCard = calc.buildPortfolioDynamicsCardHtml(mockSeries, 0);
   assert(/SBER/.test(sberCard) && /1[\s\u00a0]?000/.test(sberCard) || /1000/.test(sberCard), 'dyn SBER: qty×close card');
