@@ -2597,12 +2597,38 @@
     return asOfRoundQty(sum);
   }
 
-  function splitSaleHasWriterMeta(sale, alloc) {
-    if (sale && String(sale.qtyScale || '') === 'sale-date') return true;
+  function splitAllocHasWriterMeta(alloc) {
     if (!alloc) return false;
     if (String(alloc.qtyScale || '') === 'sale-date') return true;
     if (isFinite(Number(alloc.lotQtyDelta)) && Number(alloc.lotQtyDelta) > 0) return true;
+    if (isFinite(Number(alloc.splitFactor)) && Number(alloc.splitFactor) > 1) return true;
+    if (isFinite(Number(alloc.adjustedBuyPrice)) && Number(alloc.adjustedBuyPrice) > 0) return true;
     return false;
+  }
+
+  function splitSaleHasWriterMeta(sale, alloc) {
+    if (sale && String(sale.qtyScale || '') === 'sale-date') return true;
+    if (alloc) return splitAllocHasWriterMeta(alloc);
+    var allocs = sale && sale.allocations;
+    if (!allocs || !allocs.length) return false;
+    var i;
+    for (i = 0; i < allocs.length; i++) {
+      if (splitAllocHasWriterMeta(allocs[i])) return true;
+    }
+    return false;
+  }
+
+  function formatSplitSaleRecordNote(sale, options) {
+    if (!sale || isPortfolioBondPosition(sale)) return '';
+    if (!saleUsesSplitAwareRealized(sale, options)) return '';
+    if (splitSaleHasWriterMeta(sale)) return PF_SPLIT_SALE_DATE_QTY_HINT;
+    return PF_SPLIT_SALE_LEGACY_TEXT;
+  }
+
+  function formatSplitSaleRecordNoteHtml(sale, options) {
+    var text = formatSplitSaleRecordNote(sale, options);
+    if (!text) return '';
+    return '<div class="muted pf-timeline-note">' + escapeHtml(text) + '</div>';
   }
 
   function getLotSplitSaleCapacity(lot, ticker, saleIso, options) {
@@ -3297,19 +3323,16 @@
       if (splitPnl && splitPnl.confidence === 'unknown' && splitPnl.realizedPnlRub == null) {
         pnl = { amount: null, pct: null };
       }
-      var sellQuality = 'ok';
-      var sellNote = '';
       var hasWriterMeta = splitSaleHasWriterMeta(sale);
+      var sellNote = formatSplitSaleRecordNote(sale);
+      var sellQuality = 'ok';
       if (hasWriterMeta) {
-        sellNote = PF_SPLIT_SALE_DATE_QTY_HINT;
         if (splitPnl && splitPnl.confidence === 'unknown' &&
             (splitPnl.realizedPnlRub == null || !isFinite(Number(splitPnl.realizedPnlRub)))) {
           sellQuality = 'partial';
-          sellNote = (splitPnl.warnings && splitPnl.warnings[0]) || PF_SPLIT_SALE_UNKNOWN_TEXT;
         }
-      } else if (splitPnl && (splitPnl.isPartial || splitPnl.confidence === 'partial' || splitPnl.confidence === 'unknown')) {
-        sellQuality = splitPnl.confidence === 'unknown' ? 'partial' : 'partial';
-        sellNote = PF_SPLIT_SALE_LEGACY_TEXT;
+      } else if (sellNote) {
+        sellQuality = (splitPnl && splitPnl.confidence === 'unknown') ? 'partial' : 'partial';
       }
       var fee = sale.fee != null && isFinite(Number(sale.fee)) ? Number(sale.fee) : null;
       var faceHint = takeFace(sale);
@@ -4282,7 +4305,8 @@
         var buyIso = timelineIsoDate(op.date);
         if (buyIso && (!fromIso || buyIso < fromIso)) fromIso = buyIso;
       }
-      if (op.quality === 'partial' && op.note) {
+      if (op.quality === 'partial' && op.note &&
+          op.note !== PF_SPLIT_SALE_DATE_QTY_HINT) {
         isPartial = true;
         payoutsPushWarning(warnings, op.note);
       }
@@ -6129,6 +6153,7 @@
         realizedConfidence: splitPnl ? splitPnl.confidence : 'high',
         realizedSplitUi: saleUsesSplitAwareRealized(s),
         splitWriterMeta: splitSaleHasWriterMeta(s),
+        splitSaleNote: formatSplitSaleRecordNote(s),
         comment: s.comment ? String(s.comment) : '',
         isBond: isPortfolioBondPosition(s),
         lotId: s.lotId ? String(s.lotId) : '',
@@ -6165,6 +6190,8 @@
         realizedPnlRub: op.realizedPnlRub,
         realizedConfidence: op.realizedConfidence || '',
         realizedSplitUi: !!op.realizedSplitUi,
+        splitWriterMeta: !!op.splitWriterMeta,
+        splitSaleNote: op.splitSaleNote || '',
         comment: op.comment,
         isBond: !!op.isBond,
         lotId: op.lotId,
@@ -8906,6 +8933,7 @@
               '<span><span class="lbl">Результат</span> ' +
                 formatSplitAwareRealizedHtml(splitPnl, { splitUi: splitUi }) + '</span>' +
             '</div>' +
+            formatSplitSaleRecordNoteHtml(sale) +
             '<div class="pf-row-actions">' +
               '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
             '</div>';
@@ -8953,6 +8981,11 @@
             '<td class="pf-row-actions">' +
               '<button type="button" class="ghost small pf-btn pf-btn-cancel" data-pf-undo-sale="' + escapeHtml(sale.saleId || '') + '">Отменить</button>' +
             '</td></tr>';
+          var manageNote = formatSplitSaleRecordNote(sale);
+          if (manageNote) {
+            html += '<tr class="pf-timeline-note-row"><td colspan="6" class="muted pf-timeline-note">' +
+              escapeHtml(manageNote) + '</td></tr>';
+          }
           if (sale.allocations && sale.allocations.length) {
             html += '<tr class="pf-alloc-row"><td colspan="6"><div class="pf-alloc-box pf-allocation-box">' +
               '<div class="pf-alloc-title muted">Разбивка по покупкам</div>' +
@@ -9350,6 +9383,9 @@
       buyPxHtml = '<span class="portfolio-recent-kpi"><span class="lbl">Покупка</span> ' +
         escapeHtml(formatRecentOperationPrice(op.buyPrice, op.isBond, op.ticker)) + '</span>';
     }
+    var splitNoteHtml = !isBuy && op.splitSaleNote
+      ? '<div class="muted pf-timeline-note">' + escapeHtml(op.splitSaleNote) + '</div>'
+      : '';
     var commentHtml = op.comment
       ? '<div class="portfolio-recent-comment muted">' + escapeHtml(op.comment) + '</div>'
       : '';
@@ -9371,6 +9407,7 @@
         buyPxHtml +
         pnlHtml +
       '</div>' +
+      splitNoteHtml +
       commentHtml +
       '</div>';
   }

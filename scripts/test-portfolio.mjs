@@ -357,6 +357,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__hideClosed = hideClosedPortfolioTicker;' +
       '\nthis.__restoreClosed = restoreClosedPortfolioTicker;' +
       '\nthis.__collectRecent = collectRecentPortfolioOperations;' +
+      '\nthis.__recentHtml = buildPortfolioRecentSectionHtml;' +
+      '\nthis.__splitSaleRecordNote = formatSplitSaleRecordNote;' +
       '\nthis.__resolveNav = resolvePortfolioHistoryNavTarget;' +
       '\nthis.__timeline = buildTickerOperationTimeline;' +
       '\nthis.__timelineHtml = buildPortfolioTickerTimelineHtml;' +
@@ -439,6 +441,8 @@ function loadPortfolioCalcHelpers() {
     hideClosedPortfolioTicker: sandbox.__hideClosed,
     restoreClosedPortfolioTicker: sandbox.__restoreClosed,
     collectRecentPortfolioOperations: sandbox.__collectRecent,
+    buildPortfolioRecentSectionHtml: sandbox.__recentHtml,
+    formatSplitSaleRecordNote: sandbox.__splitSaleRecordNote,
     resolvePortfolioHistoryNavTarget: sandbox.__resolveNav,
     buildTickerOperationTimeline: sandbox.__timeline,
     buildPortfolioTickerTimelineHtml: sandbox.__timelineHtml,
@@ -5018,6 +5022,10 @@ function loadPriceAtDateHelpers() {
   assert(sberCommit && sberCommit.ok === true, 'sale block: SBER can commit');
   assert(sberLive.sales && sberLive.sales.length === 1, 'sale block: SBER sale written');
   assert(sberLive.positions[0].qty === 8, 'sale block: SBER qty reduced by writer');
+  const sberSaleHtml = calc.buildPortfolioTickerDetailHtml('SBER', sberLive.positions, sberLive.sales, null, false, { layout: 'stack' });
+  assert(!/Продажа записана как в брокере/.test(sberSaleHtml), 'sale block: SBER no broker split copy');
+  assert(!/до обновления расчётов по дроблению/.test(sberSaleHtml), 'sale block: SBER no legacy split copy');
+  assert(!calc.formatSplitSaleRecordNote(sberLive.sales[0]), 'sale block: SBER sale note empty');
 
   let tAfter = {
     positions: [{
@@ -5044,6 +5052,10 @@ function loadPriceAtDateHelpers() {
   const ofzCommit = calc.commitPortfolioSale('OFZ26241', { qty: 2, price: 98, date: '2026-01-10', comment: '' });
   assert(ofzCommit && ofzCommit.ok === true, 'sale block: OFZ can commit');
   assert(ofzLive.sales && ofzLive.sales.length === 1, 'sale block: OFZ sale written');
+  const ofzSaleHtml = calc.buildPortfolioTickerDetailHtml('OFZ26241', ofzLive.positions, ofzLive.sales, null, true, { layout: 'stack' });
+  assert(!/Продажа записана как в брокере/.test(ofzSaleHtml), 'sale block: OFZ no broker split copy');
+  assert(!/до обновления расчётов по дроблению/.test(ofzSaleHtml), 'sale block: OFZ no legacy split copy');
+  assert(!calc.formatSplitSaleRecordNote(ofzLive.sales[0]), 'sale block: OFZ sale note empty');
 
   sb.getPortfolio = prevGet;
   sb.setPortfolio = prevSet;
@@ -5429,6 +5441,19 @@ function loadPriceAtDateHelpers() {
   const tlHtml = calc.buildPortfolioTickerTimelineHtml(tl, 'GMKN', false, true);
   assert(/Продажа записана как в брокере/.test(tlHtml), 'p1b sell2: timeline html broker copy');
   assert(!/Продажа была добавлена до обновления расчётов по дроблению/.test(tlHtml), 'p1b sell2: timeline html not legacy');
+  const sellTwoStack = calc.buildPortfolioTickerDetailHtml('GMKN', sellTwo.positions, sellTwo.sales, null, false, { layout: 'stack' });
+  assert(/Продажа записана как в брокере/.test(sellTwoStack), 'p1b sell2 stack: broker copy');
+  assert(!/Продажа была добавлена до обновления расчётов по дроблению/.test(sellTwoStack), 'p1b sell2 stack: not legacy');
+  const sellTwoRecent = calc.collectRecentPortfolioOperations(sellTwo.positions, sellTwo.sales, {
+    todayYmd: '2026-09-08', days: 30
+  });
+  const sellTwoRecentSale = sellTwoRecent.find((op) => op.kind === 'sale');
+  assert(sellTwoRecentSale && sellTwoRecentSale.splitWriterMeta, 'p1b sell2 recent: writer meta');
+  assert(/записана как в брокере/.test(sellTwoRecentSale.splitSaleNote || ''), 'p1b sell2 recent: broker note');
+  assert(!/до обновления расчётов по дроблению/.test(sellTwoRecentSale.splitSaleNote || ''), 'p1b sell2 recent: not legacy');
+  const recentHtml = calc.buildPortfolioRecentSectionHtml(sellTwoRecent);
+  assert(/Продажа записана как в брокере/.test(recentHtml), 'p1b sell2 recent html: broker copy');
+  assert(!/Продажа была добавлена до обновления расчётов по дроблению/.test(recentHtml), 'p1b sell2 recent html: not legacy');
   calc.removePortfolioSale(sellTwo.sales[0].saleId);
   const oldRestored = (sellTwo.positions || []).find((p) => p.lotId === 'G1');
   const newRestored = (sellTwo.positions || []).find((p) => p.lotId === 'G2');
@@ -5526,6 +5551,9 @@ function loadPriceAtDateHelpers() {
   almost(tPf.sales[0].allocations[0].lotQtyDelta, 0.5, 1e-9, 'p1b T: lotQtyDelta 0.5');
   almost(tPf.positions[0].qty, 0.5, 1e-9, 'p1b T: remaining 0.5');
   almost(calc.getSplitAwareSaleRealizedPnl(tPf.sales[0], tPf, { splitEvents: events, now: NOW }).realizedPnlRub, (260 - 312.6) * 5, 0.05, 'p1b T: realized');
+  const tSaleHtml = calc.buildPortfolioTickerDetailHtml('T', tPf.positions, tPf.sales, null, false, { layout: 'stack' });
+  assert(/Продажа записана как в брокере/.test(tSaleHtml), 'p1b T ui: broker copy');
+  assert(!/Продажа была добавлена до обновления расчётов по дроблению/.test(tSaleHtml), 'p1b T ui: not legacy');
 
   let unk = {
     positions: [{ ticker: 'GMKN', lotId: 'U1', qty: 10, avgPrice: 22000, currentPrice: 130 }],
@@ -5580,6 +5608,17 @@ function loadPriceAtDateHelpers() {
   assert(legacySell && !legacySell.splitWriterMeta, 'p1b legacy: timeline no writer meta');
   assert(/до обновления расчётов по дроблению/.test(legacySell.note || ''), 'p1b legacy: timeline legacy note');
   assert(!/записана как в брокере/.test(legacySell.note || ''), 'p1b legacy: timeline not broker copy');
+  const legacyHtml = calc.buildPortfolioTickerDetailHtml('GMKN', [
+    { ticker: 'GMKN', lotId: 'G1', qty: 8, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 }
+  ], [legacySale], null, false, { layout: 'stack' });
+  assert(/Продажа была добавлена до обновления расчётов по дроблению/.test(legacyHtml), 'p1b legacy html: warning');
+  assert(!/Продажа записана как в брокере/.test(legacyHtml), 'p1b legacy html: not broker copy');
+  const legacyRecent = calc.collectRecentPortfolioOperations([
+    { ticker: 'GMKN', lotId: 'G1', qty: 8, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 130 }
+  ], [legacySale], { todayYmd: '2026-09-08', days: 4000 });
+  const legacyRecentSale = legacyRecent.find((op) => op.kind === 'sale');
+  assert(/до обновления расчётов по дроблению/.test(legacyRecentSale && legacyRecentSale.splitSaleNote || ''), 'p1b legacy recent: warning');
+  assert(!/записана как в брокере/.test(legacyRecentSale && legacyRecentSale.splitSaleNote || ''), 'p1b legacy recent: not broker copy');
 
   const prodText = fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8');
   const fakeEvents = calc.sandbox.parseSplitEventsCatalog({
