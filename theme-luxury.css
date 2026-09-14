@@ -5867,6 +5867,84 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
   line-height: 1.45;
 }
 
+#tab-portfolio .pf-dyn-split-scale {
+  margin: 0 0 0.55rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+#tab-portfolio .pf-dyn-split-scale[hidden] {
+  display: none !important;
+  margin: 0;
+}
+
+#tab-portfolio .pf-dyn-split-scale-box {
+  padding: 0.52rem 0.72rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, #7a5a42 78%, #5c4636 22%);
+  background: color-mix(in srgb, var(--bronze-soft) 22%, #fffaf6 78%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 16%, #eadccb 84%);
+  border-radius: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
+}
+
+#tab-portfolio .pf-dyn-split-scale-lead {
+  margin: 0 0 0.42rem;
+}
+
+#tab-portfolio .pf-dyn-split-scale-item {
+  margin: 0.42rem 0 0;
+  padding-top: 0.38rem;
+  border-top: 1px solid color-mix(in srgb, var(--bronze) 12%, #eadccb 88%);
+  max-width: 100%;
+  min-width: 0;
+}
+
+#tab-portfolio .pf-dyn-split-scale-item:first-of-type {
+  margin-top: 0.12rem;
+}
+
+#tab-portfolio .pf-dyn-split-scale-ticker {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  margin: 0 0 0.18rem;
+}
+
+#tab-portfolio .pf-dyn-split-scale-text {
+  margin: 0 0 0.38rem;
+}
+
+#tab-portfolio .pf-dyn-split-scale .pf-split-scale-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.45rem;
+  max-width: 100%;
+}
+
+#tab-portfolio .pf-dyn-split-scale .pf-split-scale-btn {
+  white-space: normal;
+  max-width: 100%;
+  height: auto;
+  box-sizing: border-box;
+}
+
+@media (max-width: 420px) {
+  #tab-portfolio .pf-dyn-split-scale-box {
+    padding: 0.48rem 0.58rem;
+  }
+  #tab-portfolio .pf-dyn-split-scale .pf-split-scale-btn {
+    flex: 1 1 calc(50% - 0.3rem);
+    min-width: min(100%, 9.5rem);
+  }
+}
+
 #tab-portfolio .pf-dyn-caption {
   margin: 0.15rem 0 0.7rem;
   font-size: 0.74rem;
