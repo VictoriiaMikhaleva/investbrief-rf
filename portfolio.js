@@ -375,11 +375,11 @@
             '</div>'
           : '') +
         '<div class="portfolio-total-card">' +
-          '<span class="portfolio-total-lbl">С учётом выплат</span>' +
+          '<span class="portfolio-total-lbl">С выплатами за 12 мес.</span>' +
           '<span class="portfolio-total-val' + (pricePlusPayouts != null ? (pricePlusPayouts >= 0 ? ' pnl-pos' : ' pnl-neg') : '') + '">' +
             escapeHtml(pricePlusPayouts != null ? formatSignedPct(pricePlusPayouts, 2) : '—') +
           '</span>' +
-          '<span class="portfolio-total-sub muted">оценка к вложенному</span>' +
+          '<span class="portfolio-total-sub muted">к текущему остатку · справочно</span>' +
         '</div>' +
         '<div class="portfolio-total-card">' +
           '<span class="portfolio-total-lbl">Акции</span>' +

@@ -6276,6 +6276,10 @@ await (async () => {
     calc.renderPortfolioSummary(unkPf.positions, {}, { paid12m: 0, forecast12m: 0, isPartial: true, skippedSplit: true, hasIncluded: false }, []);
     assert(/Часть расчётов по бумагам с дроблением акций может быть неполной/.test(nodes.portfolioTotals.innerHTML), 'summary unknown ui: warning');
     assert(!/split-aware|metadata|writer|helper/.test(nodes.portfolioTotals.innerHTML), 'summary unknown ui: no technical terms');
+    assert(/С выплатами за 12 мес\./.test(nodes.portfolioTotals.innerHTML), 'summary ui: 12m payouts label');
+    assert(/к текущему остатку · справочно/.test(nodes.portfolioTotals.innerHTML), 'summary ui: remainder hint');
+    assert(!/С учётом выплат/.test(nodes.portfolioTotals.innerHTML), 'summary ui: old confusing label gone');
+    assert(!/полученн|зачислено|чистая доходность|гарантирован|заработано/.test(nodes.portfolioTotals.innerHTML), 'summary ui: no overclaim words');
     calc.sandbox.document.getElementById = prevEl;
 
     const sb = calc.sandbox;
