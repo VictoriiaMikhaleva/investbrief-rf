@@ -451,8 +451,9 @@
   var PF_SPLIT_SCALE_CONFIRM_UNKNOWN_TEXT = 'Не удалось однозначно понять шкалу покупки после дробления. Уточните, как внесены количество и средняя цена.';
   var PF_SPLIT_SCALE_BTN_CURRENT = 'Как в брокере сейчас';
   var PF_SPLIT_SCALE_BTN_HISTORICAL = 'Как было на дату покупки';
-  var PF_SPLIT_SCALE_DONE_CURRENT = 'Количество и средняя цена учтены как в брокере сейчас, в текущих акциях после дробления.';
-  var PF_SPLIT_SCALE_DONE_HISTORICAL = 'Количество и средняя цена учтены как на дату покупки, до дробления.';
+  var PF_SPLIT_SCALE_STATUS_CURRENT = 'Шкала покупки подтверждена: как в брокере сейчас.';
+  var PF_SPLIT_SCALE_STATUS_HISTORICAL = 'Шкала покупки подтверждена: как было на дату покупки.';
+  var PF_SPLIT_SCALE_CHANGE_BTN = 'Изменить';
   var PF_SPLIT_CATALOG_UNAVAILABLE_TEXT = 'Список дроблений акций временно недоступен. Если в портфеле есть бумаги с дроблением акций, часть расчётов может быть неполной.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT = 'Список дроблений акций временно недоступен. Перед продажей бумаг, по которым было дробление акций, проверьте количество вручную.';
   var PF_SPLIT_CATALOG_SALE_BLOCK_TEXT = 'Список дроблений акций временно недоступен. Продажа этой бумаги сейчас недоступна, чтобы не списать неверное количество. Обновите страницу или попробуйте позже.';
@@ -761,39 +762,69 @@
     if (!lot || isPortfolioBondPosition(lot) || isPortfolioBondPosition({ ticker: ticker || lot.ticker })) {
       return false;
     }
-    var confirmed = normalizeSplitLotScale(lot.splitLotScale);
+    if (normalizeSplitLotScale(lot.splitLotScale)) return false;
     var diag = diagnoseLotShareScale(lot, ticker || lot.ticker, options);
     if (!diag || diag.scale === 'n/a') return false;
     if (!(isFinite(Number(diag.factor)) && Number(diag.factor) > 1)) return false;
-    if (confirmed) return true;
     if (diag.scale === 'unknown') return true;
     return diag.scale === 'current';
+  }
+
+  function lotShowsSplitScaleStatusUi(lot, ticker, options) {
+    if (!lot || isPortfolioBondPosition(lot) || isPortfolioBondPosition({ ticker: ticker || lot.ticker })) {
+      return false;
+    }
+    if (!normalizeSplitLotScale(lot.splitLotScale)) return false;
+    var diag = diagnoseLotShareScale(lot, ticker || lot.ticker, options);
+    if (!diag || diag.scale === 'n/a') return false;
+    return isFinite(Number(diag.factor)) && Number(diag.factor) > 1;
+  }
+
+  function buildLotSplitScaleButtonsHtml(lotId, confirmed) {
+    confirmed = normalizeSplitLotScale(confirmed);
+    var curActive = confirmed === 'current' ? ' is-active' : '';
+    var histActive = confirmed === 'historical' ? ' is-active' : '';
+    return '<div class="pf-split-scale-confirm-actions">' +
+      '<button type="button" class="ghost small pf-btn pf-split-scale-btn' + curActive +
+        '" data-pf-split-lot-scale="current" data-pf-lot-id="' + lotId +
+        '" aria-pressed="' + (confirmed === 'current' ? 'true' : 'false') + '">' +
+        escapeHtml(PF_SPLIT_SCALE_BTN_CURRENT) + '</button>' +
+      '<button type="button" class="ghost small pf-btn pf-split-scale-btn' + histActive +
+        '" data-pf-split-lot-scale="historical" data-pf-lot-id="' + lotId +
+        '" aria-pressed="' + (confirmed === 'historical' ? 'true' : 'false') + '">' +
+        escapeHtml(PF_SPLIT_SCALE_BTN_HISTORICAL) + '</button>' +
+      '</div>';
   }
 
   function buildLotSplitScaleConfirmHtml(lot, ticker, options) {
     if (!lotShowsSplitScaleConfirmUi(lot, ticker, options)) return '';
     var lotId = escapeHtml(lot.lotId || '');
-    var confirmed = normalizeSplitLotScale(lot.splitLotScale);
     var look = lotLooksAlreadyCurrentAfterSplit(lot, ticker, options);
-    var text = confirmed === 'current'
-      ? PF_SPLIT_SCALE_DONE_CURRENT
-      : (confirmed === 'historical'
-        ? PF_SPLIT_SCALE_DONE_HISTORICAL
-        : (look ? PF_SPLIT_SCALE_CONFIRM_LOOK_TEXT : PF_SPLIT_SCALE_CONFIRM_UNKNOWN_TEXT));
-    var curActive = confirmed === 'current' ? ' is-active' : '';
-    var histActive = confirmed === 'historical' ? ' is-active' : '';
+    var text = look ? PF_SPLIT_SCALE_CONFIRM_LOOK_TEXT : PF_SPLIT_SCALE_CONFIRM_UNKNOWN_TEXT;
     return '<div class="pf-split-scale-confirm">' +
       '<p class="pf-split-scale-confirm-text">' + escapeHtml(text) + '</p>' +
-      '<div class="pf-split-scale-confirm-actions">' +
-        '<button type="button" class="ghost small pf-btn pf-split-scale-btn' + curActive +
-          '" data-pf-split-lot-scale="current" data-pf-lot-id="' + lotId +
-          '" aria-pressed="' + (confirmed === 'current' ? 'true' : 'false') + '">' +
-          escapeHtml(PF_SPLIT_SCALE_BTN_CURRENT) + '</button>' +
-        '<button type="button" class="ghost small pf-btn pf-split-scale-btn' + histActive +
-          '" data-pf-split-lot-scale="historical" data-pf-lot-id="' + lotId +
-          '" aria-pressed="' + (confirmed === 'historical' ? 'true' : 'false') + '">' +
-          escapeHtml(PF_SPLIT_SCALE_BTN_HISTORICAL) + '</button>' +
-      '</div></div>';
+      buildLotSplitScaleButtonsHtml(lotId, '') +
+      '</div>';
+  }
+
+  function buildLotSplitScaleStatusHtml(lot, ticker, options) {
+    if (!lotShowsSplitScaleStatusUi(lot, ticker, options)) return '';
+    var lotId = escapeHtml(lot.lotId || '');
+    var confirmed = normalizeSplitLotScale(lot.splitLotScale);
+    var text = confirmed === 'historical'
+      ? PF_SPLIT_SCALE_STATUS_HISTORICAL
+      : PF_SPLIT_SCALE_STATUS_CURRENT;
+    return '<div class="pf-split-scale-status">' +
+      '<p class="pf-split-scale-status-text">' + escapeHtml(text) + '</p>' +
+      '<details class="pf-split-scale-edit">' +
+        '<summary class="pf-split-scale-edit-summary">' + escapeHtml(PF_SPLIT_SCALE_CHANGE_BTN) + '</summary>' +
+        buildLotSplitScaleButtonsHtml(lotId, confirmed) +
+      '</details></div>';
+  }
+
+  function buildLotSplitScaleLotHtml(lot, ticker, options) {
+    return buildLotSplitScaleConfirmHtml(lot, ticker, options) ||
+      buildLotSplitScaleStatusHtml(lot, ticker, options);
   }
 
   function setPortfolioLotSplitScale(lotId, scale) {
@@ -8464,6 +8495,7 @@
       '[data-pf-sell-ticker], [data-pf-sell-lot], [data-pf-undo-sale],' +
       '[data-pf-edit-lot], [data-pf-remove-lot],' +
       '[data-pf-split-lot-scale],' +
+      '.pf-split-scale-confirm, .pf-split-scale-status, .pf-split-scale-edit,' +
       '.portfolio-card-actions, .portfolio-closed-card-actions,' +
       '.portfolio-card-detail, .portfolio-closed-card-detail,' +
       '.pf-row-actions, .pf-lot-toggle-row, .pf-sale-row, .pf-ticker-detail-row,' +
@@ -8592,7 +8624,7 @@
       );
       return;
     }
-    if (e.target.closest('summary, .pf-ticker-manage-summary, .pf-twp-how-summary')) {
+    if (e.target.closest('summary, .pf-ticker-manage-summary, .pf-twp-how-summary, .pf-split-scale-edit-summary')) {
       e.stopPropagation();
       return;
     }
@@ -9334,7 +9366,7 @@
     } else if (stack) {
       html += '<div class="pf-stack-list">';
       hist.openLots.forEach(function (lot) {
-        var scaleConfirm = !isBond ? buildLotSplitScaleConfirmHtml(lot, ticker) : '';
+        var scaleConfirm = !isBond ? buildLotSplitScaleLotHtml(lot, ticker) : '';
         html += '<div class="pf-stack-item pf-op-card pf-open-lot">' +
           '<div class="pf-stack-meta">' +
             '<span class="pf-op-badge pf-op-badge--buy">покупка</span>' +
@@ -9357,7 +9389,7 @@
         '<th>Дата</th><th>Кол-во</th><th>Цена покупки</th><th>Комментарий</th><th></th>' +
         '</tr></thead><tbody>';
       hist.openLots.forEach(function (lot) {
-        var scaleConfirm = !isBond ? buildLotSplitScaleConfirmHtml(lot, ticker) : '';
+        var scaleHtml = !isBond ? buildLotSplitScaleLotHtml(lot, ticker) : '';
         html += '<tr class="pf-open-lot-row">' +
           '<td>' + escapeHtml(formatPortfolioDate(lot)) + '</td>' +
           '<td>' + escapeHtml(formatPortfolioQty(lot)) + '</td>' +
@@ -9367,8 +9399,11 @@
             '<button type="button" class="ghost small pf-btn pf-btn-edit" data-pf-edit-lot="' + escapeHtml(lot.lotId || '') + '">Изменить</button> ' +
             '<button type="button" class="small pf-btn pf-btn-danger" data-pf-remove-lot="' + escapeHtml(lot.lotId || '') + '">Удалить</button>' +
           '</td></tr>';
-        if (scaleConfirm) {
-          html += '<tr class="pf-split-scale-confirm-row"><td colspan="5">' + scaleConfirm + '</td></tr>';
+        if (scaleHtml) {
+          var scaleRowClass = scaleHtml.indexOf('pf-split-scale-status') >= 0
+            ? 'pf-split-scale-status-row'
+            : 'pf-split-scale-confirm-row';
+          html += '<tr class="' + scaleRowClass + '"><td colspan="5">' + scaleHtml + '</td></tr>';
         }
       });
       html += '</tbody></table>';
@@ -9620,7 +9655,15 @@
       var visibleRowSpan = visibleLots.length || 1;
       var hasDetail = !!(state.pfHistoryTickers && state.pfHistoryTickers[group.ticker]);
       var hasToggle = hiddenCount > 0 || (collapsible && expanded);
-      var endKind = hasDetail ? 'detail' : (hasToggle ? 'toggle' : 'lot');
+      var scaleHtmlParts = [];
+      if (!hasDetail && !isBond) {
+        visibleLots.forEach(function (p) {
+          var scaleHtml = buildLotSplitScaleConfirmHtml(p, group.ticker);
+          if (scaleHtml) scaleHtmlParts.push(scaleHtml);
+        });
+      }
+      var hasScaleConfirm = scaleHtmlParts.length > 0;
+      var endKind = hasDetail ? 'detail' : (hasToggle ? 'toggle' : (hasScaleConfirm ? 'scale' : 'lot'));
       var splitAffected = !isBond && isPortfolioTickerSplitAffected(group.ticker, {
         positions: positions,
         sales: sales
@@ -9647,14 +9690,12 @@
         });
       });
 
-      if (!hasDetail && !isBond) {
-        visibleLots.forEach(function (p) {
-          var scaleHtml = buildLotSplitScaleConfirmHtml(p, group.ticker);
-          if (!scaleHtml) return;
-          html += '<tr class="pf-split-scale-confirm-row' + groupBase +
-            '"><td colspan="' + PF_TABLE_COLS + '">' + scaleHtml + '</td></tr>';
-        });
-      }
+      scaleHtmlParts.forEach(function (scaleHtml, scaleIdx) {
+        var isScaleEnd = endKind === 'scale' && scaleIdx === scaleHtmlParts.length - 1;
+        html += '<tr class="pf-split-scale-confirm-row' + groupBase +
+          (isScaleEnd ? ' pf-ticker-group-end' : '') +
+          '"><td colspan="' + PF_TABLE_COLS + '">' + scaleHtml + '</td></tr>';
+      });
 
       if (hiddenCount > 0) {
         html += '<tr class="pf-lot-toggle-row' + groupBase +

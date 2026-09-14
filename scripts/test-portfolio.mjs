@@ -442,7 +442,10 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__lotAlreadyCurrent = lotLooksAlreadyCurrentAfterSplit;' +
       '\nthis.__lotNeedsScale = lotNeedsSplitScaleConfirmation;' +
       '\nthis.__lotShowsScale = lotShowsSplitScaleConfirmUi;' +
+      '\nthis.__lotShowsScaleStatus = lotShowsSplitScaleStatusUi;' +
       '\nthis.__lotScaleHtml = buildLotSplitScaleConfirmHtml;' +
+      '\nthis.__lotScaleStatusHtml = buildLotSplitScaleStatusHtml;' +
+      '\nthis.__lotScaleLotHtml = buildLotSplitScaleLotHtml;' +
       '\nthis.__setLotScale = setPortfolioLotSplitScale;' +
       '\nthis.__normLotScale = normalizeSplitLotScale;' +
       '\nthis.__qtyHeld = getSplitAwareQtyHeldOnDate;' +
@@ -550,7 +553,10 @@ function loadPortfolioCalcHelpers() {
     lotLooksAlreadyCurrentAfterSplit: sandbox.__lotAlreadyCurrent,
     lotNeedsSplitScaleConfirmation: sandbox.__lotNeedsScale,
     lotShowsSplitScaleConfirmUi: sandbox.__lotShowsScale,
+    lotShowsSplitScaleStatusUi: sandbox.__lotShowsScaleStatus,
     buildLotSplitScaleConfirmHtml: sandbox.__lotScaleHtml,
+    buildLotSplitScaleStatusHtml: sandbox.__lotScaleStatusHtml,
+    buildLotSplitScaleLotHtml: sandbox.__lotScaleLotHtml,
     setPortfolioLotSplitScale: sandbox.__setLotScale,
     normalizeSplitLotScale: sandbox.__normLotScale,
     getSplitAwareQtyHeldOnDate: sandbox.__qtyHeld,
@@ -4069,9 +4075,11 @@ function loadPriceAtDateHelpers() {
 
   assert(calc.lotNeedsSplitScaleConfirmation(tCurr, 'T', opts) === true, 'confirm ui: T already-current needs confirm');
   assert(calc.lotNeedsSplitScaleConfirmation(tCurrConfirmed, 'T', opts) === false, 'confirm ui: confirmed T does not need confirm');
-  assert(calc.lotShowsSplitScaleConfirmUi(tCurrConfirmed, 'T', opts) === true, 'confirm ui: confirmed T still shows choice');
+  assert(calc.lotShowsSplitScaleConfirmUi(tCurrConfirmed, 'T', opts) === false, 'confirm ui: confirmed T hides summary CTA');
+  assert(calc.lotShowsSplitScaleStatusUi(tCurrConfirmed, 'T', opts) === true, 'confirm ui: confirmed T shows detail status');
   assert(calc.lotNeedsSplitScaleConfirmation(gmknHist, 'GMKN', opts) === false, 'confirm ui: GMKN clean historical no prompt');
   assert(calc.lotShowsSplitScaleConfirmUi(gmknHist, 'GMKN', opts) === false, 'confirm ui: GMKN historical no block');
+  assert(calc.lotShowsSplitScaleStatusUi(gmknHist, 'GMKN', opts) === false, 'confirm ui: GMKN historical no status');
   assert(calc.lotNeedsSplitScaleConfirmation(plzlHist, 'PLZL', opts) === false, 'confirm ui: PLZL clean historical no prompt');
   assert(calc.lotNeedsSplitScaleConfirmation(sberBefore, 'SBER', opts) === false, 'confirm ui: SBER no prompt');
   assert(calc.lotNeedsSplitScaleConfirmation(ofz, 'SU26238RMFS9', opts) === false, 'confirm ui: OFZ no prompt');
@@ -4082,10 +4090,32 @@ function loadPriceAtDateHelpers() {
   assert(/Как в брокере сейчас/.test(htmlNeed) && /Как было на дату покупки/.test(htmlNeed), 'confirm html: buttons');
   assert(!calc.buildLotSplitScaleConfirmHtml(gmknHist, 'GMKN', opts), 'confirm html: GMKN historical empty');
   assert(!calc.buildLotSplitScaleConfirmHtml(sberBefore, 'SBER', opts), 'confirm html: SBER empty');
-  const htmlDone = calc.buildLotSplitScaleConfirmHtml(tCurrConfirmed, 'T', opts);
-  assert(/как в брокере сейчас/.test(htmlDone), 'confirm html: done current');
+  assert(!calc.buildLotSplitScaleConfirmHtml(tCurrConfirmed, 'T', opts), 'confirm html: confirmed T no summary CTA');
+  const htmlDone = calc.buildLotSplitScaleStatusHtml(tCurrConfirmed, 'T', opts);
+  assert(/Шкала покупки подтверждена: как в брокере сейчас/.test(htmlDone), 'status html: compact current');
+  assert(/Изменить/.test(htmlDone), 'status html: change control');
+  assert(!/Уточните, как внесены/.test(htmlDone), 'status html: not a prompt CTA');
+  const htmlDoneHist = calc.buildLotSplitScaleStatusHtml(tHistConfirmed, 'T', opts);
+  assert(/Шкала покупки подтверждена: как было на дату покупки/.test(htmlDoneHist), 'status html: compact historical');
+  const tCurrSection = calc.buildPortfolioSectionRows([tCurr], 'stocks', {}, []);
+  assert(/Покупка выглядит уже приведённой к текущим акциям после дробления/.test(tCurrSection), 'section: unconfirmed T keeps CTA');
+  assert(/pf-split-scale-confirm-row[\s\S]*pf-ticker-group-end/.test(tCurrSection), 'section: confirm row is group-end');
+  assert(!/pf-lot-primary[^"']*pf-ticker-group-end/.test(tCurrSection), 'section: lot row is not group-end when CTA present');
+  const tConfSection = calc.buildPortfolioSectionRows([tCurrConfirmed], 'stocks', {}, []);
+  assert(!/Как в брокере сейчас/.test(tConfSection), 'section: confirmed T has no summary buttons');
+  assert(!/Шкала покупки подтверждена/.test(tConfSection), 'section: confirmed T has no summary status');
+  assert(/pf-lot-primary[^"']*pf-ticker-group-end/.test(tConfSection), 'section: confirmed T lot row closes group');
+  const tCurrCard = calc.buildPortfolioMobileCardHtml(tCurr, null, 2620, [tCurr], []);
+  assert(/Покупка выглядит уже приведённой к текущим акциям после дробления/.test(tCurrCard), 'card: unconfirmed T keeps CTA');
+  const tConfCard = calc.buildPortfolioMobileCardHtml(tCurrConfirmed, null, 2620, [tCurrConfirmed], []);
+  assert(!/Как в брокере сейчас/.test(tConfCard), 'card: confirmed T no CTA');
+  assert(!/Шкала покупки подтверждена/.test(tConfCard), 'card: confirmed T no status on closed card');
+  const htmlDoneDetail = calc.buildPortfolioTickerDetailHtml('T', [tCurrConfirmed], [], null, false);
+  assert(/Шкала покупки подтверждена: как в брокере сейчас/.test(htmlDoneDetail), 'detail: confirmed T compact status');
+  assert(/Изменить/.test(htmlDoneDetail), 'detail: confirmed T can change');
   const gmknHistHtml = calc.buildPortfolioTickerDetailHtml('GMKN', [gmknHist], [], null, false);
   assert(!/Как в брокере сейчас/.test(gmknHistHtml), 'confirm html: GMKN detail has no scale buttons');
+  assert(!/Шкала покупки подтверждена/.test(gmknHistHtml), 'confirm html: GMKN detail has no status');
   const plzlHtml = calc.buildPortfolioTickerDetailHtml('PLZL', [plzlHist], [], null, false);
   assert(!/Как в брокере сейчас/.test(plzlHtml), 'confirm html: PLZL detail has no scale buttons');
   const sberHtmlScale = calc.buildPortfolioTickerDetailHtml('SBER', [sberBefore], [], null, false);

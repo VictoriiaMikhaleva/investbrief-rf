@@ -4257,7 +4257,7 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
 }
 
 #tab-portfolio .pf-split-scale-confirm {
-  margin: 0.4rem 0 0.15rem;
+  margin: 0.15rem 0 0.05rem;
   padding: 0.48rem 0.75rem;
   font-size: 0.76rem;
   line-height: 1.45;
@@ -4265,6 +4265,9 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   background: color-mix(in srgb, var(--bronze-soft) 22%, #fffaf6 78%);
   border: 1px solid color-mix(in srgb, var(--bronze) 16%, #eadccb 84%);
   border-radius: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 #tab-portfolio .pf-split-scale-confirm-text {
@@ -4275,6 +4278,13 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem 0.45rem;
+  max-width: 100%;
+}
+
+#tab-portfolio .pf-split-scale-btn {
+  white-space: normal;
+  max-width: 100%;
+  height: auto;
 }
 
 #tab-portfolio .pf-split-scale-btn.is-active {
@@ -4283,9 +4293,71 @@ table.portfolio-table .pf-row-actions .pf-history-toggle {
   font-weight: 600;
 }
 
-#tab-portfolio .pf-split-scale-confirm-row td {
+#tab-portfolio .pf-split-scale-confirm-row td,
+#tab-portfolio .pf-split-scale-status-row td {
   padding-top: 0.15rem;
   padding-bottom: 0.45rem;
+}
+
+table.portfolio-table tr.pf-split-scale-confirm-row.pf-zebra-a > td {
+  background: color-mix(in srgb, #ffffff 90%, var(--accent-soft) 10%);
+}
+
+table.portfolio-table tr.pf-split-scale-confirm-row.pf-zebra-b > td {
+  background: color-mix(in srgb, #f7f7f6 88%, var(--accent-soft) 12%);
+}
+
+table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
+  padding-bottom: 0.7rem;
+}
+
+#tab-portfolio .portfolio-card-split-scale {
+  margin-top: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+#tab-portfolio .pf-split-scale-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.55rem;
+  margin: 0.2rem 0 0.05rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 82%, #5c4636 18%);
+  max-width: 100%;
+}
+
+#tab-portfolio .pf-split-scale-status-text {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#tab-portfolio .pf-split-scale-edit {
+  min-width: 0;
+}
+
+#tab-portfolio .pf-split-scale-edit-summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--text-muted) 70%, var(--accent) 30%);
+}
+
+#tab-portfolio .pf-split-scale-edit-summary::-webkit-details-marker {
+  display: none;
+}
+
+#tab-portfolio .pf-split-scale-edit[open] .pf-split-scale-edit-summary {
+  margin-bottom: 0.28rem;
+}
+
+#tab-portfolio .pf-split-scale-edit .pf-split-scale-confirm-actions {
+  margin-top: 0.15rem;
 }
 
 #tab-portfolio .pf-split-pnl {
