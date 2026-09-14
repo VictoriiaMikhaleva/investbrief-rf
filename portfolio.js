@@ -4928,19 +4928,6 @@
     var loading = !!summary.payoutsPending || !!options.loading;
     var feedError = !!options.feedError;
     var html = '';
-    if (summary.hideTotals || summary.skippedUnknown) {
-      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_SUMMARY_SPLIT_PARTIAL_WARNING) + '</p>';
-    } else if (summary.missingPayoutFeed) {
-      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_PRS_MISSING_FEED) + '</p>';
-    } else if (summary.isPartial && !loading) {
-      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_PRS_PARTIAL) + '</p>';
-    }
-    if (loading) {
-      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_PRS_LOADING) + '</p>';
-    } else if (feedError) {
-      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_PRS_ERROR) + '</p>';
-    }
-
     var payoutVal = loading ? escapeHtml('…') : escapeHtml(prsMoneyText(summary.payoutsRub));
     var resultVal = (loading || summary.hideTotals)
       ? escapeHtml('—')
@@ -4950,45 +4937,69 @@
         !isFinite(Number(summary.returnVsPurchasePct))) {
       pctVal = escapeHtml('—');
     } else {
-      pctVal = escapeHtml(formatTwpReturnPct(summary.returnVsPurchasePct));
+      var pctCls = prsToneClass(summary.returnVsPurchasePct);
+      pctVal = '<span' + (pctCls ? ' class="' + pctCls + '"' : '') + '>' +
+        escapeHtml(formatTwpReturnPct(summary.returnVsPurchasePct)) + '</span>';
     }
 
-    html += '<div class="pf-prs-grid">' +
-      buildPortfolioResultSummaryCardHtml(
-        'Вложено',
-        escapeHtml(prsMoneyText(summary.remainCostRub)),
-        'в текущий остаток'
-      ) +
-      buildPortfolioResultSummaryCardHtml(
-        'Текущая стоимость',
-        escapeHtml(prsMoneyText(summary.currentMarketValueRub)),
-        'открытые позиции по текущим ценам'
-      ) +
-      buildPortfolioResultSummaryCardHtml(
-        'Нереализованный результат',
-        prsSignedHtml(summary.unrealizedPnlRub),
-        'текущая стоимость минус вложено в остаток'
-      ) +
-      buildPortfolioResultSummaryCardHtml(
-        'Зафиксировано продажами',
-        prsSignedHtml(summary.realizedPnlRub),
-        'результат закрытых и частичных продаж'
-      ) +
-      buildPortfolioResultSummaryCardHtml(
-        'Найденные выплаты',
-        payoutVal,
-        'по найденным данным за период владения · справочно'
-      ) +
+    html += '<div class="pf-prs-hero">' +
       buildPortfolioResultSummaryCardHtml(
         'Итоговый результат с выплатами',
         resultVal,
         'нереализованный + зафиксированный + найденные выплаты · справочно',
-        'pf-prs-card--total'
+        'pf-prs-card--hero pf-prs-card--total'
       ) +
       buildPortfolioResultSummaryCardHtml(
         'К вложенному',
         pctVal,
-        'к сумме покупок, справочно'
+        'к сумме покупок, справочно',
+        'pf-prs-card--hero pf-prs-card--pct'
+      ) +
+    '</div>';
+
+    if (summary.hideTotals || summary.skippedUnknown) {
+      html += '<p class="muted pf-prs-status pf-prs-status--note">' + escapeHtml(PF_SUMMARY_SPLIT_PARTIAL_WARNING) + '</p>';
+    } else if (summary.missingPayoutFeed) {
+      html += '<p class="muted pf-prs-status pf-prs-status--note">' + escapeHtml(PF_PRS_MISSING_FEED) + '</p>';
+    } else if (summary.isPartial && !loading) {
+      html += '<p class="muted pf-prs-status pf-prs-status--note">' + escapeHtml(PF_PRS_PARTIAL) + '</p>';
+    }
+    if (loading) {
+      html += '<p class="muted pf-prs-status pf-prs-status--note">' + escapeHtml(PF_PRS_LOADING) + '</p>';
+    } else if (feedError) {
+      html += '<p class="muted pf-prs-status pf-prs-status--note">' + escapeHtml(PF_PRS_ERROR) + '</p>';
+    }
+
+    html += '<div class="pf-prs-breakdown">' +
+      buildPortfolioResultSummaryCardHtml(
+        'Вложено',
+        escapeHtml(prsMoneyText(summary.remainCostRub)),
+        'в текущий остаток',
+        'pf-prs-card--break'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Текущая стоимость',
+        escapeHtml(prsMoneyText(summary.currentMarketValueRub)),
+        'открытые позиции по текущим ценам',
+        'pf-prs-card--break'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Нереализованный результат',
+        prsSignedHtml(summary.unrealizedPnlRub),
+        'текущая стоимость минус вложено в остаток',
+        'pf-prs-card--break'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Зафиксировано продажами',
+        prsSignedHtml(summary.realizedPnlRub),
+        'результат закрытых и частичных продаж',
+        'pf-prs-card--break'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Найденные выплаты',
+        payoutVal,
+        'по найденным данным за период владения · справочно',
+        'pf-prs-card--break'
       ) +
     '</div>';
     html += buildPortfolioResultSummaryHowHtml();
