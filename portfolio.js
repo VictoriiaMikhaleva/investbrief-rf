@@ -454,6 +454,9 @@
   var PF_SPLIT_SCALE_STATUS_CURRENT = 'Шкала покупки подтверждена: как в брокере сейчас.';
   var PF_SPLIT_SCALE_STATUS_HISTORICAL = 'Шкала покупки подтверждена: как было на дату покупки.';
   var PF_SPLIT_SCALE_CHANGE_BTN = 'Изменить';
+  var PF_SPLIT_SCALE_DYN_LOOK_TEXT = 'Покупка выглядит уже приведённой к текущим акциям после дробления.';
+  var PF_SPLIT_SCALE_DYN_UNKNOWN_TEXT = 'Не удалось однозначно понять шкалу покупки после дробления.';
+  var PF_SPLIT_SCALE_DYN_LEAD_MANY = 'Для нескольких бумаг нужно уточнить, как были внесены покупки до дробления, чтобы построить график точнее.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_TEXT = 'Список дроблений акций временно недоступен. Если в портфеле есть бумаги с дроблением акций, часть расчётов может быть неполной.';
   var PF_SPLIT_CATALOG_UNAVAILABLE_SALE_TEXT = 'Список дроблений акций временно недоступен. Перед продажей бумаг, по которым было дробление акций, проверьте количество вручную.';
   var PF_SPLIT_CATALOG_SALE_BLOCK_TEXT = 'Список дроблений акций временно недоступен. Продажа этой бумаги сейчас недоступна, чтобы не списать неверное количество. Обновите страницу или попробуйте позже.';
@@ -825,6 +828,70 @@
   function buildLotSplitScaleLotHtml(lot, ticker, options) {
     return buildLotSplitScaleConfirmHtml(lot, ticker, options) ||
       buildLotSplitScaleStatusHtml(lot, ticker, options);
+  }
+
+  function collectUnresolvedSplitScaleLots(portfolio, options) {
+    options = options || {};
+    var positions = portfolio && portfolio.positions ? portfolio.positions : [];
+    var out = [];
+    positions.forEach(function (lot) {
+      if (!lot) return;
+      var t = typeof normalizeTicker === 'function'
+        ? normalizeTicker(lot.ticker)
+        : String(lot.ticker || '').trim().toUpperCase();
+      if (!lotNeedsSplitScaleConfirmation(lot, t, options)) return;
+      out.push({
+        ticker: t,
+        lotId: lot.lotId || '',
+        look: lotLooksAlreadyCurrentAfterSplit(lot, t, options)
+      });
+    });
+    return out;
+  }
+
+  function seriesHasSplitScalePartial(series, tickers) {
+    var want = {};
+    (tickers || []).forEach(function (t) {
+      var key = String(t || '').trim().toUpperCase();
+      if (key) want[key] = true;
+    });
+    return (series || []).some(function (pt) {
+      if (!pt || !pt.isPartial) return false;
+      return (pt.positions || []).some(function (row) {
+        if (!row) return false;
+        var t = String(row.ticker || '').trim().toUpperCase();
+        if (!want[t]) return false;
+        return row.splitConfidence === 'unknown';
+      });
+    });
+  }
+
+  function buildPortfolioDynamicsSplitScaleCtaHtml(portfolio, series, options) {
+    var lots = collectUnresolvedSplitScaleLots(portfolio, options);
+    if (!lots.length) return '';
+    var tickers = [];
+    var seen = {};
+    lots.forEach(function (row) {
+      if (!row || !row.ticker || seen[row.ticker]) return;
+      seen[row.ticker] = true;
+      tickers.push(row.ticker);
+    });
+    if (!seriesHasSplitScalePartial(series, tickers)) return '';
+    var lead = tickers.length === 1
+      ? ('Для ' + tickers[0] + ' нужно уточнить, как была внесена покупка до дробления, чтобы построить график точнее.')
+      : PF_SPLIT_SCALE_DYN_LEAD_MANY;
+    var html = '<div class="pf-dyn-split-scale-box">' +
+      '<p class="pf-dyn-split-scale-lead">' + escapeHtml(lead) + '</p>';
+    lots.forEach(function (row) {
+      var text = row.look ? PF_SPLIT_SCALE_DYN_LOOK_TEXT : PF_SPLIT_SCALE_DYN_UNKNOWN_TEXT;
+      html += '<div class="pf-dyn-split-scale-item">' +
+        '<div class="pf-dyn-split-scale-ticker">' + escapeHtml(row.ticker) + '</div>' +
+        '<p class="pf-dyn-split-scale-text">' + escapeHtml(text) + '</p>' +
+        buildLotSplitScaleButtonsHtml(escapeHtml(row.lotId), '') +
+      '</div>';
+    });
+    html += '</div>';
+    return html;
   }
 
   function setPortfolioLotSplitScale(lotId, scale) {
@@ -8496,6 +8563,7 @@
       '[data-pf-edit-lot], [data-pf-remove-lot],' +
       '[data-pf-split-lot-scale],' +
       '.pf-split-scale-confirm, .pf-split-scale-status, .pf-split-scale-edit,' +
+      '.pf-dyn-split-scale,' +
       '.portfolio-card-actions, .portfolio-closed-card-actions,' +
       '.portfolio-card-detail, .portfolio-closed-card-detail,' +
       '.pf-row-actions, .pf-lot-toggle-row, .pf-sale-row, .pf-ticker-detail-row,' +
@@ -11328,7 +11396,8 @@
         row.lotId || '',
         row.qty != null ? row.qty : '',
         row[dateField] || '',
-        row.avgPrice != null ? row.avgPrice : ''
+        row.avgPrice != null ? row.avgPrice : '',
+        row.splitLotScale || ''
       ].join(':');
     }
     var pos = (parts.positions || []).map(function (p) { return rowKey(p, 'buyDate'); }).join('|');
@@ -11560,6 +11629,24 @@
     el.innerHTML = html;
   }
 
+  function pfDynRenderSplitScaleCta(portfolio, series) {
+    var el = document.getElementById('pfDynSplitScaleCta');
+    if (!el) return;
+    if (pfDynState.catalogBlocked || !series || !series.length) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    var html = buildPortfolioDynamicsSplitScaleCtaHtml(portfolio, series);
+    if (!html) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML = html;
+  }
+
   function pfDynShowChart(on) {
     var wrap = document.getElementById('pfDynChartWrap');
     if (wrap) wrap.hidden = !on;
@@ -11571,6 +11658,11 @@
         disclose.hidden = true;
         disclose.innerHTML = '';
         disclose.open = false;
+      }
+      var cta = document.getElementById('pfDynSplitScaleCta');
+      if (cta) {
+        cta.hidden = true;
+        cta.innerHTML = '';
       }
     }
   }
@@ -11910,6 +12002,7 @@
       pfDynSetStatus(buildPortfolioDynamicsSeriesStatusText(series));
       pfDynShowChart(true);
       pfDynRenderDisclosure();
+      pfDynRenderSplitScaleCta(pf, series);
       renderPortfolioDynamicsCard();
       drawPortfolioDynamicsChart();
     }).catch(function () {
@@ -11971,6 +12064,11 @@
         if (!btn) return;
         setPortfolioDynamicsHorizon(btn.getAttribute('data-pf-dyn-horizon'));
       });
+    }
+    var splitCta = document.getElementById('pfDynSplitScaleCta');
+    if (splitCta && !splitCta._pfDynBound) {
+      splitCta._pfDynBound = true;
+      splitCta.addEventListener('click', handlePortfolioTableClick);
     }
     bindPortfolioDynamicsPointer();
     pfDynSyncHorizonButtons(pfDynState.horizon);

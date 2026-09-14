@@ -446,6 +446,9 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__lotScaleHtml = buildLotSplitScaleConfirmHtml;' +
       '\nthis.__lotScaleStatusHtml = buildLotSplitScaleStatusHtml;' +
       '\nthis.__lotScaleLotHtml = buildLotSplitScaleLotHtml;' +
+      '\nthis.__collectUnresolvedScale = collectUnresolvedSplitScaleLots;' +
+      '\nthis.__seriesHasScalePartial = seriesHasSplitScalePartial;' +
+      '\nthis.__dynScaleCtaHtml = buildPortfolioDynamicsSplitScaleCtaHtml;' +
       '\nthis.__setLotScale = setPortfolioLotSplitScale;' +
       '\nthis.__normLotScale = normalizeSplitLotScale;' +
       '\nthis.__qtyHeld = getSplitAwareQtyHeldOnDate;' +
@@ -557,6 +560,9 @@ function loadPortfolioCalcHelpers() {
     buildLotSplitScaleConfirmHtml: sandbox.__lotScaleHtml,
     buildLotSplitScaleStatusHtml: sandbox.__lotScaleStatusHtml,
     buildLotSplitScaleLotHtml: sandbox.__lotScaleLotHtml,
+    collectUnresolvedSplitScaleLots: sandbox.__collectUnresolvedScale,
+    seriesHasSplitScalePartial: sandbox.__seriesHasScalePartial,
+    buildPortfolioDynamicsSplitScaleCtaHtml: sandbox.__dynScaleCtaHtml,
     setPortfolioLotSplitScale: sandbox.__setLotScale,
     normalizeSplitLotScale: sandbox.__normLotScale,
     getSplitAwareQtyHeldOnDate: sandbox.__qtyHeld,
@@ -6572,6 +6578,139 @@ await (async () => {
   assert(tHistScaleAfter.isPartial === false, 'series T historical confirm: after split full');
   assert(JSON.stringify(tHistScalePf) === tHistScaleSnap, 'series JSON: T historical confirm not mutated');
 
+  const scaleOpts = { splitEvents: events, currentDate: NOW };
+  const tLookPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 262, buyDate: '2025-12-01', currentPrice: 262
+    }],
+    sales: []
+  };
+  const tLookSnap = JSON.stringify(tLookPf);
+  const tLookSeries = await calc.buildPortfolioValueSeries(
+    tLookPf, '2026-04-01', '2026-04-20',
+    seriesOpts({
+      T: {
+        '2026-04-01': priceOk(262, { date: '2026-04-01' }),
+        '2026-04-17': priceOk(262, { date: '2026-04-17' })
+      }
+    }, { includePositions: true })
+  );
+  const tLookBefore = pointOn(tLookSeries, '2026-04-01');
+  const tLookAfter = pointOn(tLookSeries, '2026-04-17');
+  assert(tLookBefore && tLookBefore.isPartial === true, 'dyn CTA T: pre-split unconfirmed is partial');
+  assert(tLookAfter && tLookAfter.isPartial === false, 'dyn CTA T: after split priced is not incomplete');
+  assert(calc.lotNeedsSplitScaleConfirmation(tLookPf.positions[0], 'T', scaleOpts) === true,
+    'dyn CTA T: unresolved confirmation');
+  assert(calc.seriesHasSplitScalePartial(tLookSeries, ['T']) === true,
+    'dyn CTA T: series has unknown split-scale partial');
+  const tLookCta = calc.buildPortfolioDynamicsSplitScaleCtaHtml(tLookPf, tLookSeries, scaleOpts);
+  assert(/Для T нужно уточнить, как была внесена покупка до дробления, чтобы построить график точнее/.test(tLookCta),
+    'dyn CTA T: lead in chart block');
+  assert(/Покупка выглядит уже приведённой к текущим акциям после дробления\./.test(tLookCta),
+    'dyn CTA T: compact look text');
+  assert(!/Уточните, как внесены количество и средняя цена/.test(tLookCta),
+    'dyn CTA T: chart copy is shorter than table CTA');
+  assert(/data-pf-split-lot-scale="current"[\s\S]*data-pf-lot-id="T2"/.test(tLookCta),
+    'dyn CTA T: current button uses existing handler attrs');
+  assert(/data-pf-split-lot-scale="historical"[\s\S]*data-pf-lot-id="T2"/.test(tLookCta),
+    'dyn CTA T: historical button uses existing handler attrs');
+  assert(/Как в брокере сейчас/.test(tLookCta) && /Как было на дату покупки/.test(tLookCta),
+    'dyn CTA T: same choice buttons');
+  assert(calc.buildLotSplitScaleConfirmHtml(tLookPf.positions[0], 'T', scaleOpts).indexOf('pf-split-scale-confirm') >= 0,
+    'dyn CTA T: table still has confirmation CTA');
+  assert(JSON.stringify(tLookPf) === tLookSnap, 'dyn CTA T: JSON not mutated while building CTA');
+
+  const tLookConfirmedPf = {
+    positions: [{
+      ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 262, buyDate: '2025-12-01', currentPrice: 262,
+      splitLotScale: 'current'
+    }],
+    sales: []
+  };
+  const tLookConfirmedSnap = JSON.stringify(tLookConfirmedPf);
+  const tLookConfirmedSeries = await calc.buildPortfolioValueSeries(
+    tLookConfirmedPf, '2026-04-01', '2026-04-20',
+    seriesOpts({
+      T: {
+        '2026-04-01': priceOk(262, { date: '2026-04-01' }),
+        '2026-04-17': priceOk(262, { date: '2026-04-17' })
+      }
+    }, { includePositions: true })
+  );
+  const tLookConfBefore = pointOn(tLookConfirmedSeries, '2026-04-01');
+  const tLookConfAfter = pointOn(tLookConfirmedSeries, '2026-04-17');
+  assert(tLookConfBefore && tLookConfBefore.isPartial === false, 'dyn CTA T current: pre-split full if CLOSE');
+  assert(tLookConfBefore.positions[0].qty === 1, 'dyn CTA T current: pre-split qty 1');
+  assert(tLookConfAfter && tLookConfAfter.isPartial === false, 'dyn CTA T current: after split full if CLOSE');
+  assert(tLookConfAfter.positions[0].qty === 10, 'dyn CTA T current: after split qty 10');
+  assert(tLookConfirmedPf.positions[0].qty === 10 && tLookConfirmedPf.positions[0].avgPrice === 262,
+    'dyn CTA T current: qty/avgPrice unchanged');
+  assert(calc.buildPortfolioDynamicsSplitScaleCtaHtml(tLookConfirmedPf, tLookConfirmedSeries, scaleOpts) === '',
+    'dyn CTA T current: chart CTA gone');
+  assert(calc.seriesHasSplitScalePartial(tLookConfirmedSeries, ['T']) === false,
+    'dyn CTA T current: no unknown split-scale partial');
+  assert(calc.buildPortfolioDynamicsSeriesStatusText(tLookConfirmedSeries) === 'График построен с учётом дроблений акций.',
+    'dyn CTA T current: advisory status');
+  assert(calc.lotShowsSplitScaleConfirmUi(tLookConfirmedPf.positions[0], 'T', scaleOpts) === false,
+    'dyn CTA T current: no big table CTA');
+  assert(calc.lotShowsSplitScaleStatusUi(tLookConfirmedPf.positions[0], 'T', scaleOpts) === true,
+    'dyn CTA T current: compact details status remains');
+  assert(JSON.stringify(tLookConfirmedPf) === tLookConfirmedSnap, 'dyn CTA T current: JSON not mutated');
+
+  assert(calc.collectUnresolvedSplitScaleLots(gmknPf, scaleOpts).length === 0,
+    'dyn CTA GMKN: no unresolved split-scale');
+  assert(calc.buildPortfolioDynamicsSplitScaleCtaHtml(gmknPf, gmknSeries, scaleOpts) === '',
+    'dyn CTA GMKN: no chart CTA for confident historical');
+
+  const plzlHistPf = {
+    positions: [{ ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 19000, buyDate: '2024-06-01', currentPrice: 1900 }],
+    sales: []
+  };
+  const plzlHistSeries = await calc.buildPortfolioValueSeries(
+    plzlHistPf, '2025-03-20', '2025-03-28',
+    seriesOpts({
+      PLZL: {
+        '2025-03-20': priceOk(19000, { date: '2025-03-20' }),
+        '2025-03-27': priceOk(1900, { date: '2025-03-27' })
+      }
+    }, { includePositions: true })
+  );
+  assert(calc.collectUnresolvedSplitScaleLots(plzlHistPf, scaleOpts).length === 0,
+    'dyn CTA PLZL: no unresolved split-scale');
+  assert(calc.buildPortfolioDynamicsSplitScaleCtaHtml(plzlHistPf, plzlHistSeries, scaleOpts) === '',
+    'dyn CTA PLZL: no chart CTA for confident historical');
+
+  assert(calc.buildPortfolioDynamicsSplitScaleCtaHtml(sberPf, sberSeries, scaleOpts) === '',
+    'dyn CTA SBER: no chart CTA without split-scale issue');
+
+  const manyScalePf = {
+    positions: [
+      { ticker: 'T', lotId: 'T2', qty: 10, avgPrice: 262, buyDate: '2025-12-01', currentPrice: 262 },
+      { ticker: 'GMKN', lotId: 'GX', qty: 10, avgPrice: 800, buyDate: '2021-06-04', currentPrice: 130 }
+    ],
+    sales: []
+  };
+  const manyScaleSeries = [{
+    date: '2024-04-01',
+    isPartial: true,
+    positions: [
+      { ticker: 'T', splitConfidence: 'unknown' },
+      { ticker: 'GMKN', splitConfidence: 'unknown' }
+    ]
+  }];
+  const manyCta = calc.buildPortfolioDynamicsSplitScaleCtaHtml(manyScalePf, manyScaleSeries, scaleOpts);
+  assert(/Для нескольких бумаг нужно уточнить, как были внесены покупки до дробления, чтобы построить график точнее/.test(manyCta),
+    'dyn CTA many: plural lead');
+  assert(/data-pf-lot-id="T2"/.test(manyCta) && /data-pf-lot-id="GX"/.test(manyCta),
+    'dyn CTA many: one row per unresolved lot');
+
+  const tAfterOnlyCta = calc.buildPortfolioDynamicsSplitScaleCtaHtml(tLookPf, tAfterSeries, scaleOpts);
+  assert(tAfterOnlyCta === '', 'dyn CTA T after-only: no chart CTA if series is not split-scale partial');
+
+  const k1 = calc.pfDynPortfolioKey(tLookPf, '1y');
+  const k2 = calc.pfDynPortfolioKey(tLookConfirmedPf, '1y');
+  assert(k1 !== k2, 'dyn CTA key: splitLotScale changes dynamics fingerprint');
+
   const prevGetScale = calc.sandbox.getPortfolio;
   const prevSetScale = calc.sandbox.setPortfolio;
   let scaleLive = {
@@ -6611,6 +6750,8 @@ await (async () => {
     assert(p.isPartial === false, 'series OFZ: no historical NKD is not incomplete');
     assert(p.hasBondNkdAdvisory === true, 'series OFZ: NKD advisory');
   });
+  assert(calc.buildPortfolioDynamicsSplitScaleCtaHtml(ofzPf, ofzSeries, scaleOpts) === '',
+    'dyn CTA OFZ: NKD advisory is not a split-scale CTA');
 
   const missingPf = {
     positions: [
@@ -6739,6 +6880,10 @@ await (async () => {
   assert(/#tab-portfolio \.pf-dyn-card \{[\s\S]*?overflow-x:\s*clip/.test(css), 'dyn ui: card does not expand page');
   assert(/#tab-portfolio \.pf-dyn-block \{[\s\S]*?overflow-x:\s*clip/.test(css), 'dyn ui: block clips x overflow');
   assert(/#tab-portfolio \.pf-dyn-chart-wrap \{[\s\S]*?overflow:\s*hidden/.test(css), 'dyn ui: chart wrap contains canvas/tooltip');
+  assert(/#tab-portfolio \.pf-dyn-split-scale \{[\s\S]*?overflow-x:\s*hidden/.test(css),
+    'dyn ui: split-scale CTA does not overflow x');
+  assert(/#tab-portfolio \.pf-dyn-split-scale \.pf-split-scale-confirm-actions \{[\s\S]*?flex-wrap:\s*wrap/.test(css),
+    'dyn ui: split-scale CTA buttons wrap on narrow screens');
   assert(/minmax\(min\(100%, 8\.6rem\)/.test(css), 'dyn ui: card grid can shrink below 8.6rem');
   assert(/#tab-portfolio \{\s*max-width:\s*100%;[\s\S]*?overflow-x:\s*clip/.test(css),
     'dyn ui: portfolio tab does not page-scroll horizontally');
@@ -6769,6 +6914,12 @@ await (async () => {
     'dyn ui: table body does not rebuild series');
   assert(/requestPortfolioDynamicsRefresh\(\{ reason: 'render', immediate: true \}\)/.test(src),
     'dyn ui: series refresh on renderPortfolio, not quotes');
+  assert(/pfDynRenderSplitScaleCta\(pf, series\)/.test(src),
+    'dyn ui: chart CTA rendered from unresolved split-scale + series');
+  assert(/splitCta\.addEventListener\('click', handlePortfolioTableClick\)/.test(src),
+    'dyn ui: chart CTA reuses existing split-scale click handler');
+  assert(/row\.splitLotScale \|\| ''/.test(src),
+    'dyn ui: dynamics cache key includes splitLotScale');
   assert(!/refreshPortfolioQuotes\(\)[\s\S]{0,400}requestPortfolioDynamicsRefresh/.test(src),
     'dyn ui: quote refresh does not rebuild series');
 
@@ -6818,6 +6969,10 @@ await (async () => {
   assert(/График строится по оценке на дату/.test(indexHtml), 'dyn ui: chart caption');
   assert(/id="pfDynCaption"/.test(indexHtml), 'dyn ui: caption node');
   assert(/id="pfDynDisclose"/.test(indexHtml), 'dyn ui: disclosure node');
+  assert(/id="pfDynSplitScaleCta"/.test(indexHtml), 'dyn ui: split-scale CTA node in chart block');
+  assert(indexHtml.indexOf('id="pfDynStatus"') < indexHtml.indexOf('id="pfDynSplitScaleCta"') &&
+    indexHtml.indexOf('id="pfDynSplitScaleCta"') < indexHtml.indexOf('id="pfDynChartWrap"'),
+    'dyn ui: split-scale CTA sits between status and chart');
   assert(/white-space:\s*nowrap/.test(css), 'dyn ui: parts label stays inline');
   assert(/#tab-portfolio \.pf-dyn-parts input\[type="checkbox"\][\s\S]*?appearance:\s*none/.test(css),
     'dyn ui: checkbox is custom, not system blue');
