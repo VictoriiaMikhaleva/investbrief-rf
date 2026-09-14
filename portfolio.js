@@ -4727,6 +4727,309 @@
     };
   }
 
+  var PRS_NOTES = [
+    'справочная оценка по данным портфеля и найденным выплатам',
+    'это не факт зачисления на счёт',
+    'прогноз выплат и выплаты за 12 месяцев в этот итог не входят'
+  ];
+
+  function prsEmptyResult() {
+    return {
+      remainCostRub: 0,
+      currentMarketValueRub: 0,
+      unrealizedPnlRub: 0,
+      realizedPnlRub: 0,
+      payoutsRub: 0,
+      dividendsRub: 0,
+      couponsRub: 0,
+      resultWithPayoutsRub: 0,
+      purchaseCostRub: 0,
+      returnVsPurchasePct: null,
+      hideTotals: false,
+      skippedUnknown: false,
+      onlyUnknown: false,
+      missingPayoutFeed: false,
+      payoutsPending: false,
+      isPartial: false,
+      warnings: [],
+      notes: PRS_NOTES.slice()
+    };
+  }
+
+  function prsHasMissingPayoutFeed(warnings) {
+    var i;
+    for (i = 0; i < (warnings || []).length; i++) {
+      var s = String(warnings[i] || '');
+      if (/нет данных по (?:выплатам|дивидендам|купонам) для/i.test(s)) return true;
+      if (/выплаты для .+ пока не поддерживаются/i.test(s)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Read-only assembler блока «Результат портфеля».
+   * Склеивает уже существующие summary / realized / TWP.
+   * Не меняет их формулы, JSON, writer продаж и шкалу лотов.
+   */
+  function buildPortfolioResultSummary(portfolio, context) {
+    context = context || {};
+    var parts = payoutsPositionsSales(portfolio, context);
+    var positions = parts.positions || [];
+    var sales = parts.sales || [];
+    var bondMetaMap = context.bondMetaMap || {};
+    if (!positions.length && !sales.length) return prsEmptyResult();
+
+    var totals = computePortfolioSummaryTotals(positions, bondMetaMap, sales, {
+      splitEvents: context.splitEvents,
+      now: context.now,
+      currentDate: context.currentDate || context.now
+    });
+
+    var realizedRaw = getTotalRealizedPnl(sales, bondMetaMap);
+    var hasSales = !!(sales && sales.length);
+    var realizedMissing = hasSales && (realizedRaw == null || !isFinite(Number(realizedRaw)));
+    var realizedPnlRub = !hasSales
+      ? 0
+      : (realizedMissing ? null : asOfRoundRub(Number(realizedRaw)));
+
+    var childOpts = {};
+    var optKey;
+    for (optKey in context) {
+      if (!Object.prototype.hasOwnProperty.call(context, optKey)) continue;
+      if (optKey === 'payoutsReady') continue;
+      childOpts[optKey] = context[optKey];
+    }
+    childOpts.bondMetaMap = bondMetaMap;
+
+    var twp = buildPortfolioReturnWithPayouts({ positions: positions, sales: sales }, childOpts);
+    var hideTotals = !!totals.onlyUnknown;
+    var remainCostRub = hideTotals ? null : (asOfRoundRub(totals.remainCost) || 0);
+    var currentMarketValueRub = hideTotals ? null : (asOfRoundRub(totals.totalValue) || 0);
+    var unrealizedPnlRub = null;
+    if (!hideTotals && currentMarketValueRub != null && remainCostRub != null) {
+      unrealizedPnlRub = asOfRoundRub(Number(currentMarketValueRub) - Number(remainCostRub));
+    }
+
+    var payoutsPending = context.payoutsReady === false;
+    var payoutsRub = 0;
+    var dividendsRub = 0;
+    var couponsRub = 0;
+    var warnings = [];
+    var isPartial = !!(totals.isPartial || totals.skippedUnknown || realizedMissing);
+    var missingPayoutFeed = false;
+
+    if (payoutsPending) {
+      payoutsRub = null;
+      dividendsRub = null;
+      couponsRub = null;
+    } else {
+      payoutsRub = twp && twp.payoutsRub != null && isFinite(Number(twp.payoutsRub))
+        ? Number(twp.payoutsRub) : 0;
+      dividendsRub = twp && twp.dividendsRub != null && isFinite(Number(twp.dividendsRub))
+        ? Number(twp.dividendsRub) : 0;
+      couponsRub = twp && twp.couponsRub != null && isFinite(Number(twp.couponsRub))
+        ? Number(twp.couponsRub) : 0;
+      (twp && twp.warnings ? twp.warnings : []).forEach(function (w) {
+        payoutsPushWarning(warnings, w);
+      });
+      if (twp && twp.isPartial) isPartial = true;
+      missingPayoutFeed = prsHasMissingPayoutFeed(warnings) ||
+        !!(twp && collectPayoutPartialTickersFromWarnings(twp.warnings).length);
+    }
+
+    if (totals.skippedUnknown || hideTotals) {
+      payoutsPushWarning(warnings, PF_SUMMARY_SPLIT_PARTIAL_WARNING);
+    }
+
+    var resultWithPayoutsRub = null;
+    if (!hideTotals && unrealizedPnlRub != null && realizedPnlRub != null && payoutsRub != null) {
+      resultWithPayoutsRub = asOfRoundRub(
+        Number(unrealizedPnlRub) + Number(realizedPnlRub) + Number(payoutsRub)
+      );
+    }
+
+    var purchaseCostRub = twp && twp.purchaseCostRub != null && isFinite(Number(twp.purchaseCostRub))
+      ? twp.purchaseCostRub
+      : null;
+    var returnVsPurchasePct = (payoutsPending || hideTotals)
+      ? null
+      : twpReturnPct(resultWithPayoutsRub, purchaseCostRub);
+
+    return {
+      remainCostRub: remainCostRub,
+      currentMarketValueRub: currentMarketValueRub,
+      unrealizedPnlRub: unrealizedPnlRub,
+      realizedPnlRub: realizedPnlRub,
+      payoutsRub: payoutsRub,
+      dividendsRub: dividendsRub,
+      couponsRub: couponsRub,
+      resultWithPayoutsRub: resultWithPayoutsRub,
+      purchaseCostRub: purchaseCostRub,
+      returnVsPurchasePct: returnVsPurchasePct,
+      hideTotals: hideTotals,
+      skippedUnknown: !!totals.skippedUnknown,
+      onlyUnknown: !!totals.onlyUnknown,
+      missingPayoutFeed: missingPayoutFeed,
+      payoutsPending: payoutsPending,
+      isPartial: isPartial,
+      warnings: warnings,
+      notes: PRS_NOTES.slice()
+    };
+  }
+
+  var PF_PRS_TITLE = 'Результат портфеля';
+  var PF_PRS_LEAD = 'Справочная оценка по данным портфеля и найденным выплатам. Это не факт зачисления на счёт и не индивидуальная рекомендация.';
+  var PF_PRS_HOW = 'Текущая стоимость — открытые позиции по текущим ценам. Нереализованный результат — текущая стоимость минус вложено в остаток. Зафиксировано продажами — результат закрытых и частичных продаж. Найденные выплаты — дивиденды и купоны по найденным данным за период владения. Прогноз выплат и выплаты за 12 месяцев в этот итог не входят. Налоги, комиссии, НКД и факт зачисления на счёт не учитываются.';
+  var PF_PRS_MISSING_FEED = 'По части бумаг нет данных о выплатах. Найденные выплаты показаны по доступным данным.';
+  var PF_PRS_PARTIAL = 'Часть расчётов может быть неполной.';
+  var PF_PRS_LOADING = 'Считаем найденные выплаты…';
+  var PF_PRS_ERROR = 'Не удалось загрузить данные о выплатах. Оценка по найденным выплатам может быть неполной.';
+
+  function prsToneClass(val) {
+    if (val == null || !isFinite(Number(val))) return '';
+    var n = Number(val);
+    if (n > 0) return 'pnl-pos';
+    if (n < 0) return 'pnl-neg';
+    return '';
+  }
+
+  function prsMoneyText(val) {
+    if (val == null || !isFinite(Number(val))) return '—';
+    return formatPortfolioRubAmount(val);
+  }
+
+  function prsSignedHtml(val) {
+    if (val == null || !isFinite(Number(val))) return escapeHtml('—');
+    var cls = prsToneClass(val);
+    return '<span' + (cls ? ' class="' + cls + '"' : '') + '>' +
+      escapeHtml(formatSignedRubAmount(val)) + '</span>';
+  }
+
+  function buildPortfolioResultSummaryCardHtml(label, valueHtml, hint, extraClass) {
+    return '<div class="pf-prs-card' + (extraClass ? ' ' + extraClass : '') + '">' +
+      '<span class="pf-prs-lbl">' + escapeHtml(label) + '</span>' +
+      '<span class="pf-prs-val">' + valueHtml + '</span>' +
+      (hint ? '<span class="pf-prs-sub muted">' + escapeHtml(hint) + '</span>' : '') +
+    '</div>';
+  }
+
+  function buildPortfolioResultSummaryHowHtml() {
+    return '<details class="pf-prs-how">' +
+      '<summary class="pf-prs-how-summary">Как считается</summary>' +
+      '<div class="pf-prs-how-body">' +
+        '<p class="pf-prs-how-note">' + escapeHtml(PF_PRS_HOW) + '</p>' +
+      '</div>' +
+    '</details>';
+  }
+
+  function buildPortfolioResultSummaryHtml(summary, options) {
+    options = options || {};
+    summary = summary || prsEmptyResult();
+    var loading = !!summary.payoutsPending || !!options.loading;
+    var feedError = !!options.feedError;
+    var html = '';
+    if (summary.hideTotals || summary.skippedUnknown) {
+      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_SUMMARY_SPLIT_PARTIAL_WARNING) + '</p>';
+    } else if (summary.missingPayoutFeed) {
+      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_PRS_MISSING_FEED) + '</p>';
+    } else if (summary.isPartial && !loading) {
+      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_PRS_PARTIAL) + '</p>';
+    }
+    if (loading) {
+      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_PRS_LOADING) + '</p>';
+    } else if (feedError) {
+      html += '<p class="muted pf-prs-status">' + escapeHtml(PF_PRS_ERROR) + '</p>';
+    }
+
+    var payoutVal = loading ? escapeHtml('…') : escapeHtml(prsMoneyText(summary.payoutsRub));
+    var resultVal = (loading || summary.hideTotals)
+      ? escapeHtml('—')
+      : prsSignedHtml(summary.resultWithPayoutsRub);
+    var pctVal;
+    if (loading || summary.hideTotals || summary.returnVsPurchasePct == null ||
+        !isFinite(Number(summary.returnVsPurchasePct))) {
+      pctVal = escapeHtml('—');
+    } else {
+      pctVal = escapeHtml(formatTwpReturnPct(summary.returnVsPurchasePct));
+    }
+
+    html += '<div class="pf-prs-grid">' +
+      buildPortfolioResultSummaryCardHtml(
+        'Вложено',
+        escapeHtml(prsMoneyText(summary.remainCostRub)),
+        'в текущий остаток'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Текущая стоимость',
+        escapeHtml(prsMoneyText(summary.currentMarketValueRub)),
+        'открытые позиции по текущим ценам'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Нереализованный результат',
+        prsSignedHtml(summary.unrealizedPnlRub),
+        'текущая стоимость минус вложено в остаток'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Зафиксировано продажами',
+        prsSignedHtml(summary.realizedPnlRub),
+        'результат закрытых и частичных продаж'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Найденные выплаты',
+        payoutVal,
+        'по найденным данным за период владения · справочно'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'Итоговый результат с выплатами',
+        resultVal,
+        'нереализованный + зафиксированный + найденные выплаты · справочно',
+        'pf-prs-card--total'
+      ) +
+      buildPortfolioResultSummaryCardHtml(
+        'К вложенному',
+        pctVal,
+        'к сумме покупок, справочно'
+      ) +
+    '</div>';
+    html += buildPortfolioResultSummaryHowHtml();
+    return html;
+  }
+
+  function renderPortfolioResultSummary(positions, bondMetaMap, sales) {
+    var el = document.getElementById('portfolioResultSummary');
+    if (!el) return;
+    positions = positions || [];
+    sales = sales || [];
+    bondMetaMap = bondMetaMap || {};
+    var host = document.getElementById('portfolioResultSummaryBody');
+    if (!positions.length && !sales.length) {
+      el.hidden = true;
+      if (host) host.innerHTML = '';
+      return;
+    }
+    el.hidden = false;
+    if (typeof ensurePortfolioPayoutFeedsLoaded === 'function') {
+      ensurePortfolioPayoutFeedsLoaded();
+    }
+    var cache = typeof getPfPayoutFeedsCache === 'function' ? getPfPayoutFeedsCache() : null;
+    var status = cache && cache.status ? cache.status : 'idle';
+    var loading = status === 'idle' || status === 'loading';
+    var feedError = status === 'error';
+    var feeds = (status === 'ready' && cache && cache.data) ? cache.data.payoutsByTicker : {};
+    var summary = buildPortfolioResultSummary({ positions: positions, sales: sales }, {
+      bondMetaMap: bondMetaMap,
+      payoutsByTicker: feeds,
+      payoutsReady: status === 'ready',
+      now: typeof localPortfolioTodayYmd === 'function' ? localPortfolioTodayYmd() : undefined
+    });
+    var html = buildPortfolioResultSummaryHtml(summary, {
+      loading: loading,
+      feedError: feedError
+    });
+    if (host) host.innerHTML = html;
+    else el.innerHTML = html;
+  }
+
   /**
    * Read-only дивиденды и купоны за период владения по всему портфелю.
    * qtyHeld — состав на дату события; для акций со сплитом в каталоге —
@@ -10054,6 +10357,7 @@
 
     if (!positions.length && !sales.length) {
       renderPortfolioSummary([], {}, { paid12m: 0, forecast12m: 0 }, []);
+      renderPortfolioResultSummary([], {}, []);
       var cardsEmpty = document.getElementById('portfolioCards');
       if (cardsEmpty) cardsEmpty.innerHTML = '';
           renderPortfolioClosedPositions([], [], {});
@@ -10064,6 +10368,7 @@
 
     renderPortfolioClosedPositions(positions, sales, {});
     renderPortfolioRecentOperations(positions, sales, {});
+    renderPortfolioResultSummary(positions, {}, sales);
 
     var closedSeed = listClosedPortfolioPositions(positions, sales, {});
     var bondMetaSeed = (positions || []).slice();
@@ -10087,6 +10392,7 @@
         if (tbody) tbody.innerHTML = html;
       });
       renderPortfolioSummary(positions, bondMetaMap, incomeTotals, sales);
+      renderPortfolioResultSummary(positions, bondMetaMap, sales);
       renderPortfolioClosedPositions(positions, sales, bondMetaMap);
       renderPortfolioRecentOperations(positions, sales, bondMetaMap);
       refreshPortfolioAsOfIfShown();

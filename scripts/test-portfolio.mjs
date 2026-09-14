@@ -486,7 +486,10 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__renderSummary = renderPortfolioSummary;' +
       '\nthis.__ensureFeeds = ensurePortfolioPayoutFeedsLoaded;' +
       '\nthis.__feedsCache = getPfPayoutFeedsCache;' +
-      '\nthis.__twpDetail = buildPortfolioTickerDetailHtml;',
+      '\nthis.__twpDetail = buildPortfolioTickerDetailHtml;' +
+      '\nthis.__resultSummary = buildPortfolioResultSummary;' +
+      '\nthis.__resultSummaryHtml = buildPortfolioResultSummaryHtml;' +
+      '\nthis.__renderResultSummary = renderPortfolioResultSummary;',
     sandbox,
     { timeout: 15000 }
   );
@@ -601,6 +604,9 @@ function loadPortfolioCalcHelpers() {
     renderPortfolioSummary: sandbox.__renderSummary,
     getPfPayoutFeedsCache: sandbox.__feedsCache,
     buildPortfolioTickerDetailHtml: sandbox.__twpDetail,
+    buildPortfolioResultSummary: sandbox.__resultSummary,
+    buildPortfolioResultSummaryHtml: sandbox.__resultSummaryHtml,
+    renderPortfolioResultSummary: sandbox.__renderResultSummary,
     setSplitEventsCatalog: sandbox.setSplitEventsCatalog,
     getSplitEventsSync: sandbox.getSplitEventsSync,
     localStorage: sandbox.localStorage,
@@ -7177,9 +7183,222 @@ await (async () => {
   assert(k1 && k1 !== k2 && k1 !== k3, 'dyn key: portfolio qty and horizon change fingerprint');
 }
 
+{
+  // Результат портфеля: assembler поверх summary + realized + TWP
+  function almost(a, b, eps, msg) {
+    if (!(Math.abs(Number(a) - Number(b)) <= eps)) errors.push(msg + ' got ' + a + ' expected ' + b);
+  }
+  const NOW = '2026-09-14';
+  function sberFeed(dividends) {
+    return { SBER: { kind: 'stock', source: 'moex', dividends: dividends } };
+  }
+  function gazpFeed(dividends) {
+    return { GAZP: { kind: 'stock', source: 'moex', dividends: dividends } };
+  }
+  function ofzFeed(coupons, faceValue) {
+    return {
+      OFZ_26238: {
+        kind: 'bond',
+        source: 'bondization',
+        coupons: coupons,
+        faceValue: faceValue != null ? faceValue : 1000
+      }
+    };
+  }
+  function runPrs(portfolio, extra) {
+    return calc.buildPortfolioResultSummary(
+      portfolio,
+      Object.assign({ now: NOW }, extra || {})
+    );
+  }
+
+  const src = Function.prototype.toString.call(calc.buildPortfolioResultSummary);
+  assert((src.match(/getTotalRealizedPnl/g) || []).length === 1, 'prs src: realized helper once');
+  assert(!/listClosedPortfolioPositions/.test(src), 'prs src: does not sum closed cards');
+  assert(!/loadPortfolioIncomeTotals/.test(src), 'prs src: no 12m income totals');
+  assert(!/computePricePlusPayoutsPct/.test(src), 'prs src: no 12m percent helper');
+
+  const oneStock = {
+    positions: [{
+      ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280
+    }],
+    sales: []
+  };
+  const frozenOne = JSON.stringify(oneStock);
+  const oneOpts = { payoutsByTicker: sberFeed([{ date: '2024-07-17', value: 33.3 }]) };
+  const prsOne = runPrs(oneStock, oneOpts);
+  const twpOne = calc.buildPortfolioReturnWithPayouts(oneStock, Object.assign({ now: NOW }, oneOpts));
+  assert(prsOne.remainCostRub === 2500, 'prs 1: invested in remainder');
+  assert(prsOne.currentMarketValueRub === 2800, 'prs 1: current MV');
+  assert(prsOne.unrealizedPnlRub === 300, 'prs 1: unrealized');
+  assert(prsOne.realizedPnlRub === 0, 'prs 1: no sales');
+  assert(prsOne.payoutsRub === 333, 'prs 1: holding-period payouts');
+  assert(prsOne.resultWithPayoutsRub === 300 + 333, 'prs 1: total = unrealized + payouts');
+  almost(prsOne.resultWithPayoutsRub, twpOne.resultWithPayoutsRub, 0.02, 'prs 11: identity vs TWP');
+  assert(Math.abs(prsOne.returnVsPurchasePct - ((300 + 333) / 2500) * 100) < 1e-9, 'prs 1: pct vs purchases');
+  assert(JSON.stringify(oneStock) === frozenOne, 'prs 1: JSON not mutated');
+
+  const withPaidNoise = runPrs(oneStock, Object.assign({
+    paid12m: 999999,
+    forecast12m: 888888,
+    incomeTotals: { paid12m: 999999, forecast12m: 888888 }
+  }, oneOpts));
+  assert(withPaidNoise.payoutsRub === 333, 'prs 10: 12m totals not used as payouts');
+  assert(withPaidNoise.resultWithPayoutsRub === prsOne.resultWithPayoutsRub, 'prs 10: total ignores 12m extras');
+  assert(withPaidNoise.resultWithPayoutsRub !== 999999, 'prs 10: total is not paid12m');
+
+  const partialPf = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 4, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 6,
+      buyPrice: 250,
+      salePrice: 270,
+      saleDate: '2024-06-01',
+      allocations: [{ lotId: 'S1', qty: 6, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  };
+  const partialOpts = { payoutsByTicker: sberFeed([{ date: '2024-07-17', value: 10 }]) };
+  const prsPart = runPrs(partialPf, partialOpts);
+  assert(prsPart.remainCostRub === 1000, 'prs 2: remainder cost 4×250');
+  assert(prsPart.currentMarketValueRub === 1120, 'prs 2: remainder MV 4×280');
+  assert(prsPart.unrealizedPnlRub === 120, 'prs 2: unrealized remainder only');
+  const realizedOnce = calc.getTotalRealizedPnl(partialPf.sales, {});
+  almost(prsPart.realizedPnlRub, realizedOnce, 0.02, 'prs 7: same realized as helper');
+  almost(prsPart.realizedPnlRub, 120, 0.02, 'prs 2: realized sold 6×20');
+  assert(prsPart.payoutsRub === 40, 'prs 2: payout × qty on record date');
+  assert(prsPart.resultWithPayoutsRub === 120 + 120 + 40, 'prs 2: total parts');
+  const twpPart = calc.buildPortfolioReturnWithPayouts(partialPf, Object.assign({ now: NOW }, partialOpts));
+  almost(prsPart.resultWithPayoutsRub, twpPart.resultWithPayoutsRub, 0.02, 'prs 11: partial identity');
+
+  const closedOnly = {
+    positions: [],
+    sales: [{
+      saleId: 'SALE1',
+      ticker: 'SBER',
+      qty: 10,
+      buyPrice: 250,
+      salePrice: 280,
+      saleDate: '2024-08-01',
+      allocations: [{ lotId: 'S1', qty: 10, buyPrice: 250, buyDate: '2024-01-15' }]
+    }]
+  };
+  const closedOpts = { payoutsByTicker: sberFeed([{ date: '2024-07-17', value: 10 }]) };
+  const prsClosed = runPrs(closedOnly, closedOpts);
+  assert(prsClosed.currentMarketValueRub === 0, 'prs 3: closed MV 0');
+  assert(prsClosed.remainCostRub === 0, 'prs 3: closed remainder 0');
+  assert(prsClosed.unrealizedPnlRub === 0, 'prs 3: closed unrealized 0');
+  almost(prsClosed.realizedPnlRub, 300, 0.02, 'prs 3: realized 300');
+  assert(prsClosed.payoutsRub === 100, 'prs 3: dividend during holding');
+  assert(prsClosed.resultWithPayoutsRub === 400, 'prs 3: realized + payouts');
+  assert(Math.abs(prsClosed.returnVsPurchasePct - 16) < 1e-9, 'prs 3: 400/2500 = 16%');
+
+  calc.localStorage.clear();
+  calc.hideClosedPortfolioTicker('SBER');
+  const prsHidden = runPrs(closedOnly, closedOpts);
+  assert(prsHidden.resultWithPayoutsRub === prsClosed.resultWithPayoutsRub, 'prs 12: hidden closed still in total');
+  assert(prsHidden.payoutsRub === 100, 'prs 12: hidden closed payouts kept');
+  calc.restoreClosedPortfolioTicker('SBER');
+
+  const twoStocks = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 4, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 300 },
+      { ticker: 'GAZP', lotId: 'G1', qty: 30, avgPrice: 100, buyDate: '2024-03-01', currentPrice: 110 }
+    ],
+    sales: []
+  };
+  const twoFeeds = Object.assign({}, sberFeed([]), gazpFeed([]));
+  const prsTwo = runPrs(twoStocks, { payoutsByTicker: twoFeeds });
+  assert(prsTwo.unrealizedPnlRub === 500, 'prs 4: 200+300');
+  assert(prsTwo.resultWithPayoutsRub === 500, 'prs 4: summed result');
+  assert(Math.abs(prsTwo.returnVsPurchasePct - 12.5) < 1e-9, 'prs 4: 500/4000 not average');
+
+  const mix = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      {
+        ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01',
+        currentPrice: 98, faceValue: 1000
+      }
+    ],
+    sales: []
+  };
+  const mixFeeds = Object.assign(
+    {},
+    sberFeed([{ date: '2024-07-17', value: 10 }]),
+    ofzFeed([{ date: '2024-06-19', value: 42.38 }], 1000)
+  );
+  const mixSnap = JSON.stringify(mix);
+  const prsMix = runPrs(mix, {
+    payoutsByTicker: mixFeeds,
+    bondMetaMap: { OFZ_26238: { faceValue: 1000 } }
+  });
+  assert(prsMix.dividendsRub === 100 && prsMix.couponsRub === 423.8, 'prs 5: div + coupon split');
+  assert(prsMix.payoutsRub === 523.8, 'prs 5: payouts once');
+  almost(prsMix.remainCostRub, 2500 + 9540, 0.02, 'prs 5: stock + OFZ invested');
+  almost(prsMix.currentMarketValueRub, 2800 + 9800, 0.02, 'prs 5: stock + OFZ MV');
+  assert(JSON.stringify(mix) === mixSnap, 'prs 5: OFZ JSON not mutated');
+
+  const oneNoFeed = {
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      { ticker: 'GAZP', lotId: 'G1', qty: 2, avgPrice: 140, buyDate: '2024-01-15', currentPrice: 150 }
+    ],
+    sales: []
+  };
+  const prsNoFeed = runPrs(oneNoFeed, {
+    payoutsByTicker: sberFeed([{ date: '2024-07-17', value: 10 }])
+  });
+  assert(prsNoFeed.isPartial === true, 'prs 6: partial if one feed missing');
+  assert(prsNoFeed.missingPayoutFeed === true, 'prs 6: missing feed flag');
+  assert(prsNoFeed.payoutsRub === 100, 'prs 6: known payouts only');
+  assert(prsNoFeed.resultWithPayoutsRub != null, 'prs 6: price result still computed');
+  assert(prsNoFeed.unrealizedPnlRub === 300 + 20, 'prs 6: both prices in unrealized');
+  const noFeedHtml = calc.buildPortfolioResultSummaryHtml(prsNoFeed);
+  assert(/По части бумаг нет данных о выплатах/.test(noFeedHtml), 'prs 6: missing-feed copy');
+  assert(!/полученн|зачислено|чистая доходность|гарантирован|заработано/.test(noFeedHtml), 'prs ui: no overclaim words');
+
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const unkPf = {
+    positions: [{ ticker: 'GMKN', lotId: 'U1', qty: 10, avgPrice: 22000, currentPrice: 150 }],
+    sales: []
+  };
+  const unkSnap = JSON.stringify(unkPf);
+  const prsUnk = runPrs(unkPf, { payoutsByTicker: { GMKN: { kind: 'stock', source: 'moex', dividends: [] } } });
+  assert(prsUnk.hideTotals === true && prsUnk.onlyUnknown === true, 'prs 9: hide unknown split totals');
+  assert(prsUnk.currentMarketValueRub == null, 'prs 9: not JSON qty MV');
+  assert(prsUnk.resultWithPayoutsRub == null, 'prs 9: total hidden');
+  assert(prsUnk.returnVsPurchasePct == null, 'prs 9: pct hidden');
+  assert(unkPf.positions[0].splitLotScale == null, 'prs 9: splitLotScale not written');
+  assert(JSON.stringify(unkPf) === unkSnap, 'prs 9: JSON not mutated');
+  const unkHtml = calc.buildPortfolioResultSummaryHtml(prsUnk);
+  assert(/может быть неполной/.test(unkHtml), 'prs 9: split warning');
+  assert(!/1[\s\u00a0]?500/.test(unkHtml), 'prs 9: html not raw 10×150');
+
+  const tHist = {
+    positions: [{ ticker: 'T', lotId: 'T1', qty: 1, avgPrice: 3200, buyDate: '2025-01-10', currentPrice: 255 }],
+    sales: []
+  };
+  const tSnap = JSON.stringify(tHist);
+  const prsT = runPrs(tHist, { payoutsByTicker: { T: { kind: 'stock', source: 'moex', dividends: [] } } });
+  almost(prsT.currentMarketValueRub, 10 * 255, 0.05, 'prs split-ok: T historical ×10');
+  assert(prsT.resultWithPayoutsRub != null, 'prs split-ok: total visible');
+  assert(tHist.positions[0].splitLotScale == null, 'prs split-ok: scale not written');
+  assert(JSON.stringify(tHist) === tSnap, 'prs split-ok: JSON not mutated');
+
+  const html = calc.buildPortfolioResultSummaryHtml(prsOne);
+  assert(/Вложено/.test(html) && /Текущая стоимость/.test(html), 'prs ui: core cards');
+  assert(/Найденные выплаты/.test(html), 'prs ui: found payouts label');
+  assert(/к сумме покупок, справочно/.test(html), 'prs ui: pct base copy');
+  assert(/Как считается/.test(html), 'prs ui: how details');
+  assert(/Прогноз выплат и выплаты за 12 месяцев в этот итог не входят/.test(html), 'prs ui: 12m excluded copy');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary');
