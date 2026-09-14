@@ -7398,6 +7398,9 @@ await (async () => {
   assert(/к сумме покупок, справочно/.test(html), 'prs ui: pct base copy');
   assert(/Как считается/.test(html), 'prs ui: how details');
   assert(/Прогноз выплат и выплаты за 12 месяцев в этот итог не входят/.test(html), 'prs ui: 12m excluded copy');
+  assert(/pf-prs-hero/.test(html) && /pf-prs-breakdown/.test(html), 'prs ui: hero then breakdown');
+  assert(html.indexOf('pf-prs-hero') < html.indexOf('pf-prs-breakdown'), 'prs ui: hero before breakdown');
+  assert(/<details class="pf-prs-how">/.test(html) && !/<details class="pf-prs-how" open/.test(html), 'prs ui: how closed by default');
 }
 
 if (errors.length) {
