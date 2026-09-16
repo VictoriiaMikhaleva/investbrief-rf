@@ -969,6 +969,9 @@
     if (typeof addPortfolioPosition === 'function') {
       addPortfolioPosition(t, { prefix: '' });
       if (typeof switchTab === 'function') switchTab('portfolio');
+      if (typeof ensurePortfolioSub === 'function') {
+        ensurePortfolioSub('positions', { scrollTo: '.portfolio-add-form', focusEl: 'pfAddTicker' });
+      }
       setTimeout(function () { applyOfzTableView(); }, 250);
       return;
     }
@@ -993,6 +996,9 @@
     showToast('Добавлено в портфель: ' + (row.label || t));
     if (typeof renderPortfolio === 'function') renderPortfolio();
     if (typeof switchTab === 'function') switchTab('portfolio');
+    if (typeof ensurePortfolioSub === 'function') {
+      ensurePortfolioSub('positions', { scrollTo: '.portfolio-add-form', focusEl: 'pfAddTicker' });
+    }
     applyOfzTableView();
   }
 

@@ -436,6 +436,7 @@
       if (typeof showPortfolioAsOfComposition === 'function') showPortfolioAsOfComposition();
     });
     if (typeof initPortfolioDynamicsUi === 'function') initPortfolioDynamicsUi();
+    if (typeof initPortfolioSubnav === 'function') initPortfolioSubnav();
     var pfAsOfDate = document.getElementById('pfAsOfDate');
     if (pfAsOfDate) {
       pfAsOfDate.addEventListener('input', function () {
@@ -494,7 +495,7 @@
       var paper = e.target.closest('.paper[data-ticker]');
       if (paper) {
         e.stopPropagation();
-        selectPortfolioTicker(paper.getAttribute('data-ticker'));
+        selectPortfolioTicker(paper.getAttribute('data-ticker'), { userIntent: 'analytics' });
         return;
       }
       if (e.target.closest('#portfolioFolder')) {
@@ -522,7 +523,7 @@
     var chartSelect = document.getElementById('chartTickerSelect');
     if (chartSelect) {
       chartSelect.addEventListener('change', function () {
-        selectPortfolioTicker(this.value);
+        selectPortfolioTicker(this.value, { userIntent: 'analytics' });
       });
     }
 

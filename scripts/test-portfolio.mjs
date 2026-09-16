@@ -414,6 +414,10 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__dynLoad = loadPortfolioDynamicsSeries;' +
       '\nthis.__dynRequest = requestPortfolioDynamicsRefresh;' +
       '\nthis.__dynDraw = drawPortfolioDynamicsChart;' +
+      '\nthis.__dynState = pfDynState;' +
+      '\nthis.__dynSetLastKey = function (v) { pfDynLastKey = v == null ? \'\' : String(v); };' +
+      '\nthis.__dynInFlight = function () { return pfDynBuildInFlight; };' +
+      '\nthis.__ensureDyn = ensurePortfolioDynamicsReady;' +
       '\nthis.__dynKey = pfDynPortfolioKey;' +
       '\nthis.__dynPointer = applyPortfolioDynamicsPointer;' +
       '\nthis.__dynEarliest = pfDynEarliestOperationDate;' +
@@ -460,6 +464,12 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__saleBlocked = isPortfolioTickerSaleCommitBlocked;' +
       '\nthis.__saleBlockText = formatSplitSaleBlockedText;' +
       '\nthis.__commitSale = commitPortfolioSale;' +
+      '\nthis.__commitPos = commitPortfolioPosition;' +
+      '\nthis.__addPos = addPortfolioPosition;' +
+      '\nthis.__startEditPos = startEditPortfolioPosition;' +
+      '\nthis.__cancelEditPos = cancelPortfolioEdit;' +
+      '\nthis.__capturePf = capturePortfolioFormInput;' +
+      '\nthis.__switchPfSub = switchPortfolioSub;' +
       '\nthis.__splitSaleUi = updatePortfolioSplitSaleBlockUi;' +
       '\nthis.__startSale = startSalePortfolioTicker;' +
       '\nthis.__splitWrite = getPortfolioSplitSaleWriteState;' +
@@ -531,6 +541,10 @@ function loadPortfolioCalcHelpers() {
     loadPortfolioDynamicsSeries: sandbox.__dynLoad,
     requestPortfolioDynamicsRefresh: sandbox.__dynRequest,
     drawPortfolioDynamicsChart: sandbox.__dynDraw,
+    pfDynState: sandbox.__dynState,
+    setPfDynLastKey: sandbox.__dynSetLastKey,
+    pfDynBuildInFlight: sandbox.__dynInFlight,
+    ensurePortfolioDynamicsReady: sandbox.__ensureDyn,
     pfDynPortfolioKey: sandbox.__dynKey,
     applyPortfolioDynamicsPointer: sandbox.__dynPointer,
     pfDynEarliestOperationDate: sandbox.__dynEarliest,
@@ -577,6 +591,12 @@ function loadPortfolioCalcHelpers() {
     isPortfolioTickerSaleCommitBlocked: sandbox.__saleBlocked,
     formatSplitSaleBlockedText: sandbox.__saleBlockText,
     commitPortfolioSale: sandbox.__commitSale,
+    commitPortfolioPosition: sandbox.__commitPos,
+    addPortfolioPosition: sandbox.__addPos,
+    startEditPortfolioPosition: sandbox.__startEditPos,
+    cancelPortfolioEdit: sandbox.__cancelEditPos,
+    capturePortfolioFormInput: sandbox.__capturePf,
+    switchPortfolioSub: sandbox.__switchPfSub,
     updatePortfolioSplitSaleBlockUi: sandbox.__splitSaleUi,
     startSalePortfolioTicker: sandbox.__startSale,
     getPortfolioSplitSaleWriteState: sandbox.__splitWrite,
@@ -7401,6 +7421,459 @@ await (async () => {
   assert(/pf-prs-hero/.test(html) && /pf-prs-breakdown/.test(html), 'prs ui: hero then breakdown');
   assert(html.indexOf('pf-prs-hero') < html.indexOf('pf-prs-breakdown'), 'prs ui: hero before breakdown');
   assert(/<details class="pf-prs-how">/.test(html) && !/<details class="pf-prs-how" open/.test(html), 'prs ui: how closed by default');
+}
+
+{
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const pfJs = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'ui.js'), 'utf8');
+  const newsSrc = fs.readFileSync(path.join(__dirname, '..', 'news.js'), 'utf8');
+  const ofzSrc = fs.readFileSync(path.join(__dirname, '..', 'ofz.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const luxury = fs.readFileSync(path.join(__dirname, '..', 'theme-luxury.css'), 'utf8');
+  const tabHtml = indexHtml.slice(
+    indexHtml.indexOf('id="tab-portfolio"'),
+    indexHtml.indexOf('id="tab-articles"')
+  );
+
+  function between(src, startMark, endMark) {
+    const a = src.indexOf(startMark);
+    const b = src.indexOf(endMark, a + 1);
+    return a >= 0 && b > a ? src.slice(a, b) : '';
+  }
+  function countId(src, id) {
+    return (src.match(new RegExp('id="' + id + '"', 'g')) || []).length;
+  }
+
+  const overview = between(tabHtml, 'id="portfolioSubviewOverview"', 'id="portfolioSubviewAnalytics"');
+  const analytics = between(tabHtml, 'id="portfolioSubviewAnalytics"', 'id="portfolioSubviewPositions"');
+  const positions = between(tabHtml, 'id="portfolioSubviewPositions"', 'id="portfolioSubviewOperations"');
+  const operations = between(tabHtml, 'id="portfolioSubviewOperations"', '</section>');
+
+  assert(/id="portfolioSubnav"/.test(tabHtml), 'inner tabs: subnav exists');
+  assert(/role="tablist"/.test(tabHtml) && /aria-label="Раздел портфеля"/.test(tabHtml), 'inner tabs: tablist');
+  assert(/data-portfolio-sub="overview"/.test(tabHtml) && /data-portfolio-sub="analytics"/.test(tabHtml) &&
+    /data-portfolio-sub="positions"/.test(tabHtml) && /data-portfolio-sub="operations"/.test(tabHtml),
+    'inner tabs: four tabs');
+  assert(/aria-selected="true"/.test(tabHtml) && /tabindex="0"/.test(tabHtml) && /tabindex="-1"/.test(tabHtml),
+    'inner tabs: roving tabindex markup');
+  assert(/portfolioSub: 'overview'/.test(newsSrc), 'inner tabs: default state overview');
+
+  assert(/id="portfolioTotals"/.test(overview) && /id="portfolioResultSummary"/.test(overview) &&
+    /id="portfolioUpcomingPayoutsBlock"/.test(overview), 'inner tabs: overview hosts summary/result/upcoming');
+  assert(/data-portfolio-jump="positions"/.test(overview) && /data-portfolio-jump="analytics-dyn"/.test(overview) &&
+    /Добавить позицию/.test(overview), 'inner tabs: overview jumps and empty CTA');
+  assert(!/data-pf-split-lot-scale/.test(overview), 'inner tabs: overview has no split scale buttons');
+
+  assert(/id="portfolioDynamicsBlock"/.test(analytics) && /id="pfDynChart"/.test(analytics) &&
+    /id="pfDynSplitScaleCta"/.test(analytics), 'inner tabs: analytics hosts dynamics');
+  assert(/id="portfolioAsOfBlock"/.test(analytics) && /id="portfolioCompareBlock"/.test(analytics) &&
+    /id="portfolioPayoutsBlock"/.test(analytics), 'inner tabs: analytics hosts as-of/compare/holding');
+  assert(/id="portfolioFolderSection"/.test(analytics) && /id="portfolioInsightsSection"/.test(analytics),
+    'inner tabs: folder+insights stay together');
+  assert(!/За счёт чего изменился портфель/.test(tabHtml), 'inner tabs: no attribution stub');
+
+  assert(/portfolio-add-form/.test(positions) && /id="portfolioSaleForm"/.test(positions) &&
+    /id="portfolioTable"/.test(positions) && /id="portfolioCards"/.test(positions) &&
+    /id="resetPortfolioBtn"/.test(positions) && /id="pfSplitCatalogWarn"/.test(positions),
+    'inner tabs: positions hosts forms/table/cards');
+  assert(/id="portfolioRecentSection"/.test(operations) && /id="portfolioClosedSection"/.test(operations),
+    'inner tabs: operations hosts recent+closed');
+  assert(!/id="exportJsonBtn"/.test(tabHtml), 'inner tabs: backup stays out of portfolio');
+
+  ['portfolioTotals', 'portfolioResultSummary', 'portfolioDynamicsBlock', 'pfDynChart',
+    'portfolioAsOfBlock', 'portfolioCompareBlock', 'portfolioPayoutsBlock', 'portfolioUpcomingPayoutsBlock',
+    'portfolioFolderSection', 'portfolioInsightsSection', 'portfolioSaleForm', 'portfolioTable',
+    'portfolioCards', 'portfolioRecentSection', 'portfolioClosedSection',
+    'pfAddTicker', 'pfAddQty', 'pfAddAvg', 'pfAddDate', 'pfAddBtn', 'portfolioSubviewPositions'].forEach((id) => {
+    assert(countId(indexHtml, id) === 1, 'inner tabs: unique id ' + id);
+  });
+
+  const totalsAt = indexHtml.indexOf('id="portfolioTotals"');
+  const dynAt = indexHtml.indexOf('id="portfolioDynamicsBlock"');
+  const asofAt = indexHtml.indexOf('id="portfolioAsOfBlock"');
+  assert(totalsAt > 0 && dynAt > totalsAt && asofAt > dynAt, 'inner tabs: totals still before dyn before as-of');
+
+  function sliceFn(src, name, span) {
+    const i = src.indexOf('function ' + name);
+    return i < 0 ? '' : src.slice(i, i + (span || 1800));
+  }
+
+  const switchFn = (pfJs.match(/function switchPortfolioSub\([\s\S]*?\n  function ensurePortfolioSub/) || [''])[0];
+  assert(/function switchPortfolioSub/.test(switchFn), 'inner tabs: switchPortfolioSub exists');
+  assert(!/renderPortfolio\(/.test(switchFn), 'inner tabs: switch does not renderPortfolio');
+  assert(!/requestPortfolioDynamicsRefresh/.test(switchFn), 'inner tabs: switch does not refresh series');
+  assert(!/loadPortfolioDynamicsSeries/.test(switchFn), 'inner tabs: switch does not load series');
+  assert(!/\bfetch\s*\(/.test(switchFn), 'inner tabs: switch does not fetch');
+  assert(!/setPortfolio\(/.test(switchFn), 'inner tabs: switch does not write portfolio');
+  assert(!/localStorage/.test(switchFn) && !/sessionStorage/.test(switchFn), 'inner tabs: switch has no storage');
+  assert(!/replaceState/.test(switchFn) && !/location\.hash/.test(switchFn), 'inner tabs: switch does not touch hash');
+  assert(!/cancelPortfolioEdit|clearAllPortfolioForms/.test(switchFn), 'inner tabs: switch keeps forms');
+  assert(!/setPortfolioDynamicsHorizon/.test(switchFn), 'inner tabs: switch keeps dyn period');
+
+  const renderFn = sliceFn(pfJs, 'renderPortfolio()', 700);
+  assert(/initPortfolioSubnav/.test(renderFn), 'inner tabs: render binds subnav');
+  assert(!/switchPortfolioSub\(/.test(renderFn) && !/ensurePortfolioSub\(/.test(renderFn),
+    'inner tabs: background renderPortfolio does not change subview');
+
+  const selectFn = sliceFn(pfJs, 'selectPortfolioTicker', 900);
+  assert(/userIntent === 'analytics'/.test(selectFn), 'inner tabs: ticker analytics only on user intent');
+  assert(/ensurePortfolioSub\('analytics'/.test(selectFn), 'inner tabs: explicit ticker opens analytics');
+
+  assert(/ensurePortfolioSub\('positions'/.test(sliceFn(pfJs, 'startSalePortfolioTicker', 1600)),
+    'inner tabs: sell opens positions');
+  assert(/ensurePortfolioSub\('positions'/.test(sliceFn(pfJs, 'scrollPortfolioEditFormIntoView', 800)),
+    'inner tabs: edit opens positions');
+  assert(/ensurePortfolioSub\('positions'/.test(sliceFn(pfJs, 'openPortfolioTickerDetailsFromRecent', 1400)),
+    'inner tabs: recent details opens positions');
+  assert(/ensurePortfolioSub\('positions'/.test(ofzSrc), 'inner tabs: OFZ add opens positions');
+  assert(/userIntent: 'analytics'/.test(appSrc), 'inner tabs: folder click is analytics intent');
+  assert(/initPortfolioSubnav/.test(appSrc), 'inner tabs: subnav bound from app.js');
+
+  const switchTabFn = (uiSrc.match(/function switchTab\(tab\) \{[\s\S]*?function openDigestModal/) || [''])[0];
+  assert(!/portfolioSub/.test(switchTabFn), 'inner tabs: leaving/returning does not reset sub');
+  assert(/'#' \+ tab/.test(switchTabFn), 'inner tabs: top hash still #portfolio');
+  assert(!/portfolio\//.test(sliceFn(uiSrc, 'initHash()', 900)),
+    'inner tabs: no nested portfolio hash');
+
+  assert(/function handlePortfolioSubnavKeydown/.test(pfJs) && /ArrowRight/.test(pfJs) &&
+    /ArrowLeft/.test(pfJs) && /Home/.test(pfJs) && /End/.test(pfJs),
+    'inner tabs: keyboard arrows/home/end');
+  assert(/aria-selected/.test(pfJs) && /tabIndex = isActive \? 0 : -1/.test(pfJs),
+    'inner tabs: aria and roving tabindex updates');
+
+  assert(/\.portfolio-subview\[hidden\] \{[\s\S]*?display:\s*none !important/.test(css),
+    'inner tabs: hidden panels out of layout');
+  assert(/\.portfolio-subnav\.horizon-tabs \{[\s\S]*?min-width:\s*0/.test(css),
+    'inner tabs: subnav can shrink');
+  assert(!/\.portfolio-subnav[\s\S]{0,180}nowrap/.test(css), 'inner tabs: subnav not nowrap');
+  assert(/@media \(max-width:\s*699px\)[\s\S]{0,280}?\.portfolio-subnav\.horizon-tabs \{[\s\S]{0,180}?grid-template-columns:\s*1fr 1fr/.test(css),
+    'inner tabs: mobile subnav is 2x2 grid');
+  assert(!/function pfFormFieldEl/.test(pfJs), 'cleanup: pfFormFieldEl removed');
+  assert(/document\.getElementById\(pfFieldId\(prefix, 'Ticker'\)\)/.test(sliceFn(pfJs, 'readPortfolioForm', 700)),
+    'cleanup: readPortfolioForm uses getElementById');
+  assert(/#tab-portfolio \{\s*max-width:\s*100%;[\s\S]*?overflow-x:\s*clip/.test(luxury),
+    'inner tabs: portfolio tab still clips x overflow');
+  assert(/setPortfolioLotSplitScale/.test(pfJs) && /id="pfDynSplitScaleCta"/.test(analytics),
+    'inner tabs: existing split CTA remains in analytics');
+  assert(/data-pf-split-lot-scale/.test(pfJs), 'inner tabs: lot split buttons still in positions renderer');
+
+  const afterShowFn = sliceFn(pfJs, 'afterPortfolioSubviewShown', 900);
+  const scheduleFn = sliceFn(pfJs, 'scheduleVisiblePortfolioChartsRedraw', 1400);
+  const drawFn = sliceFn(pfJs, 'drawPortfolioDynamicsChart', 900);
+  const ensureDynFn = sliceFn(pfJs, 'ensurePortfolioDynamicsReady', 700);
+  const tabActiveFn = sliceFn(pfJs, 'pfDynTabActive', 250);
+  const reqFn = sliceFn(pfJs, 'requestPortfolioDynamicsRefresh', 900);
+  const loadFn = sliceFn(pfJs, 'loadPortfolioDynamicsSeries', 4500);
+  assert(/ensurePortfolioDynamicsReady/.test(afterShowFn),
+    'inner tabs: analytics show ensures dynamics ready');
+  assert(!/requestPortfolioDynamicsRefresh/.test(afterShowFn) && !/loadPortfolioDynamicsSeries/.test(afterShowFn),
+    'inner tabs: analytics show does not fetch directly');
+  assert(/PF_CHART_LAYOUT_RETRY_MAX = 4/.test(pfJs), 'inner tabs: chart layout retry is finite');
+  assert(!/setInterval/.test(scheduleFn), 'inner tabs: layout retry has no setInterval');
+  assert(!/ResizeObserver/.test(scheduleFn) && !/ResizeObserver/.test(afterShowFn),
+    'inner tabs: switch does not add ResizeObserver');
+  assert(/wrapW < 16 && !opts\.allowFallbackSize/.test(drawFn),
+    'inner tabs: draw waits for nonzero wrap width');
+  assert(!/\bfetch\s*\(/.test(scheduleFn) && !/buildPortfolioValueSeries/.test(scheduleFn),
+    'inner tabs: layout redraw does not fetch or rebuild series');
+  assert(!/portfolioSub/.test(tabActiveFn) && !/isPortfolioSubviewVisible/.test(tabActiveFn),
+    'inner tabs: pfDynTabActive is top-tab only');
+  assert(!/isPortfolioSubviewVisible/.test(reqFn) && !/portfolioSub/.test(reqFn),
+    'inner tabs: request dynamics is not gated on analytics subview');
+  assert(!/isPortfolioSubviewVisible/.test(loadFn) && !/getPortfolioSub\(/.test(loadFn),
+    'inner tabs: series load is not gated on analytics subview');
+  assert(/isPortfolioSubviewVisible\('analytics'\)/.test(drawFn),
+    'inner tabs: draw still requires visible analytics');
+  assert(/pfDynHasSeries\(\)/.test(ensureDynFn) && /pfDynBuildInFlight/.test(ensureDynFn),
+    'inner tabs: ensure uses series + in-flight guards');
+  assert(/requestPortfolioDynamicsRefresh\(\{ immediate: true, reason: 'analytics-visible' \}\)/.test(ensureDynFn),
+    'inner tabs: ensure starts existing refresh only if series missing');
+  assert(!/force:\s*true/.test(ensureDynFn), 'inner tabs: ensure does not force a new series build');
+}
+
+{
+  const sb = calc.sandbox;
+  const origGetP = sb.getPortfolio;
+  const origGetId = sb.document.getElementById;
+  const origSeries = sb.buildPortfolioValueSeries;
+  let seriesCalls = 0;
+  const fake = {
+    block: { id: 'portfolioDynamicsBlock' },
+    status: { id: 'pfDynStatus', hidden: false, textContent: '' },
+    wrap: {
+      id: 'pfDynChartWrap',
+      hidden: true,
+      clientWidth: 0,
+      addEventListener: function () {},
+      getBoundingClientRect: function () { return { width: 0, height: 0 }; }
+    },
+    caption: { hidden: true },
+    disclose: { hidden: true, innerHTML: '', open: false },
+    cta: { hidden: true, innerHTML: '' },
+    card: { hidden: true, innerHTML: '' },
+    periods: { querySelectorAll: function () { return []; } }
+  };
+  sb.document.getElementById = function (id) {
+    if (id === 'portfolioDynamicsBlock') return fake.block;
+    if (id === 'pfDynStatus') return fake.status;
+    if (id === 'pfDynChartWrap') return fake.wrap;
+    if (id === 'pfDynCaption') return fake.caption;
+    if (id === 'pfDynDisclose') return fake.disclose;
+    if (id === 'pfDynSplitScaleCta') return fake.cta;
+    if (id === 'pfDynCard') return fake.card;
+    if (id === 'pfDynPeriods') return fake.periods;
+    return null;
+  };
+  sb.state.tab = 'portfolio';
+  sb.state.portfolioSub = 'overview';
+  sb.getPortfolio = function () {
+    return {
+      positions: [{ ticker: 'SBER', lotId: 'L1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+      sales: []
+    };
+  };
+  sb.buildPortfolioValueSeries = function () {
+    seriesCalls += 1;
+    return Promise.resolve([
+      { date: '2024-06-03', totalValueRub: 1000, stocksValueRub: 1000, bondsValueRub: 0, cashValueRub: 0, isPartial: false, positions: [] },
+      { date: '2024-06-05', totalValueRub: 1100, stocksValueRub: 1100, bondsValueRub: 0, cashValueRub: 0, isPartial: false, positions: [] }
+    ]);
+  };
+  calc.setPfDynLastKey('');
+  calc.pfDynState.series = [];
+  calc.pfDynState.horizon = '1y';
+  try {
+    await calc.requestPortfolioDynamicsRefresh({ immediate: true, reason: 'render' });
+    assert(seriesCalls === 1, 'inner tabs deadlock: overview still starts series load');
+    const afterOverview = seriesCalls;
+    sb.state.portfolioSub = 'analytics';
+    calc.ensurePortfolioDynamicsReady();
+    calc.ensurePortfolioDynamicsReady();
+    assert(seriesCalls === afterOverview, 'inner tabs deadlock: analytics show does not refetch ready series');
+    calc.setPfDynLastKey('');
+    calc.pfDynState.series = [];
+    seriesCalls = 0;
+    await calc.ensurePortfolioDynamicsReady();
+    assert(seriesCalls === 1, 'inner tabs deadlock: analytics starts load if series never started');
+    await calc.ensurePortfolioDynamicsReady();
+    assert(seriesCalls === 1, 'inner tabs deadlock: repeat analytics does not start second fetch');
+  } catch (err) {
+    errors.push('inner tabs deadlock runtime: ' + (err && err.message ? err.message : err));
+  } finally {
+    sb.getPortfolio = origGetP;
+    sb.document.getElementById = origGetId;
+    sb.buildPortfolioValueSeries = origSeries;
+  }
+}
+
+function loadPortfolioWriterSandbox() {
+  const store = Object.create(null);
+  const fields = Object.create(null);
+  const toasts = [];
+  let renderCount = 0;
+  let savedBeforeSuccessToast = 0;
+  function makeField(id, value) {
+    fields[id] = {
+      id: id,
+      value: value == null ? '' : String(value),
+      hidden: false,
+      textContent: '',
+      closest: function () { return null; },
+      focus: function () {},
+      setAttribute: function () {},
+      getAttribute: function () { return ''; }
+    };
+    return fields[id];
+  }
+  ['pfAddTicker', 'pfAddQty', 'pfAddAvg', 'pfAddDate', 'pfAddComment', 'pfAddBtn', 'pfAddFormTitle'].forEach((id) => {
+    makeField(id, '');
+  });
+  fields.pfAddBtn.textContent = 'Добавить позицию в портфель';
+  const positionsHost = {
+    id: 'portfolioSubviewPositions',
+    hidden: false,
+    querySelector: function (sel) {
+      if (sel && sel.charAt(0) === '#') return fields[sel.slice(1)] || null;
+      return null;
+    }
+  };
+  const sandbox = {
+    console,
+    Date,
+    Math,
+    Number,
+    String,
+    Array,
+    Object,
+    JSON,
+    isFinite,
+    parseInt,
+    parseFloat,
+    Promise,
+    setTimeout: () => {},
+    clearTimeout: () => {},
+    normalizeTicker: (t) => String(t || '').trim().toUpperCase(),
+    isRuBondTicker: () => false,
+    isIndexQuoteTicker: () => false,
+    Markets: {
+      isUsTicker: () => false,
+      isUsPosition: (pos) => !!(pos && pos.market === 'US'),
+      normalizePositionMarket: (raw) => ({
+        market: raw && raw.market === 'US' ? 'US' : 'RU',
+        currency: raw && raw.market === 'US' ? 'USD' : 'RUB'
+      }),
+      normalizeWatchlist: (wl) => wl,
+      normalizeMarketsSettings: (s) => (s && s.markets) || { ru: true, us: false },
+      formatMoneyValue: (v) => (v == null ? '—' : String(v)),
+      marketBadgeLabel: (market) => (market === 'US' ? 'US' : 'РФ'),
+      getMarketsEnabled: () => ({ ru: true, us: false })
+    },
+    showToast: (msg) => {
+      const text = String(msg == null ? '' : msg);
+      if (/Добавлено в портфель|Докупка добавлена|Покупка обновлена/.test(text)) {
+        const raw = store['ibrf.portfolio'];
+        let n = 0;
+        try {
+          n = JSON.parse(raw || '{"positions":[]}').positions.length;
+        } catch (e) {
+          n = 0;
+        }
+        if (n > 0) savedBeforeSuccessToast += 1;
+      }
+      toasts.push(text);
+    },
+    renderPortfolio: () => { renderCount += 1; },
+    fetchMoexLastPrice: () => Promise.resolve(null),
+    fetchMoexQuote: () => Promise.resolve(null),
+    document: {
+      getElementById: (id) => {
+        if (id === 'portfolioSubviewPositions') return positionsHost;
+        return fields[id] || null;
+      },
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      createElement: () => ({ click: () => {} })
+    },
+    localStorage: {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v); },
+      removeItem: (k) => { delete store[k]; }
+    },
+    state: {
+      tab: 'portfolio',
+      portfolioSub: 'positions',
+      pfEditLotId: '',
+      pfEditTicker: '',
+      pfEditPrefix: '',
+      chartTicker: '',
+      folderOpen: false
+    },
+    URL: { createObjectURL: () => '', revokeObjectURL: () => {} },
+    Blob: function Blob() {},
+    escapeHtml: (s) => String(s == null ? '' : s)
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  const storageCode = fs.readFileSync(path.join(__dirname, '..', 'storage.js'), 'utf8');
+  const pfCode = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  vm.runInNewContext(storageCode, sandbox, { timeout: 5000 });
+  vm.runInNewContext(
+    pfCode +
+      '\nthis.__commitPos = commitPortfolioPosition;' +
+      '\nthis.__addPos = addPortfolioPosition;' +
+      '\nthis.__startEditPos = startEditPortfolioPosition;' +
+      '\nthis.__capturePf = capturePortfolioFormInput;' +
+      '\nthis.__switchPfSub = switchPortfolioSub;' +
+      '\nthis.__getP = getPortfolio;' +
+      '\nthis.__setP = setPortfolio;',
+    sandbox,
+    { timeout: 15000 }
+  );
+  sandbox.renderPortfolio = function () { renderCount += 1; };
+  return {
+    sandbox,
+    fields,
+    toasts,
+    store,
+    get renderCount() { return renderCount; },
+    get savedBeforeSuccessToast() { return savedBeforeSuccessToast; },
+    fillAddForm: function (vals) {
+      fields.pfAddTicker.value = vals.ticker == null ? '' : String(vals.ticker);
+      fields.pfAddQty.value = vals.qty == null ? '' : String(vals.qty);
+      fields.pfAddAvg.value = vals.avgPrice == null ? '' : String(vals.avgPrice);
+      fields.pfAddDate.value = vals.buyDate == null ? '' : String(vals.buyDate);
+      fields.pfAddComment.value = vals.comment == null ? '' : String(vals.comment);
+    }
+  };
+}
+
+{
+  const w = loadPortfolioWriterSandbox();
+  const schemaBefore = w.sandbox.__getP().schemaVersion;
+  w.fillAddForm({
+    ticker: 'SBER',
+    qty: 10,
+    avgPrice: 250,
+    buyDate: '2024-03-12',
+    comment: ''
+  });
+  const captured = w.sandbox.__capturePf('');
+  assert(captured.ticker === 'SBER', 'add save: captured ticker SBER');
+  assert(captured.qty === 10, 'add save: captured qty is number 10');
+  assert(captured.avg === 250, 'add save: captured avgPrice is number 250');
+  assert(captured.buyDate === '2024-03-12', 'add save: captured buyDate normalized');
+  w.sandbox.__addPos(null, { prefix: '' });
+  const saved = w.sandbox.__getP();
+  assert(saved.positions.length === 1, 'add save: getPortfolio().positions.length > 0');
+  assert(saved.positions[0].ticker === 'SBER', 'add save: ticker SBER');
+  assert(saved.positions[0].qty === 10, 'add save: qty 10');
+  assert(saved.positions[0].avgPrice === 250, 'add save: avgPrice 250');
+  assert(saved.positions[0].buyDate === '2024-03-12', 'add save: buyDate kept');
+  assert(saved.schemaVersion === schemaBefore, 'add save: schemaVersion unchanged');
+  const raw = JSON.parse(w.store['ibrf.portfolio']);
+  assert(Array.isArray(raw.positions) && raw.positions.length === 1, 'add save: localStorage positions length 1');
+  assert(raw.positions[0].qty === 10 && raw.positions[0].avgPrice === 250, 'add save: localStorage qty/avg');
+  assert(raw.positions[0].buyDate === '2024-03-12', 'add save: localStorage buyDate');
+  assert(w.toasts.some((t) => t.indexOf('Добавлено в портфель: SBER') === 0), 'add save: success toast after persist');
+  assert(w.savedBeforeSuccessToast === 1, 'add save: success toast only after storage has the lot');
+  assert(!w.toasts.some((t) => /Укажите количество|Не удалось сохранить/.test(t)), 'add save: no false failure toast');
+  const afterRender1 = w.sandbox.__getP().positions.length;
+  w.sandbox.renderPortfolio();
+  w.sandbox.renderPortfolio();
+  assert(w.sandbox.__getP().positions.length === afterRender1, 'add save: repeated renderPortfolio keeps the lot');
+  w.sandbox.__switchPfSub('overview');
+  w.sandbox.__switchPfSub('positions');
+  const afterNav = w.sandbox.__getP();
+  assert(afterNav.positions.length === 1 && afterNav.positions[0].ticker === 'SBER' && afterNav.positions[0].qty === 10,
+    'add save: Positions → Overview → Positions keeps the lot');
+
+  const lotId = saved.positions[0].lotId;
+  w.sandbox.__startEditPos(lotId);
+  assert(w.sandbox.state.pfEditLotId === lotId, 'edit save: startEdit sets pfEditLotId');
+  assert(w.fields.pfAddTicker.value === 'SBER', 'edit save: form ticker filled');
+  assert(w.fields.pfAddQty.value === '10', 'edit save: form qty filled');
+  assert(w.fields.pfAddAvg.value === '250', 'edit save: form avg filled');
+  assert(w.fields.pfAddDate.value === '2024-03-12', 'edit save: form buyDate filled');
+  w.fields.pfAddQty.value = '12';
+  w.sandbox.__addPos(null, { prefix: '' });
+  const edited = w.sandbox.__getP();
+  assert(edited.positions.length === 1, 'edit save: still one position');
+  assert(edited.positions[0].lotId === lotId, 'edit save: same lotId');
+  assert(edited.positions[0].qty === 12, 'edit save: qty updated to 12');
+  assert(edited.positions[0].avgPrice === 250, 'edit save: avgPrice unchanged');
+  assert(edited.positions[0].buyDate === '2024-03-12', 'edit save: buyDate unchanged');
+  assert(w.toasts.some((t) => t.indexOf('Покупка обновлена: SBER') === 0), 'edit save: update toast after persist');
+}
+
+{
+  const w = loadPortfolioWriterSandbox();
+  w.fillAddForm({ ticker: 'SBER', qty: '', avgPrice: 250, buyDate: '2024-03-12' });
+  w.sandbox.__addPos(null, { prefix: '' });
+  assert(w.sandbox.__getP().positions.length === 0, 'empty qty: storage stays empty');
+  assert(!w.toasts.some((t) => /Добавлено в портфель/.test(t)), 'empty qty: no false success toast');
+  assert(w.toasts.some((t) => t === 'Укажите количество'), 'empty qty: asks for qty');
 }
 
 if (errors.length) {

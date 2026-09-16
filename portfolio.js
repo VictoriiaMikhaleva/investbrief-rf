@@ -2234,10 +2234,17 @@
     if (label) label.textContent = ticker;
     var sel = document.getElementById('chartTickerSelect');
     if (sel) sel.value = ticker;
+    var openAnalytics = !!(opts.userIntent === 'analytics' || opts.openAnalytics);
+    if (openAnalytics) {
+      ensurePortfolioSub('analytics', {
+        scrollTo: opts.scroll === false ? null : 'portfolioInsightsSection',
+        scrollBlock: 'start'
+      });
+    }
     renderPortfolioFolder();
     // Перерисовка аналитики без автоскролла; скролл только при явном выборе бумаги.
     renderPortfolioChart();
-    if (opts.scroll === false) return;
+    if (opts.scroll === false || openAnalytics) return;
     var section = document.getElementById('portfolioInsightsSection');
     if (section && !section.hidden) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -7174,7 +7181,7 @@
     }
     ensurePositionForChart(ticker).then(function (t) {
       state.folderOpen = true;
-      selectPortfolioTicker(t);
+      selectPortfolioTicker(t, { userIntent: 'analytics' });
       switchTab('portfolio');
     });
   }
@@ -7357,8 +7364,6 @@
     return 'pf' + prefix + 'Add' + field;
   }
 
-
-
   function readPortfolioForm(prefix) {
     var tickerEl = document.getElementById(pfFieldId(prefix, 'Ticker'));
     var qtyRaw = (document.getElementById(pfFieldId(prefix, 'Qty')) || {}).value;
@@ -7436,10 +7441,30 @@
       showToast('Не удалось сохранить: память браузера переполнена. Очистите данные сайта (F12 → Application → Local Storage).');
       return;
     }
+    if (err && err.code === 'portfolio_not_saved') {
+      showToast('Не удалось сохранить позицию. Проверьте количество и попробуйте ещё раз.');
+      return;
+    }
     if (typeof console !== 'undefined' && console.warn) {
       console.warn('[InvestBrief] portfolio add failed:', err);
     }
     showToast('Не удалось добавить позицию — проверьте тикер');
+  }
+
+  function portfolioLotPersisted(lotId) {
+    if (!lotId || typeof getPortfolio !== 'function' || typeof findPortfolioLot !== 'function') return false;
+    var lot = findPortfolioLot(lotId, getPortfolio().positions);
+    var q = lot && Number(lot.qty);
+    return !!(lot && isFinite(q) && q > 1e-9);
+  }
+
+  function persistPortfolioLot(portfolio, lotId) {
+    setPortfolio(portfolio);
+    if (lotId && !portfolioLotPersisted(lotId)) {
+      var err = new Error('portfolio_not_saved');
+      err.code = 'portfolio_not_saved';
+      throw err;
+    }
   }
 
   function normalizeBondTickerInput(input) {
@@ -7483,6 +7508,11 @@
       : null;
     var editing = !!editingLot;
 
+    if (!editing && !hasQty) {
+      showToast('Укажите количество');
+      return;
+    }
+
     if (existingLots.length && !editing && !hasQty && !hasAvg) {
       showToast('Для докупки укажите количество и цену покупки');
       return;
@@ -7497,7 +7527,7 @@
       if (avg != null) editingLot.avgPrice = avg;
       editingLot.buyDate = buyDate;
       editingLot.comment = comment;
-      setPortfolio(portfolio);
+      persistPortfolioLot(portfolio, editingLot.lotId);
       cancelPortfolioEdit();
       showToast('Покупка обновлена: ' + t);
       try { renderPortfolio(); } catch (e) { /* noop */ }
@@ -7529,7 +7559,7 @@
         });
         if (!newLot) throw new Error('invalid_position');
         portfolio.positions.push(newLot);
-        setPortfolio(portfolio);
+        persistPortfolioLot(portfolio, newLot.lotId);
         safeClearPortfolioForms(prefix);
         showToast('Докупка добавлена: ' + t);
       } else {
@@ -7545,7 +7575,7 @@
         });
         if (!pos) throw new Error('invalid_position');
         portfolio.positions.push(pos);
-        setPortfolio(portfolio);
+        persistPortfolioLot(portfolio, pos.lotId);
         safeClearPortfolioForms(prefix);
         showToast('Добавлено в портфель: ' + t);
       }
@@ -7586,7 +7616,7 @@
         if (dayPct != null && isFinite(dayPct)) usPos.dayChangePct = dayPct;
         portfolio.positions.push(usPos);
       }
-      setPortfolio(portfolio);
+      persistPortfolioLot(portfolio, (existingLots.length ? usLot : usPos).lotId);
       safeClearPortfolioForms(prefix);
       showToast(existingLots.length ? 'Докупка добавлена: ' + t : 'Добавлено в портфель: ' + t);
       state.chartTicker = t;
@@ -7839,15 +7869,16 @@
     var form = title
       ? title.closest('.portfolio-add-form') || title.closest('[data-pf-form]')
       : document.querySelector('.portfolio-add-form');
-    if (form && typeof form.scrollIntoView === 'function') {
-      try {
-        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } catch (e) {
-        form.scrollIntoView(true);
-      }
-    }
     var focusEl = document.getElementById(pfFieldId(prefix, 'Qty')) ||
       document.getElementById(pfFieldId(prefix, 'Avg'));
+    if (form) {
+      ensurePortfolioSub('positions', {
+        scrollTo: form,
+        scrollBlock: 'start',
+        focusEl: focusEl
+      });
+      return;
+    }
     if (focusEl && typeof focusEl.focus === 'function') {
       setTimeout(function () {
         try { focusEl.focus({ preventScroll: true }); } catch (e2) {
@@ -8215,7 +8246,10 @@
     updatePortfolioSellAllBtn(getPortfolioSellableQty(ticker));
     if (form) {
       form.hidden = false;
-      form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      ensurePortfolioSub('positions', {
+        scrollTo: form,
+        scrollBlock: 'nearest'
+      });
     } else {
       showToast('Форма продажи не загружена — обновите страницу (Ctrl+F5)');
     }
@@ -8848,6 +8882,7 @@
     }
 
     ensurePortfolioPayoutFeedsLoaded();
+    ensurePortfolioSub('positions');
     renderPortfolioTableBody();
     scrollPortfolioTickerIntoView(ticker, { retries: 4 });
   }
@@ -9018,13 +9053,13 @@
     var card = e.target.closest('.portfolio-card[data-chart-ticker]');
     if (card) {
       if (state.tab === 'watchlist') switchTab('portfolio');
-      selectPortfolioTicker(card.getAttribute('data-chart-ticker'));
+      selectPortfolioTicker(card.getAttribute('data-chart-ticker'), { userIntent: 'analytics' });
       return;
     }
     var row = e.target.closest('tr[data-chart-ticker]');
     if (row) {
       if (state.tab === 'watchlist') switchTab('portfolio');
-      selectPortfolioTicker(row.getAttribute('data-chart-ticker'));
+      selectPortfolioTicker(row.getAttribute('data-chart-ticker'), { userIntent: 'analytics' });
     }
   }
 
@@ -10369,6 +10404,7 @@
     if (!positions.length && !sales.length) {
       renderPortfolioSummary([], {}, { paid12m: 0, forecast12m: 0 }, []);
       renderPortfolioResultSummary([], {}, []);
+      renderPortfolioOverviewChrome([], []);
       var cardsEmpty = document.getElementById('portfolioCards');
       if (cardsEmpty) cardsEmpty.innerHTML = '';
           renderPortfolioClosedPositions([], [], {});
@@ -10380,6 +10416,7 @@
     renderPortfolioClosedPositions(positions, sales, {});
     renderPortfolioRecentOperations(positions, sales, {});
     renderPortfolioResultSummary(positions, {}, sales);
+    renderPortfolioOverviewChrome(positions, sales);
 
     var closedSeed = listClosedPortfolioPositions(positions, sales, {});
     var bondMetaSeed = (positions || []).slice();
@@ -10404,6 +10441,7 @@
       });
       renderPortfolioSummary(positions, bondMetaMap, incomeTotals, sales);
       renderPortfolioResultSummary(positions, bondMetaMap, sales);
+      renderPortfolioOverviewChrome(positions, sales);
       renderPortfolioClosedPositions(positions, sales, bondMetaMap);
       renderPortfolioRecentOperations(positions, sales, bondMetaMap);
       refreshPortfolioAsOfIfShown();
@@ -11657,6 +11695,7 @@
   var PF_DYN_MAX_POINTS = 140;
   var PF_DYN_DEBOUNCE_MS = 80;
   var pfDynSeq = 0;
+  var pfDynBuildInFlight = 0;
   var pfDynTimer = 0;
   var pfDynLastKey = '';
   var pfDynHorizonPicked = false;
@@ -11702,6 +11741,10 @@
 
   function pfDynTabActive() {
     return !(typeof state !== 'undefined' && state && state.tab && state.tab !== 'portfolio');
+  }
+
+  function pfDynHasSeries() {
+    return !!(pfDynState.series && pfDynState.series.length);
   }
 
   function pfDynPortfolioKey(portfolio, horizon) {
@@ -12011,28 +12054,26 @@
     return idx;
   }
 
-  function drawPortfolioDynamicsChart() {
+  function drawPortfolioDynamicsChart(opts) {
+    opts = opts || {};
     var canvas = document.getElementById('pfDynChart');
     var wrap = document.getElementById('pfDynChartWrap');
     if (!canvas || typeof canvas.getContext !== 'function') return;
     if (wrap && wrap.hidden) return;
     if (!pfDynTabActive()) return;
+    if (!isPortfolioSubviewVisible('analytics')) return;
     var series = pfDynState.series || [];
     var wrapW = wrap ? (wrap.clientWidth || wrap.getBoundingClientRect().width) : 0;
+    if (wrapW < 16 && !opts.allowFallbackSize) {
+      scheduleVisiblePortfolioChartsRedraw();
+      return;
+    }
     var size = typeof chartCanvasSize === 'function'
       ? chartCanvasSize(canvas, wrapW > 0 ? Math.min(280, wrapW) : 120, 180)
       : { w: wrapW || canvas.clientWidth || 280, h: canvas.clientHeight || 180 };
     var w = size.w;
     var h = size.h;
     if (wrapW > 0 && w > wrapW) w = wrapW;
-    if ((w < 16 || h < 16) && !canvas._pfDynSizeRetry && typeof requestAnimationFrame === 'function') {
-      canvas._pfDynSizeRetry = true;
-      requestAnimationFrame(function () {
-        canvas._pfDynSizeRetry = false;
-        drawPortfolioDynamicsChart();
-      });
-      return;
-    }
     var dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 2);
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
@@ -12301,7 +12342,9 @@
       includePositions: true,
       bondMetaMap: options.bondMetaMap || {}
     };
+    pfDynBuildInFlight += 1;
     return Promise.resolve(buildPortfolioValueSeries(pf, range.fromDate, range.toDate, seriesOpts)).then(function (series) {
+      pfDynBuildInFlight = Math.max(0, pfDynBuildInFlight - 1);
       if (seq !== pfDynSeq) return;
       series = series || [];
       pfDynLastKey = key;
@@ -12321,8 +12364,9 @@
       pfDynRenderDisclosure();
       pfDynRenderSplitScaleCta(pf, series);
       renderPortfolioDynamicsCard();
-      drawPortfolioDynamicsChart();
+      scheduleVisiblePortfolioChartsRedraw();
     }).catch(function () {
+      pfDynBuildInFlight = Math.max(0, pfDynBuildInFlight - 1);
       if (seq !== pfDynSeq) return;
       pfDynLastKey = '';
       pfDynState.series = [];
@@ -12338,7 +12382,7 @@
     var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
     var key = pfDynPortfolioKey(pf, pfDynState.horizon);
     if (!options.force && key && key === pfDynLastKey) {
-      if (pfDynState.series.length) drawPortfolioDynamicsChart();
+      if (pfDynState.series.length) scheduleVisiblePortfolioChartsRedraw();
       return Promise.resolve(pfDynState.series);
     }
     if (pfDynTimer && typeof clearTimeout === 'function') {
@@ -12362,6 +12406,306 @@
     options.immediate = true;
     options.reason = options.reason || 'explicit';
     return requestPortfolioDynamicsRefresh(options);
+  }
+
+  var PORTFOLIO_SUBS = ['overview', 'analytics', 'positions', 'operations'];
+  var PORTFOLIO_SUB_TAB_IDS = {
+    overview: 'portfolioSubTabOverview',
+    analytics: 'portfolioSubTabAnalytics',
+    positions: 'portfolioSubTabPositions',
+    operations: 'portfolioSubTabOperations'
+  };
+
+  function normalizePortfolioSub(sub) {
+    sub = String(sub || '').trim().toLowerCase();
+    return PORTFOLIO_SUBS.indexOf(sub) === -1 ? 'overview' : sub;
+  }
+
+  function getPortfolioSub() {
+    return normalizePortfolioSub(state && state.portfolioSub);
+  }
+
+  function isPortfolioSubviewVisible(sub) {
+    sub = normalizePortfolioSub(sub);
+    if (typeof document === 'undefined' || !document || typeof document.querySelector !== 'function') {
+      return true;
+    }
+    var panel = document.querySelector('[data-portfolio-subview="' + sub + '"]');
+    if (!panel) return true;
+    return !panel.hidden;
+  }
+
+  function getPortfolioSubTabs() {
+    var nav = typeof document !== 'undefined' && document && typeof document.getElementById === 'function'
+      ? document.getElementById('portfolioSubnav')
+      : null;
+    if (!nav || typeof nav.querySelectorAll !== 'function') return [];
+    return Array.prototype.slice.call(nav.querySelectorAll('[data-portfolio-sub][role="tab"]'));
+  }
+
+  function portfolioQueryAll(sel) {
+    if (typeof document === 'undefined' || !document || typeof document.querySelectorAll !== 'function') {
+      return [];
+    }
+    return Array.prototype.slice.call(document.querySelectorAll(sel));
+  }
+
+  function resolvePortfolioScrollTarget(target) {
+    if (!target) return null;
+    if (typeof target !== 'string') return target;
+    if (typeof document === 'undefined' || !document) return null;
+    if (typeof document.getElementById === 'function') {
+      var byId = document.getElementById(target);
+      if (byId) return byId;
+    }
+    if (typeof document.querySelector === 'function') return document.querySelector(target);
+    return null;
+  }
+
+  function runAfterPortfolioSubviewLayout(fn) {
+    if (typeof fn !== 'function') return;
+    var run = function () {
+      try { fn(); } catch (e) { /* noop */ }
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(run);
+      });
+    } else if (typeof setTimeout === 'function') {
+      setTimeout(run, 0);
+    } else {
+      run();
+    }
+  }
+
+  var PF_CHART_LAYOUT_RETRY_MAX = 4;
+  var pfChartLayoutSeq = 0;
+
+  function portfolioDynamicsWrapWidth() {
+    var wrap = document.getElementById('pfDynChartWrap');
+    if (!wrap || wrap.hidden) return 0;
+    return wrap.clientWidth || (wrap.getBoundingClientRect && wrap.getBoundingClientRect().width) || 0;
+  }
+
+  function portfolioInsightChartsLayoutReady() {
+    var price = document.getElementById('portfolioInsightPriceChart');
+    if (!price || !price._chartMeta) return true;
+    var host = price.parentElement;
+    if (!host) return true;
+    var w = host.clientWidth || (host.getBoundingClientRect && host.getBoundingClientRect().width) || 0;
+    return w >= 16;
+  }
+
+  function scheduleVisiblePortfolioChartsRedraw(attempt) {
+    attempt = attempt || 0;
+    var seq = attempt === 0 ? (++pfChartLayoutSeq) : pfChartLayoutSeq;
+    if (seq !== pfChartLayoutSeq) return;
+    if (!pfDynTabActive() || !isPortfolioSubviewVisible('analytics')) return;
+    var wrap = document.getElementById('pfDynChartWrap');
+    var needDyn = !!(wrap && !wrap.hidden && pfDynState.series && pfDynState.series.length);
+    var dynReady = !needDyn || portfolioDynamicsWrapWidth() >= 16;
+    var insightsReady = portfolioInsightChartsLayoutReady();
+    if ((!dynReady || !insightsReady) && attempt < PF_CHART_LAYOUT_RETRY_MAX) {
+      var next = function () {
+        if (seq !== pfChartLayoutSeq) return;
+        scheduleVisiblePortfolioChartsRedraw(attempt + 1);
+      };
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(next);
+      else if (typeof setTimeout === 'function') setTimeout(next, 16);
+      else next();
+      return;
+    }
+    if (needDyn) drawPortfolioDynamicsChart({ allowFallbackSize: attempt >= PF_CHART_LAYOUT_RETRY_MAX });
+    redrawVisiblePortfolioInsightCharts();
+  }
+
+  function redrawVisiblePortfolioInsightCharts() {
+    var price = document.getElementById('portfolioInsightPriceChart');
+    if (price && price._chartMeta && price._chartMeta.series && typeof drawPriceChart === 'function') {
+      drawPriceChart(price, price._chartMeta.series, {
+        ticker: price._chartMeta.ticker,
+        horizon: price._chartMeta.horizon
+      });
+    }
+    ['portfolioInsightDivChart', 'portfolioInsightVolChart'].forEach(function (id) {
+      var canvas = document.getElementById(id);
+      var st = canvas && canvas._barChartState;
+      if (!st || !st.series || typeof drawFullBarChart !== 'function') return;
+      drawFullBarChart(canvas, st.series, Object.assign({}, st.baseOptions || {}, { _redraw: true }));
+    });
+    var pc = document.getElementById('portfolioPurchaseCandleChart');
+    if (pc && pc._purchaseChartMeta && typeof drawPurchaseCandleChart === 'function') {
+      var pm = pc._purchaseChartMeta;
+      drawPurchaseCandleChart(pc, pm.lots, {
+        ticker: pm.ticker,
+        currentPrice: pm.currentPrice,
+        hoverIndex: pc._purchaseHoverIndex
+      });
+    }
+  }
+
+  function ensurePortfolioDynamicsReady() {
+    if (pfDynHasSeries()) {
+      pfDynShowChart(true);
+      scheduleVisiblePortfolioChartsRedraw();
+      return;
+    }
+    if (pfDynBuildInFlight) return;
+    return requestPortfolioDynamicsRefresh({ immediate: true, reason: 'analytics-visible' });
+  }
+
+  function afterPortfolioSubviewShown(opts) {
+    opts = opts || {};
+    if (getPortfolioSub() === 'analytics') {
+      if (typeof pfDynHideTip === 'function') pfDynHideTip();
+      ensurePortfolioDynamicsReady();
+    }
+    var el = resolvePortfolioScrollTarget(opts.scrollTo);
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({
+          behavior: opts.scrollBehavior || 'smooth',
+          block: opts.scrollBlock || 'start'
+        });
+      } catch (e) {
+        try { el.scrollIntoView(true); } catch (e2) { /* noop */ }
+      }
+    }
+    var focusTarget = opts.focusEl;
+    if (typeof focusTarget === 'string') {
+      focusTarget = document.getElementById(focusTarget) || document.querySelector(focusTarget);
+    }
+    if (focusTarget && typeof focusTarget.focus === 'function') {
+      try { focusTarget.focus({ preventScroll: true }); } catch (e3) {
+        try { focusTarget.focus(); } catch (e4) { /* noop */ }
+      }
+    }
+    if (typeof opts.after === 'function') opts.after();
+  }
+
+  function syncPortfolioSubnavUi(sub) {
+    sub = normalizePortfolioSub(sub);
+    if (state) state.portfolioSub = sub;
+    getPortfolioSubTabs().forEach(function (btn) {
+      var isActive = btn.getAttribute('data-portfolio-sub') === sub;
+      btn.classList.toggle('active', isActive);
+      if (typeof btn.setAttribute === 'function') {
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      }
+      btn.tabIndex = isActive ? 0 : -1;
+    });
+    portfolioQueryAll('[data-portfolio-subview]').forEach(function (panel) {
+      var isActive = panel.getAttribute('data-portfolio-subview') === sub;
+      panel.classList.toggle('active', isActive);
+      panel.hidden = !isActive;
+    });
+  }
+
+  function switchPortfolioSub(sub, opts) {
+    opts = opts || {};
+    sub = normalizePortfolioSub(sub);
+    var prev = getPortfolioSub();
+    syncPortfolioSubnavUi(sub);
+    if (opts.focusTab) {
+      var tabId = PORTFOLIO_SUB_TAB_IDS[sub];
+      var tab = tabId ? document.getElementById(tabId) : null;
+      if (tab && typeof tab.focus === 'function') {
+        try { tab.focus(); } catch (e) { /* noop */ }
+      }
+    }
+    if (prev === sub && !opts.forceLayout) {
+      afterPortfolioSubviewShown(opts);
+      return sub;
+    }
+    runAfterPortfolioSubviewLayout(function () {
+      afterPortfolioSubviewShown(opts);
+    });
+    return sub;
+  }
+
+  function ensurePortfolioSub(sub, opts) {
+    return switchPortfolioSub(sub, opts);
+  }
+
+  function handlePortfolioSubnavKeydown(e) {
+    var nav = document.getElementById('portfolioSubnav');
+    if (!nav) return;
+    var tabs = getPortfolioSubTabs();
+    if (!tabs.length) return;
+    var current = e.target && e.target.closest ? e.target.closest('[data-portfolio-sub][role="tab"]') : null;
+    if (!current || !nav.contains(current)) return;
+    var idx = tabs.indexOf(current);
+    if (idx < 0) return;
+    var next = idx;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (idx - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      switchPortfolioSub(current.getAttribute('data-portfolio-sub'), { focusTab: true });
+      return;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    switchPortfolioSub(tabs[next].getAttribute('data-portfolio-sub'), { focusTab: true });
+  }
+
+  function bindPortfolioSubnav() {
+    var nav = document.getElementById('portfolioSubnav');
+    if (nav && !nav._pfSubBound) {
+      nav._pfSubBound = true;
+      nav.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-portfolio-sub]') : null;
+        if (!btn || !nav.contains(btn)) return;
+        switchPortfolioSub(btn.getAttribute('data-portfolio-sub'));
+      });
+      nav.addEventListener('keydown', handlePortfolioSubnavKeydown);
+    }
+    var actions = document.getElementById('portfolioOverviewActions');
+    if (actions && !actions._pfJumpBound) {
+      actions._pfJumpBound = true;
+      actions.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-portfolio-jump]') : null;
+        if (!btn || !actions.contains(btn)) return;
+        var jump = btn.getAttribute('data-portfolio-jump');
+        if (jump === 'positions') {
+          ensurePortfolioSub('positions');
+        } else if (jump === 'positions-add') {
+          ensurePortfolioSub('positions', {
+            scrollTo: '.portfolio-add-form',
+            focusEl: 'pfAddTicker'
+          });
+        } else if (jump === 'analytics-dyn') {
+          ensurePortfolioSub('analytics', {
+            scrollTo: 'portfolioDynamicsBlock'
+          });
+        }
+      });
+    }
+  }
+
+  function renderPortfolioOverviewChrome(positions, sales) {
+    var emptyEl = document.getElementById('portfolioOverviewEmpty');
+    var splitEl = document.getElementById('portfolioOverviewSplitHint');
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: positions || [], sales: sales || [] };
+    var open = (positions || []).filter(function (p) {
+      var q = Number(p && p.qty);
+      return isFinite(q) && q > 1e-9;
+    });
+    var saleCount = (sales || pf.sales || []).length;
+    if (emptyEl) emptyEl.hidden = !!(open.length || saleCount);
+    if (splitEl) {
+      var lots = typeof collectUnresolvedSplitScaleLots === 'function'
+        ? collectUnresolvedSplitScaleLots(pf)
+        : [];
+      splitEl.hidden = !lots.length;
+    }
+  }
+
+  function initPortfolioSubnav() {
+    bindPortfolioSubnav();
   }
 
   function initPortfolioDynamicsUi() {
@@ -12399,6 +12743,7 @@
     initPortfolioCompareDatesDefault();
     initPortfolioPayoutsDatesDefault();
     initPortfolioDynamicsUi();
+    initPortfolioSubnav();
     renderPortfolioTableBody();
     renderPortfolioFolder();
     renderPortfolioChart();

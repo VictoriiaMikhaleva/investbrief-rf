@@ -454,6 +454,65 @@
     .analytics-subview:not([hidden]) {
       display: block;
     }
+    .portfolio-subnav {
+      margin-bottom: 1.1rem;
+    }
+    .portfolio-subnav.horizon-tabs {
+      gap: 0.3rem;
+      min-width: 0;
+    }
+    .portfolio-subnav.horizon-tabs button {
+      flex: 1 1 5.5rem;
+      min-width: 0;
+    }
+    @media (max-width: 699px) {
+      .portfolio-subnav.horizon-tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        align-items: stretch;
+      }
+      .portfolio-subnav.horizon-tabs button {
+        flex: none;
+        width: auto;
+        min-width: 0;
+        min-height: 36px;
+      }
+    }
+    .portfolio-subview[hidden] {
+      display: none !important;
+    }
+    .portfolio-subview:not([hidden]) {
+      display: block;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .portfolio-overview-actions {
+      margin: 0 0 0.85rem;
+      min-width: 0;
+    }
+    .portfolio-overview-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-bottom: 0.55rem;
+    }
+    .portfolio-overview-empty {
+      margin: 0 0 0.75rem;
+    }
+    .portfolio-overview-empty-text {
+      margin: 0 0 0.55rem;
+    }
+    .portfolio-overview-split-hint {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem;
+      margin: 0 0 0.75rem;
+    }
+    .portfolio-overview-split-hint[hidden],
+    .portfolio-overview-empty[hidden] {
+      display: none !important;
+    }
     .brief-card {
       margin-bottom: var(--space-block);
       position: relative;

@@ -947,6 +947,7 @@
   var state = {
     tab: 'briefing',
     analyticsSub: 'stocks',
+    portfolioSub: 'overview',
     horizon: 'today',
     newsMarketFilter: 'all',
     chartHorizon: 'week',
