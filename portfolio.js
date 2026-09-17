@@ -4035,6 +4035,12 @@
 
   var PAYOUT_DIV_NOTE = 'по дате закрытия реестра, не по дате зачисления';
   var PAYOUT_COUPON_NOTE = 'дата купона ISS, без НКД';
+  var PAYOUT_ELIGIBILITY_RECORD = 'recordDate';
+  var PAYOUT_ELIGIBILITY_FALLBACK = 'couponDateFallback';
+  var PAYOUT_COUPON_FALLBACK_NOTE = 'Дата фиксации не найдена; право оценено по дате купона, без НКД.';
+  var PAYOUT_COUPON_INVALID_RECORD_NOTE = 'Дата фиксации некорректна; право оценено по дате купона, без НКД.';
+  var PAYOUT_COUPON_FALLBACK_WARNING = 'Для части купонов дата фиксации не найдена; право оценено по дате купона.';
+  var PAYOUT_COUPON_INVALID_RECORD_WARNING = 'Для части купонов дата фиксации некорректна; право оценено по дате купона.';
   var PAYOUT_NO_FEED_PREFIX = 'нет данных по выплатам для ';
   var PAYOUT_BAD_DIV_SUFFIX = ': дивиденд без суммы на 1 акцию';
   var PAYOUT_BAD_COUPON_SUFFIX = ': купон без суммы на 1 облигацию';
@@ -4182,6 +4188,67 @@
       null;
   }
 
+  function payoutsRecordDateFallbackReason(ev, couponDate) {
+    var recordDate = payoutsPickRecordDate(ev);
+    if (recordDate && couponDate && recordDate > couponDate) return 'invalid';
+    if (recordDate) return null;
+    var raw;
+    if (ev && Object.prototype.hasOwnProperty.call(ev, 'recordDate')) raw = ev.recordDate;
+    else if (ev && Object.prototype.hasOwnProperty.call(ev, 'recorddate')) raw = ev.recorddate;
+    else return 'missing';
+    if (raw == null || raw === '') return 'missing';
+    return 'invalid';
+  }
+
+  function payoutsCouponEligibility(ev) {
+    var couponDate = payoutsPickCouponDate(ev);
+    var recordDate = payoutsPickRecordDate(ev);
+    if (!couponDate) {
+      return {
+        couponDate: null,
+        recordDate: recordDate,
+        eligibilityDate: null,
+        eligibilitySource: null,
+        eligibilityEstimated: false,
+        fallbackReason: 'noCouponDate'
+      };
+    }
+    var reason = payoutsRecordDateFallbackReason(ev, couponDate);
+    if (!reason && recordDate) {
+      return {
+        couponDate: couponDate,
+        recordDate: recordDate,
+        eligibilityDate: recordDate,
+        eligibilitySource: PAYOUT_ELIGIBILITY_RECORD,
+        eligibilityEstimated: false,
+        fallbackReason: null
+      };
+    }
+    return {
+      couponDate: couponDate,
+      recordDate: recordDate,
+      eligibilityDate: couponDate,
+      eligibilitySource: PAYOUT_ELIGIBILITY_FALLBACK,
+      eligibilityEstimated: true,
+      fallbackReason: reason || 'missing'
+    };
+  }
+
+  function payoutsCouponFallbackNote(elig) {
+    if (!elig || !elig.eligibilityEstimated) return PAYOUT_COUPON_NOTE;
+    return elig.fallbackReason === 'invalid'
+      ? PAYOUT_COUPON_INVALID_RECORD_NOTE
+      : PAYOUT_COUPON_FALLBACK_NOTE;
+  }
+
+  function payoutsMarkCouponFallback(warnings, elig) {
+    if (!elig || !elig.eligibilityEstimated) return false;
+    payoutsPushWarning(warnings, elig.fallbackReason === 'invalid'
+      ? PAYOUT_COUPON_INVALID_RECORD_WARNING
+      : PAYOUT_COUPON_FALLBACK_WARNING);
+    return true;
+  }
+
   function payoutsCouponPerUnit(coupon, faceValue) {
     if (!coupon) return null;
     var v = Number(coupon.value);
@@ -4292,9 +4359,11 @@
     var i;
     for (i = 0; i < events.length; i++) {
       var ev = events[i] || {};
-      var eventIso = timelineIsoDate(ev.date) ||
-        timelineIsoDate(ev.couponDate) ||
-        timelineIsoDate(ev.coupondate);
+      var type = kind === 'bond' ? 'coupon' : 'dividend';
+      var couponElig = type === 'coupon' ? payoutsCouponEligibility(ev) : null;
+      var eventIso = type === 'coupon'
+        ? (couponElig && couponElig.eligibilityDate)
+        : timelineIsoDate(ev.date);
       if (!eventIso || eventIso < window.fromIso || eventIso > window.endIso) continue;
       var qtyHeld = 0;
       if (useSplitQty) {
@@ -4325,7 +4394,6 @@
       }
 
       var perUnit = null;
-      var type = kind === 'bond' ? 'coupon' : 'dividend';
       if (type === 'dividend') {
         var divVal = Number(ev.value);
         perUnit = isFinite(divVal) && divVal > 0 ? divVal : null;
@@ -4350,17 +4418,23 @@
         ticker: ticker,
         type: type,
         payoutDate: null,
-        recordDate: type === 'dividend' ? eventIso : payoutsPickRecordDate(ev),
+        recordDate: type === 'dividend' ? eventIso : (couponElig ? couponElig.recordDate : payoutsPickRecordDate(ev)),
         qtyHeld: qtyHeld,
         payoutPerUnit: perUnit,
         amountRub: amountRub,
         currency: currency,
         source: source,
-        note: type === 'dividend' ? PAYOUT_DIV_NOTE : PAYOUT_COUPON_NOTE
+        note: type === 'dividend' ? PAYOUT_DIV_NOTE : payoutsCouponFallbackNote(couponElig)
       };
       if (type === 'coupon') {
-        item.couponDate = payoutsPickCouponDate(ev) || eventIso;
+        item.couponDate = (couponElig && couponElig.couponDate) || payoutsPickCouponDate(ev) || eventIso;
         item.eligibilityDate = eventIso;
+        item.eligibilitySource = couponElig ? couponElig.eligibilitySource : PAYOUT_ELIGIBILITY_FALLBACK;
+        if (couponElig && couponElig.eligibilityEstimated) {
+          item.isEstimated = true;
+          isPartial = true;
+          payoutsMarkCouponFallback(warnings, couponElig);
+        }
       }
       items.push(item);
     }
@@ -4392,7 +4466,7 @@
   var TWP_NOTES = [
     'справочный результат по данным портфеля',
     'с учётом найденных выплат',
-    'дивиденды по дате отсечки, купоны по дате купона; без налогов, комиссий и НКД'
+    'дивиденды по дате отсечки, купоны по дате фиксации; без налогов, комиссий и НКД'
   ];
 
   function twpEmptyResult(ticker, fromIso, toIso) {
@@ -4531,7 +4605,7 @@
    * Будущая подсказка UI «Как считается»:
    * Акции: текущая стоимость остатка + сумма продаж + дивиденды за период владения − сумма покупок.
    * ОФЗ: текущая стоимость остатка + сумма продаж + купоны за период владения − сумма покупок.
-   * Дивиденды — по дате отсечки, ОФЗ — по дате купона. Налоги, комиссии, НКД и дата зачисления не учитываются.
+   * Дивиденды — по дате отсечки, ОФЗ — по дате фиксации (recordDate), иначе оценка по дате купона. Налоги, комиссии, НКД и дата зачисления не учитываются.
    * Формулировки: «справочный результат», «с учётом найденных выплат», «по данным портфеля».
    * Не писать: гарантированная/чистая доходность, получено на счёт, инвестиционная рекомендация.
    */
@@ -5520,13 +5594,14 @@
       var e;
       for (e = 0; e < events.length; e++) {
         var ev = events[e] || {};
-        var eventIso = timelineIsoDate(ev.date) ||
-          timelineIsoDate(ev.couponDate) ||
-          timelineIsoDate(ev.coupondate);
+        var type = kind === 'bond' ? 'coupon' : 'dividend';
+        var couponElig = type === 'coupon' ? payoutsCouponEligibility(ev) : null;
+        var eventIso = type === 'coupon'
+          ? (couponElig && couponElig.eligibilityDate)
+          : timelineIsoDate(ev.date);
         if (!eventIso || eventIso <= nowIso || eventIso > endIso) continue;
 
         var perUnit = null;
-        var type = kind === 'bond' ? 'coupon' : 'dividend';
         if (type === 'dividend') {
           var divVal = Number(ev.value);
           perUnit = isFinite(divVal) && divVal > 0 ? divVal : null;
@@ -5546,20 +5621,34 @@
 
         var amountRub = asOfRoundRub(currentQty * perUnit);
         if (amountRub == null) continue;
+        var displayIso = type === 'coupon'
+          ? ((couponElig && couponElig.couponDate) || eventIso)
+          : eventIso;
         var upcoming = {
           ticker: ticker,
           type: type,
-          date: eventIso,
+          date: displayIso,
           qtyHeld: currentQty,
           payoutPerUnit: perUnit,
           amountRub: amountRub,
           currency: ev.currency ? String(ev.currency) : 'RUB',
           source: source,
-          note: type === 'dividend' ? UPCOMING_DIV_NOTE : UPCOMING_COUPON_NOTE
+          note: type === 'dividend'
+            ? UPCOMING_DIV_NOTE
+            : (couponElig && couponElig.eligibilityEstimated
+              ? payoutsCouponFallbackNote(couponElig)
+              : UPCOMING_COUPON_NOTE)
         };
         if (type === 'coupon') {
-          upcoming.couponDate = payoutsPickCouponDate(ev) || eventIso;
-          upcoming.recordDate = payoutsPickRecordDate(ev);
+          upcoming.couponDate = displayIso;
+          upcoming.recordDate = couponElig ? couponElig.recordDate : null;
+          upcoming.eligibilityDate = eventIso;
+          upcoming.eligibilitySource = couponElig ? couponElig.eligibilitySource : PAYOUT_ELIGIBILITY_FALLBACK;
+          if (couponElig && couponElig.eligibilityEstimated) {
+            upcoming.isEstimated = true;
+            isPartial = true;
+            payoutsMarkCouponFallback(warnings, couponElig);
+          }
         }
         items.push(upcoming);
       }
@@ -9996,7 +10085,7 @@
           '− сумма покупок.</p>';
     var notes = isBond
       ? '<p class="pf-twp-how-note">Процент — к сумме покупок. Если покупок на 0 ₽, процент не считается.</p>' +
-        '<p class="pf-twp-how-note">Цены ОФЗ — в % от номинала, суммы — в ₽. Купоны — по дате купона, без НКД. Налоги, комиссии и будущие выплаты не учитываются.</p>'
+        '<p class="pf-twp-how-note">Цены ОФЗ — в % от номинала, суммы — в ₽. Для ОФЗ показана дата купона. Право на выплату оценивается по дате фиксации, если она доступна, без НКД. Налоги, комиссии и будущие выплаты не учитываются.</p>'
       : '<p class="pf-twp-how-note">Процент — к сумме покупок. Если покупок на 0 ₽, процент не считается.</p>' +
         '<p class="pf-twp-how-note">Дивиденды — по дате отсечки, не по дате зачисления. Налоги, комиссии и будущие выплаты не учитываются.</p>';
     if (splitAffected) {
@@ -11781,7 +11870,7 @@
   var PF_PAY_ERROR = 'Не удалось рассчитать выплаты за период. Попробуйте ещё раз.';
   var PF_PAY_EMPTY = 'За выбранный период выплат по бумагам из портфеля не найдено.';
   var PF_PAY_PARTIAL = 'Расчёт частичный: по части бумаг нет данных о выплатах или есть операции без корректной даты.';
-  var PF_PAY_FOOT = 'Расчёт справочный: акции считаются по отсечке, ОФЗ — по дате купона. Налоги, комиссии, НКД и дата зачисления не учитываются.';
+  var PF_PAY_FOOT = 'Расчёт справочный: акции считаются по отсечке. Для ОФЗ в таблице показана дата купона. Право на выплату оценивается по дате фиксации, если она доступна. Налоги, комиссии, НКД и дата зачисления не учитываются.';
   var pfPaySeq = 0;
   var pfPayBusy = false;
 
@@ -12058,7 +12147,7 @@
   var PF_UP_PAY_ERROR = 'Не удалось подобрать предстоящие выплаты. Попробуйте ещё раз.';
   var PF_UP_PAY_EMPTY = 'На выбранном горизонте известных выплат по текущему составу портфеля не найдено.';
   var PF_UP_PAY_PARTIAL = 'Расчёт частичный: по части бумаг нет данных о выплатах или сумма на 1 шт. неизвестна.';
-  var PF_UP_PAY_FOOT = 'Расчёт справочный: акции считаются по отсечке, ОФЗ — по дате купона. Сумма рассчитана для текущего состава портфеля. Налоги, комиссии, НКД и дата зачисления не учитываются.';
+  var PF_UP_PAY_FOOT = 'Расчёт справочный: акции считаются по отсечке. Для ОФЗ в таблице показана дата купона. Право на выплату оценивается по дате фиксации, если она доступна. Сумма рассчитана для текущего состава портфеля. Налоги, комиссии, НКД и дата зачисления не учитываются.';
   var pfUpPayBusy = false;
   var pfUpPaySeq = 0;
 
