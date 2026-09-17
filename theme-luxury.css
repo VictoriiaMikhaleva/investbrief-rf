@@ -4954,6 +4954,156 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
   max-width: none;
 }
 
+#tab-portfolio .pf-bridge {
+  margin: 0 0 0.7rem;
+  padding: 0.58rem 0.72rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 16%, #d5dbe2 84%);
+  background: color-mix(in srgb, #ffffff 90%, var(--bronze-soft) 10%);
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+
+#tab-portfolio .pf-bridge-title {
+  margin: 0 0 0.18rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: color-mix(in srgb, var(--text) 86%, #3d4844 14%);
+}
+
+#tab-portfolio .pf-bridge-meta {
+  margin: 0 0 0.28rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text-muted) 82%, #6a756c 18%);
+}
+
+#tab-portfolio .pf-bridge-lead {
+  margin: 0 0 0.42rem;
+  font-size: 0.73rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 74%, #4d5a54 26%);
+}
+
+#tab-portfolio .pf-bridge-warn {
+  margin: 0 0 0.4rem;
+  padding: 0.34rem 0.48rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, #7a5a42 72%, #5c4636 28%);
+  background: color-mix(in srgb, var(--bronze-soft) 28%, #fffaf6 72%);
+  border: 1px solid color-mix(in srgb, var(--bronze) 18%, #eadccb 82%);
+  border-radius: 8px;
+}
+
+#tab-portfolio .pf-bridge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+#tab-portfolio .pf-bridge-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+#tab-portfolio .pf-bridge-lbl {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text) 76%, #4d5a54 24%);
+}
+
+#tab-portfolio .pf-bridge-hint {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--text-muted) 80%, var(--bronze) 20%);
+}
+
+#tab-portfolio .pf-bridge-val {
+  flex: 0 1 auto;
+  text-align: right;
+  font-size: 0.82rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: color-mix(in srgb, var(--text) 86%, #3d5348 14%);
+  overflow-wrap: anywhere;
+}
+
+#tab-portfolio .pf-bridge-row--buy .pf-bridge-val {
+  color: color-mix(in srgb, var(--accent) 42%, #4a5e52 58%);
+}
+
+#tab-portfolio .pf-bridge-row--sell .pf-bridge-val {
+  color: color-mix(in srgb, #8a5a48 58%, #6e4a40 42%);
+}
+
+#tab-portfolio .pf-bridge-row--up .pf-bridge-val {
+  color: color-mix(in srgb, var(--accent) 42%, #4a5e52 58%);
+}
+
+#tab-portfolio .pf-bridge-row--down .pf-bridge-val {
+  color: color-mix(in srgb, #8a5a48 62%, #6e4a40 38%);
+}
+
+#tab-portfolio .pf-bridge-row--soft .pf-bridge-val {
+  font-weight: 500;
+  color: color-mix(in srgb, var(--text-muted) 70%, #5c6560 30%);
+}
+
+#tab-portfolio .pf-bridge-row--total {
+  margin-top: 0.18rem;
+  padding-top: 0.38rem;
+  border-top: 1px solid color-mix(in srgb, var(--bronze) 16%, #e4e8ec 84%);
+}
+
+#tab-portfolio .pf-bridge-row--total .pf-bridge-lbl,
+#tab-portfolio .pf-bridge-row--total .pf-bridge-val {
+  font-weight: 700;
+  color: color-mix(in srgb, var(--text) 90%, #3d4844 10%);
+}
+
+#tab-portfolio .pf-bridge-row--total .pf-bridge-val {
+  font-size: 0.92rem;
+}
+
+#tab-portfolio .pf-bridge-how {
+  margin: 0.42rem 0 0;
+}
+
+#tab-portfolio .pf-bridge-how-summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--text) 62%, var(--bronze) 38%);
+}
+
+#tab-portfolio .pf-bridge-how-summary::-webkit-details-marker {
+  display: none;
+}
+
+#tab-portfolio .pf-bridge-how-body {
+  margin: 0.28rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text-muted) 76%, #4d5a54 24%);
+}
+
+#tab-portfolio .pf-bridge-how-body p {
+  margin: 0;
+}
+
+#tab-portfolio .pf-bridge-how-body p + p {
+  margin-top: 0.28rem;
+}
+
 #tab-portfolio .pf-cmp-empty {
   margin: 0.1rem 0 0;
   font-size: 0.84rem;
@@ -5072,6 +5222,22 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
   #tab-portfolio .pf-cmp-insight-list {
     padding-left: 0.95rem;
     font-size: 0.76rem;
+  }
+
+  #tab-portfolio .pf-bridge {
+    padding: 0.5rem 0.58rem 0.48rem;
+  }
+
+  #tab-portfolio .pf-bridge-row {
+    gap: 0.45rem;
+  }
+
+  #tab-portfolio .pf-bridge-lbl {
+    font-size: 0.74rem;
+  }
+
+  #tab-portfolio .pf-bridge-val {
+    font-size: 0.8rem;
   }
 
   #tab-portfolio .pf-cmp-table-wrap {

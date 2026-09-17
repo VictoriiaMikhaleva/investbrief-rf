@@ -433,6 +433,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__collectPeriodOps = collectComparePeriodOperations;' +
       '\nthis.__asOfTable = buildPortfolioAsOfTableHtml;' +
       '\nthis.__cmpDetailsHtml = buildPortfolioCompareDetailsHtml;' +
+      '\nthis.__bridgeHtml = buildPortfolioValueChangeBridgeHtml;' +
+      '\nthis.__bridgeFull = isPortfolioValueChangeBridgeFull;' +
       '\nthis.__payouts = buildPortfolioPayoutsForHoldingPeriod;' +
       '\nthis.__tickerPayouts = buildTickerPayoutsForHoldingPeriod;' +
       '\nthis.__tickerReturn = buildTickerReturnWithPayouts;' +
@@ -562,6 +564,8 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
     buildPortfolioAsOfTableHtml: sandbox.__asOfTable,
     buildPortfolioCompareDetailsHtml: sandbox.__cmpDetailsHtml,
+    buildPortfolioValueChangeBridgeHtml: sandbox.__bridgeHtml,
+    isPortfolioValueChangeBridgeFull: sandbox.__bridgeFull,
     buildPortfolioPayoutsForHoldingPeriod: sandbox.__payouts,
     buildTickerPayoutsForHoldingPeriod: sandbox.__tickerPayouts,
     buildTickerReturnWithPayouts: sandbox.__tickerReturn,
@@ -7595,6 +7599,105 @@ await (async () => {
   assert(/requestPortfolioDynamicsRefresh\(\{ immediate: true, reason: 'analytics-visible' \}\)/.test(ensureDynFn),
     'inner tabs: ensure starts existing refresh only if series missing');
   assert(!/force:\s*true/.test(ensureDynFn), 'inner tabs: ensure does not force a new series build');
+}
+
+{
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const pfJs = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const cmpBlock = indexHtml.slice(
+    indexHtml.indexOf('id="portfolioCompareBlock"'),
+    indexHtml.indexOf('id="portfolioPayoutsBlock"')
+  );
+  assert((cmpBlock.match(/type="date"/g) || []).length === 2, 'bridge ui: still two compare date inputs');
+  assert(/id="pfCmpFromDate"/.test(cmpBlock) && /id="pfCmpToDate"/.test(cmpBlock), 'bridge ui: same compare dates');
+  assert(!/id="pfBridgeFromDate"|id="pfBridgeToDate"|id="pfCmpBridgeFrom"/.test(cmpBlock),
+    'bridge ui: no second date picker');
+  assert(!/За счёт чего изменился портфель/.test(cmpBlock), 'bridge ui: title is renderer-only, not a static stub');
+
+  const showCmp = pfJs.slice(
+    pfJs.indexOf('function showPortfolioValueCompare'),
+    pfJs.indexOf('var PF_PAY_BTN_IDLE')
+  );
+  assert(/buildPortfolioValueChangeBridge\(/.test(showCmp), 'bridge ui: compare calls existing helper');
+  assert(/buildPortfolioValueChangeBetweenDates: function \(\) \{ return result; \}/.test(showCmp),
+    'bridge ui: reuses compare snapshot, no second as-of fetch');
+  assert(!/buildPortfolioValueSeries/.test(showCmp), 'bridge ui: compare path does not build series');
+  assert(!/paid12m|forecast12m/.test(showCmp), 'bridge ui: no 12m payout fields in compare path');
+
+  const helperStart = pfJs.indexOf('function buildPortfolioValueChangeBridge');
+  const helperEnd = pfJs.indexOf('function cmpExplainQtyPart');
+  const helperSrc = pfJs.slice(helperStart, helperEnd);
+  assert(/fromValueRub \+ purchasesRub - salesRub \+ priceEffectRub/.test(helperSrc.replace(/\s+/g, ' ').replace(/−/g, '-')),
+    'bridge ui: Wave 1 identity still in helper');
+
+  const full = calc.buildPortfolioValueChangeBridgeHtml({
+    fromDate: '2024-01-01',
+    toDate: '2024-06-01',
+    fromValueRub: 100,
+    toValueRub: 150,
+    purchasesRub: 20,
+    salesRub: 10,
+    priceEffectRub: 40,
+    identityOk: true,
+    isPartial: false,
+    operationsPartial: false
+  });
+  assert(calc.isPortfolioValueChangeBridgeFull({
+    identityOk: true, isPartial: false, operationsPartial: false
+  }) === true, 'bridge ui: full state helper');
+  assert(/За счёт чего изменился портфель/.test(full), 'bridge ui full: title');
+  assert(/Покупки/.test(full) && /Продажи/.test(full) && /Ценовой эффект/.test(full), 'bridge ui full: P/S/effect labels');
+  assert(/Стоимость на начало/.test(full) && /Стоимость на конец/.test(full), 'bridge ui full: from/to rows');
+  assert(/Как считается/.test(full), 'bridge ui full: how-to disclosure');
+  assert(/Изменение оценки бумаг и ценовой эффект сделок/.test(full), 'bridge ui full: short how-to');
+  assert(!/Прибыль|Доходность|Рыночная прибыль|Пополнения|Внесено|residual|paid12m|forecast12m/.test(full),
+    'bridge ui full: no forbidden terms');
+  assert(!/#portfolio\//.test(full), 'bridge ui full: no nested hash');
+  assert(!/type="date"/.test(full), 'bridge ui full: no date inputs');
+
+  const partial = calc.buildPortfolioValueChangeBridgeHtml({
+    fromDate: '2024-01-01',
+    toDate: '2024-06-01',
+    fromValueRub: 0,
+    toValueRub: 0,
+    purchasesRub: 100,
+    salesRub: 0,
+    priceEffectRub: -100,
+    identityOk: true,
+    isPartial: true,
+    operationsPartial: false
+  });
+  assert(calc.isPortfolioValueChangeBridgeFull({
+    identityOk: true, isPartial: true, operationsPartial: false
+  }) === false, 'bridge ui: identityOk+isPartial is not full');
+  assert(/Расчёт частичный: для части позиций не хватает исторических данных/.test(partial),
+    'bridge ui partial: warning');
+  assert(/по доступным данным/.test(partial), 'bridge ui partial: effect marked soft');
+  assert(/Ценовой эффект/.test(partial), 'bridge ui partial: effect still shown');
+  assert(/pf-bridge-row--soft/.test(partial), 'bridge ui partial: effect less categorical');
+
+  const opsPart = calc.buildPortfolioValueChangeBridgeHtml({
+    fromDate: '2024-01-01',
+    toDate: '2024-06-01',
+    fromValueRub: 1200,
+    toValueRub: 650,
+    purchasesRub: null,
+    salesRub: null,
+    priceEffectRub: null,
+    identityOk: false,
+    isPartial: true,
+    operationsPartial: true
+  });
+  assert(/Не все операции за период удалось оценить/.test(opsPart), 'bridge ui opsPartial: warning');
+  assert(/pf-bridge-row--effect[\s\S]*?<span class="pf-bridge-val">—<\/span>/.test(opsPart),
+    'bridge ui opsPartial: null effect is an em dash');
+  assert(!/pf-bridge-row--buy[\s\S]*?<span class="pf-bridge-val">0,00/.test(opsPart),
+    'bridge ui opsPartial: null purchases are not 0');
+  assert(/Стоимость на начало/.test(opsPart) && /1[\s\u00a0]?200,00/.test(opsPart),
+    'bridge ui opsPartial: snapshot from-value still shown');
+
+  const invalid = calc.buildPortfolioValueChangeBridgeHtml({ invalidDate: true, fromDate: '', toDate: '' });
+  assert(invalid === '', 'bridge ui invalid: no fake math block');
 }
 
 {

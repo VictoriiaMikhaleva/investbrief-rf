@@ -11278,7 +11278,100 @@
     '</section>';
   }
 
-  function renderPortfolioCompareResult(result, errorText) {
+  var PF_BRIDGE_TITLE = 'За счёт чего изменился портфель';
+  var PF_BRIDGE_HOW_SHORT = 'Изменение оценки бумаг и ценовой эффект сделок за выбранный период.';
+  var PF_BRIDGE_HOW_BODY = 'Ценовой эффект — остаточный компонент, который связывает стоимость портфеля на начало и конец периода после учёта покупок и продаж по ценам сделок.';
+  var PF_BRIDGE_PARTIAL = 'Расчёт частичный: для части позиций не хватает исторических данных.';
+  var PF_BRIDGE_OPS_PARTIAL = 'Не все операции за период удалось оценить.';
+  var PF_BRIDGE_EFFECT_HINT = 'по доступным данным';
+
+  function isPortfolioValueChangeBridgeFull(bridge) {
+    return !!(bridge && bridge.identityOk && !bridge.isPartial && !bridge.operationsPartial);
+  }
+
+  function formatBridgeSalesRub(val) {
+    if (val == null || !isFinite(Number(val))) return '—';
+    var n = Number(val);
+    if (n === 0) return formatPortfolioRubAmount(0);
+    return formatCmpSignedRub(-Math.abs(n));
+  }
+
+  function formatBridgeCellRub(val, signed) {
+    if (val == null || !isFinite(Number(val))) return '—';
+    return signed ? formatCmpSignedRub(Number(val)) : formatPortfolioRubAmount(Number(val));
+  }
+
+  function buildPortfolioValueChangeBridgeRowHtml(label, valueText, extraClass, hint) {
+    return '<div class="pf-bridge-row' + (extraClass ? ' ' + extraClass : '') + '">' +
+      '<span class="pf-bridge-lbl">' + escapeHtml(label) +
+        (hint ? ' <span class="pf-bridge-hint">' + escapeHtml(hint) + '</span>' : '') +
+      '</span>' +
+      '<span class="pf-bridge-val">' + escapeHtml(valueText) + '</span>' +
+    '</div>';
+  }
+
+  function buildPortfolioValueChangeBridgeHtml(bridge) {
+    if (!bridge || bridge.invalidDate) return '';
+    var opsPartial = !!bridge.operationsPartial;
+    var snapshotPartial = !!bridge.isPartial && !opsPartial;
+    var full = isPortfolioValueChangeBridgeFull(bridge);
+    var stateClass = full ? ' pf-bridge--full'
+      : (opsPartial ? ' pf-bridge--ops-partial' : ' pf-bridge--partial');
+    var fromLbl = formatAsOfDateDisplay(bridge.fromDate);
+    var toLbl = formatAsOfDateDisplay(bridge.toDate);
+    var purchasesText = opsPartial && bridge.purchasesRub == null
+      ? '—'
+      : formatBridgeCellRub(bridge.purchasesRub, true);
+    var salesText = opsPartial && bridge.salesRub == null
+      ? '—'
+      : formatBridgeSalesRub(bridge.salesRub);
+    var effectText = opsPartial && bridge.priceEffectRub == null
+      ? '—'
+      : formatBridgeCellRub(bridge.priceEffectRub, true);
+    var effectClass = 'pf-bridge-row--effect';
+    var effectHint = '';
+    if (snapshotPartial && bridge.priceEffectRub != null) {
+      effectClass += ' pf-bridge-row--soft';
+      effectHint = PF_BRIDGE_EFFECT_HINT;
+    } else if (full) {
+      effectClass += ' pf-bridge-row--' + cmpChangeTone(bridge.priceEffectRub);
+    } else if (opsPartial) {
+      effectClass += ' pf-bridge-row--soft';
+    }
+    var warns = '';
+    if (opsPartial) {
+      warns += '<p class="pf-bridge-warn" role="status">' + escapeHtml(PF_BRIDGE_OPS_PARTIAL) + '</p>';
+    }
+    if (bridge.isPartial) {
+      warns += '<p class="pf-bridge-warn" role="status">' + escapeHtml(PF_BRIDGE_PARTIAL) + '</p>';
+    }
+    return '<section class="pf-bridge' + stateClass + '" aria-label="' + escapeHtml(PF_BRIDGE_TITLE) + '">' +
+      '<h4 class="pf-bridge-title">' + escapeHtml(PF_BRIDGE_TITLE) + '</h4>' +
+      '<p class="pf-bridge-meta">' + escapeHtml(fromLbl + ' → ' + toLbl) + '</p>' +
+      '<p class="pf-bridge-lead">' + escapeHtml(PF_BRIDGE_HOW_SHORT) + '</p>' +
+      warns +
+      '<div class="pf-bridge-list">' +
+        buildPortfolioValueChangeBridgeRowHtml('Стоимость на начало', formatBridgeCellRub(bridge.fromValueRub, false)) +
+        buildPortfolioValueChangeBridgeRowHtml('Покупки', purchasesText, 'pf-bridge-row--buy') +
+        buildPortfolioValueChangeBridgeRowHtml('Продажи', salesText, 'pf-bridge-row--sell') +
+        buildPortfolioValueChangeBridgeRowHtml('Ценовой эффект', effectText, effectClass, effectHint) +
+        buildPortfolioValueChangeBridgeRowHtml(
+          'Стоимость на конец',
+          formatBridgeCellRub(bridge.toValueRub, false),
+          'pf-bridge-row--total'
+        ) +
+      '</div>' +
+      '<details class="pf-bridge-how">' +
+        '<summary class="pf-bridge-how-summary">Как считается</summary>' +
+        '<div class="pf-bridge-how-body">' +
+          '<p>' + escapeHtml(PF_BRIDGE_HOW_SHORT) + '</p>' +
+          '<p>' + escapeHtml(PF_BRIDGE_HOW_BODY) + '</p>' +
+        '</div>' +
+      '</details>' +
+    '</section>';
+  }
+
+  function renderPortfolioCompareResult(result, errorText, bridge) {
     var out = document.getElementById('pfCmpResult');
     var warn = document.getElementById('pfCmpWarn');
     revealPortfolioComparePanel();
@@ -11320,6 +11413,7 @@
     '</div>';
     out.innerHTML = board + extra +
       '<p class="pf-cmp-explain">' + escapeHtml(PF_CMP_EXPLAIN) + '</p>' +
+      buildPortfolioValueChangeBridgeHtml(bridge) +
       buildPortfolioCompareInsightHtml(result) +
       buildPortfolioCompareDetailsHtml(result.items || []);
   }
@@ -11340,8 +11434,22 @@
     setPortfolioCompareBusy(true);
     return buildPortfolioValueChangeBetweenDates(pf, fromRaw, toRaw).then(function (result) {
       if (seq !== pfCmpSeq) return;
-      setPortfolioCompareBusy(false);
-      renderPortfolioCompareResult(result);
+      if (!result || result.invalidDate) {
+        setPortfolioCompareBusy(false);
+        renderPortfolioCompareResult(result);
+        return;
+      }
+      return Promise.resolve(buildPortfolioValueChangeBridge(pf, fromRaw, toRaw, {
+        buildPortfolioValueChangeBetweenDates: function () { return result; }
+      })).then(function (bridge) {
+        if (seq !== pfCmpSeq) return;
+        setPortfolioCompareBusy(false);
+        renderPortfolioCompareResult(result, null, bridge);
+      }).catch(function () {
+        if (seq !== pfCmpSeq) return;
+        setPortfolioCompareBusy(false);
+        renderPortfolioCompareResult(result);
+      });
     }).catch(function () {
       if (seq !== pfCmpSeq) return;
       setPortfolioCompareBusy(false);
