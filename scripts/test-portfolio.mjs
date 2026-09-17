@@ -428,9 +428,13 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__dynTipLines = buildPortfolioDynamicsTipLines;' +
       '\nthis.__dynDiscloseHtml = buildPortfolioDynamicsDisclosureHtml;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
+      '\nthis.__asOfBridge = buildPortfolioValueChangeBridge;' +
       '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;' +
+      '\nthis.__collectPeriodOps = collectComparePeriodOperations;' +
       '\nthis.__asOfTable = buildPortfolioAsOfTableHtml;' +
       '\nthis.__cmpDetailsHtml = buildPortfolioCompareDetailsHtml;' +
+      '\nthis.__bridgeHtml = buildPortfolioValueChangeBridgeHtml;' +
+      '\nthis.__bridgeFull = isPortfolioValueChangeBridgeFull;' +
       '\nthis.__payouts = buildPortfolioPayoutsForHoldingPeriod;' +
       '\nthis.__tickerPayouts = buildTickerPayoutsForHoldingPeriod;' +
       '\nthis.__tickerReturn = buildTickerReturnWithPayouts;' +
@@ -555,9 +559,13 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioDynamicsTipLines: sandbox.__dynTipLines,
     buildPortfolioDynamicsDisclosureHtml: sandbox.__dynDiscloseHtml,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
+    buildPortfolioValueChangeBridge: sandbox.__asOfBridge,
+    collectComparePeriodOperations: sandbox.__collectPeriodOps,
     buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
     buildPortfolioAsOfTableHtml: sandbox.__asOfTable,
     buildPortfolioCompareDetailsHtml: sandbox.__cmpDetailsHtml,
+    buildPortfolioValueChangeBridgeHtml: sandbox.__bridgeHtml,
+    isPortfolioValueChangeBridgeFull: sandbox.__bridgeFull,
     buildPortfolioPayoutsForHoldingPeriod: sandbox.__payouts,
     buildTickerPayoutsForHoldingPeriod: sandbox.__tickerPayouts,
     buildTickerReturnWithPayouts: sandbox.__tickerReturn,
@@ -7594,6 +7602,105 @@ await (async () => {
 }
 
 {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const pfJs = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const cmpBlock = indexHtml.slice(
+    indexHtml.indexOf('id="portfolioCompareBlock"'),
+    indexHtml.indexOf('id="portfolioPayoutsBlock"')
+  );
+  assert((cmpBlock.match(/type="date"/g) || []).length === 2, 'bridge ui: still two compare date inputs');
+  assert(/id="pfCmpFromDate"/.test(cmpBlock) && /id="pfCmpToDate"/.test(cmpBlock), 'bridge ui: same compare dates');
+  assert(!/id="pfBridgeFromDate"|id="pfBridgeToDate"|id="pfCmpBridgeFrom"/.test(cmpBlock),
+    'bridge ui: no second date picker');
+  assert(!/За счёт чего изменился портфель/.test(cmpBlock), 'bridge ui: title is renderer-only, not a static stub');
+
+  const showCmp = pfJs.slice(
+    pfJs.indexOf('function showPortfolioValueCompare'),
+    pfJs.indexOf('var PF_PAY_BTN_IDLE')
+  );
+  assert(/buildPortfolioValueChangeBridge\(/.test(showCmp), 'bridge ui: compare calls existing helper');
+  assert(/buildPortfolioValueChangeBetweenDates: function \(\) \{ return result; \}/.test(showCmp),
+    'bridge ui: reuses compare snapshot, no second as-of fetch');
+  assert(!/buildPortfolioValueSeries/.test(showCmp), 'bridge ui: compare path does not build series');
+  assert(!/paid12m|forecast12m/.test(showCmp), 'bridge ui: no 12m payout fields in compare path');
+
+  const helperStart = pfJs.indexOf('function buildPortfolioValueChangeBridge');
+  const helperEnd = pfJs.indexOf('function cmpExplainQtyPart');
+  const helperSrc = pfJs.slice(helperStart, helperEnd);
+  assert(/fromValueRub \+ purchasesRub - salesRub \+ priceEffectRub/.test(helperSrc.replace(/\s+/g, ' ').replace(/−/g, '-')),
+    'bridge ui: Wave 1 identity still in helper');
+
+  const full = calc.buildPortfolioValueChangeBridgeHtml({
+    fromDate: '2024-01-01',
+    toDate: '2024-06-01',
+    fromValueRub: 100,
+    toValueRub: 150,
+    purchasesRub: 20,
+    salesRub: 10,
+    priceEffectRub: 40,
+    identityOk: true,
+    isPartial: false,
+    operationsPartial: false
+  });
+  assert(calc.isPortfolioValueChangeBridgeFull({
+    identityOk: true, isPartial: false, operationsPartial: false
+  }) === true, 'bridge ui: full state helper');
+  assert(/За счёт чего изменился портфель/.test(full), 'bridge ui full: title');
+  assert(/Покупки/.test(full) && /Продажи/.test(full) && /Ценовой эффект/.test(full), 'bridge ui full: P/S/effect labels');
+  assert(/Стоимость на начало/.test(full) && /Стоимость на конец/.test(full), 'bridge ui full: from/to rows');
+  assert(/Как считается/.test(full), 'bridge ui full: how-to disclosure');
+  assert(/Изменение оценки бумаг и ценовой эффект сделок/.test(full), 'bridge ui full: short how-to');
+  assert(!/Прибыль|Доходность|Рыночная прибыль|Пополнения|Внесено|residual|paid12m|forecast12m/.test(full),
+    'bridge ui full: no forbidden terms');
+  assert(!/#portfolio\//.test(full), 'bridge ui full: no nested hash');
+  assert(!/type="date"/.test(full), 'bridge ui full: no date inputs');
+
+  const partial = calc.buildPortfolioValueChangeBridgeHtml({
+    fromDate: '2024-01-01',
+    toDate: '2024-06-01',
+    fromValueRub: 0,
+    toValueRub: 0,
+    purchasesRub: 100,
+    salesRub: 0,
+    priceEffectRub: -100,
+    identityOk: true,
+    isPartial: true,
+    operationsPartial: false
+  });
+  assert(calc.isPortfolioValueChangeBridgeFull({
+    identityOk: true, isPartial: true, operationsPartial: false
+  }) === false, 'bridge ui: identityOk+isPartial is not full');
+  assert(/Расчёт частичный: для части позиций не хватает исторических данных/.test(partial),
+    'bridge ui partial: warning');
+  assert(/по доступным данным/.test(partial), 'bridge ui partial: effect marked soft');
+  assert(/Ценовой эффект/.test(partial), 'bridge ui partial: effect still shown');
+  assert(/pf-bridge-row--soft/.test(partial), 'bridge ui partial: effect less categorical');
+
+  const opsPart = calc.buildPortfolioValueChangeBridgeHtml({
+    fromDate: '2024-01-01',
+    toDate: '2024-06-01',
+    fromValueRub: 1200,
+    toValueRub: 650,
+    purchasesRub: null,
+    salesRub: null,
+    priceEffectRub: null,
+    identityOk: false,
+    isPartial: true,
+    operationsPartial: true
+  });
+  assert(/Не все операции за период удалось оценить/.test(opsPart), 'bridge ui opsPartial: warning');
+  assert(/pf-bridge-row--effect[\s\S]*?<span class="pf-bridge-val">—<\/span>/.test(opsPart),
+    'bridge ui opsPartial: null effect is an em dash');
+  assert(!/pf-bridge-row--buy[\s\S]*?<span class="pf-bridge-val">0,00/.test(opsPart),
+    'bridge ui opsPartial: null purchases are not 0');
+  assert(/Стоимость на начало/.test(opsPart) && /1[\s\u00a0]?200,00/.test(opsPart),
+    'bridge ui opsPartial: snapshot from-value still shown');
+
+  const invalid = calc.buildPortfolioValueChangeBridgeHtml({ invalidDate: true, fromDate: '', toDate: '' });
+  assert(invalid === '', 'bridge ui invalid: no fake math block');
+}
+
+{
   const sb = calc.sandbox;
   const origGetP = sb.getPortfolio;
   const origGetId = sb.document.getElementById;
@@ -7876,9 +7983,501 @@ function loadPortfolioWriterSandbox() {
   assert(w.toasts.some((t) => t === 'Укажите количество'), 'empty qty: asks for qty');
 }
 
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const NOW = '2026-09-04';
+  const FROM = '2024-01-01';
+  const TO = '2024-06-01';
+
+  function priceOk(price, extra) {
+    extra = extra || {};
+    return {
+      status: 'ok',
+      price: price,
+      priceDate: extra.priceDate || extra.date || extra.priceDate,
+      priceType: extra.priceType || 'close',
+      unit: extra.unit || 'rub'
+    };
+  }
+  function mockPrices(map, counter) {
+    return function (ticker, date) {
+      if (counter) counter.n += 1;
+      const t = String(ticker || '').toUpperCase();
+      const iso = String(date || '').slice(0, 10);
+      const byTicker = map[t];
+      if (!byTicker) return Promise.resolve({ status: 'missing', price: null, priceDate: null });
+      const row = byTicker[iso] || byTicker.default;
+      return Promise.resolve(row || { status: 'missing', price: null, priceDate: null });
+    };
+  }
+  function bridgeOpts(priceMap, extra, counter) {
+    return Object.assign({
+      splitEvents: events,
+      currentDate: NOW,
+      getInstrumentPriceAtDate: mockPrices(priceMap, counter)
+    }, extra || {});
+  }
+  function assertIdentity(bridge, label) {
+    assert(bridge && bridge.identityOk === true, label + ': identityOk');
+    const lhs = Math.round((bridge.fromValueRub + bridge.purchasesRub - bridge.salesRub + bridge.priceEffectRub) * 100) / 100;
+    const rhs = Math.round(Number(bridge.toValueRub) * 100) / 100;
+    assert(lhs === rhs, label + ': from+P-S+priceEffect === to');
+    const change = Math.round((bridge.toValueRub - bridge.fromValueRub) * 100) / 100;
+    assert(bridge.changeRub === change, label + ': changeRub is to-from, not PnL');
+  }
+  function assertNoForbiddenBridgeFields(bridge, label) {
+    assert(!('realizedPeriodRub' in bridge), label + ': no realizedPeriodRub');
+    assert(!('realized' in bridge), label + ': no realized');
+    assert(!('payoutsRub' in bridge), label + ': no payoutsRub');
+    assert(!('paid12m' in bridge), label + ': no paid12m');
+    assert(!('forecast12m' in bridge), label + ': no forecast12m');
+    assert(!('cashFlows' in bridge), label + ': no cashFlows');
+    assert(!('feeRub' in bridge), label + ': no feeRub');
+  }
+  function saleRec(extra) {
+    extra = extra || {};
+    const qty = extra.qty != null ? extra.qty : 10;
+    const buyDate = extra.buyDate || '2023-01-01';
+    const lotId = extra.lotId || 'S1';
+    return {
+      ticker: extra.ticker || 'SBER',
+      qty: qty,
+      salePrice: extra.salePrice,
+      buyPrice: extra.buyPrice,
+      saleDate: extra.saleDate,
+      buyDate: buyDate,
+      lotId: lotId,
+      fee: extra.fee,
+      allocations: extra.allocations || [{
+        lotId: lotId,
+        qty: qty,
+        buyPrice: extra.buyPrice,
+        buyDate: buyDate,
+        lotQtyDelta: extra.lotQtyDelta != null ? extra.lotQtyDelta : qty
+      }]
+    };
+  }
+
+  await (async () => {
+    const priceOnly = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 150 }],
+      sales: [],
+      cashFlows: [{ type: 'deposit', amountRub: 99999, date: '2024-03-01' }]
+    };
+    const b1 = await calc.buildPortfolioValueChangeBridge(priceOnly, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(150, { date: '2024-06-01' })
+      }
+    }));
+    assert(b1.fromValueRub === 100 && b1.toValueRub === 150, 'bridge 1: V 100→150');
+    assert(b1.purchasesRub === 0 && b1.salesRub === 0, 'bridge 1: no trades');
+    assert(b1.priceEffectRub === 50, 'bridge 1: priceEffect +50');
+    assert(b1.operationsCount === 0, 'bridge 1: operationsCount 0');
+    assertIdentity(b1, 'bridge 1');
+    assertNoForbiddenBridgeFields(b1, 'bridge 1');
+
+    const buyOnly = {
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 10, buyDate: '2023-01-01', currentPrice: 10 },
+        { ticker: 'SBER', lotId: 'S2', qty: 5, avgPrice: 10, buyDate: '2024-03-01', currentPrice: 10 }
+      ],
+      sales: [],
+      cashFlows: [{ type: 'deposit', amountRub: 50000, date: '2024-03-01' }]
+    };
+    const b2 = await calc.buildPortfolioValueChangeBridge(buyOnly, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(10, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(10, { date: '2024-06-01' })
+      }
+    }));
+    assert(b2.fromValueRub === 100 && b2.toValueRub === 150, 'bridge 2: V 100→150');
+    assert(b2.purchasesRub === 50 && b2.salesRub === 0, 'bridge 2: purchases 50, not cashFlow');
+    assert(b2.priceEffectRub === 0, 'bridge 2: priceEffect 0');
+    assert(b2.buyOperationsCount === 1, 'bridge 2: one buy in period');
+    assertIdentity(b2, 'bridge 2');
+
+    const sellOnly = {
+      positions: [],
+      sales: [saleRec({ qty: 10, salePrice: 10, buyPrice: 10, saleDate: '2024-03-01', buyDate: '2023-01-01' })]
+    };
+    const b3 = await calc.buildPortfolioValueChangeBridge(sellOnly, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(10, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(10, { date: '2024-06-01' })
+      }
+    }));
+    assert(b3.fromValueRub === 100 && b3.toValueRub === 0, 'bridge 3: V 100→0');
+    assert(b3.purchasesRub === 0 && b3.salesRub === 100, 'bridge 3: sales 100');
+    assert(b3.priceEffectRub === 0, 'bridge 3: priceEffect 0');
+    assertIdentity(b3, 'bridge 3');
+
+    const buyThenUp = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 10, buyDate: '2024-03-01', currentPrice: 12 }],
+      sales: []
+    };
+    const b4 = await calc.buildPortfolioValueChangeBridge(buyThenUp, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(10, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(12, { date: '2024-06-01' })
+      }
+    }));
+    assert(b4.fromValueRub === 0 && b4.toValueRub === 60, 'bridge 4: V 0→60');
+    assert(b4.purchasesRub === 50 && b4.salesRub === 0, 'bridge 4: purchases 50');
+    assert(b4.priceEffectRub === 10, 'bridge 4: priceEffect +10');
+    assertIdentity(b4, 'bridge 4');
+
+    const partSell = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 130 }],
+      sales: [saleRec({
+        qty: 5, salePrice: 130, buyPrice: 100, saleDate: '2024-03-01', buyDate: '2023-01-01', fee: 15
+      })]
+    };
+    const b5 = await calc.buildPortfolioValueChangeBridge(partSell, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(120, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(130, { date: '2024-06-01' })
+      }
+    }));
+    assert(b5.fromValueRub === 1200 && b5.toValueRub === 650, 'bridge 5: V 1200→650');
+    assert(b5.purchasesRub === 0 && b5.salesRub === 650, 'bridge 5: sales 650, fee not subtracted');
+    assert(b5.priceEffectRub === 100, 'bridge 5: priceEffect +100');
+    assertIdentity(b5, 'bridge 5');
+
+    const roundTrip = {
+      positions: [],
+      sales: [saleRec({
+        qty: 10, salePrice: 130, buyPrice: 100, saleDate: '2024-03-15', buyDate: '2024-02-01'
+      })]
+    };
+    const snap6 = JSON.stringify(roundTrip);
+    const b6 = await calc.buildPortfolioValueChangeBridge(roundTrip, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(130, { date: '2024-06-01' })
+      }
+    }));
+    assert(b6.fromValueRub === 0 && b6.toValueRub === 0, 'bridge 6: V 0→0');
+    assert(b6.purchasesRub === 1000 && b6.salesRub === 1300, 'bridge 6: P 1000 S 1300');
+    assert(b6.priceEffectRub === 300, 'bridge 6: priceEffect +300, realized not added');
+    assert(b6.buyOperationsCount === 1 && b6.sellOperationsCount === 1, 'bridge 6: buy+sell kept');
+    assertIdentity(b6, 'bridge 6');
+    assert(JSON.stringify(roundTrip) === snap6, 'bridge 6: JSON not mutated');
+
+    const closed = {
+      positions: [],
+      sales: [saleRec({
+        qty: 10, salePrice: 130, buyPrice: 100, saleDate: '2024-03-01', buyDate: '2023-01-01'
+      })]
+    };
+    const b7 = await calc.buildPortfolioValueChangeBridge(closed, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(130, { date: '2024-06-01' })
+      }
+    }));
+    assert(b7.fromValueRub === 1000 && b7.toValueRub === 0, 'bridge 7: closed V 1000→0');
+    assert(b7.purchasesRub === 0 && b7.salesRub === 1300, 'bridge 7: sale 1300 still in history');
+    assert(b7.priceEffectRub === 300, 'bridge 7: priceEffect +300');
+    assert(b7.sellOperationsCount === 1, 'bridge 7: closed sale not dropped');
+    assertIdentity(b7, 'bridge 7');
+
+    const gmknHistPf = {
+      positions: [{
+        ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92
+      }],
+      sales: []
+    };
+    const gmknSnap = JSON.stringify(gmknHistPf);
+    const gmknCounter = { n: 0 };
+    const b8 = await calc.buildPortfolioValueChangeBridge(gmknHistPf, '2024-03-01', '2024-06-01', bridgeOpts({
+      GMKN: {
+        '2024-03-01': priceOk(25014, { date: '2024-03-01' }),
+        '2024-06-01': priceOk(129.92, { date: '2024-06-01' })
+      }
+    }, null, gmknCounter));
+    assert(b8.fromValueRub === 250140, 'bridge 8: GMKN before 10×25014');
+    assert(Math.abs(b8.toValueRub - 129920) < 1e-6, 'bridge 8: GMKN after 1000×129.92');
+    assert(b8.purchasesRub === 0 && b8.salesRub === 0, 'bridge 8: split is not a transaction');
+    assert(b8.operationsCount === 0, 'bridge 8: no buy/sell in period');
+    assert(b8.toValueRub !== 1299.2 && b8.toValueRub !== 12992000, 'bridge 8: not false ×100 qty');
+    assertIdentity(b8, 'bridge 8 GMKN');
+    assert(gmknCounter.n === 2, 'bridge 8: two as-of price lookups, not series');
+    assert(JSON.stringify(gmknHistPf) === gmknSnap, 'bridge 8: GMKN JSON not mutated');
+
+    const tCurrPf = {
+      positions: [{
+        ticker: 'T', lotId: 'T1', qty: 10, avgPrice: 262, buyDate: '2025-12-01',
+        currentPrice: 262, splitLotScale: 'current'
+      }],
+      sales: []
+    };
+    const b9 = await calc.buildPortfolioValueChangeBridge(tCurrPf, '2026-05-01', '2026-09-04', bridgeOpts({
+      T: {
+        '2026-05-01': priceOk(250, { date: '2026-05-01' }),
+        '2026-09-04': priceOk(262, { date: '2026-09-04' })
+      }
+    }));
+    assert(b9.fromValueRub === 2500 && b9.toValueRub === 2620, 'bridge 9: T current 10×250 → 10×262');
+    assert(b9.purchasesRub === 0 && b9.salesRub === 0, 'bridge 9: T current no trades');
+    assert(b9.priceEffectRub === 120, 'bridge 9: T current priceEffect +120');
+    assert(b9.toValueRub !== 26200, 'bridge 9: current lot not scaled ×10 again');
+    assertIdentity(b9, 'bridge 9 T current');
+
+    const tHistPf = {
+      positions: [{
+        ticker: 'T', lotId: 'T2', qty: 1, avgPrice: 3126, buyDate: '2025-12-01',
+        currentPrice: 262, splitLotScale: 'historical'
+      }],
+      sales: []
+    };
+    const b10 = await calc.buildPortfolioValueChangeBridge(tHistPf, '2026-03-01', '2026-09-04', bridgeOpts({
+      T: {
+        '2026-03-01': priceOk(3126, { date: '2026-03-01' }),
+        '2026-09-04': priceOk(262, { date: '2026-09-04' })
+      }
+    }));
+    assert(b10.fromValueRub === 3126, 'bridge 10: T hist before 1×3126');
+    assert(b10.toValueRub === 2620, 'bridge 10: T hist after 10×262');
+    assert(b10.purchasesRub === 0 && b10.salesRub === 0, 'bridge 10: T hist split not a trade');
+    assert(b10.toValueRub !== 262 && b10.toValueRub !== 26200, 'bridge 10: not false ×10');
+    assertIdentity(b10, 'bridge 10 T historical');
+
+    const gmknUnknownPf = {
+      positions: [{
+        ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 129.92
+      }],
+      sales: []
+    };
+    const b11 = await calc.buildPortfolioValueChangeBridge(gmknUnknownPf, '2023-12-01', '2024-06-01', bridgeOpts({
+      GMKN: {
+        '2023-12-01': priceOk(22000, { date: '2023-12-01' }),
+        '2024-06-01': priceOk(129.92, { date: '2024-06-01' })
+      }
+    }));
+    assert(b11.isPartial === true, 'bridge 11: split unknown → partial');
+    assert(b11.purchasesRub === 0 && b11.salesRub === 0, 'bridge 11: still no fake trade');
+    if (b11.fromValueRub != null && b11.toValueRub != null &&
+        b11.purchasesRub != null && b11.salesRub != null && b11.priceEffectRub != null) {
+      const lhs = Math.round((b11.fromValueRub + b11.purchasesRub - b11.salesRub + b11.priceEffectRub) * 100) / 100;
+      const rhs = Math.round(Number(b11.toValueRub) * 100) / 100;
+      assert(lhs === rhs, 'bridge 11: priced identity still holds');
+    }
+
+    const plzlPf = {
+      positions: [{
+        ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 19000, buyDate: '2024-06-01', currentPrice: 1900
+      }],
+      sales: []
+    };
+    const b12 = await calc.buildPortfolioValueChangeBridge(plzlPf, '2025-02-01', '2025-06-01', bridgeOpts({
+      PLZL: {
+        '2025-02-01': priceOk(19000, { date: '2025-02-01' }),
+        '2025-06-01': priceOk(1900, { date: '2025-06-01' })
+      }
+    }));
+    assert(b12.fromValueRub === 19000 && b12.toValueRub === 19000, 'bridge 12: PLZL 1×19000 → 10×1900');
+    assert(b12.purchasesRub === 0 && b12.salesRub === 0, 'bridge 12: PLZL split not a trade');
+    assert(b12.priceEffectRub === 0, 'bridge 12: priceEffect 0, not ×10');
+    assert(b12.toValueRub !== 1900 && b12.toValueRub !== 190000, 'bridge 12: not false PLZL scale');
+    assertIdentity(b12, 'bridge 12 PLZL');
+
+    const ofzPf = {
+      positions: [{
+        ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95, buyDate: '2023-06-01',
+        faceValue: 1000, currentPrice: 96
+      }],
+      sales: []
+    };
+    const b13 = await calc.buildPortfolioValueChangeBridge(ofzPf, FROM, TO, bridgeOpts({
+      OFZ_26238: {
+        '2024-01-01': priceOk(95, { date: '2024-01-01', unit: 'pct-of-face-value' }),
+        '2024-06-01': priceOk(96, { date: '2024-06-01', unit: 'pct-of-face-value' })
+      }
+    }));
+    assert(b13.fromValueRub === 9500 && b13.toValueRub === 9600, 'bridge 13: OFZ clean 9500→9600');
+    assert(b13.purchasesRub === 0 && b13.salesRub === 0, 'bridge 13: no coupon/trade');
+    assert(b13.priceEffectRub === 100, 'bridge 13: clean-price effect +100');
+    assert((b13.notes || []).some((n) => /без исторического НКД/.test(n)), 'bridge 13: NKD advisory kept');
+    assert(!b13.isPartial, 'bridge 13: missing NKD is advisory, not partial');
+    assertIdentity(b13, 'bridge 13 OFZ');
+
+    const ofzBuy = {
+      positions: [{
+        ticker: 'OFZ_26238', lotId: 'O2', qty: 10, avgPrice: 95, buyDate: '2024-03-01',
+        faceValue: 1000, currentPrice: 96
+      }],
+      sales: []
+    };
+    const b13b = await calc.buildPortfolioValueChangeBridge(ofzBuy, FROM, TO, bridgeOpts({
+      OFZ_26238: {
+        '2024-01-01': priceOk(95, { date: '2024-01-01', unit: 'pct-of-face-value' }),
+        '2024-06-01': priceOk(96, { date: '2024-06-01', unit: 'pct-of-face-value' })
+      }
+    }));
+    assert(b13b.fromValueRub === 0 && b13b.toValueRub === 9600, 'bridge 13b: OFZ buy in period');
+    assert(b13b.purchasesRub === 9500, 'bridge 13b: OFZ purchase via %×face, not CLOSE');
+    assert(b13b.priceEffectRub === 100, 'bridge 13b: clean-price +100');
+    assertIdentity(b13b, 'bridge 13b OFZ buy');
+
+    const missingClose = {
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 150 },
+        { ticker: 'GAZP', lotId: 'G1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 120 }
+      ],
+      sales: []
+    };
+    const b14 = await calc.buildPortfolioValueChangeBridge(missingClose, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(150, { date: '2024-06-01' })
+      }
+    }));
+    assert(b14.isPartial === true, 'bridge 14: missing CLOSE → partial');
+    assert(b14.fromValueRub === 100 && b14.toValueRub === 150, 'bridge 14: priced subset 100→150');
+    assert(b14.purchasesRub === 0 && b14.salesRub === 0, 'bridge 14: no trades');
+    assert(b14.priceEffectRub === 50, 'bridge 14: priced priceEffect +50');
+    assertIdentity(b14, 'bridge 14 missing CLOSE');
+
+    // identityOk = арифметика priced subset; isPartial = attribution всего портфеля неполный.
+    // UI Wave 2: fully reliable only if identityOk && !isPartial && !operationsPartial.
+    const opMissingClose = {
+      positions: [{
+        ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2024-03-01', currentPrice: 150
+      }],
+      sales: []
+    };
+    const opMissSnap = JSON.stringify(opMissingClose);
+    const bOpMiss = await calc.buildPortfolioValueChangeBridge(opMissingClose, FROM, TO, bridgeOpts({}));
+    assert(bOpMiss.fromValueRub === 0, 'bridge op+missing CLOSE: V_from 0');
+    assert(bOpMiss.toValueRub === 0, 'bridge op+missing CLOSE: V_to 0, CLOSE not guessed from avg/LAST');
+    assert(bOpMiss.toValueRub !== 150 && bOpMiss.toValueRub !== 100, 'bridge op+missing CLOSE: no currentPrice/avgPrice substitute');
+    assert(bOpMiss.purchasesRub === 100, 'bridge op+missing CLOSE: purchase 100 stays in Purchases');
+    assert(bOpMiss.salesRub === 0, 'bridge op+missing CLOSE: sales 0');
+    assert(bOpMiss.priceEffectRub === -100, 'bridge op+missing CLOSE: residual absorbs hole −100');
+    assert(bOpMiss.buyOperationsCount === 1, 'bridge op+missing CLOSE: buy not dropped');
+    assert(bOpMiss.operationsPartial === false, 'bridge op+missing CLOSE: transaction flow complete');
+    assert(bOpMiss.isPartial === true, 'bridge op+missing CLOSE: snapshot incomplete');
+    assertIdentity(bOpMiss, 'bridge op+missing CLOSE');
+    assert(JSON.stringify(opMissingClose) === opMissSnap, 'bridge op+missing CLOSE: JSON not mutated');
+
+    const multi = {
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 150 },
+        { ticker: 'GAZP', lotId: 'G1', qty: 2, avgPrice: 50, buyDate: '2023-01-01', currentPrice: 60 }
+      ],
+      sales: []
+    };
+    const b15 = await calc.buildPortfolioValueChangeBridge(multi, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(150, { date: '2024-06-01' })
+      },
+      GAZP: {
+        '2024-01-01': priceOk(50, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(60, { date: '2024-06-01' })
+      }
+    }));
+    assert(b15.fromValueRub === 200 && b15.toValueRub === 270, 'bridge 15: multi 200→270');
+    assert(b15.purchasesRub === 0 && b15.salesRub === 0, 'bridge 15: no trades');
+    assert(b15.priceEffectRub === 70, 'bridge 15: priceEffect +70');
+    assertIdentity(b15, 'bridge 15 multi');
+
+    const sameDay = {
+      positions: [],
+      sales: [saleRec({
+        qty: 10, salePrice: 130, buyPrice: 100, saleDate: '2024-03-01', buyDate: '2024-03-01'
+      })]
+    };
+    const b16 = await calc.buildPortfolioValueChangeBridge(sameDay, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(130, { date: '2024-06-01' })
+      }
+    }));
+    assert(b16.fromValueRub === 0 && b16.toValueRub === 0, 'bridge 16: same-day V 0→0');
+    assert(b16.purchasesRub === 1000 && b16.salesRub === 1300, 'bridge 16: same-day P and S both in (from, to]');
+    assert(b16.priceEffectRub === 300, 'bridge 16: priceEffect +300');
+    assertIdentity(b16, 'bridge 16 same day');
+
+    const onFromDate = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: FROM, currentPrice: 150 }],
+      sales: []
+    };
+    const b16b = await calc.buildPortfolioValueChangeBridge(onFromDate, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(150, { date: '2024-06-01' })
+      }
+    }));
+    assert(b16b.fromValueRub === 100, 'bridge 16b: buy on fromDate already in V_from');
+    assert(b16b.purchasesRub === 0, 'bridge 16b: fromDate exclusive for operations');
+    assert(b16b.priceEffectRub === 50, 'bridge 16b: priceEffect +50');
+    assertIdentity(b16b, 'bridge 16b fromDate exclusive');
+
+    const beforeFirst = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 100, buyDate: '2024-03-01', currentPrice: 120 }],
+      sales: []
+    };
+    const b17 = await calc.buildPortfolioValueChangeBridge(beforeFirst, '2020-01-01', '2021-01-01', bridgeOpts({
+      SBER: {
+        '2020-01-01': priceOk(100, { date: '2020-01-01' }),
+        '2021-01-01': priceOk(120, { date: '2021-01-01' })
+      }
+    }));
+    assert(b17.fromValueRub === 0 && b17.toValueRub === 0, 'bridge 17: before first buy V_from=0 V_to=0');
+    assert(b17.purchasesRub === 0 && b17.salesRub === 0, 'bridge 17: buy not in period');
+    assert(b17.priceEffectRub === 0, 'bridge 17: priceEffect 0');
+    assertIdentity(b17, 'bridge 17 before first buy');
+
+    const emptyPf = { positions: [], sales: [], cashFlows: [] };
+    const b18 = await calc.buildPortfolioValueChangeBridge(emptyPf, FROM, TO, bridgeOpts({}));
+    assert(b18.fromValueRub === 0 && b18.toValueRub === 0, 'bridge 18: empty V 0→0');
+    assert(b18.purchasesRub === 0 && b18.salesRub === 0 && b18.priceEffectRub === 0, 'bridge 18: zeros');
+    assert(b18.operationsCount === 0, 'bridge 18: no ops');
+    assertIdentity(b18, 'bridge 18 empty');
+    assertNoForbiddenBridgeFields(b18, 'bridge 18');
+
+    const incompleteSale = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 130 }],
+      sales: [{
+        ticker: 'SBER', qty: 5, buyPrice: 100,
+        saleDate: '2024-03-01', buyDate: '2023-01-01', lotId: 'S1',
+        allocations: [{ lotId: 'S1', qty: 5, buyPrice: 100, buyDate: '2023-01-01', lotQtyDelta: 5 }]
+      }]
+    };
+    const bInc = await calc.buildPortfolioValueChangeBridge(incompleteSale, FROM, TO, bridgeOpts({
+      SBER: {
+        '2024-01-01': priceOk(120, { date: '2024-01-01' }),
+        '2024-06-01': priceOk(130, { date: '2024-06-01' })
+      }
+    }));
+    assert(bInc.operationsPartial === true, 'bridge incomplete: operationsPartial');
+    assert(bInc.isPartial === true, 'bridge incomplete: isPartial');
+    assert(bInc.salesRub == null, 'bridge incomplete: salesRub null');
+    assert(bInc.priceEffectRub == null, 'bridge incomplete: no fake residual');
+    assert(bInc.identityOk === false, 'bridge incomplete: identityOk false');
+    assert((bInc.warnings || []).length > 0, 'bridge incomplete: warning present');
+
+    const badDates = await calc.buildPortfolioValueChangeBridge(emptyPf, 'не дата', TO, bridgeOpts({}));
+    assert(badDates.invalidDate === true && badDates.identityOk === false, 'bridge invalid dates');
+
+    const src = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+    const bridgeSrc = src.slice(src.indexOf('function buildPortfolioValueChangeBridge'), src.indexOf('function cmpExplainQtyPart'));
+    assert(!/buildPortfolioValueSeries/.test(bridgeSrc), 'bridge src: no value series');
+    assert(!/paid12m/.test(bridgeSrc), 'bridge src: no paid12m');
+    assert(!/forecast12m/.test(bridgeSrc), 'bridge src: no forecast12m');
+    assert(!/cashFlows/.test(bridgeSrc), 'bridge src: no cashFlows');
+    assert(!/buildPortfolioPayoutsForHoldingPeriod/.test(bridgeSrc), 'bridge src: no payout helper');
+    assert(!/getTotalRealizedPnl|getSaleRealizedPnl/.test(bridgeSrc), 'bridge src: no realized helper');
+  })();
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary + value-change bridge');

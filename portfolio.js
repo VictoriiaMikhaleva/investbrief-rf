@@ -6515,6 +6515,150 @@
     };
   }
 
+  var BRIDGE_OPS_PARTIAL_NOTE =
+    'Сумма сделок за период рассчитана частично: у части операций нет суммы или даты';
+
+  function bridgeTotalFromAggregates(rows) {
+    if (!rows || !rows.length) return { value: 0, known: true };
+    var sum = 0;
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      var rec = rows[i];
+      if (!rec || rec.amountKnown === false || rec.amountRub == null || !isFinite(Number(rec.amountRub))) {
+        return { value: null, known: false };
+      }
+      sum += Number(rec.amountRub);
+    }
+    return { value: asOfRoundRub(sum), known: true };
+  }
+
+  /**
+   * Read-only декомпозиция изменения стоимости портфеля между датами.
+   * Identity: V_from + Purchases − Sales + priceEffectRub = V_to.
+   * Purchases/Sales — сумма amountRub сделок (fromDate, toDate], цена сделки, не CLOSE.
+   * priceEffectRub — остаток (оценка открытых, ценовой эффект сделок, округление, clean ОФЗ).
+   * Не включает realized, выплаты, cashFlows и комиссии.
+   */
+  function buildPortfolioValueChangeBridge(portfolio, fromDate, toDate, options) {
+    options = options || {};
+    var fromIso = timelineIsoDate(fromDate);
+    var toIso = timelineIsoDate(toDate);
+    var changeFn = typeof options.buildPortfolioValueChangeBetweenDates === 'function'
+      ? options.buildPortfolioValueChangeBetweenDates
+      : buildPortfolioValueChangeBetweenDates;
+    var opsFn = typeof options.collectComparePeriodOperations === 'function'
+      ? options.collectComparePeriodOperations
+      : collectComparePeriodOperations;
+
+    function emptyBridge(extra) {
+      extra = extra || {};
+      return {
+        fromDate: fromIso || '',
+        toDate: toIso || '',
+        invalidDate: extra.invalidDate != null ? !!extra.invalidDate : (!fromIso || !toIso),
+        fromValueRub: extra.fromValueRub != null ? extra.fromValueRub : null,
+        toValueRub: extra.toValueRub != null ? extra.toValueRub : null,
+        changeRub: extra.changeRub != null ? extra.changeRub : null,
+        purchasesRub: extra.purchasesRub != null ? extra.purchasesRub : null,
+        salesRub: extra.salesRub != null ? extra.salesRub : null,
+        priceEffectRub: extra.priceEffectRub != null ? extra.priceEffectRub : null,
+        operationsCount: extra.operationsCount || 0,
+        buyOperationsCount: extra.buyOperationsCount || 0,
+        sellOperationsCount: extra.sellOperationsCount || 0,
+        operationsPartial: !!extra.operationsPartial,
+        isPartial: !!extra.isPartial,
+        hasIncompleteHistory: !!extra.hasIncompleteHistory,
+        warnings: extra.warnings || [],
+        notes: extra.notes || [],
+        identityOk: false
+      };
+    }
+
+    if (!fromIso || !toIso) {
+      return Promise.resolve(emptyBridge({
+        invalidDate: true,
+        notes: ['Укажите корректные даты для сравнения.']
+      }));
+    }
+
+    return Promise.resolve(changeFn(portfolio, fromDate, toDate, options)).then(function (change) {
+      change = change || {};
+      var ops = opsFn(portfolio, fromDate, toDate, {
+        bondMetaMap: options.bondMetaMap,
+        items: change.items
+      }) || {};
+      var buyOps = ops.buyOps || [];
+      var sellOps = ops.sellOps || [];
+      var buyTotal = bridgeTotalFromAggregates(ops.buys);
+      var sellTotal = bridgeTotalFromAggregates(ops.sells);
+      var operationsPartial = !!ops.incomplete || !buyTotal.known || !sellTotal.known;
+
+      var purchasesRub = buyTotal.known ? buyTotal.value : null;
+      var salesRub = sellTotal.known ? sellTotal.value : null;
+
+      var fromValueRub = change.fromValue != null && isFinite(Number(change.fromValue))
+        ? asOfRoundRub(Number(change.fromValue))
+        : null;
+      var toValueRub = change.toValue != null && isFinite(Number(change.toValue))
+        ? asOfRoundRub(Number(change.toValue))
+        : null;
+      var changeRub = null;
+      if (change.changeRub != null && isFinite(Number(change.changeRub))) {
+        changeRub = asOfRoundRub(Number(change.changeRub));
+      } else if (fromValueRub != null && toValueRub != null) {
+        changeRub = asOfRoundRub(toValueRub - fromValueRub);
+      }
+
+      var priceEffectRub = null;
+      if (fromValueRub != null && toValueRub != null && purchasesRub != null && salesRub != null) {
+        priceEffectRub = asOfRoundRub(toValueRub - fromValueRub - purchasesRub + salesRub);
+      }
+
+      var identityOk = false;
+      if (!change.invalidDate && !operationsPartial &&
+          fromValueRub != null && toValueRub != null &&
+          purchasesRub != null && salesRub != null && priceEffectRub != null) {
+        identityOk = asOfRoundRub(fromValueRub + purchasesRub - salesRub + priceEffectRub) ===
+          asOfRoundRub(toValueRub);
+      }
+
+      var warnings = [];
+      if (operationsPartial) warnings.push(BRIDGE_OPS_PARTIAL_NOTE);
+
+      var itemNotes = [];
+      function collectItemNotes(result) {
+        ((result && result.items) || []).forEach(function (row) {
+          ((row && row.notes) || []).forEach(function (n) {
+            itemNotes.push(n);
+          });
+        });
+      }
+      collectItemNotes(change.fromResult);
+      collectItemNotes(change.toResult);
+
+      return {
+        fromDate: change.fromDate || fromIso,
+        toDate: change.toDate || toIso,
+        invalidDate: !!change.invalidDate,
+        fromValueRub: fromValueRub,
+        toValueRub: toValueRub,
+        changeRub: changeRub,
+        purchasesRub: purchasesRub,
+        salesRub: salesRub,
+        priceEffectRub: priceEffectRub,
+        operationsCount: buyOps.length + sellOps.length,
+        buyOperationsCount: buyOps.length,
+        sellOperationsCount: sellOps.length,
+        operationsPartial: operationsPartial,
+        isPartial: !!(change.isPartial || operationsPartial),
+        hasIncompleteHistory: !!change.hasIncompleteHistory,
+        warnings: warnings,
+        notes: asOfUniqueNotes([change.notes, itemNotes]),
+        identityOk: identityOk
+      };
+    });
+  }
+
   function cmpExplainQtyPart(ticker, qty) {
     var t = String(ticker || '').trim();
     if (!t) return '';
@@ -11134,7 +11278,100 @@
     '</section>';
   }
 
-  function renderPortfolioCompareResult(result, errorText) {
+  var PF_BRIDGE_TITLE = 'За счёт чего изменился портфель';
+  var PF_BRIDGE_HOW_SHORT = 'Изменение оценки бумаг и ценовой эффект сделок за выбранный период.';
+  var PF_BRIDGE_HOW_BODY = 'Ценовой эффект — остаточный компонент, который связывает стоимость портфеля на начало и конец периода после учёта покупок и продаж по ценам сделок.';
+  var PF_BRIDGE_PARTIAL = 'Расчёт частичный: для части позиций не хватает исторических данных.';
+  var PF_BRIDGE_OPS_PARTIAL = 'Не все операции за период удалось оценить.';
+  var PF_BRIDGE_EFFECT_HINT = 'по доступным данным';
+
+  function isPortfolioValueChangeBridgeFull(bridge) {
+    return !!(bridge && bridge.identityOk && !bridge.isPartial && !bridge.operationsPartial);
+  }
+
+  function formatBridgeSalesRub(val) {
+    if (val == null || !isFinite(Number(val))) return '—';
+    var n = Number(val);
+    if (n === 0) return formatPortfolioRubAmount(0);
+    return formatCmpSignedRub(-Math.abs(n));
+  }
+
+  function formatBridgeCellRub(val, signed) {
+    if (val == null || !isFinite(Number(val))) return '—';
+    return signed ? formatCmpSignedRub(Number(val)) : formatPortfolioRubAmount(Number(val));
+  }
+
+  function buildPortfolioValueChangeBridgeRowHtml(label, valueText, extraClass, hint) {
+    return '<div class="pf-bridge-row' + (extraClass ? ' ' + extraClass : '') + '">' +
+      '<span class="pf-bridge-lbl">' + escapeHtml(label) +
+        (hint ? ' <span class="pf-bridge-hint">' + escapeHtml(hint) + '</span>' : '') +
+      '</span>' +
+      '<span class="pf-bridge-val">' + escapeHtml(valueText) + '</span>' +
+    '</div>';
+  }
+
+  function buildPortfolioValueChangeBridgeHtml(bridge) {
+    if (!bridge || bridge.invalidDate) return '';
+    var opsPartial = !!bridge.operationsPartial;
+    var snapshotPartial = !!bridge.isPartial && !opsPartial;
+    var full = isPortfolioValueChangeBridgeFull(bridge);
+    var stateClass = full ? ' pf-bridge--full'
+      : (opsPartial ? ' pf-bridge--ops-partial' : ' pf-bridge--partial');
+    var fromLbl = formatAsOfDateDisplay(bridge.fromDate);
+    var toLbl = formatAsOfDateDisplay(bridge.toDate);
+    var purchasesText = opsPartial && bridge.purchasesRub == null
+      ? '—'
+      : formatBridgeCellRub(bridge.purchasesRub, true);
+    var salesText = opsPartial && bridge.salesRub == null
+      ? '—'
+      : formatBridgeSalesRub(bridge.salesRub);
+    var effectText = opsPartial && bridge.priceEffectRub == null
+      ? '—'
+      : formatBridgeCellRub(bridge.priceEffectRub, true);
+    var effectClass = 'pf-bridge-row--effect';
+    var effectHint = '';
+    if (snapshotPartial && bridge.priceEffectRub != null) {
+      effectClass += ' pf-bridge-row--soft';
+      effectHint = PF_BRIDGE_EFFECT_HINT;
+    } else if (full) {
+      effectClass += ' pf-bridge-row--' + cmpChangeTone(bridge.priceEffectRub);
+    } else if (opsPartial) {
+      effectClass += ' pf-bridge-row--soft';
+    }
+    var warns = '';
+    if (opsPartial) {
+      warns += '<p class="pf-bridge-warn" role="status">' + escapeHtml(PF_BRIDGE_OPS_PARTIAL) + '</p>';
+    }
+    if (bridge.isPartial) {
+      warns += '<p class="pf-bridge-warn" role="status">' + escapeHtml(PF_BRIDGE_PARTIAL) + '</p>';
+    }
+    return '<section class="pf-bridge' + stateClass + '" aria-label="' + escapeHtml(PF_BRIDGE_TITLE) + '">' +
+      '<h4 class="pf-bridge-title">' + escapeHtml(PF_BRIDGE_TITLE) + '</h4>' +
+      '<p class="pf-bridge-meta">' + escapeHtml(fromLbl + ' → ' + toLbl) + '</p>' +
+      '<p class="pf-bridge-lead">' + escapeHtml(PF_BRIDGE_HOW_SHORT) + '</p>' +
+      warns +
+      '<div class="pf-bridge-list">' +
+        buildPortfolioValueChangeBridgeRowHtml('Стоимость на начало', formatBridgeCellRub(bridge.fromValueRub, false)) +
+        buildPortfolioValueChangeBridgeRowHtml('Покупки', purchasesText, 'pf-bridge-row--buy') +
+        buildPortfolioValueChangeBridgeRowHtml('Продажи', salesText, 'pf-bridge-row--sell') +
+        buildPortfolioValueChangeBridgeRowHtml('Ценовой эффект', effectText, effectClass, effectHint) +
+        buildPortfolioValueChangeBridgeRowHtml(
+          'Стоимость на конец',
+          formatBridgeCellRub(bridge.toValueRub, false),
+          'pf-bridge-row--total'
+        ) +
+      '</div>' +
+      '<details class="pf-bridge-how">' +
+        '<summary class="pf-bridge-how-summary">Как считается</summary>' +
+        '<div class="pf-bridge-how-body">' +
+          '<p>' + escapeHtml(PF_BRIDGE_HOW_SHORT) + '</p>' +
+          '<p>' + escapeHtml(PF_BRIDGE_HOW_BODY) + '</p>' +
+        '</div>' +
+      '</details>' +
+    '</section>';
+  }
+
+  function renderPortfolioCompareResult(result, errorText, bridge) {
     var out = document.getElementById('pfCmpResult');
     var warn = document.getElementById('pfCmpWarn');
     revealPortfolioComparePanel();
@@ -11176,6 +11413,7 @@
     '</div>';
     out.innerHTML = board + extra +
       '<p class="pf-cmp-explain">' + escapeHtml(PF_CMP_EXPLAIN) + '</p>' +
+      buildPortfolioValueChangeBridgeHtml(bridge) +
       buildPortfolioCompareInsightHtml(result) +
       buildPortfolioCompareDetailsHtml(result.items || []);
   }
@@ -11196,8 +11434,22 @@
     setPortfolioCompareBusy(true);
     return buildPortfolioValueChangeBetweenDates(pf, fromRaw, toRaw).then(function (result) {
       if (seq !== pfCmpSeq) return;
-      setPortfolioCompareBusy(false);
-      renderPortfolioCompareResult(result);
+      if (!result || result.invalidDate) {
+        setPortfolioCompareBusy(false);
+        renderPortfolioCompareResult(result);
+        return;
+      }
+      return Promise.resolve(buildPortfolioValueChangeBridge(pf, fromRaw, toRaw, {
+        buildPortfolioValueChangeBetweenDates: function () { return result; }
+      })).then(function (bridge) {
+        if (seq !== pfCmpSeq) return;
+        setPortfolioCompareBusy(false);
+        renderPortfolioCompareResult(result, null, bridge);
+      }).catch(function () {
+        if (seq !== pfCmpSeq) return;
+        setPortfolioCompareBusy(false);
+        renderPortfolioCompareResult(result);
+      });
     }).catch(function () {
       if (seq !== pfCmpSeq) return;
       setPortfolioCompareBusy(false);
