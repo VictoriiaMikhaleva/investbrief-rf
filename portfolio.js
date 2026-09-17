@@ -7193,6 +7193,477 @@
     };
   }
 
+  var RESULT_SEGMENT_TOP_LIMIT = 3;
+  var RESULT_SEGMENT_ROUND_EPS = 0.02;
+
+  function emptyPortfolioResultSegmentExplanation(extra) {
+    extra = extra || {};
+    return {
+      hasSegment: extra.hasSegment != null ? !!extra.hasSegment : false,
+      fromDate: extra.fromDate || '',
+      toDate: extra.toDate || '',
+      previousIndex: extra.previousIndex != null && isFinite(Number(extra.previousIndex))
+        ? Number(extra.previousIndex)
+        : null,
+      selectedIndex: extra.selectedIndex != null && isFinite(Number(extra.selectedIndex))
+        ? Number(extra.selectedIndex)
+        : null,
+      fromResultRub: extra.fromResultRub != null && isFinite(Number(extra.fromResultRub))
+        ? Number(extra.fromResultRub)
+        : null,
+      toResultRub: extra.toResultRub != null && isFinite(Number(extra.toResultRub))
+        ? Number(extra.toResultRub)
+        : null,
+      segmentResultDeltaRub: extra.segmentResultDeltaRub != null && isFinite(Number(extra.segmentResultDeltaRub))
+        ? Number(extra.segmentResultDeltaRub)
+        : null,
+      operations: extra.operations || [],
+      contributors: extra.contributors || [],
+      topContributors: extra.topContributors || [],
+      othersEffectRub: extra.othersEffectRub != null && isFinite(Number(extra.othersEffectRub))
+        ? Number(extra.othersEffectRub)
+        : null,
+      stocksEffectRub: extra.stocksEffectRub != null && isFinite(Number(extra.stocksEffectRub))
+        ? extra.stocksEffectRub
+        : extra.stocksEffectRub === 0 ? 0 : null,
+      bondsEffectRub: extra.bondsEffectRub != null && isFinite(Number(extra.bondsEffectRub))
+        ? extra.bondsEffectRub
+        : extra.bondsEffectRub === 0 ? 0 : null,
+      isPartial: !!extra.isPartial,
+      operationsPartial: !!extra.operationsPartial,
+      hasBondNkdAdvisory: !!extra.hasBondNkdAdvisory,
+      contributorsIdentityOk: !!extra.contributorsIdentityOk,
+      roundingDeltaRub: extra.roundingDeltaRub != null && isFinite(Number(extra.roundingDeltaRub))
+        ? Number(extra.roundingDeltaRub)
+        : null,
+      notes: extra.notes || []
+    };
+  }
+
+  function segmentExplainFiniteRub(raw) {
+    if (raw == null || !isFinite(Number(raw))) return null;
+    return Number(raw);
+  }
+
+  function segmentExplainIndex(raw) {
+    if (raw == null || raw === '') return null;
+    var n = Number(raw);
+    return isFinite(n) ? n : null;
+  }
+
+  function segmentExplainValuePoint(resultPoint, options, side) {
+    options = options || {};
+    var explicit = side === 'from' ? options.fromValuePoint : options.toValuePoint;
+    if (explicit && typeof explicit === 'object') return explicit;
+    var series = options.valueSeries;
+    var idx = side === 'from' ? options.previousIndex : options.selectedIndex;
+    if (Array.isArray(series)) {
+      if (idx != null && isFinite(Number(idx)) && series[Number(idx)]) return series[Number(idx)];
+      var iso = timelineIsoDate(resultPoint && resultPoint.date);
+      var i;
+      for (i = 0; i < series.length; i++) {
+        if (timelineIsoDate(series[i] && series[i].date) === iso) return series[i];
+      }
+    }
+    return null;
+  }
+
+  function segmentExplainFindPosition(point, ticker) {
+    var key = asOfNormTicker(ticker);
+    if (!key) return null;
+    var list = (point && point.positions) || [];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (asOfNormTicker(list[i] && list[i].ticker) === key) return list[i];
+    }
+    return null;
+  }
+
+  function segmentExplainSideState(snapshot, ticker) {
+    var emptyNotes = [];
+    if (!snapshot) {
+      return {
+        snapshotMissing: true,
+        valueRub: null,
+        qty: null,
+        price: null,
+        known: false,
+        isPartial: true,
+        type: '',
+        notes: emptyNotes,
+        splitAdjusted: false,
+        splitConfidence: ''
+      };
+    }
+    var row = segmentExplainFindPosition(snapshot, ticker);
+    if (!row) {
+      return {
+        snapshotMissing: false,
+        valueRub: 0,
+        qty: 0,
+        price: null,
+        known: true,
+        isPartial: false,
+        type: '',
+        notes: emptyNotes,
+        splitAdjusted: false,
+        splitConfidence: ''
+      };
+    }
+    var qtyRaw = row.qty;
+    var qty = Number(qtyRaw);
+    var notes = [];
+    (row.notes || []).forEach(function (n) { if (n) notes.push(n); });
+    if (row.note) notes.push(row.note);
+    if (row.splitConfidence === 'unknown' || !asOfItemValueUsable(row)) {
+      return {
+        snapshotMissing: false,
+        valueRub: null,
+        qty: qtyRaw == null || !isFinite(qty) ? null : qty,
+        price: row.price != null && isFinite(Number(row.price)) ? Number(row.price) : null,
+        known: false,
+        isPartial: true,
+        type: row.type || '',
+        notes: notes,
+        splitAdjusted: !!row.splitAdjusted,
+        splitConfidence: row.splitConfidence || ''
+      };
+    }
+    if (!isFinite(qty) || qty <= 0) {
+      return {
+        snapshotMissing: false,
+        valueRub: 0,
+        qty: 0,
+        price: row.price != null && isFinite(Number(row.price)) ? Number(row.price) : null,
+        known: true,
+        isPartial: false,
+        type: row.type || '',
+        notes: notes,
+        splitAdjusted: !!row.splitAdjusted,
+        splitConfidence: row.splitConfidence || ''
+      };
+    }
+    return {
+      snapshotMissing: false,
+      valueRub: asOfRoundRub(Number(row.valueRub)),
+      qty: qty,
+      price: row.price != null && isFinite(Number(row.price)) ? Number(row.price) : null,
+      known: true,
+      isPartial: false,
+      type: row.type || '',
+      notes: notes,
+      splitAdjusted: !!row.splitAdjusted,
+      splitConfidence: row.splitConfidence || ''
+    };
+  }
+
+  function segmentExplainMapOperation(op) {
+    if (!op) return null;
+    var amount = resultSeriesAmountKnown(op) ? Number(op.amountRub) : null;
+    return {
+      date: op.date || '',
+      ticker: op.ticker || '',
+      type: op.type === 'sell' ? 'sell' : 'buy',
+      qty: op.qty != null && isFinite(Number(op.qty)) ? Number(op.qty) : null,
+      price: op.price != null && isFinite(Number(op.price)) ? Number(op.price) : null,
+      amountRub: amount,
+      isBond: !!op.isBond,
+      note: op.note || '',
+      quality: op.quality || '',
+      lotId: op.lotId || '',
+      saleId: op.saleId || '',
+      isPartial: op.quality === 'partial' || !resultSeriesAmountKnown(op)
+    };
+  }
+
+  function segmentExplainSnapshotHasBondNkd(point) {
+    if (!point) return false;
+    if (point.hasBondNkdAdvisory) return true;
+    var ads = point.advisories || [];
+    var i;
+    for (i = 0; i < ads.length; i++) {
+      if (!ads[i]) continue;
+      if (ads[i].kind === 'bond-nkd') return true;
+      if (/без исторического НКД/i.test(String(ads[i].text || ''))) return true;
+    }
+    var blob = ((point.notes || []).concat(point.warnings || [])).join(' ');
+    return /без исторического НКД/i.test(blob);
+  }
+
+  function segmentExplainSubsetSum(rows, isBond) {
+    var sum = 0;
+    var known = true;
+    var any = false;
+    (rows || []).forEach(function (row) {
+      if (!row) return;
+      if (!!row.isBond !== !!isBond) return;
+      any = true;
+      if (row.effectRub == null || !isFinite(Number(row.effectRub))) {
+        known = false;
+        return;
+      }
+      if (known) sum += Number(row.effectRub);
+    });
+    if (!known) return null;
+    if (!any) return 0;
+    return asOfRoundRub(sum) || 0;
+  }
+
+  /**
+   * Read-only объяснение изменения Result между двумя видимыми точками графика.
+   * Сегмент: (previous.date, selected.date]. Sync, без fetch и без bridge runtime.
+   * Операции и вклад тикера разделены: amountRub сделки ≠ effectRub.
+   */
+  function buildPortfolioResultSegmentExplanation(portfolio, previousPoint, selectedPoint, options) {
+    options = options || {};
+    var previousIndex = segmentExplainIndex(options.previousIndex);
+    var selectedIndex = segmentExplainIndex(options.selectedIndex);
+    var fromResultRub = segmentExplainFiniteRub(previousPoint && previousPoint.resultRub);
+    var toResultRub = segmentExplainFiniteRub(selectedPoint && selectedPoint.resultRub);
+
+    if (!previousPoint || !selectedPoint) {
+      return emptyPortfolioResultSegmentExplanation({
+        fromDate: timelineIsoDate(previousPoint && previousPoint.date) || '',
+        toDate: timelineIsoDate(selectedPoint && selectedPoint.date) || '',
+        previousIndex: previousIndex,
+        selectedIndex: selectedIndex,
+        fromResultRub: fromResultRub,
+        toResultRub: toResultRub,
+        notes: ['Начало выбранного периода']
+      });
+    }
+
+    var fromIso = timelineIsoDate(previousPoint.date);
+    var toIso = timelineIsoDate(selectedPoint.date);
+    if (!fromIso || !toIso || fromIso >= toIso) {
+      return emptyPortfolioResultSegmentExplanation({
+        fromDate: fromIso || '',
+        toDate: toIso || '',
+        previousIndex: previousIndex,
+        selectedIndex: selectedIndex,
+        fromResultRub: fromResultRub,
+        toResultRub: toResultRub,
+        notes: fromIso && toIso && fromIso === toIso
+          ? ['Начало выбранного периода']
+          : ['Укажите корректные даты сегмента.']
+      });
+    }
+
+    var segmentResultDeltaRub = (fromResultRub != null && toResultRub != null)
+      ? asOfRoundRub(toResultRub - fromResultRub)
+      : null;
+    if (segmentResultDeltaRub == null && fromResultRub != null && toResultRub != null) {
+      segmentResultDeltaRub = 0;
+    }
+
+    var fromValuePoint = segmentExplainValuePoint(previousPoint, options, 'from');
+    var toValuePoint = segmentExplainValuePoint(selectedPoint, options, 'to');
+    var snapshotsMissing = !fromValuePoint || !toValuePoint;
+
+    var opsFn = typeof options.collectComparePeriodOperations === 'function'
+      ? options.collectComparePeriodOperations
+      : collectComparePeriodOperations;
+    var periodOps = opsFn(portfolio, fromIso, toIso, {
+      bondMetaMap: options.bondMetaMap || {},
+      items: ((fromValuePoint && fromValuePoint.positions) || []).concat(
+        (toValuePoint && toValuePoint.positions) || []
+      )
+    }) || { buys: [], sells: [], buyOps: [], sellOps: [], incomplete: false };
+
+    var rawOps = (periodOps.buyOps || []).concat(periodOps.sellOps || []);
+    rawOps.sort(function (a, b) {
+      var da = (a && a.date) || '';
+      var db = (b && b.date) || '';
+      if (da !== db) return da < db ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'buy' ? -1 : 1;
+      return 0;
+    });
+    var operations = [];
+    rawOps.forEach(function (op) {
+      var mapped = segmentExplainMapOperation(op);
+      if (mapped) operations.push(mapped);
+    });
+
+    var buyByTicker = {};
+    (periodOps.buys || []).forEach(function (row) {
+      if (!row) return;
+      buyByTicker[asOfNormTicker(row.ticker)] = row;
+    });
+    var sellByTicker = {};
+    (periodOps.sells || []).forEach(function (row) {
+      if (!row) return;
+      sellByTicker[asOfNormTicker(row.ticker)] = row;
+    });
+
+    var seen = {};
+    var tickers = [];
+    function addTicker(raw) {
+      var t = asOfNormTicker(raw);
+      if (!t || seen[t]) return;
+      seen[t] = true;
+      tickers.push(t);
+    }
+    ((fromValuePoint && fromValuePoint.positions) || []).forEach(function (row) { addTicker(row && row.ticker); });
+    ((toValuePoint && toValuePoint.positions) || []).forEach(function (row) { addTicker(row && row.ticker); });
+    operations.forEach(function (op) { addTicker(op && op.ticker); });
+
+    var notes = [];
+    var marketPartial = !!(
+      snapshotsMissing ||
+      (fromValuePoint && fromValuePoint.isPartial) ||
+      (toValuePoint && toValuePoint.isPartial)
+    );
+    var operationsPartial = !!periodOps.incomplete;
+    var hasBond = false;
+
+    var contributors = tickers.map(function (ticker) {
+      var fromState = segmentExplainSideState(fromValuePoint, ticker);
+      var toState = segmentExplainSideState(toValuePoint, ticker);
+      var buyRow = buyByTicker[ticker];
+      var sellRow = sellByTicker[ticker];
+      var purchasesRub = buyRow
+        ? (buyRow.amountKnown === false ? null : (buyRow.amountRub != null && isFinite(Number(buyRow.amountRub))
+          ? asOfRoundRub(Number(buyRow.amountRub)) : null))
+        : 0;
+      var salesRub = sellRow
+        ? (sellRow.amountKnown === false ? null : (sellRow.amountRub != null && isFinite(Number(sellRow.amountRub))
+          ? asOfRoundRub(Number(sellRow.amountRub)) : null))
+        : 0;
+      if (buyRow && purchasesRub == null) operationsPartial = true;
+      if (sellRow && salesRub == null) operationsPartial = true;
+      var tickerOpsPartial = (buyRow && (buyRow.amountKnown === false || purchasesRub == null)) ||
+        (sellRow && (sellRow.amountKnown === false || salesRub == null));
+      if (tickerOpsPartial) operationsPartial = true;
+
+      var isBond = fromState.type === 'bond' || toState.type === 'bond' ||
+        !!(buyRow && (buyRow.ops || []).some(function (op) { return op && op.isBond; })) ||
+        !!(sellRow && (sellRow.ops || []).some(function (op) { return op && op.isBond; })) ||
+        isPortfolioBondPosition({ ticker: ticker });
+      if (isBond) hasBond = true;
+
+      var contributorNotes = asOfUniqueNotes([fromState.notes, toState.notes]);
+      if (fromState.splitAdjusted || toState.splitAdjusted) {
+        contributorNotes = asOfUniqueNotes([contributorNotes, ['учтен сплит']]);
+      }
+      if (fromState.splitConfidence === 'unknown' || toState.splitConfidence === 'unknown') {
+        contributorNotes = asOfUniqueNotes([contributorNotes, [ticker + PF_LOT_SCALE_UNKNOWN_SUFFIX]]);
+      }
+
+      var effectRub = resultSeriesEffectRub(
+        toState.known ? toState.valueRub : null,
+        fromState.known ? fromState.valueRub : null,
+        purchasesRub,
+        salesRub
+      );
+
+      var rowPartial = !!(fromState.isPartial || toState.isPartial || tickerOpsPartial || snapshotsMissing);
+      if (rowPartial && (fromState.isPartial || toState.isPartial || snapshotsMissing)) marketPartial = true;
+
+      return {
+        ticker: ticker,
+        type: isBond ? 'bond' : 'stock',
+        isBond: !!isBond,
+        fromValueRub: fromState.known ? fromState.valueRub : null,
+        toValueRub: toState.known ? toState.valueRub : null,
+        fromQty: fromState.qty,
+        toQty: toState.qty,
+        fromPrice: fromState.price,
+        toPrice: toState.price,
+        purchasesRub: purchasesRub,
+        salesRub: salesRub,
+        effectRub: effectRub,
+        isPartial: rowPartial,
+        operationsPartial: !!tickerOpsPartial,
+        notes: contributorNotes
+      };
+    });
+
+    contributors.sort(function (a, b) {
+      var aKnown = a.effectRub != null && isFinite(Number(a.effectRub));
+      var bKnown = b.effectRub != null && isFinite(Number(b.effectRub));
+      if (aKnown && bKnown) {
+        var diff = Math.abs(Number(b.effectRub)) - Math.abs(Number(a.effectRub));
+        if (diff) return diff;
+        return String(a.ticker || '').localeCompare(String(b.ticker || ''));
+      }
+      if (aKnown) return -1;
+      if (bKnown) return 1;
+      return String(a.ticker || '').localeCompare(String(b.ticker || ''));
+    });
+
+    var topContributors = [];
+    contributors.forEach(function (row) {
+      if (topContributors.length >= RESULT_SEGMENT_TOP_LIMIT) return;
+      if (row && row.effectRub != null && isFinite(Number(row.effectRub))) topContributors.push(row);
+    });
+
+    var allKnown = contributors.length === 0 || contributors.every(function (row) {
+      return row && row.effectRub != null && isFinite(Number(row.effectRub));
+    });
+    var contribSum = 0;
+    if (allKnown) {
+      contributors.forEach(function (row) { contribSum += Number(row.effectRub); });
+      contribSum = asOfRoundRub(contribSum);
+      if (contribSum == null) contribSum = 0;
+    }
+
+    var othersEffectRub = null;
+    if (allKnown) {
+      var topSum = 0;
+      topContributors.forEach(function (row) { topSum += Number(row.effectRub); });
+      othersEffectRub = asOfRoundRub(contribSum - (asOfRoundRub(topSum) || 0));
+      if (othersEffectRub == null) othersEffectRub = 0;
+    }
+
+    var roundingDeltaRub = null;
+    var contributorsIdentityOk = false;
+    if (allKnown && segmentResultDeltaRub != null) {
+      roundingDeltaRub = asOfRoundRub(contribSum - segmentResultDeltaRub);
+      if (roundingDeltaRub == null) roundingDeltaRub = 0;
+      contributorsIdentityOk = Math.abs(roundingDeltaRub) <= RESULT_SEGMENT_ROUND_EPS;
+    }
+
+    var stocksEffectRub = segmentExplainSubsetSum(contributors, false);
+    var bondsEffectRub = segmentExplainSubsetSum(contributors, true);
+
+    if (snapshotsMissing) notes.push('Нет снимка стоимости для выбранного сегмента.');
+    if (marketPartial) notes.push(ASOF_MISSING_PRICE_NOTE);
+    if (operationsPartial) notes.push(BRIDGE_OPS_PARTIAL_NOTE);
+    if (fromValuePoint && fromValuePoint.warnings) notes = notes.concat(fromValuePoint.warnings);
+    if (toValuePoint && toValuePoint.warnings) notes = notes.concat(toValuePoint.warnings);
+    contributors.forEach(function (row) {
+      notes = notes.concat(row.notes || []);
+    });
+
+    var hasBondNkdAdvisory = hasBond ||
+      segmentExplainSnapshotHasBondNkd(fromValuePoint) ||
+      segmentExplainSnapshotHasBondNkd(toValuePoint);
+
+    return {
+      hasSegment: true,
+      fromDate: fromIso,
+      toDate: toIso,
+      previousIndex: previousIndex,
+      selectedIndex: selectedIndex,
+      fromResultRub: fromResultRub,
+      toResultRub: toResultRub,
+      segmentResultDeltaRub: segmentResultDeltaRub,
+      operations: operations,
+      contributors: contributors,
+      topContributors: topContributors,
+      othersEffectRub: othersEffectRub,
+      stocksEffectRub: stocksEffectRub,
+      bondsEffectRub: bondsEffectRub,
+      isPartial: !!(marketPartial || operationsPartial || snapshotsMissing ||
+        (fromResultRub == null || toResultRub == null)),
+      operationsPartial: operationsPartial,
+      hasBondNkdAdvisory: !!hasBondNkdAdvisory,
+      contributorsIdentityOk: contributorsIdentityOk,
+      roundingDeltaRub: roundingDeltaRub,
+      notes: asOfUniqueNotes([notes])
+    };
+  }
+
 
   /** UI-настройки портфеля (не часть portfolio JSON). */
   var PF_UI_STORAGE_KEY = 'ibrf.portfolioUi.v1';
