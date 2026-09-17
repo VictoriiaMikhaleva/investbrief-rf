@@ -12685,6 +12685,16 @@
   var PF_DYN_CAPTION_RESULT = 'Результат за выбранный период. Покупки и продажи отделены от изменения стоимости активов.';
   var PF_DYN_CHART_LABEL_VALUE = 'График оценки портфеля по датам';
   var PF_DYN_CHART_LABEL_RESULT = 'График результата портфеля за выбранный период';
+  var PF_DYN_EXPLAIN_TITLE = 'Что повлияло на изменение';
+  var PF_DYN_EXPLAIN_FIRST = 'Начало выбранного периода — предыдущей точки для сравнения нет.';
+  var PF_DYN_EXPLAIN_NO_OPS = 'Покупок и продаж на этом участке не было.';
+  var PF_DYN_EXPLAIN_NO_CHANGE = 'На этом участке существенных изменений не было.';
+  var PF_DYN_EXPLAIN_PARTIAL = 'Расчёт по этому участку частичный: для части позиций не хватает исторических данных.';
+  var PF_DYN_EXPLAIN_OPS_PARTIAL = 'Не все операции на этом участке удалось оценить.';
+  var PF_DYN_EXPLAIN_AMOUNT_UNKNOWN = 'Сумму операции не удалось оценить';
+  var PF_DYN_EXPLAIN_NKD = 'Для ОФЗ оценка на дату — без исторического НКД.';
+  var PF_DYN_EXPLAIN_PARTIAL_LEAD = 'Основной вклад — по доступным данным.';
+  var PF_DYN_EXPLAIN_OPS_LIMIT = 3;
   var PF_DYN_MAX_POINTS = 140;
   var PF_DYN_DEBOUNCE_MS = 80;
   var pfDynSeq = 0;
@@ -12704,7 +12714,8 @@
     hoverIndex: -1,
     fromDate: '',
     toDate: '',
-    catalogBlocked: false
+    catalogBlocked: false,
+    bondMetaMap: {}
   };
 
   function pfDynEarliestOperationDate(portfolio) {
@@ -13006,6 +13017,177 @@
     return html;
   }
 
+  function pfDynExplainToneClass(n) {
+    var tone = cmpChangeTone(n);
+    if (tone === 'up') return ' pnl-pos';
+    if (tone === 'down') return ' pnl-neg';
+    return '';
+  }
+
+  function pfDynExplainOpHtml(op) {
+    if (!op) return '';
+    var kind = op.type === 'sell' ? 'Продажа' : 'Покупка';
+    var ticker = String(op.ticker || '').trim();
+    var qtyTxt = op.qty != null && isFinite(Number(op.qty))
+      ? formatAsOfQtyDisplay(op.qty) + ' шт.'
+      : '';
+    var amtTxt = (op.amountRub == null || !isFinite(Number(op.amountRub)))
+      ? PF_DYN_EXPLAIN_AMOUNT_UNKNOWN
+      : formatPortfolioRubAmount(op.amountRub);
+    var sub = qtyTxt ? qtyTxt + ' · ' + amtTxt : amtTxt;
+    return '<li class="pf-dyn-explain-op">' +
+      '<div class="pf-dyn-explain-op-title">' + escapeHtml(kind + (ticker ? ' · ' + ticker : '')) + '</div>' +
+      '<div class="pf-dyn-explain-op-sub">' + escapeHtml(sub) + '</div>' +
+      '</li>';
+  }
+
+  function pfDynExplainContribRowHtml(row, extraLabel) {
+    if (!row) return '';
+    if (row.effectRub == null || !isFinite(Number(row.effectRub))) return '';
+    var ticker = extraLabel || String(row.ticker || '').trim();
+    var tone = pfDynExplainToneClass(row.effectRub);
+    var more = extraLabel || !ticker ? '' :
+      '<button type="button" class="pf-dyn-explain-more" data-pf-open-history="' +
+        escapeHtml(ticker) + '">Подробнее</button>';
+    return '<li class="pf-dyn-explain-row">' +
+      '<span class="pf-dyn-explain-row-t">' + escapeHtml(ticker) + (more ? ' ' + more : '') + '</span>' +
+      '<span class="pf-dyn-explain-row-amt' + tone + '">' +
+        escapeHtml(formatCmpSignedRub(row.effectRub)) + '</span>' +
+      '</li>';
+  }
+
+  function buildPortfolioDynamicsExplainHtml(explanation) {
+    explanation = explanation || {};
+    var html = '<section class="pf-dyn-explain-box" aria-label="' + escapeHtml(PF_DYN_EXPLAIN_TITLE) + '">' +
+      '<h4 class="pf-dyn-explain-title">' + escapeHtml(PF_DYN_EXPLAIN_TITLE) + '</h4>';
+    if (!explanation.hasSegment) {
+      html += '<p class="pf-dyn-explain-empty">' + escapeHtml(PF_DYN_EXPLAIN_FIRST) + '</p></section>';
+      return html;
+    }
+    var fromLbl = formatAsOfDateDisplay(explanation.fromDate);
+    var toLbl = formatAsOfDateDisplay(explanation.toDate);
+    html += '<p class="pf-dyn-explain-meta">' + escapeHtml(fromLbl + ' → ' + toLbl) + '</p>';
+    var delta = explanation.segmentResultDeltaRub;
+    var deltaTxt = delta == null ? '—' : formatCmpSignedRub(delta);
+    html += '<p class="pf-dyn-explain-delta">Изменение результата: <span class="pf-dyn-explain-delta-val' +
+      pfDynExplainToneClass(delta) + '">' + escapeHtml(deltaTxt) + '</span></p>';
+
+    var ops = explanation.operations || [];
+    var top = explanation.topContributors || [];
+    var knownCount = 0;
+    (explanation.contributors || []).forEach(function (row) {
+      if (row && row.effectRub != null && isFinite(Number(row.effectRub))) knownCount += 1;
+    });
+    var showOthers = explanation.othersEffectRub != null && isFinite(Number(explanation.othersEffectRub)) &&
+      knownCount > top.length;
+    var noMove = (delta == null || Number(delta) === 0) && !ops.length && !top.length;
+    if (noMove) {
+      html += '<p class="pf-dyn-explain-empty">' + escapeHtml(PF_DYN_EXPLAIN_NO_CHANGE) + '</p>';
+    } else {
+      html += '<div class="pf-dyn-explain-cols">';
+      html += '<div class="pf-dyn-explain-col">';
+      html += '<h5 class="pf-dyn-explain-h">События на этом участке</h5>';
+      if (!ops.length) {
+        html += '<p class="pf-dyn-explain-note">' + escapeHtml(PF_DYN_EXPLAIN_NO_OPS) + '</p>';
+      } else {
+        html += '<ul class="pf-dyn-explain-ops">';
+        ops.slice(0, PF_DYN_EXPLAIN_OPS_LIMIT).forEach(function (op) {
+          html += pfDynExplainOpHtml(op);
+        });
+        html += '</ul>';
+        if (ops.length > PF_DYN_EXPLAIN_OPS_LIMIT) {
+          html += '<p class="pf-dyn-explain-more-ops">' +
+            escapeHtml('И ещё ' + (ops.length - PF_DYN_EXPLAIN_OPS_LIMIT) + ' операций') + '</p>';
+        }
+      }
+      html += '</div>';
+      if (top.length) {
+        html += '<div class="pf-dyn-explain-col">';
+        html += '<h5 class="pf-dyn-explain-h">Основной вклад</h5>';
+        if (explanation.isPartial) {
+          html += '<p class="pf-dyn-explain-note">' + escapeHtml(PF_DYN_EXPLAIN_PARTIAL_LEAD) + '</p>';
+        }
+        html += '<ul class="pf-dyn-explain-contrib">';
+        top.forEach(function (row) { html += pfDynExplainContribRowHtml(row); });
+        if (showOthers) {
+          html += pfDynExplainContribRowHtml({
+            ticker: 'Остальные',
+            effectRub: explanation.othersEffectRub
+          }, 'Остальные');
+        }
+        html += '</ul></div>';
+      }
+      html += '</div>';
+    }
+
+    if (explanation.isPartial) {
+      html += '<p class="pf-dyn-explain-warn" role="status">' + escapeHtml(PF_DYN_EXPLAIN_PARTIAL) + '</p>';
+    }
+    if (explanation.operationsPartial) {
+      html += '<p class="pf-dyn-explain-warn" role="status">' + escapeHtml(PF_DYN_EXPLAIN_OPS_PARTIAL) + '</p>';
+    }
+    if (explanation.hasBondNkdAdvisory) {
+      html += '<p class="pf-dyn-explain-note">' + escapeHtml(PF_DYN_EXPLAIN_NKD) + '</p>';
+    }
+    html += '</section>';
+    return html;
+  }
+
+  function pfDynBuildSelectedSegmentExplanation() {
+    if (typeof buildPortfolioResultSegmentExplanation !== 'function') return null;
+    if (!pfDynIsResultMode()) return null;
+    var resultSeries = pfDynState.resultSeries || [];
+    var valueSeries = pfDynState.series || [];
+    var idx = pfDynState.selectedIndex;
+    if (idx == null || idx < 0 || !resultSeries.length) return null;
+    if (idx >= resultSeries.length) idx = resultSeries.length - 1;
+    var selected = resultSeries[idx];
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    var bondMetaMap = pfDynState.bondMetaMap || {};
+    if (idx === 0 || !resultSeries[idx - 1]) {
+      return buildPortfolioResultSegmentExplanation(pf, null, selected, {
+        toValuePoint: valueSeries[idx] || null,
+        selectedIndex: idx,
+        bondMetaMap: bondMetaMap
+      });
+    }
+    return buildPortfolioResultSegmentExplanation(pf, resultSeries[idx - 1], selected, {
+      fromValuePoint: valueSeries[idx - 1] || null,
+      toValuePoint: valueSeries[idx] || null,
+      previousIndex: idx - 1,
+      selectedIndex: idx,
+      bondMetaMap: bondMetaMap
+    });
+  }
+
+  function hidePortfolioDynamicsExplain() {
+    var el = typeof document !== 'undefined' && document && typeof document.getElementById === 'function'
+      ? document.getElementById('pfDynExplain')
+      : null;
+    if (!el) return;
+    el.hidden = true;
+    el.innerHTML = '';
+  }
+
+  function renderPortfolioDynamicsExplain() {
+    var el = typeof document !== 'undefined' && document && typeof document.getElementById === 'function'
+      ? document.getElementById('pfDynExplain')
+      : null;
+    if (!el) return;
+    if (!pfDynIsResultMode() || pfDynState.catalogBlocked || !pfDynHasSeries() ||
+        !(pfDynState.resultSeries && pfDynState.resultSeries.length)) {
+      hidePortfolioDynamicsExplain();
+      return;
+    }
+    var expl = pfDynBuildSelectedSegmentExplanation();
+    if (!expl) {
+      hidePortfolioDynamicsExplain();
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML = buildPortfolioDynamicsExplainHtml(expl);
+  }
+
   function pfDynSyncHorizonButtons(horizon) {
     var root = document.getElementById('pfDynPeriods');
     if (!root) return;
@@ -13192,26 +13374,33 @@
         cta.hidden = true;
         cta.innerHTML = '';
       }
+      hidePortfolioDynamicsExplain();
     }
   }
 
   function renderPortfolioDynamicsCard() {
     var card = document.getElementById('pfDynCard');
-    if (!card) return;
+    if (!card) {
+      renderPortfolioDynamicsExplain();
+      return;
+    }
     if (pfDynState.catalogBlocked || !pfDynState.series.length) {
       card.hidden = true;
       card.innerHTML = '';
+      hidePortfolioDynamicsExplain();
       return;
     }
     if (pfDynIsResultMode() && !(pfDynState.resultSeries && pfDynState.resultSeries.length)) {
       card.hidden = true;
       card.innerHTML = '';
+      hidePortfolioDynamicsExplain();
       return;
     }
     card.hidden = false;
     card.innerHTML = buildPortfolioDynamicsCardHtml(pfDynActiveChartSeries(), pfDynState.selectedIndex, {
       mode: pfDynState.mode
     });
+    renderPortfolioDynamicsExplain();
   }
 
   function pfDynIndexAtClientX(canvas, clientX) {
@@ -13588,6 +13777,7 @@
       includePositions: true,
       bondMetaMap: options.bondMetaMap || {}
     };
+    pfDynState.bondMetaMap = seriesOpts.bondMetaMap;
     pfDynBuildInFlight += 1;
     return Promise.resolve(buildPortfolioValueSeries(pf, range.fromDate, range.toDate, seriesOpts)).then(function (series) {
       pfDynBuildInFlight = Math.max(0, pfDynBuildInFlight - 1);
@@ -14002,6 +14192,11 @@
     if (splitCta && !splitCta._pfDynBound) {
       splitCta._pfDynBound = true;
       splitCta.addEventListener('click', handlePortfolioTableClick);
+    }
+    var explain = document.getElementById('pfDynExplain');
+    if (explain && !explain._pfDynBound) {
+      explain._pfDynBound = true;
+      explain.addEventListener('click', handlePortfolioTableClick);
     }
     bindPortfolioDynamicsPointer();
     pfDynSyncHorizonButtons(pfDynState.horizon);

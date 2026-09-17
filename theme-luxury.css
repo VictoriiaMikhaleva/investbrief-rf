@@ -6597,7 +6597,142 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
 
 #tab-portfolio .pf-dyn-top li:first-child { border-top: none; }
 
+#tab-portfolio .pf-dyn-explain {
+  margin: 0.7rem 0 0;
+  padding: 0.72rem 0.85rem 0.78rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 18%, #d0d8d2 82%);
+  background: color-mix(in srgb, #fff 92%, var(--bronze-soft) 8%);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: clip;
+}
+
+#tab-portfolio .pf-dyn-explain-title {
+  margin: 0 0 0.28rem;
+  font-family: var(--font-heading);
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text) 90%, #3d4844 10%);
+}
+
+#tab-portfolio .pf-dyn-explain-meta,
+#tab-portfolio .pf-dyn-explain-empty,
+#tab-portfolio .pf-dyn-explain-note,
+#tab-portfolio .pf-dyn-explain-warn {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+#tab-portfolio .pf-dyn-explain-delta {
+  margin: 0 0 0.55rem;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+#tab-portfolio .pf-dyn-explain-delta-val {
+  font-family: var(--font-heading);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+#tab-portfolio .pf-dyn-explain-delta-val.pnl-pos { color: var(--pos, #3d6b4f); }
+#tab-portfolio .pf-dyn-explain-delta-val.pnl-neg { color: var(--neg, #8a4a42); }
+
+#tab-portfolio .pf-dyn-explain-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.7rem 1.1rem;
+  min-width: 0;
+}
+
+#tab-portfolio .pf-dyn-explain-h {
+  margin: 0 0 0.28rem;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text) 78%, #5a6b62 22%);
+}
+
+#tab-portfolio .pf-dyn-explain-ops,
+#tab-portfolio .pf-dyn-explain-contrib {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+#tab-portfolio .pf-dyn-explain-op {
+  margin: 0 0 0.38rem;
+  min-width: 0;
+}
+
+#tab-portfolio .pf-dyn-explain-op-title,
+#tab-portfolio .pf-dyn-explain-row-t {
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+#tab-portfolio .pf-dyn-explain-op-sub {
+  margin: 0.08rem 0 0;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+#tab-portfolio .pf-dyn-explain-more-ops {
+  margin: 0.1rem 0 0;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+#tab-portfolio .pf-dyn-explain-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.2rem 0.65rem;
+  padding: 0.14rem 0;
+  min-width: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+#tab-portfolio .pf-dyn-explain-row:first-child { border-top: none; }
+
+#tab-portfolio .pf-dyn-explain-row-amt {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+#tab-portfolio .pf-dyn-explain-row-amt.pnl-pos { color: var(--pos, #3d6b4f); }
+#tab-portfolio .pf-dyn-explain-row-amt.pnl-neg { color: var(--neg, #8a4a42); }
+
+#tab-portfolio .pf-dyn-explain-more {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: color-mix(in srgb, var(--text) 68%, #5a6b62 32%);
+  font-size: 0.72rem;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  cursor: pointer;
+}
+
+#tab-portfolio .pf-dyn-explain-more:hover,
+#tab-portfolio .pf-dyn-explain-more:focus-visible {
+  color: color-mix(in srgb, var(--text) 88%, #3d4844 12%);
+}
+
 @media (max-width: 720px) {
+  #tab-portfolio .pf-dyn-explain-cols {
+    grid-template-columns: 1fr;
+  }
   #tab-portfolio .pf-dyn-chart-wrap { height: 190px; }
   #tab-portfolio .pf-dyn-card {
     grid-template-columns: 1fr 1fr;

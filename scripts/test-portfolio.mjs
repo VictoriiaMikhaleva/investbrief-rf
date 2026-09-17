@@ -432,6 +432,9 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__dynEnsureResult = pfDynEnsureResultSeries;' +
       '\nthis.__dynNormMode = normalizePortfolioDynamicsMode;' +
       '\nthis.__dynDiscloseHtml = buildPortfolioDynamicsDisclosureHtml;' +
+      '\nthis.__dynExplainHtml = buildPortfolioDynamicsExplainHtml;' +
+      '\nthis.__dynExplain = renderPortfolioDynamicsExplain;' +
+      '\nthis.__dynExplainSegment = pfDynBuildSelectedSegmentExplanation;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
       '\nthis.__asOfBridge = buildPortfolioValueChangeBridge;' +
       '\nthis.__asOfResultSeries = buildPortfolioResultSeries;' +
@@ -570,6 +573,9 @@ function loadPortfolioCalcHelpers() {
     pfDynEnsureResultSeries: sandbox.__dynEnsureResult,
     normalizePortfolioDynamicsMode: sandbox.__dynNormMode,
     buildPortfolioDynamicsDisclosureHtml: sandbox.__dynDiscloseHtml,
+    buildPortfolioDynamicsExplainHtml: sandbox.__dynExplainHtml,
+    renderPortfolioDynamicsExplain: sandbox.__dynExplain,
+    pfDynBuildSelectedSegmentExplanation: sandbox.__dynExplainSegment,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
     buildPortfolioValueChangeBridge: sandbox.__asOfBridge,
     buildPortfolioResultSeries: sandbox.__asOfResultSeries,
@@ -9731,9 +9737,258 @@ function loadPortfolioWriterSandbox() {
   })();
 }
 
+{
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const pfJs = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'theme-luxury.css'), 'utf8');
+  const dynHtml = indexHtml.slice(
+    indexHtml.indexOf('id="portfolioDynamicsBlock"'),
+    indexHtml.indexOf('id="portfolioAsOfBlock"')
+  );
+  assert(/id="pfDynExplain"/.test(dynHtml), 'explain ui: block exists');
+  assert(dynHtml.indexOf('id="pfDynCard"') < dynHtml.indexOf('id="pfDynExplain"'),
+    'explain ui: block is under selected card');
+  assert(dynHtml.indexOf('id="pfDynExplain"') < dynHtml.indexOf('id="portfolioAsOfBlock"') ||
+    dynHtml.indexOf('id="pfDynExplain"') > 0, 'explain ui: before next analytics section');
+  assert((dynHtml.match(/id="pfDynChart"/g) || []).length === 1, 'explain ui: canvas unchanged count');
+  assert(!/marker|pfDynMark/i.test(dynHtml), 'explain ui: no marker markup');
+
+  const explainSrc = pfJs.slice(
+    pfJs.indexOf('function buildPortfolioDynamicsExplainHtml'),
+    pfJs.indexOf('function pfDynSyncHorizonButtons')
+  );
+  const cardSrc = pfJs.slice(
+    pfJs.indexOf('function renderPortfolioDynamicsCard'),
+    pfJs.indexOf('function pfDynIndexAtClientX')
+  );
+  const pointerSrc = Function.prototype.toString.call(calc.applyPortfolioDynamicsPointer);
+  const tipSrc = Function.prototype.toString.call(calc.buildPortfolioDynamicsTipLines);
+  const drawSrc = Function.prototype.toString.call(calc.drawPortfolioDynamicsChart);
+  const modeSrc = Function.prototype.toString.call(calc.setPortfolioDynamicsMode);
+  const segPickSrc = Function.prototype.toString.call(calc.pfDynBuildSelectedSegmentExplanation);
+  assert(/selectedIndex/.test(segPickSrc), 'explain ui: uses selectedIndex');
+  assert(!/hoverIndex/.test(segPickSrc), 'explain ui: does not use hoverIndex');
+  assert(/renderPortfolioDynamicsExplain/.test(cardSrc), 'explain ui: selected card render updates explainer');
+  assert(/mode === 'select'/.test(pointerSrc) && /renderPortfolioDynamicsCard/.test(pointerSrc),
+    'explain ui: click/tap select still renders card');
+  assert(!/renderPortfolioDynamicsExplain|pfDynBuildSelectedSegmentExplanation/.test(pointerSrc),
+    'explain ui: pointer does not run helper on hover');
+  assert(!/buildPortfolioResultSegmentExplanation/.test(tipSrc), 'explain ui: tooltip unchanged, no helper');
+  assert(!/2 операции|есть события/.test(tipSrc), 'explain ui: tooltip has no ops hint');
+  assert(!/buildPortfolioResultSegmentExplanation/.test(drawSrc), 'explain ui: canvas draw does not call helper');
+  assert(!/pf-dyn-explain|marker/.test(drawSrc), 'explain ui: no markers in canvas');
+  assert(!/buildPortfolioValueChangeBridge/.test(explainSrc + segPickSrc), 'explain ui: no runtime bridge');
+  assert(!/\bfetch\s*\(|iss\.moex\.com|loadInstrumentHistoryForDateRange/.test(explainSrc + segPickSrc),
+    'explain ui: no fetch/MOEX');
+  assert(!/loadPayoutFeedsForPortfolio|buildPortfolioPayoutsForHoldingPeriod/.test(explainSrc),
+    'explain ui: no payout fetch');
+  assert(!/resultPct|returnPct|changePct/.test(explainSrc), 'explain ui: no % fields');
+  assert(!/выплат/i.test(explainSrc), 'explain ui: no payout copy');
+  assert(!/из-за|главная причина|причиной стало/.test(explainSrc), 'explain ui: no causality claims');
+  assert(/#tab-portfolio \.pf-dyn-explain \{/.test(css), 'explain ui: styles exist');
+  assert(!/#007|#0d6efd|#1e90ff/i.test((css.match(/#tab-portfolio \.pf-dyn-explain[\s\S]*?@media \(max-width: 720px\)/) || [''])[0]),
+    'explain ui: no blue');
+
+  const firstHtml = calc.buildPortfolioDynamicsExplainHtml({ hasSegment: false });
+  assert(/Что повлияло на изменение/.test(firstHtml), 'explain ui: title');
+  assert(/Начало выбранного периода/.test(firstHtml), 'explain ui: first point copy');
+  assert(!/Изменение результата/.test(firstHtml), 'explain ui: first point has no fake delta');
+
+  const buyHtml = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2026-06-30',
+    toDate: '2026-07-03',
+    segmentResultDeltaRub: -62234.3,
+    operations: [{
+      type: 'buy', ticker: 'OFZ_TEST', qty: 233, amountRub: 259096, isBond: true
+    }],
+    contributors: [
+      { ticker: 'OFZ_TEST', effectRub: -62234.3 },
+      { ticker: 'GMKN', effectRub: -3200 },
+      { ticker: 'SBER', effectRub: 1100 },
+      { ticker: 'GAZP', effectRub: -400 }
+    ],
+    topContributors: [
+      { ticker: 'OFZ_TEST', effectRub: -62234.3 },
+      { ticker: 'GMKN', effectRub: -3200 },
+      { ticker: 'SBER', effectRub: 1100 }
+    ],
+    othersEffectRub: -400,
+    isPartial: false,
+    operationsPartial: false,
+    hasBondNkdAdvisory: true
+  });
+  assert(/30\.06\.2026|30.06.2026/.test(buyHtml) || /2026/.test(buyHtml), 'explain ui: segment dates');
+  assert(/Изменение результата/.test(buyHtml), 'explain ui: result delta label');
+  assert(/Покупка/.test(buyHtml) && /OFZ_TEST/.test(buyHtml), 'explain ui: buy event');
+  assert(/259/.test(buyHtml) && /096/.test(buyHtml), 'explain ui: operation amount separate');
+  assert(/Основной вклад/.test(buyHtml), 'explain ui: contribution section');
+  assert(/−62.?234|-\s?62.?234|-62234/.test(buyHtml.replace(/\s/g, '')), 'explain ui: contributor effect');
+  assert(/Подробнее/.test(buyHtml) && /data-pf-open-history="OFZ_TEST"/.test(buyHtml),
+    'explain ui: details uses existing history nav');
+  assert(/Остальные/.test(buyHtml), 'explain ui: others when known');
+  assert(/без исторического НКД/.test(buyHtml), 'explain ui: OFZ NKD advisory');
+  assert(!/Акции:/.test(buyHtml) && !/Облигации:/.test(buyHtml), 'explain ui: does not repeat card subsets');
+  const amountIdx = buyHtml.indexOf('259');
+  const effectIdx = buyHtml.search(/Основной вклад/);
+  assert(amountIdx >= 0 && effectIdx > amountIdx, 'explain ui: amount before effect section');
+
+  const fourOps = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [
+      { type: 'buy', ticker: 'SBER', qty: 1, amountRub: 100 },
+      { type: 'buy', ticker: 'GAZP', qty: 1, amountRub: 200 },
+      { type: 'sell', ticker: 'SBER', qty: 1, amountRub: 110 },
+      { type: 'buy', ticker: 'LKOH', qty: 1, amountRub: 300 }
+    ],
+    topContributors: [
+      { ticker: 'AAA', effectRub: 5 },
+      { ticker: 'BBB', effectRub: 3 },
+      { ticker: 'CCC', effectRub: 2 }
+    ],
+    contributors: [
+      { ticker: 'AAA', effectRub: 5 },
+      { ticker: 'BBB', effectRub: 3 },
+      { ticker: 'CCC', effectRub: 2 }
+    ],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert((fourOps.match(/Покупка|Продажа/g) || []).length === 3, 'explain ui: max 3 operations');
+  assert(/И ещё 1 операций/.test(fourOps), 'explain ui: remaining ops note');
+  assert((fourOps.match(/pf-dyn-explain-row-t/g) || []).length === 3, 'explain ui: max 3 contributors');
+  assert(!/Остальные/.test(fourOps), 'explain ui: others hidden when remainder empty');
+
+  const noOps = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 10 }],
+    contributors: [{ ticker: 'SBER', effectRub: 10 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Покупок и продаж на этом участке не было/.test(noOps), 'explain ui: no-ops copy');
+  assert(!/pf-dyn-explain-ops/.test(noOps), 'explain ui: no empty ops list');
+
+  const quiet = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-02',
+    segmentResultDeltaRub: 0,
+    operations: [],
+    topContributors: [],
+    contributors: [],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/существенных изменений не было/.test(quiet), 'explain ui: quiet segment');
+  assert(/Изменение результата/.test(quiet), 'explain ui: zero delta still shown');
+
+  const unknownAmt = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: null,
+    operations: [{ type: 'sell', ticker: 'SBER', qty: 1, amountRub: null }],
+    topContributors: [],
+    contributors: [{ ticker: 'SBER', effectRub: null }],
+    othersEffectRub: null,
+    isPartial: true,
+    operationsPartial: true
+  });
+  assert(/Сумму операции не удалось оценить/.test(unknownAmt), 'explain ui: unknown amount copy');
+  assert(!/0,00 ₽/.test(unknownAmt) && !/>0 ₽</.test(unknownAmt), 'explain ui: unknown amount not 0');
+  assert(/Не все операции на этом участке удалось оценить/.test(unknownAmt), 'explain ui: ops partial warning');
+  assert(!/Основной вклад/.test(unknownAmt), 'explain ui: unknown effect not shown as 0');
+
+  const marketPartial = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 10 }],
+    contributors: [
+      { ticker: 'SBER', effectRub: 10 },
+      { ticker: 'GAZP', effectRub: null }
+    ],
+    othersEffectRub: null,
+    isPartial: true,
+    operationsPartial: false
+  });
+  assert(/не хватает исторических данных/.test(marketPartial), 'explain ui: market partial warning');
+  assert(/по доступным данным/.test(marketPartial), 'explain ui: partial lead');
+  assert(/SBER/.test(marketPartial) && !/GAZP/.test(marketPartial), 'explain ui: missing ticker not ranked as 0');
+  assert(!/Остальные/.test(marketPartial), 'explain ui: others omitted when not known');
+
+  const closedHtml = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 100,
+    operations: [{ type: 'sell', ticker: 'SBER', qty: 10, amountRub: 1300 }],
+    topContributors: [{ ticker: 'SBER', effectRub: 100 }],
+    contributors: [{ ticker: 'SBER', effectRub: 100 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Продажа · SBER/.test(closedHtml), 'explain ui: closed ticker remains');
+  assert(/data-pf-open-history="SBER"/.test(closedHtml), 'explain ui: closed ticker still has details');
+
+  const zeroDeltaOps = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 0,
+    operations: [{ type: 'buy', ticker: 'SBER', qty: 1, amountRub: 100 }],
+    topContributors: [{ ticker: 'SBER', effectRub: 0 }],
+    contributors: [{ ticker: 'SBER', effectRub: 0 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Изменение результата/.test(zeroDeltaOps) && /Покупка/.test(zeroDeltaOps),
+    'explain ui: zero delta still lists events');
+
+  calc.pfDynState.mode = 'value';
+  calc.pfDynState.series = [{ date: '2024-01-01' }, { date: '2024-01-10' }];
+  calc.pfDynState.resultSeries = [
+    { date: '2024-01-01', resultRub: 0 },
+    { date: '2024-01-10', resultRub: 10 }
+  ];
+  calc.pfDynState.selectedIndex = 1;
+  calc.pfDynState.hoverIndex = 0;
+  assert(calc.pfDynBuildSelectedSegmentExplanation() == null, 'explain ui: cost mode skips helper');
+  calc.pfDynState.mode = 'result';
+  const picked = calc.pfDynBuildSelectedSegmentExplanation();
+  assert(picked && picked.hasSegment === true, 'explain ui: result mode builds segment');
+  assert(picked.fromDate === '2024-01-01' && picked.toDate === '2024-01-10',
+    'explain ui: previous is selectedIndex-1, not hover');
+  calc.pfDynState.selectedIndex = 0;
+  const firstSeg = calc.pfDynBuildSelectedSegmentExplanation();
+  assert(firstSeg && firstSeg.hasSegment === false, 'explain ui: selectedIndex 0 is not a fake segment');
+  calc.pfDynState.mode = 'value';
+  calc.pfDynState.series = [];
+  calc.pfDynState.resultSeries = [];
+  calc.pfDynState.selectedIndex = -1;
+  calc.pfDynState.hoverIndex = -1;
+
+  const helperKeep = pfJs.slice(
+    pfJs.indexOf('function buildPortfolioResultSegmentExplanation'),
+    pfJs.indexOf('var PF_UI_STORAGE_KEY')
+  );
+  assert(/function buildPortfolioResultSegmentExplanation/.test(helperKeep), 'explain ui: wave-1 helper still present');
+  assert(!/pfDynExplain/.test(helperKeep), 'explain ui: wave-1 helper body not used for DOM');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary + value-change bridge + result series + result chart UI + result segment explainer');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary + value-change bridge + result series + result chart UI + result segment explainer + result segment explain UI');
