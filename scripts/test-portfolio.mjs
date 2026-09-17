@@ -426,6 +426,11 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__dynSeriesPoint = seriesPointFromValueResult;' +
       '\nthis.__dynStatusText = buildPortfolioDynamicsSeriesStatusText;' +
       '\nthis.__dynTipLines = buildPortfolioDynamicsTipLines;' +
+      '\nthis.__dynSetMode = setPortfolioDynamicsMode;' +
+      '\nthis.__dynActiveSeries = pfDynActiveChartSeries;' +
+      '\nthis.__dynResultStatus = buildPortfolioDynamicsResultStatusText;' +
+      '\nthis.__dynEnsureResult = pfDynEnsureResultSeries;' +
+      '\nthis.__dynNormMode = normalizePortfolioDynamicsMode;' +
       '\nthis.__dynDiscloseHtml = buildPortfolioDynamicsDisclosureHtml;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
       '\nthis.__asOfBridge = buildPortfolioValueChangeBridge;' +
@@ -558,6 +563,11 @@ function loadPortfolioCalcHelpers() {
     seriesPointFromValueResult: sandbox.__dynSeriesPoint,
     buildPortfolioDynamicsSeriesStatusText: sandbox.__dynStatusText,
     buildPortfolioDynamicsTipLines: sandbox.__dynTipLines,
+    setPortfolioDynamicsMode: sandbox.__dynSetMode,
+    pfDynActiveChartSeries: sandbox.__dynActiveSeries,
+    buildPortfolioDynamicsResultStatusText: sandbox.__dynResultStatus,
+    pfDynEnsureResultSeries: sandbox.__dynEnsureResult,
+    normalizePortfolioDynamicsMode: sandbox.__dynNormMode,
     buildPortfolioDynamicsDisclosureHtml: sandbox.__dynDiscloseHtml,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
     buildPortfolioValueChangeBridge: sandbox.__asOfBridge,
@@ -6909,7 +6919,7 @@ await (async () => {
   const dynAt = indexHtml.indexOf('id="portfolioDynamicsBlock"');
   const asofAt = indexHtml.indexOf('id="portfolioAsOfBlock"');
   assert(totalsAt > 0 && dynAt > totalsAt && asofAt > dynAt, 'dyn ui: block after summary, before as-of');
-  assert(/Динамика стоимости портфеля/.test(indexHtml), 'dyn ui: title');
+  assert(/Динамика портфеля/.test(indexHtml), 'dyn ui: title');
   assert(/Оценка портфеля на выбранную дату с учётом покупок, продаж и дроблений акций/.test(indexHtml), 'dyn ui: subtitle');
   assert(!/в реальном времени|интрадей|свечной график|\blive\b/i.test(indexHtml.slice(dynAt, asofAt)),
     'dyn ui: no live/intraday/candle copy');
@@ -9050,9 +9060,167 @@ function loadPortfolioWriterSandbox() {
   })();
 }
 
+{
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const pfJs = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'theme-luxury.css'), 'utf8');
+  const dynHtml = indexHtml.slice(
+    indexHtml.indexOf('id="portfolioDynamicsBlock"'),
+    indexHtml.indexOf('id="portfolioAsOfBlock"')
+  );
+  assert(/id="pfDynModes"/.test(dynHtml), 'result ui: mode switch exists');
+  assert(dynHtml.indexOf('id="pfDynModes"') < dynHtml.indexOf('id="pfDynPeriods"'),
+    'result ui: mode switch before range controls');
+  assert(/data-pf-dyn-mode="value"/.test(dynHtml) && /data-pf-dyn-mode="result"/.test(dynHtml),
+    'result ui: Стоимость | Результат');
+  assert(/aria-pressed/.test(dynHtml), 'result ui: aria-pressed on mode buttons');
+  assert(/id="pfDynChart"/.test(dynHtml) && (dynHtml.match(/id="pfDynChart"/g) || []).length === 1,
+    'result ui: single canvas');
+  assert((dynHtml.match(/data-pf-dyn-horizon="/g) || []).length === 5, 'result ui: same 1M/3M/6M/1Y/All');
+  assert(!/#portfolio\//.test(dynHtml), 'result ui: no nested hash');
+  assert(!/Прибыль|Доходность|PnL|с выплатами/.test(dynHtml), 'result ui: html has no forbidden labels');
+  assert(/#tab-portfolio \.pf-dyn-modes \{/.test(css), 'result ui: mode switch css');
+  assert(!/#007|#0d6efd|#1e90ff/i.test((css.match(/#tab-portfolio \.pf-dyn-modes[\s\S]*?#tab-portfolio \.pf-dyn-periods/) || [''])[0]),
+    'result ui: mode switch has no blue');
+
+  assert(calc.pfDynState.mode === 'value', 'result ui: default mode value');
+  assert(calc.normalizePortfolioDynamicsMode('result') === 'result', 'result ui: normalize result');
+  assert(calc.normalizePortfolioDynamicsMode('nope') === 'value', 'result ui: unknown mode falls back to value');
+
+  const modeSrc = Function.prototype.toString.call(calc.setPortfolioDynamicsMode);
+  const ensureSrc = Function.prototype.toString.call(calc.pfDynEnsureResultSeries);
+  const drawSrc = Function.prototype.toString.call(calc.drawPortfolioDynamicsChart);
+  const loadSrc = Function.prototype.toString.call(calc.loadPortfolioDynamicsSeries);
+  const reqSrc = Function.prototype.toString.call(calc.requestPortfolioDynamicsRefresh);
+  const ensureDynSrc = Function.prototype.toString.call(calc.ensurePortfolioDynamicsReady);
+  assert(!/localStorage|sessionStorage/.test(modeSrc), 'result ui: mode is runtime-only');
+  assert(/valueSeries: pfDynState\.series/.test(ensureSrc), 'result ui: overlay uses existing valueSeries');
+  assert(!/loadInstrumentHistoryForDateRange/.test(ensureSrc), 'result ui: overlay does not reload history');
+  assert(!/buildPortfolioValueChangeBridge/.test(drawSrc), 'result ui: draw does not call bridge');
+  assert(!/loadPayoutFeedsForPortfolio|buildPortfolioPayoutsForHoldingPeriod/.test(modeSrc + ensureSrc + drawSrc),
+    'result ui: no payout loader');
+  assert(!/iss\.moex\.com/.test(modeSrc + ensureSrc), 'result ui: no new MOEX endpoint');
+  assert(/pfDynHasSeries\(\)/.test(ensureDynSrc) && /pfDynBuildInFlight/.test(ensureDynSrc),
+    'result ui: hidden-canvas ensure guards kept');
+  assert(/PF_CHART_LAYOUT_RETRY_MAX = 4/.test(pfJs), 'result ui: finite layout retry kept');
+  assert(/isPortfolioSubviewVisible\('analytics'\)/.test(drawSrc), 'result ui: draw still requires visible analytics');
+  assert(/buildPortfolioValueSeries/.test(loadSrc), 'result ui: cost load still uses value series');
+  assert(/pfDynLastKey/.test(reqSrc), 'result ui: refresh still keyed by portfolio+horizon, not mode');
+
+  const valueSeries = [
+    { date: '2024-01-01', totalValueRub: 0, stocksValueRub: 0, bondsValueRub: 0, isPartial: false },
+    { date: '2024-03-15', totalValueRub: 0, stocksValueRub: 0, bondsValueRub: 0, isPartial: false },
+    { date: '2024-06-01', totalValueRub: 0, stocksValueRub: 0, bondsValueRub: 0, isPartial: false }
+  ];
+  const resultPoints = [
+    {
+      date: '2024-01-01', portfolioValueRub: 0, totalValueRub: 0, stocksValueRub: 0, bondsValueRub: 0,
+      resultRub: 0, stocksResultRub: 0, bondsResultRub: 0, isPartial: false, operationsPartial: false
+    },
+    {
+      date: '2024-03-15', portfolioValueRub: 0, totalValueRub: 0, stocksValueRub: 0, bondsValueRub: 0,
+      resultRub: 300, stocksResultRub: 300, bondsResultRub: 0, isPartial: false, operationsPartial: false
+    },
+    {
+      date: '2024-06-01', portfolioValueRub: 0, totalValueRub: 0, stocksValueRub: 0, bondsValueRub: 0,
+      resultRub: 300, stocksResultRub: 300, bondsResultRub: 0, isPartial: false, operationsPartial: false
+    }
+  ];
+  const valueCard = calc.buildPortfolioDynamicsCardHtml(valueSeries, 2);
+  assert(/Стоимость портфеля/.test(valueCard), 'result ui: cost card still uses portfolio value');
+  assert(/С начала периода/.test(valueCard), 'result ui: cost card keeps change-from-start');
+  const resultCard = calc.buildPortfolioDynamicsCardHtml(resultPoints, 2, { mode: 'result' });
+  assert(/Результат за выбранный период/.test(resultCard), 'result ui: result card label');
+  assert(/Результат с начала выбранного периода/.test(resultCard), 'result ui: period semantics');
+  assert(!/Стоимость портфеля/.test(resultCard), 'result ui: result card is not cost');
+  assert(!/%/.test(resultCard) && !/changePct/.test(resultCard), 'result ui: result card has no %');
+  assert(!/выплат/i.test(resultCard), 'result ui: result card has no payouts');
+  assert(/300/.test(resultCard), 'result ui: round-trip result stays +300 after V=0');
+  const firstCard = calc.buildPortfolioDynamicsCardHtml(resultPoints, 0, { mode: 'result' });
+  assert(/0,00/.test(firstCard), 'result ui: first point 0 ₽');
+
+  calc.pfDynState.showParts = true;
+  const tipVal = calc.buildPortfolioDynamicsTipLines(valueSeries[2], { mode: 'value', showParts: true });
+  assert(tipVal.some((ln) => /0,00/.test(ln) || ln.indexOf('0') >= 0), 'result ui: cost tooltip uses value');
+  const tipRes = calc.buildPortfolioDynamicsTipLines(resultPoints[2], { mode: 'result', showParts: true });
+  assert(tipRes.some((ln) => /300/.test(ln)), 'result ui: tooltip uses resultRub');
+  assert(tipRes.some((ln) => /Акции/.test(ln)), 'result ui: tooltip stocksResult');
+  assert(!tipRes.some((ln) => /%/.test(ln)), 'result ui: tooltip has no %');
+  calc.pfDynState.showParts = false;
+
+  const nullPt = {
+    date: '2024-03-01', resultRub: null, stocksResultRub: null, bondsResultRub: 10,
+    isPartial: false, operationsPartial: true
+  };
+  const nullCard = calc.buildPortfolioDynamicsCardHtml([resultPoints[0], nullPt], 1, { mode: 'result' });
+  assert(/—/.test(nullCard), 'result ui: null resultRub is em dash, not 0');
+  assert(!/Результат за выбранный период[\s\S]*0,00 ₽/.test(nullCard) || /—/.test(nullCard),
+    'result ui: null is not formatted as 0,00');
+  const nullTip = calc.buildPortfolioDynamicsTipLines(nullPt, { mode: 'result' });
+  assert(nullTip.indexOf('—') >= 0, 'result ui: tooltip null is not 0');
+  assert(nullTip.some((ln) => /не все операции/.test(ln)), 'result ui: opsPartial tooltip');
+
+  const marketStatus = calc.buildPortfolioDynamicsResultStatusText(
+    { operationsPartial: false },
+    [{ isPartial: true, operationsPartial: false, resultRub: 10 }]
+  );
+  assert(/Расчёт частичный: для части позиций не хватает исторических данных/.test(marketStatus),
+    'result ui: market partial warning');
+  const opsStatus = calc.buildPortfolioDynamicsResultStatusText(
+    { operationsPartial: true },
+    [{ isPartial: false, operationsPartial: true, resultRub: null }]
+  );
+  assert(/Не все операции за период удалось оценить/.test(opsStatus), 'result ui: operationsPartial warning');
+  const bothStatus = calc.buildPortfolioDynamicsResultStatusText(
+    { operationsPartial: true },
+    [{ isPartial: true, operationsPartial: true, resultRub: null }]
+  );
+  assert(/Расчёт частичный/.test(bothStatus) && /Не все операции/.test(bothStatus),
+    'result ui: both partial warnings');
+
+  const partsCard = calc.buildPortfolioDynamicsCardHtml([{
+    date: '2024-06-01',
+    resultRub: 200,
+    stocksResultRub: 150,
+    bondsResultRub: 50,
+    isPartial: false
+  }], 0, { mode: 'result' });
+  assert(/150/.test(partsCard) && /50/.test(partsCard), 'result ui: stocks/bonds result fields');
+
+  const prevMode = calc.pfDynState.mode;
+  let valueSeriesCalls = 0;
+  const origSeriesFn = calc.buildPortfolioValueSeries;
+  calc.buildPortfolioValueSeries = function () {
+    valueSeriesCalls += 1;
+    return origSeriesFn.apply(this, arguments);
+  };
+  calc.pfDynState.series = valueSeries;
+  calc.pfDynState.resultSeries = [];
+  calc.pfDynState.resultKey = '';
+  calc.pfDynState.fromDate = '2024-01-01';
+  calc.pfDynState.toDate = '2024-06-01';
+  calc.setPfDynLastKey('mode-switch-key');
+  await calc.setPortfolioDynamicsMode('result');
+  await calc.setPortfolioDynamicsMode('value');
+  await calc.setPortfolioDynamicsMode('result');
+  assert(valueSeriesCalls === 0, 'result ui: mode switch does not rebuild value series');
+  assert(calc.pfDynState.horizon === '1y' || typeof calc.pfDynState.horizon === 'string',
+    'result ui: mode switch keeps shared horizon');
+  assert(calc.pfDynActiveChartSeries() === calc.pfDynState.resultSeries ||
+    calc.pfDynState.mode === 'result', 'result ui: active series is result in result mode');
+  calc.buildPortfolioValueSeries = origSeriesFn;
+  calc.pfDynState.mode = prevMode || 'value';
+  calc.pfDynState.series = [];
+  calc.pfDynState.resultSeries = [];
+  calc.pfDynState.resultKey = '';
+  calc.setPfDynLastKey('');
+
+  assert(!/requestPortfolioDynamicsRefresh/.test(modeSrc), 'result ui: setMode does not refresh series');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary + value-change bridge + result series');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary + value-change bridge + result series + result chart UI');
