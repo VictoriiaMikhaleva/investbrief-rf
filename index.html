@@ -724,15 +724,19 @@
                     </div>
 
           <div class="portfolio-subview" id="portfolioSubviewAnalytics" data-portfolio-subview="analytics" role="tabpanel" aria-labelledby="portfolioSubTabAnalytics" hidden>
-<section class="glass pf-dyn-block" id="portfolioDynamicsBlock" aria-label="Динамика стоимости портфеля">
+<section class="glass pf-dyn-block" id="portfolioDynamicsBlock" aria-label="Динамика портфеля">
             <div class="pf-dyn-head">
               <span class="pf-dyn-icon" aria-hidden="true"></span>
               <div class="pf-dyn-copy">
-                <h3 class="pf-dyn-title">Динамика стоимости портфеля</h3>
+                <h3 class="pf-dyn-title">Динамика портфеля</h3>
                 <p class="pf-dyn-hint">Оценка портфеля на выбранную дату с учётом покупок, продаж и дроблений акций.</p>
               </div>
             </div>
             <div class="pf-dyn-toolbar">
+              <div class="pf-dyn-modes" id="pfDynModes" role="group" aria-label="Режим графика">
+                <button type="button" class="pf-dyn-mode is-active" data-pf-dyn-mode="value" aria-pressed="true">Стоимость</button>
+                <button type="button" class="pf-dyn-mode" data-pf-dyn-mode="result" aria-pressed="false">Результат</button>
+              </div>
               <div class="pf-dyn-periods" id="pfDynPeriods" role="tablist" aria-label="Период динамики">
                 <button type="button" class="pf-dyn-period" data-pf-dyn-horizon="1m">1М</button>
                 <button type="button" class="pf-dyn-period" data-pf-dyn-horizon="3m">3М</button>

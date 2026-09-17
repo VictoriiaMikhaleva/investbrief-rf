@@ -6659,6 +6659,268 @@
     });
   }
 
+  function resultSeriesAmountKnown(op) {
+    if (!op) return false;
+    var px = Number(op.price);
+    return op.amountRub != null && isFinite(Number(op.amountRub)) && isFinite(px) && px > 0;
+  }
+
+  function resultSeriesOpSubset(op) {
+    if (op && op.isBond) return 'bond';
+    if (op && isPortfolioBondPosition({ ticker: op.ticker })) return 'bond';
+    return 'stock';
+  }
+
+  function collectResultSeriesOperationRecords(portfolio, options) {
+    options = options || {};
+    var positions = (portfolio && portfolio.positions) || [];
+    var sales = (portfolio && portfolio.sales) || [];
+    var bondMetaMap = options.bondMetaMap || {};
+    var records = [];
+    var undatedIncomplete = false;
+    seriesCollectTickers(portfolio, options).forEach(function (ticker) {
+      var ops = buildTickerOperationTimeline(ticker, positions, sales, bondMetaMap[ticker] || null);
+      (ops || []).forEach(function (op) {
+        if (!op || (op.type !== 'buy' && op.type !== 'sell')) return;
+        if (!op.date) {
+          undatedIncomplete = true;
+          return;
+        }
+        records.push({
+          date: op.date,
+          type: op.type,
+          ticker: op.ticker || ticker,
+          amountRub: op.amountRub,
+          amountKnown: resultSeriesAmountKnown(op),
+          subset: resultSeriesOpSubset(op),
+          _seq: op._seq
+        });
+      });
+    });
+    records.sort(function (a, b) {
+      var da = a.date || '';
+      var db = b.date || '';
+      if (da !== db) return da < db ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'buy' ? -1 : 1;
+      return (a._seq || 0) - (b._seq || 0);
+    });
+    return { records: records, undatedIncomplete: undatedIncomplete };
+  }
+
+  function resultSeriesRoundOrNull(known, raw) {
+    return known ? (asOfRoundRub(raw) || 0) : null;
+  }
+
+  function resultSeriesEffectRub(valueT, valueStart, purchases, sales) {
+    if (valueT == null || valueStart == null || purchases == null || sales == null) return null;
+    if (!isFinite(Number(valueT)) || !isFinite(Number(valueStart))) return null;
+    return asOfRoundRub(Number(valueT) - Number(valueStart) - Number(purchases) + Number(sales));
+  }
+
+  function emptyPortfolioResultSeries(fromIso, toIso, extra) {
+    extra = extra || {};
+    return {
+      fromDate: fromIso || '',
+      toDate: toIso || '',
+      invalidDate: extra.invalidDate != null ? !!extra.invalidDate : (!fromIso || !toIso),
+      points: extra.points || [],
+      isPartial: !!extra.isPartial,
+      operationsPartial: !!extra.operationsPartial,
+      identityOk: false,
+      notes: extra.notes || []
+    };
+  }
+
+  /**
+   * Read-only ряд инвестиционного результата за выбранный период.
+   * resultRub(t) = V(t) − V(start) − P(start, t] + S(start, t]  (= priceEffect моста к каждой точке).
+   * Не включает realized, выплаты, cashFlows, комиссии и %.
+   * Сложность после готового value series: O(tickers × timeline + operations + points).
+   */
+  function buildPortfolioResultSeries(portfolio, fromDate, toDate, options) {
+    options = options || {};
+    var fromIso = timelineIsoDate(fromDate);
+    var toIso = timelineIsoDate(toDate);
+    if (!fromIso || !toIso || fromIso > toIso) {
+      return Promise.resolve(emptyPortfolioResultSeries(fromIso, toIso, {
+        invalidDate: true,
+        notes: ['Укажите корректные даты для сравнения.']
+      }));
+    }
+
+    var readySeries = Array.isArray(options.valueSeries) ? options.valueSeries : null;
+    var seriesPromise = readySeries
+      ? Promise.resolve(readySeries)
+      : Promise.resolve(
+        (typeof options.buildPortfolioValueSeries === 'function'
+          ? options.buildPortfolioValueSeries
+          : buildPortfolioValueSeries)(portfolio, fromDate, toDate, options)
+      );
+
+    return seriesPromise.then(function (valuePoints) {
+      valuePoints = valuePoints || [];
+      if (!valuePoints.length) {
+        var emptyCollected = collectResultSeriesOperationRecords(portfolio, options);
+        return emptyPortfolioResultSeries(fromIso, toIso, {
+          invalidDate: false,
+          operationsPartial: !!emptyCollected.undatedIncomplete,
+          isPartial: !!emptyCollected.undatedIncomplete,
+          notes: emptyCollected.undatedIncomplete ? [BRIDGE_OPS_PARTIAL_NOTE] : []
+        });
+      }
+
+      var startIso = timelineIsoDate(valuePoints[0] && valuePoints[0].date) || fromIso;
+      var startTotal = Number(valuePoints[0].totalValueRub);
+      if (!isFinite(startTotal) && valuePoints[0].portfolioValueRub != null) {
+        startTotal = Number(valuePoints[0].portfolioValueRub);
+      }
+      if (!isFinite(startTotal)) startTotal = 0;
+      startTotal = asOfRoundRub(startTotal) || 0;
+      var startStocks = asOfRoundRub(Number(valuePoints[0].stocksValueRub) || 0) || 0;
+      var startBonds = asOfRoundRub(Number(valuePoints[0].bondsValueRub) || 0) || 0;
+
+      var collected = collectResultSeriesOperationRecords(portfolio, options);
+      var records = collected.records || [];
+      var undatedIncomplete = !!collected.undatedIncomplete;
+      var opIndex = 0;
+      var cum = {
+        p: 0,
+        s: 0,
+        sp: 0,
+        ss: 0,
+        bp: 0,
+        bs: 0,
+        pKnown: true,
+        sKnown: true,
+        spKnown: true,
+        ssKnown: true,
+        bpKnown: true,
+        bsKnown: true
+      };
+
+      function addRecord(rec) {
+        if (!rec) return;
+        var known = !!rec.amountKnown;
+        var amt = known ? Number(rec.amountRub) : 0;
+        if (rec.type === 'buy') {
+          if (!known) cum.pKnown = false;
+          else if (cum.pKnown) cum.p += amt;
+          if (rec.subset === 'bond') {
+            if (!known) cum.bpKnown = false;
+            else if (cum.bpKnown) cum.bp += amt;
+          } else {
+            if (!known) cum.spKnown = false;
+            else if (cum.spKnown) cum.sp += amt;
+          }
+        } else if (rec.type === 'sell') {
+          if (!known) cum.sKnown = false;
+          else if (cum.sKnown) cum.s += amt;
+          if (rec.subset === 'bond') {
+            if (!known) cum.bsKnown = false;
+            else if (cum.bsKnown) cum.bs += amt;
+          } else {
+            if (!known) cum.ssKnown = false;
+            else if (cum.ssKnown) cum.ss += amt;
+          }
+        }
+      }
+
+      var seriesMarketPartial = false;
+      var seriesOpsPartial = undatedIncomplete;
+      var seriesNotes = [];
+      var points = valuePoints.map(function (vp) {
+        var iso = timelineIsoDate(vp && vp.date) || '';
+        while (opIndex < records.length && records[opIndex].date <= iso) {
+          if (records[opIndex].date > startIso) addRecord(records[opIndex]);
+          opIndex += 1;
+        }
+
+        var purchasesRub = resultSeriesRoundOrNull(cum.pKnown, cum.p);
+        var salesRub = resultSeriesRoundOrNull(cum.sKnown, cum.s);
+        var stocksPurchasesRub = resultSeriesRoundOrNull(cum.spKnown, cum.sp);
+        var stocksSalesRub = resultSeriesRoundOrNull(cum.ssKnown, cum.ss);
+        var bondsPurchasesRub = resultSeriesRoundOrNull(cum.bpKnown, cum.bp);
+        var bondsSalesRub = resultSeriesRoundOrNull(cum.bsKnown, cum.bs);
+
+        var valueRub = vp && vp.totalValueRub != null && isFinite(Number(vp.totalValueRub))
+          ? asOfRoundRub(Number(vp.totalValueRub))
+          : (vp && vp.portfolioValueRub != null && isFinite(Number(vp.portfolioValueRub))
+            ? asOfRoundRub(Number(vp.portfolioValueRub))
+            : 0);
+        var stocksValueRub = vp && vp.stocksValueRub != null && isFinite(Number(vp.stocksValueRub))
+          ? asOfRoundRub(Number(vp.stocksValueRub))
+          : 0;
+        var bondsValueRub = vp && vp.bondsValueRub != null && isFinite(Number(vp.bondsValueRub))
+          ? asOfRoundRub(Number(vp.bondsValueRub))
+          : 0;
+
+        var opsPartialPoint = undatedIncomplete || !cum.pKnown || !cum.sKnown;
+        var resultRub = (!cum.pKnown || !cum.sKnown)
+          ? null
+          : resultSeriesEffectRub(valueRub, startTotal, purchasesRub, salesRub);
+        var stocksResultRub = (!cum.spKnown || !cum.ssKnown)
+          ? null
+          : resultSeriesEffectRub(stocksValueRub, startStocks, stocksPurchasesRub, stocksSalesRub);
+        var bondsResultRub = (!cum.bpKnown || !cum.bsKnown)
+          ? null
+          : resultSeriesEffectRub(bondsValueRub, startBonds, bondsPurchasesRub, bondsSalesRub);
+
+        if (vp && vp.isPartial) seriesMarketPartial = true;
+        if (opsPartialPoint) seriesOpsPartial = true;
+
+        var pointNotes = asOfUniqueNotes([
+          vp && vp.warnings,
+          vp && vp.notes,
+          ((vp && vp.advisories) || []).map(function (a) { return a && a.text; }),
+          opsPartialPoint ? [BRIDGE_OPS_PARTIAL_NOTE] : []
+        ]);
+        seriesNotes.push(pointNotes);
+
+        return {
+          date: iso,
+          portfolioValueRub: valueRub,
+          totalValueRub: valueRub,
+          stocksValueRub: stocksValueRub,
+          bondsValueRub: bondsValueRub,
+          cumulativePurchasesRub: purchasesRub,
+          cumulativeSalesRub: salesRub,
+          stocksCumulativePurchasesRub: stocksPurchasesRub,
+          stocksCumulativeSalesRub: stocksSalesRub,
+          bondsCumulativePurchasesRub: bondsPurchasesRub,
+          bondsCumulativeSalesRub: bondsSalesRub,
+          resultRub: resultRub,
+          stocksResultRub: stocksResultRub,
+          bondsResultRub: bondsResultRub,
+          isPartial: !!(vp && vp.isPartial),
+          operationsPartial: opsPartialPoint,
+          notes: pointNotes
+        };
+      });
+
+      var last = points[points.length - 1];
+      var identityOk = false;
+      if (last && last.resultRub != null && last.cumulativePurchasesRub != null &&
+          last.cumulativeSalesRub != null && last.portfolioValueRub != null && !seriesOpsPartial) {
+        identityOk = asOfRoundRub(
+          startTotal + last.cumulativePurchasesRub - last.cumulativeSalesRub + last.resultRub
+        ) === asOfRoundRub(last.portfolioValueRub);
+      }
+
+      return {
+        fromDate: fromIso,
+        toDate: toIso,
+        invalidDate: false,
+        points: points,
+        isPartial: !!(seriesMarketPartial || seriesOpsPartial),
+        operationsPartial: seriesOpsPartial,
+        identityOk: identityOk,
+        notes: asOfUniqueNotes(seriesNotes.concat([
+          seriesOpsPartial ? [BRIDGE_OPS_PARTIAL_NOTE] : []
+        ]))
+      };
+    });
+  }
+
   function cmpExplainQtyPart(ticker, qty) {
     var t = String(ticker || '').trim();
     if (!t) return '';
@@ -11944,6 +12206,14 @@
   var PF_DYN_CATALOG = 'Список дроблений акций временно недоступен. Динамика может быть неполной.';
   var PF_DYN_DISCLOSE_PARTIAL = 'Почему оценка неполная?';
   var PF_DYN_DISCLOSE_ADVISORY = 'Что учтено в расчёте?';
+  var PF_DYN_RESULT_MARKET_PARTIAL = 'Расчёт частичный: для части позиций не хватает исторических данных.';
+  var PF_DYN_RESULT_OPS_PARTIAL = 'Не все операции за период удалось оценить.';
+  var PF_DYN_HINT_VALUE = 'Оценка портфеля на выбранную дату с учётом покупок, продаж и дроблений акций.';
+  var PF_DYN_HINT_RESULT = 'Результат за выбранный период: изменение оценки активов с поправкой на покупки и продажи.';
+  var PF_DYN_CAPTION_VALUE = 'График строится по оценке на дату. Значения могут отличаться от верхней сводки, если текущие цены обновились позже.';
+  var PF_DYN_CAPTION_RESULT = 'Результат за выбранный период. Покупки и продажи отделены от изменения стоимости активов.';
+  var PF_DYN_CHART_LABEL_VALUE = 'График оценки портфеля по датам';
+  var PF_DYN_CHART_LABEL_RESULT = 'График результата портфеля за выбранный период';
   var PF_DYN_MAX_POINTS = 140;
   var PF_DYN_DEBOUNCE_MS = 80;
   var pfDynSeq = 0;
@@ -11953,8 +12223,12 @@
   var pfDynHorizonPicked = false;
   var pfDynState = {
     horizon: '1y',
+    mode: 'value',
     showParts: false,
     series: [],
+    resultSeries: [],
+    resultMeta: null,
+    resultKey: '',
     selectedIndex: -1,
     hoverIndex: -1,
     fromDate: '',
@@ -11997,6 +12271,117 @@
 
   function pfDynHasSeries() {
     return !!(pfDynState.series && pfDynState.series.length);
+  }
+
+  function normalizePortfolioDynamicsMode(raw) {
+    return raw === 'result' ? 'result' : 'value';
+  }
+
+  function pfDynIsResultMode() {
+    return pfDynState.mode === 'result';
+  }
+
+  function pfDynResetResultCache() {
+    pfDynState.resultSeries = [];
+    pfDynState.resultMeta = null;
+    pfDynState.resultKey = '';
+  }
+
+  function pfDynActiveChartSeries() {
+    if (pfDynIsResultMode()) return pfDynState.resultSeries || [];
+    return pfDynState.series || [];
+  }
+
+  function pfDynFiniteRub(raw) {
+    if (raw == null || !isFinite(Number(raw))) return null;
+    return Number(raw);
+  }
+
+  function pfDynPointMainRub(pt) {
+    if (!pt) return null;
+    if (pfDynIsResultMode()) return pfDynFiniteRub(pt.resultRub);
+    return pfDynFiniteRub(pt.totalValueRub);
+  }
+
+  function pfDynPointStocksRub(pt) {
+    if (!pt) return null;
+    if (pfDynIsResultMode()) return pfDynFiniteRub(pt.stocksResultRub);
+    return pfDynFiniteRub(pt.stocksValueRub);
+  }
+
+  function pfDynPointBondsRub(pt) {
+    if (!pt) return null;
+    if (pfDynIsResultMode()) return pfDynFiniteRub(pt.bondsResultRub);
+    return pfDynFiniteRub(pt.bondsValueRub);
+  }
+
+  function pfDynSyncModeButtons() {
+    var root = document.getElementById('pfDynModes');
+    if (!root) return;
+    var mode = normalizePortfolioDynamicsMode(pfDynState.mode);
+    root.querySelectorAll('[data-pf-dyn-mode]').forEach(function (btn) {
+      var on = btn.getAttribute('data-pf-dyn-mode') === mode;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  function pfDynApplyModeCopy() {
+    var result = pfDynIsResultMode();
+    var hint = typeof document !== 'undefined' && document && typeof document.querySelector === 'function'
+      ? document.querySelector('#portfolioDynamicsBlock .pf-dyn-hint')
+      : null;
+    if (hint) hint.textContent = result ? PF_DYN_HINT_RESULT : PF_DYN_HINT_VALUE;
+    var caption = document.getElementById('pfDynCaption');
+    if (caption) caption.textContent = result ? PF_DYN_CAPTION_RESULT : PF_DYN_CAPTION_VALUE;
+    var canvas = document.getElementById('pfDynChart');
+    if (canvas && typeof canvas.setAttribute === 'function') {
+      canvas.setAttribute('aria-label', result ? PF_DYN_CHART_LABEL_RESULT : PF_DYN_CHART_LABEL_VALUE);
+    }
+  }
+
+  function pfDynEnsureResultSeries() {
+    if (!pfDynIsResultMode()) return Promise.resolve(null);
+    if (!pfDynHasSeries()) return Promise.resolve(null);
+    var key = pfDynLastKey;
+    if (key && pfDynState.resultKey === key && pfDynState.resultSeries && pfDynState.resultSeries.length) {
+      return Promise.resolve(pfDynState.resultMeta);
+    }
+    if (typeof buildPortfolioResultSeries !== 'function') return Promise.resolve(null);
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    return Promise.resolve(buildPortfolioResultSeries(pf, pfDynState.fromDate, pfDynState.toDate, {
+      valueSeries: pfDynState.series
+    })).then(function (res) {
+      if (pfDynLastKey !== key) return null;
+      pfDynState.resultMeta = res || {};
+      pfDynState.resultSeries = (res && res.points) || [];
+      pfDynState.resultKey = key;
+      return res;
+    });
+  }
+
+  function setPortfolioDynamicsMode(mode) {
+    mode = normalizePortfolioDynamicsMode(mode);
+    var same = pfDynState.mode === mode;
+    pfDynState.mode = mode;
+    pfDynSyncModeButtons();
+    pfDynApplyModeCopy();
+    if (same && !(mode === 'result' && pfDynHasSeries() && !pfDynState.resultSeries.length)) {
+      return Promise.resolve();
+    }
+    function paint() {
+      pfDynSetStatus(pfDynCurrentStatusText());
+      renderPortfolioDynamicsCard();
+      if (pfDynState.hoverIndex >= 0) pfDynFillTip(pfDynState.hoverIndex);
+      drawPortfolioDynamicsChart();
+    }
+    if (mode === 'result' && pfDynHasSeries()) {
+      return pfDynEnsureResultSeries().then(function () {
+        paint();
+      });
+    }
+    paint();
+    return Promise.resolve();
   }
 
   function pfDynPortfolioKey(portfolio, horizon) {
@@ -12100,10 +12485,28 @@
     return x.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
   }
 
-  function buildPortfolioDynamicsCardHtml(series, selectedIndex) {
+  function buildPortfolioDynamicsCardHtml(series, selectedIndex, options) {
     var picked = selectPortfolioDynamicsPoint(series, selectedIndex);
     if (!picked || !picked.point) return '';
     var pt = picked.point;
+    var mode = options && options.mode === 'result' ? 'result' : 'value';
+    if (mode === 'result') {
+      var resultTone = cmpChangeTone(pt.resultRub);
+      var resultTxt = pt.resultRub == null ? '—' : formatCmpSignedRub(pt.resultRub);
+      var stocksTxt = pt.stocksResultRub == null ? '—' : formatCmpSignedRub(pt.stocksResultRub);
+      var bondsTxt = pt.bondsResultRub == null ? '—' : formatCmpSignedRub(pt.bondsResultRub);
+      return '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">Дата</span>' +
+        '<span class="pf-dyn-kpi-val">' + escapeHtml(formatAsOfDateDisplay(pt.date)) + '</span></div>' +
+        '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">Результат за выбранный период</span>' +
+        '<span class="pf-dyn-kpi-val pf-dyn-change--' + resultTone +
+          (resultTone === 'up' ? ' pnl-pos' : resultTone === 'down' ? ' pnl-neg' : '') + '">' +
+          escapeHtml(resultTxt) + '</span></div>' +
+        '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">Акции</span>' +
+        '<span class="pf-dyn-kpi-val">' + escapeHtml(stocksTxt) + '</span></div>' +
+        '<div class="pf-dyn-kpi"><span class="pf-dyn-kpi-lbl">Облигации</span>' +
+        '<span class="pf-dyn-kpi-val">' + escapeHtml(bondsTxt) + '</span></div>' +
+        '<p class="muted pf-dyn-result-note">Результат с начала выбранного периода</p>';
+    }
     var ch = buildPortfolioDynamicsChangeFromStart(series, picked.index);
     var tone = cmpChangeTone(ch.changeRub);
     var changeTxt = ch.changeRub == null ? '—' : formatCmpSignedRub(ch.changeRub);
@@ -12168,18 +12571,60 @@
     return '';
   }
 
-  function buildPortfolioDynamicsTipLines(pt) {
+  function buildPortfolioDynamicsResultStatusText(meta, points) {
+    var market = false;
+    var ops = !!(meta && meta.operationsPartial);
+    (points || []).forEach(function (p) {
+      if (!p) return;
+      if (p.isPartial) market = true;
+      if (p.operationsPartial) ops = true;
+    });
+    var bits = [];
+    if (market) bits.push(PF_DYN_RESULT_MARKET_PARTIAL);
+    if (ops) bits.push(PF_DYN_RESULT_OPS_PARTIAL);
+    return bits.join(' ');
+  }
+
+  function pfDynCurrentStatusText() {
+    if (pfDynState.catalogBlocked) return PF_DYN_CATALOG;
+    if (!pfDynHasSeries()) return '';
+    if (pfDynIsResultMode()) {
+      return buildPortfolioDynamicsResultStatusText(pfDynState.resultMeta, pfDynState.resultSeries);
+    }
+    return buildPortfolioDynamicsSeriesStatusText(pfDynState.series);
+  }
+
+  function buildPortfolioDynamicsTipLines(pt, options) {
     if (!pt) return [];
-    var lines = [
+    var mode = options && options.mode === 'result'
+      ? 'result'
+      : (options && options.mode === 'value' ? 'value' : (pfDynState.mode || 'value'));
+    var showParts = options && Object.prototype.hasOwnProperty.call(options, 'showParts')
+      ? !!options.showParts
+      : !!pfDynState.showParts;
+    if (mode === 'result') {
+      var lines = [
+        formatAsOfDateDisplay(pt.date),
+        pt.resultRub == null ? '—' : formatCmpSignedRub(pt.resultRub)
+      ];
+      if (showParts) {
+        lines.push('Акции: ' + (pt.stocksResultRub == null ? '—' : formatCmpSignedRub(pt.stocksResultRub)));
+        lines.push('Облигации: ' + (pt.bondsResultRub == null ? '—' : formatCmpSignedRub(pt.bondsResultRub)));
+      }
+      if (pt.operationsPartial || pt.resultRub == null) lines.push('не все операции удалось оценить');
+      else if (pt.isPartial) lines.push('расчёт частичный');
+      return lines;
+    }
+    var valueLines = [
       formatAsOfDateDisplay(pt.date),
       formatPortfolioRubAmount(pt.totalValueRub)
     ];
-    if (pfDynState.showParts) {
-      lines.push('Акции: ' + formatPortfolioRubAmount(pt.stocksValueRub));
-      lines.push('Облигации: ' + formatPortfolioRubAmount(pt.bondsValueRub));
+    if (showParts) {
+      valueLines.push('Акции: ' + formatPortfolioRubAmount(pt.stocksValueRub));
+      valueLines.push('Облигации: ' + formatPortfolioRubAmount(pt.bondsValueRub));
     }
-    if (pt.isPartial) lines.push('оценка неполная');
-    return lines;
+    if (pt.isPartial) valueLines.push('оценка неполная');
+    return valueLines;
   }
 
   function buildPortfolioDynamicsDisclosureHtml(series) {
@@ -12287,13 +12732,21 @@
       card.innerHTML = '';
       return;
     }
+    if (pfDynIsResultMode() && !(pfDynState.resultSeries && pfDynState.resultSeries.length)) {
+      card.hidden = true;
+      card.innerHTML = '';
+      return;
+    }
     card.hidden = false;
-    card.innerHTML = buildPortfolioDynamicsCardHtml(pfDynState.series, pfDynState.selectedIndex);
+    card.innerHTML = buildPortfolioDynamicsCardHtml(pfDynActiveChartSeries(), pfDynState.selectedIndex, {
+      mode: pfDynState.mode
+    });
   }
 
   function pfDynIndexAtClientX(canvas, clientX) {
     var meta = canvas && canvas._pfDynMeta;
-    var series = pfDynState.series || [];
+    var series = pfDynActiveChartSeries();
+    if (!series.length) series = pfDynState.series || [];
     if (!meta || series.length < 1) return -1;
     var rect = canvas.getBoundingClientRect();
     var x = clientX - rect.left;
@@ -12314,7 +12767,9 @@
     if (wrap && wrap.hidden) return;
     if (!pfDynTabActive()) return;
     if (!isPortfolioSubviewVisible('analytics')) return;
-    var series = pfDynState.series || [];
+    var isResult = pfDynIsResultMode();
+    var series = pfDynActiveChartSeries();
+    if (!series.length) series = pfDynState.series || [];
     var wrapW = wrap ? (wrap.clientWidth || wrap.getBoundingClientRect().width) : 0;
     if (wrapW < 16 && !opts.allowFallbackSize) {
       scheduleVisiblePortfolioChartsRedraw();
@@ -12334,6 +12789,18 @@
     var ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+    function mainRub(pt) {
+      if (isResult) return pfDynFiniteRub(pt && pt.resultRub);
+      return Number(pt && pt.totalValueRub) || 0;
+    }
+    function stocksRub(pt) {
+      if (isResult) return pfDynFiniteRub(pt && pt.stocksResultRub);
+      return Number(pt && pt.stocksValueRub) || 0;
+    }
+    function bondsRub(pt) {
+      if (isResult) return pfDynFiniteRub(pt && pt.bondsResultRub);
+      return Number(pt && pt.bondsValueRub) || 0;
+    }
     if (series.length < 2) {
       canvas._pfDynMeta = null;
       ctx.fillStyle = typeof chartThemeColor === 'function'
@@ -12341,21 +12808,33 @@
         : '#5C6560';
       ctx.font = '14px Golos Text, IBM Plex Sans, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(series.length ? formatPortfolioRubAmount(series[0].totalValueRub) : 'Недостаточно данных', w / 2, h / 2);
+      var one = series.length ? mainRub(series[0]) : null;
+      ctx.fillText(
+        series.length
+          ? (one == null ? '—' : (isResult ? formatCmpSignedRub(one) : formatPortfolioRubAmount(one)))
+          : 'Недостаточно данных',
+        w / 2,
+        h / 2
+      );
       return;
     }
-    var values = series.map(function (p) { return Number(p.totalValueRub) || 0; });
-    if (pfDynState.showParts) {
-      series.forEach(function (p) {
-        values.push(Number(p.stocksValueRub) || 0);
-        values.push(Number(p.bondsValueRub) || 0);
-      });
-    }
+    var values = [];
+    series.forEach(function (p) {
+      var mv = mainRub(p);
+      if (mv != null && isFinite(mv)) values.push(mv);
+      if (pfDynState.showParts) {
+        var sv = stocksRub(p);
+        var bv = bondsRub(p);
+        if (sv != null && isFinite(sv)) values.push(sv);
+        if (bv != null && isFinite(bv)) values.push(bv);
+      }
+    });
+    if (!values.length) values = [0];
     var minP = Math.min.apply(null, values);
     var maxP = Math.max.apply(null, values);
     var range = maxP - minP || Math.abs(maxP) * 0.02 || 1;
     minP -= range * 0.08;
-    if (minP > 0) minP = Math.max(0, minP);
+    if (!isResult && minP > 0) minP = Math.max(0, minP);
     maxP += range * 0.08;
     var pad = { top: 14, right: 44, bottom: 28, left: 52 };
     var plotW = w - pad.left - pad.right;
@@ -12395,21 +12874,34 @@
       ctx.textAlign = 'right';
       ctx.fillText(pfDynFormatAxisRub(maxP - ((maxP - minP) * g) / 4), pad.left - 8, gy + 3);
     }
-    ctx.beginPath();
-    series.forEach(function (pt, idx) {
-      var x = xAt(idx);
-      var y = yAt(Number(pt.totalValueRub) || 0);
-      if (idx === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.lineTo(xAt(series.length - 1), pad.top + plotH);
-    ctx.lineTo(xAt(0), pad.top + plotH);
-    ctx.closePath();
-    var areaFill = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
-    areaFill.addColorStop(0, fillTop);
-    areaFill.addColorStop(1, fillBot);
-    ctx.fillStyle = areaFill;
-    ctx.fill();
+    if (isResult && minP < 0 && maxP > 0) {
+      ctx.save();
+      ctx.strokeStyle = guide;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pad.left, yAt(0));
+      ctx.lineTo(pad.left + plotW, yAt(0));
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (!isResult) {
+      ctx.beginPath();
+      series.forEach(function (pt, idx) {
+        var x = xAt(idx);
+        var y = yAt(Number(pt.totalValueRub) || 0);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.lineTo(xAt(series.length - 1), pad.top + plotH);
+      ctx.lineTo(xAt(0), pad.top + plotH);
+      ctx.closePath();
+      var areaFill = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+      areaFill.addColorStop(0, fillTop);
+      areaFill.addColorStop(1, fillBot);
+      ctx.fillStyle = areaFill;
+      ctx.fill();
+    }
     function strokeVals(getter, color, width) {
       ctx.beginPath();
       series.forEach(function (pt, idx) {
@@ -12423,11 +12915,36 @@
       ctx.lineJoin = 'round';
       ctx.stroke();
     }
-    if (pfDynState.showParts) {
-      strokeVals(function (p) { return p.stocksValueRub; }, stocksLine, 1.4);
-      strokeVals(function (p) { return p.bondsValueRub; }, bondsLine, 1.4);
+    function strokeValsGap(getter, color, width) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = 'round';
+      var drawing = false;
+      series.forEach(function (pt, idx) {
+        var raw = getter(pt);
+        if (raw == null || !isFinite(Number(raw))) {
+          if (drawing) ctx.stroke();
+          drawing = false;
+          return;
+        }
+        var x = xAt(idx);
+        var y = yAt(Number(raw));
+        if (!drawing) {
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          drawing = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      if (drawing) ctx.stroke();
     }
-    strokeVals(function (p) { return p.totalValueRub; }, line, 2.35);
+    var strokeFn = isResult ? strokeValsGap : strokeVals;
+    if (pfDynState.showParts) {
+      strokeFn(function (p) { return isResult ? p.stocksResultRub : p.stocksValueRub; }, stocksLine, 1.4);
+      strokeFn(function (p) { return isResult ? p.bondsResultRub : p.bondsValueRub; }, bondsLine, 1.4);
+    }
+    strokeFn(function (p) { return isResult ? p.resultRub : p.totalValueRub; }, line, 2.35);
     var mark = pfDynState.hoverIndex >= 0 ? pfDynState.hoverIndex : pfDynState.selectedIndex;
     if (mark < 0) mark = series.length - 1;
     if (mark >= 0 && mark < series.length) {
@@ -12442,13 +12959,16 @@
       ctx.lineTo(hx, pad.top + plotH);
       ctx.stroke();
       ctx.restore();
-      ctx.fillStyle = isHoverMark ? lineHover : line;
-      ctx.strokeStyle = pointRing;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(hx, yAt(Number(series[mark].totalValueRub) || 0), isHoverMark ? 5.5 : 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      var markVal = mainRub(series[mark]);
+      if (markVal != null && isFinite(markVal)) {
+        ctx.fillStyle = isHoverMark ? lineHover : line;
+        ctx.strokeStyle = pointRing;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(hx, yAt(markVal), isHoverMark ? 5.5 : 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
     }
     ctx.fillStyle = axis;
     ctx.font = '10px Inter, Manrope, sans-serif';
@@ -12468,7 +12988,8 @@
   function pfDynFillTip(idx, clientX, clientY) {
     var tip = document.getElementById('pfDynTip');
     var wrap = document.getElementById('pfDynChartWrap');
-    var pt = pfDynState.series[idx];
+    var series = pfDynActiveChartSeries();
+    var pt = series[idx] || pfDynState.series[idx];
     if (!tip || !wrap || !pt) return;
     var lines = buildPortfolioDynamicsTipLines(pt);
     tip.innerHTML = lines.map(function (ln, i) {
@@ -12552,6 +13073,7 @@
     if (!pfDynHasBuyDates(pf)) {
       pfDynLastKey = key;
       pfDynState.series = [];
+      pfDynResetResultCache();
       pfDynState.catalogBlocked = false;
       pfDynShowChart(false);
       renderPortfolioDynamicsCard();
@@ -12568,6 +13090,7 @@
     if (catalogUnusable && pfDynHasNonBond(pf)) {
       pfDynLastKey = key;
       pfDynState.series = [];
+      pfDynResetResultCache();
       pfDynState.catalogBlocked = true;
       pfDynShowChart(false);
       renderPortfolioDynamicsCard();
@@ -12601,6 +13124,7 @@
       series = series || [];
       pfDynLastKey = key;
       pfDynState.series = series;
+      pfDynResetResultCache();
       pfDynState.fromDate = range.fromDate;
       pfDynState.toDate = range.toDate;
       pfDynState.selectedIndex = series.length ? series.length - 1 : -1;
@@ -12611,17 +13135,28 @@
         pfDynSetStatus(PF_DYN_ERROR);
         return;
       }
-      pfDynSetStatus(buildPortfolioDynamicsSeriesStatusText(series));
-      pfDynShowChart(true);
-      pfDynRenderDisclosure();
-      pfDynRenderSplitScaleCta(pf, series);
-      renderPortfolioDynamicsCard();
-      scheduleVisiblePortfolioChartsRedraw();
+      function pfDynFinishLoadedSeries() {
+        pfDynApplyModeCopy();
+        pfDynSetStatus(pfDynCurrentStatusText());
+        pfDynShowChart(true);
+        pfDynRenderDisclosure();
+        pfDynRenderSplitScaleCta(pf, series);
+        renderPortfolioDynamicsCard();
+        scheduleVisiblePortfolioChartsRedraw();
+      }
+      if (pfDynIsResultMode()) {
+        return pfDynEnsureResultSeries().then(function () {
+          if (seq !== pfDynSeq) return;
+          pfDynFinishLoadedSeries();
+        });
+      }
+      pfDynFinishLoadedSeries();
     }).catch(function () {
       pfDynBuildInFlight = Math.max(0, pfDynBuildInFlight - 1);
       if (seq !== pfDynSeq) return;
       pfDynLastKey = '';
       pfDynState.series = [];
+      pfDynResetResultCache();
       pfDynShowChart(false);
       renderPortfolioDynamicsCard();
       pfDynSetStatus(PF_DYN_ERROR);
@@ -12799,6 +13334,11 @@
   function ensurePortfolioDynamicsReady() {
     if (pfDynHasSeries()) {
       pfDynShowChart(true);
+      if (pfDynIsResultMode()) {
+        return pfDynEnsureResultSeries().then(function () {
+          scheduleVisiblePortfolioChartsRedraw();
+        });
+      }
       scheduleVisiblePortfolioChartsRedraw();
       return;
     }
@@ -12969,6 +13509,15 @@
         setPortfolioDynamicsShowParts(parts.checked);
       });
     }
+    var modes = document.getElementById('pfDynModes');
+    if (modes && !modes._pfDynBound) {
+      modes._pfDynBound = true;
+      modes.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-pf-dyn-mode]') : null;
+        if (!btn) return;
+        setPortfolioDynamicsMode(btn.getAttribute('data-pf-dyn-mode'));
+      });
+    }
     var periods = document.getElementById('pfDynPeriods');
     if (periods && !periods._pfDynBound) {
       periods._pfDynBound = true;
@@ -12985,6 +13534,8 @@
     }
     bindPortfolioDynamicsPointer();
     pfDynSyncHorizonButtons(pfDynState.horizon);
+    pfDynSyncModeButtons();
+    pfDynApplyModeCopy();
   }
 
   function renderPortfolio() {

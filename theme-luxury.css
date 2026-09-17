@@ -6203,6 +6203,47 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
   max-width: 100%;
 }
 
+#tab-portfolio .pf-dyn-modes {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#tab-portfolio .pf-dyn-mode {
+  min-height: 2rem;
+  padding: 0.18rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 28%, #c5d0cb 72%);
+  background: #fff;
+  color: color-mix(in srgb, var(--text) 82%, #4a5550 18%);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#tab-portfolio .pf-dyn-mode:hover {
+  border-color: color-mix(in srgb, var(--bronze) 46%, #b8c2bc 54%);
+}
+
+#tab-portfolio .pf-dyn-mode.is-active {
+  background: color-mix(in srgb, var(--bronze-soft) 70%, #fff 30%);
+  border-color: color-mix(in srgb, var(--bronze) 48%, #c5d0cb 52%);
+  color: color-mix(in srgb, var(--text) 88%, #3d4844 12%);
+}
+
+#tab-portfolio .pf-dyn-mode:focus {
+  outline: none;
+}
+
+#tab-portfolio .pf-dyn-mode:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bronze) 50%, #6a7f70 50%);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 #tab-portfolio .pf-dyn-periods {
   display: flex;
   flex-wrap: wrap;
@@ -6420,6 +6461,13 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
   font-size: 0.74rem;
   line-height: 1.4;
   color: var(--text-muted);
+}
+
+#tab-portfolio .pf-dyn-result-note {
+  margin: 0.1rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  max-width: 100%;
 }
 
 #tab-portfolio .pf-dyn-disclose {
