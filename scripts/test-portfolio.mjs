@@ -9954,6 +9954,122 @@ function loadPortfolioWriterSandbox() {
   });
   assert(/Изменение результата/.test(zeroDeltaOps) && /Покупка/.test(zeroDeltaOps),
     'explain ui: zero delta still lists events');
+  assert(!/Основной вклад/.test(zeroDeltaOps), 'explain ui: display-zero contributor hides section');
+  assert(!/pf-dyn-explain-row/.test(zeroDeltaOps), 'explain ui: display-zero contributor row omitted');
+
+  const zeroRowKept = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 12.34,
+    operations: [],
+    topContributors: [
+      { ticker: 'GAZP', effectRub: 12.34 },
+      { ticker: 'SBER', effectRub: 0 },
+      { ticker: 'LKOH', effectRub: 0.004 }
+    ],
+    contributors: [
+      { ticker: 'GAZP', effectRub: 12.34 },
+      { ticker: 'SBER', effectRub: 0 },
+      { ticker: 'LKOH', effectRub: 0.004 }
+    ],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Основной вклад/.test(zeroRowKept) && /GAZP/.test(zeroRowKept),
+    'explain ui: non-zero contributor still shown');
+  assert(!/SBER/.test(zeroRowKept), 'explain ui: exact 0 ₽ contributor row hidden');
+  assert(!/LKOH/.test(zeroRowKept), 'explain ui: sub-kopeck 0,00 ₽ contributor row hidden');
+  assert(!/Остальные/.test(zeroRowKept), 'explain ui: others hidden when remainder is 0 ₽');
+
+  const othersExactZero = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [],
+    topContributors: [
+      { ticker: 'AAA', effectRub: 5 },
+      { ticker: 'BBB', effectRub: 3 },
+      { ticker: 'CCC', effectRub: 2 }
+    ],
+    contributors: [
+      { ticker: 'AAA', effectRub: 5 },
+      { ticker: 'BBB', effectRub: 3 },
+      { ticker: 'CCC', effectRub: 2 },
+      { ticker: 'DDD', effectRub: 0 }
+    ],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Основной вклад/.test(othersExactZero), 'explain ui: others=0 still keeps non-zero top');
+  assert(!/Остальные/.test(othersExactZero), 'explain ui: others row hidden when display is 0 ₽');
+
+  const othersTinyZero = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 10 }],
+    contributors: [
+      { ticker: 'SBER', effectRub: 10 },
+      { ticker: 'GAZP', effectRub: 0.004 }
+    ],
+    othersEffectRub: 0.004,
+    isPartial: false
+  });
+  assert(/SBER/.test(othersTinyZero), 'explain ui: 10 ₽ contributor kept');
+  assert(!/Остальные/.test(othersTinyZero), 'explain ui: others hidden when rounded to 0 ₽');
+
+  const othersOneKopeck = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10.01,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 10 }],
+    contributors: [
+      { ticker: 'SBER', effectRub: 10 },
+      { ticker: 'GAZP', effectRub: 0.005 }
+    ],
+    othersEffectRub: 0.005,
+    isPartial: false
+  });
+  assert(/Остальные/.test(othersOneKopeck), 'explain ui: 1 kopeck others is not a threshold hide');
+  assert(/0,01/.test(othersOneKopeck), 'explain ui: 0.005 ₽ displays as 0,01 ₽');
+
+  const onlySubKopeck = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 0.004,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 0.004 }],
+    contributors: [{ ticker: 'SBER', effectRub: 0.004 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(!/Основной вклад/.test(onlySubKopeck), 'explain ui: only 0,00 ₽ contributors omit section');
+  assert(/Покупок и продаж на этом участке не было/.test(onlySubKopeck),
+    'explain ui: events stay when delta is not exact 0');
+  assert(/Изменение результата/.test(onlySubKopeck), 'explain ui: result delta still shown');
+
+  const displayZeroQuiet = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 0,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 0 }],
+    contributors: [{ ticker: 'SBER', effectRub: 0 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(!/Основной вклад/.test(displayZeroQuiet), 'explain ui: 0 ₽-only list omits contribution section');
+  assert(!/SBER/.test(displayZeroQuiet), 'explain ui: 0 ₽ SBER row not rendered');
+  assert(/существенных изменений не было/.test(displayZeroQuiet),
+    'explain ui: 0 ₽-only contributors do not keep an empty contribution column');
 
   calc.pfDynState.mode = 'value';
   calc.pfDynState.series = [{ date: '2024-01-01' }, { date: '2024-01-10' }];

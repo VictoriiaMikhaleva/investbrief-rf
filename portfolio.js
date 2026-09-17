@@ -13024,6 +13024,19 @@
     return '';
   }
 
+  function pfDynExplainEffectDisplaysZero(effectRub) {
+    if (effectRub == null || !isFinite(Number(effectRub))) return false;
+    var rounded = typeof asOfRoundRub === 'function'
+      ? asOfRoundRub(effectRub)
+      : Math.round(Number(effectRub) * 100) / 100;
+    return Number(rounded) === 0;
+  }
+
+  function pfDynExplainContribRowVisible(row) {
+    if (!row || row.effectRub == null || !isFinite(Number(row.effectRub))) return false;
+    return !pfDynExplainEffectDisplaysZero(row.effectRub);
+  }
+
   function pfDynExplainOpHtml(op) {
     if (!op) return '';
     var kind = op.type === 'sell' ? 'Продажа' : 'Покупка';
@@ -13042,8 +13055,7 @@
   }
 
   function pfDynExplainContribRowHtml(row, extraLabel) {
-    if (!row) return '';
-    if (row.effectRub == null || !isFinite(Number(row.effectRub))) return '';
+    if (!pfDynExplainContribRowVisible(row)) return '';
     var ticker = extraLabel || String(row.ticker || '').trim();
     var tone = pfDynExplainToneClass(row.effectRub);
     var more = extraLabel || !ticker ? '' :
@@ -13078,9 +13090,11 @@
     (explanation.contributors || []).forEach(function (row) {
       if (row && row.effectRub != null && isFinite(Number(row.effectRub))) knownCount += 1;
     });
+    var visibleTop = top.filter(pfDynExplainContribRowVisible);
     var showOthers = explanation.othersEffectRub != null && isFinite(Number(explanation.othersEffectRub)) &&
-      knownCount > top.length;
-    var noMove = (delta == null || Number(delta) === 0) && !ops.length && !top.length;
+      knownCount > top.length && !pfDynExplainEffectDisplaysZero(explanation.othersEffectRub);
+    var hasVisibleContrib = visibleTop.length > 0 || showOthers;
+    var noMove = (delta == null || Number(delta) === 0) && !ops.length && !hasVisibleContrib;
     if (noMove) {
       html += '<p class="pf-dyn-explain-empty">' + escapeHtml(PF_DYN_EXPLAIN_NO_CHANGE) + '</p>';
     } else {
@@ -13101,14 +13115,14 @@
         }
       }
       html += '</div>';
-      if (top.length) {
+      if (hasVisibleContrib) {
         html += '<div class="pf-dyn-explain-col">';
         html += '<h5 class="pf-dyn-explain-h">Основной вклад</h5>';
         if (explanation.isPartial) {
           html += '<p class="pf-dyn-explain-note">' + escapeHtml(PF_DYN_EXPLAIN_PARTIAL_LEAD) + '</p>';
         }
         html += '<ul class="pf-dyn-explain-contrib">';
-        top.forEach(function (row) { html += pfDynExplainContribRowHtml(row); });
+        visibleTop.forEach(function (row) { html += pfDynExplainContribRowHtml(row); });
         if (showOthers) {
           html += pfDynExplainContribRowHtml({
             ticker: 'Остальные',
