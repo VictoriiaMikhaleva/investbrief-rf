@@ -1814,6 +1814,25 @@
     return uniqueWarningTickers(out);
   }
 
+  function collectUnknownFutureCouponTickersFromWarnings(warnings) {
+    var out = [];
+    var i;
+    for (i = 0; i < (warnings || []).length; i++) {
+      var s = String(warnings[i] || '');
+      var m = s.match(/^([A-Za-z0-9._-]+):\s+размер будущего купона пока неизвестен/i);
+      if (!m) continue;
+      out.push(m[1]);
+    }
+    return uniqueWarningTickers(out);
+  }
+
+  function formatUnknownFutureCouponWarning(tickers) {
+    var unique = uniqueWarningTickers(tickers);
+    if (!unique.length) return '';
+    var who = unique.length === 1 ? unique[0] : formatTickerListForWarning(unique);
+    return 'Для ' + who + ' размер будущего купона пока неизвестен; итог рассчитан по выплатам с известной суммой.';
+  }
+
   function collectUnavailablePayoutTickers(payoutsByTicker) {
     if (!payoutsByTicker || typeof payoutsByTicker !== 'object') return [];
     var out = [];
@@ -4044,6 +4063,8 @@
   var PAYOUT_NO_FEED_PREFIX = 'нет данных по выплатам для ';
   var PAYOUT_BAD_DIV_SUFFIX = ': дивиденд без суммы на 1 акцию';
   var PAYOUT_BAD_COUPON_SUFFIX = ': купон без суммы на 1 облигацию';
+  var PAYOUT_UNKNOWN_FUTURE_COUPON_NOTE = 'Размер купона пока не определён в доступных данных.';
+  var PAYOUT_UNKNOWN_FUTURE_COUPON_SUFFIX = ': размер будущего купона пока неизвестен';
   var PAYOUT_SPLIT_QTY_UNKNOWN_SUFFIX = ': не удалось определить количество на дату отсечки из-за сплита.';
   var PAYOUT_SPLIT_CURRENT_QTY_UNKNOWN_SUFFIX = ': не удалось определить текущее количество для предстоящих выплат из-за сплита.';
 
@@ -5510,6 +5531,7 @@
       items: [],
       warnings: [],
       isPartial: false,
+      hasUnknownAmounts: false,
       invalidDate: !!invalid
     };
   }
@@ -5541,6 +5563,7 @@
     var warnings = [];
     var items = [];
     var isPartial = false;
+    var hasUnknownAmounts = false;
     if (composition.hasIncompleteHistory) {
       isPartial = true;
       (composition.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
@@ -5602,6 +5625,7 @@
         if (!eventIso || eventIso <= nowIso || eventIso > endIso) continue;
 
         var perUnit = null;
+        var amountKnown = true;
         if (type === 'dividend') {
           var divVal = Number(ev.value);
           perUnit = isFinite(divVal) && divVal > 0 ? divVal : null;
@@ -5612,32 +5636,35 @@
           }
         } else {
           perUnit = payoutsCouponPerUnit(ev, faceValue);
-          if (perUnit == null) {
-            isPartial = true;
-            payoutsPushWarning(warnings, ticker + PAYOUT_BAD_COUPON_SUFFIX);
-            continue;
+          amountKnown = perUnit != null;
+          if (!amountKnown) {
+            hasUnknownAmounts = true;
+            payoutsPushWarning(warnings, ticker + PAYOUT_UNKNOWN_FUTURE_COUPON_SUFFIX);
           }
         }
 
-        var amountRub = asOfRoundRub(currentQty * perUnit);
-        if (amountRub == null) continue;
+        var amountRub = amountKnown ? asOfRoundRub(currentQty * perUnit) : null;
+        if (amountKnown && amountRub == null) continue;
         var displayIso = type === 'coupon'
           ? ((couponElig && couponElig.couponDate) || eventIso)
           : eventIso;
+        var couponNote = UPCOMING_COUPON_NOTE;
+        if (type === 'coupon' && !amountKnown) {
+          couponNote = PAYOUT_UNKNOWN_FUTURE_COUPON_NOTE;
+        } else if (type === 'coupon' && couponElig && couponElig.eligibilityEstimated) {
+          couponNote = payoutsCouponFallbackNote(couponElig);
+        }
         var upcoming = {
           ticker: ticker,
           type: type,
           date: displayIso,
           qtyHeld: currentQty,
-          payoutPerUnit: perUnit,
+          payoutPerUnit: amountKnown ? perUnit : null,
           amountRub: amountRub,
+          amountKnown: amountKnown,
           currency: ev.currency ? String(ev.currency) : 'RUB',
           source: source,
-          note: type === 'dividend'
-            ? UPCOMING_DIV_NOTE
-            : (couponElig && couponElig.eligibilityEstimated
-              ? payoutsCouponFallbackNote(couponElig)
-              : UPCOMING_COUPON_NOTE)
+          note: type === 'dividend' ? UPCOMING_DIV_NOTE : couponNote
         };
         if (type === 'coupon') {
           upcoming.couponDate = displayIso;
@@ -5666,8 +5693,11 @@
     var totalDiv = 0;
     var totalCpn = 0;
     items.forEach(function (item) {
-      if (item.type === 'dividend') totalDiv += Number(item.amountRub) || 0;
-      else totalCpn += Number(item.amountRub) || 0;
+      if (item.amountKnown === false) return;
+      var amt = Number(item.amountRub);
+      if (!isFinite(amt)) return;
+      if (item.type === 'dividend') totalDiv += amt;
+      else totalCpn += amt;
     });
     return {
       asOfDate: nowIso,
@@ -5679,6 +5709,7 @@
       items: items,
       warnings: warnings,
       isPartial: isPartial,
+      hasUnknownAmounts: hasUnknownAmounts,
       invalidDate: false
     };
   }
@@ -12618,6 +12649,7 @@
   var PF_UP_PAY_ERROR = 'Не удалось подобрать предстоящие выплаты. Попробуйте ещё раз.';
   var PF_UP_PAY_EMPTY = 'На выбранном горизонте известных выплат по текущему составу портфеля не найдено.';
   var PF_UP_PAY_PARTIAL = 'Расчёт частичный: по части бумаг нет данных о выплатах или сумма на 1 шт. неизвестна.';
+  var PF_UP_PAY_KNOWN_TOTALS_SUFFIX = ' · по известным суммам';
   var PF_UP_PAY_FOOT = 'Расчёт справочный: акции считаются по отсечке. Для ОФЗ в таблице показана дата купона. Право на выплату оценивается по дате фиксации, если она доступна. Сумма рассчитана для текущего состава портфеля. Налоги, комиссии, НКД и дата зачисления не учитываются.';
   var pfUpPayBusy = false;
   var pfUpPaySeq = 0;
@@ -12657,9 +12689,33 @@
   }
 
   function upcomingPayoutsItemHint(row) {
+    if (row && row.amountKnown === false) return PAYOUT_UNKNOWN_FUTURE_COUPON_NOTE;
     if (row && row.note) return String(row.note);
     if (row && row.type === 'coupon') return UPCOMING_COUPON_NOTE;
     return UPCOMING_DIV_NOTE;
+  }
+
+  function upcomingKnownTotalsLabel(label, result) {
+    if (result && result.hasUnknownAmounts) return String(label || '') + PF_UP_PAY_KNOWN_TOTALS_SUFFIX;
+    return String(label || '');
+  }
+
+  function formatUpcomingPayoutsWarningText(result, portfolio) {
+    result = result || {};
+    var unknown = orderWarningTickersByPortfolio(
+      collectUnknownFutureCouponTickersFromWarnings(result.warnings || []),
+      portfolio
+    );
+    var parts = [];
+    if (unknown.length) parts.push(formatUnknownFutureCouponWarning(unknown));
+    if (result.isPartial || result.feedPartial) {
+      var partialText = formatPayoutPartialWarningText(
+        collectPayoutPartialTickers(result, portfolio),
+        PF_UP_PAY_PARTIAL
+      );
+      if (partialText) parts.push(partialText);
+    }
+    return parts.join(' ');
   }
 
   function buildUpcomingPayoutsCardsHtml(items) {
@@ -12738,14 +12794,14 @@
       out.innerHTML = '<p class="muted pf-pay-empty">Не удалось определить дату расчёта.</p>';
       return;
     }
-    var partial = !!(result.isPartial || result.feedPartial);
+    var warnText = formatUpcomingPayoutsWarningText(
+      result,
+      typeof getPortfolio === 'function' ? getPortfolio() : null
+    );
     if (warn) {
-      if (partial) {
+      if (warnText) {
         warn.hidden = false;
-        warn.textContent = formatPayoutPartialWarningText(
-          collectPayoutPartialTickers(result, typeof getPortfolio === 'function' ? getPortfolio() : null),
-          PF_UP_PAY_PARTIAL
-        );
+        warn.textContent = warnText;
       } else {
         warn.hidden = true;
         warn.textContent = '';
@@ -12755,9 +12811,9 @@
     var divs = formatPortfolioRubAmount(result.totalDividendsRub);
     var cpns = formatPortfolioRubAmount(result.totalCouponsRub);
     var board = '<div class="pf-pay-board pf-pay-board--up">' +
-      buildPortfolioPayoutsKpiHtml('Всего впереди', total) +
+      buildPortfolioPayoutsKpiHtml(upcomingKnownTotalsLabel('Всего впереди', result), total) +
       buildPortfolioPayoutsKpiHtml('Дивиденды', divs) +
-      buildPortfolioPayoutsKpiHtml('Купоны', cpns);
+      buildPortfolioPayoutsKpiHtml(upcomingKnownTotalsLabel('Купоны', result), cpns);
     if (result.nextDate) {
       board += buildPortfolioPayoutsKpiHtml('Ближайшая дата', formatAsOfDateDisplay(result.nextDate));
     }
