@@ -457,6 +457,13 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__payoutsCardsHtml = buildPortfolioPayoutsCardsHtml;' +
       '\nthis.__payoutsTableHtml = buildPortfolioPayoutsTableHtml;' +
       '\nthis.__upcomingPayouts = buildUpcomingPortfolioPayouts;' +
+      '\nthis.__upcomingWarnText = formatUpcomingPayoutsWarningText;' +
+      '\nthis.__unknownCpnWarn = formatUnknownFutureCouponWarning;' +
+      '\nthis.__unknownCpnTickers = collectUnknownFutureCouponTickersFromWarnings;' +
+      '\nthis.__upcomingTableHtml = buildUpcomingPayoutsTableHtml;' +
+      '\nthis.__upcomingCardsHtml = buildUpcomingPayoutsCardsHtml;' +
+      '\nthis.__upcomingHint = upcomingPayoutsItemHint;' +
+      '\nthis.__upcomingKnownLbl = upcomingKnownTotalsLabel;' +
       '\nthis.__splitWarn = portfolioTickerNeedsSplitWarning;' +
       '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;' +
       '\nthis.__splitWarnMany = buildPortfolioSplitWarningsForTickersHtml;' +
@@ -604,6 +611,13 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioPayoutsCardsHtml: sandbox.__payoutsCardsHtml,
     buildPortfolioPayoutsTableHtml: sandbox.__payoutsTableHtml,
     buildUpcomingPortfolioPayouts: sandbox.__upcomingPayouts,
+    formatUpcomingPayoutsWarningText: sandbox.__upcomingWarnText,
+    formatUnknownFutureCouponWarning: sandbox.__unknownCpnWarn,
+    collectUnknownFutureCouponTickersFromWarnings: sandbox.__unknownCpnTickers,
+    buildUpcomingPayoutsTableHtml: sandbox.__upcomingTableHtml,
+    buildUpcomingPayoutsCardsHtml: sandbox.__upcomingCardsHtml,
+    upcomingPayoutsItemHint: sandbox.__upcomingHint,
+    upcomingKnownTotalsLabel: sandbox.__upcomingKnownLbl,
     portfolioTickerNeedsSplitWarning: sandbox.__splitWarn,
     buildPortfolioSplitWarningHtml: sandbox.__splitWarnHtml,
     buildPortfolioSplitWarningsForTickersHtml: sandbox.__splitWarnMany,
@@ -3596,9 +3610,23 @@ function loadPriceAtDateHelpers() {
   const ofzNoAmount = runUpcoming(ofzHeld, {
     payoutsByTicker: ofzFeed([{ date: '2025-09-19' }], 1000)
   });
-  assert(ofzNoAmount.items.length === 0, 'upcoming 7: coupon without value skipped');
-  assert(ofzNoAmount.isPartial === true, 'upcoming 7: partial');
-  assert(ofzNoAmount.warnings.some((w) => /купон без суммы/i.test(w)), 'upcoming 7: coupon warning');
+  assert(ofzNoAmount.items.length === 1, 'upcoming 7: coupon without value kept');
+  assert(ofzNoAmount.items[0].amountKnown === false, 'upcoming 7: amount unknown');
+  assert(ofzNoAmount.items[0].payoutPerUnit == null && ofzNoAmount.items[0].amountRub == null,
+    'upcoming 7: unknown amount is not 0');
+  assert(ofzNoAmount.totalUpcomingRub === 0 && ofzNoAmount.totalCouponsRub === 0,
+    'upcoming 7: known totals exclude unknown');
+  assert(ofzNoAmount.hasUnknownAmounts === true, 'upcoming 7: hasUnknownAmounts');
+  assert(ofzNoAmount.isPartial === true && ofzNoAmount.items[0].isEstimated === true,
+    'upcoming 7: missing recordDate still estimated/partial');
+  assert(ofzNoAmount.warnings.some((w) => /размер будущего купона пока неизвестен/i.test(w)),
+    'upcoming 7: unknown coupon warning');
+  assert(ofzNoAmount.warnings.some((w) => /дата фиксации не найдена/i.test(w)),
+    'upcoming 7: eligibility fallback warning kept');
+  assert(!ofzNoAmount.warnings.some((w) => /купон без суммы/i.test(w)),
+    'upcoming 7: no feed-failure coupon warning');
+  assert(/не определён в доступных данных/.test(ofzNoAmount.items[0].note),
+    'upcoming 7: local unknown note');
 
   const noFeed = runUpcoming(heldNow, { payoutsByTicker: {} });
   assert(noFeed.totalUpcomingRub === 0 && noFeed.items.length === 0, 'upcoming 8: no feed totals 0');
@@ -3635,6 +3663,194 @@ function loadPriceAtDateHelpers() {
   assert(mixed.items.length === 2, 'upcoming sort: two items same date');
   assert(mixed.items[0].ticker === 'GAZP' && mixed.items[1].ticker === 'SBER', 'upcoming sort: ticker within date');
   assert(mixed.nextDate === '2025-08-01', 'upcoming sort: nextDate nearest');
+}
+
+{
+  // Known future event + unknown coupon amount is not a feed failure.
+  const NOW = '2026-09-17';
+  function bondFeed(ticker, coupons, faceValue) {
+    const rec = {};
+    rec[ticker] = {
+      kind: 'bond',
+      source: 'bondization',
+      coupons: coupons,
+      faceValue: faceValue != null ? faceValue : 1000
+    };
+    return rec;
+  }
+  function held(ticker, qty) {
+    return {
+      positions: [{
+        ticker: ticker, lotId: ticker + '_L1', qty: qty, avgPrice: 95, buyDate: '2025-01-10',
+        faceValue: 1000
+      }],
+      sales: []
+    };
+  }
+  function runUp(ticker, coupons, extra) {
+    return calc.buildUpcomingPortfolioPayouts(
+      (extra && extra.portfolio) || held(ticker, extra && extra.qty != null ? extra.qty : 5),
+      Object.assign({
+        now: NOW,
+        horizonDays: 365,
+        payoutsByTicker: bondFeed(ticker, coupons, extra && extra.faceValue)
+      }, extra || {})
+    );
+  }
+
+  const knownValue = runUp('OFZ_26254', [{
+    couponDate: '2026-10-21', recordDate: '2026-10-20', value: 64.82
+  }]);
+  assert(knownValue.items.length === 1, 'unknown-amt 1: known value kept');
+  assert(knownValue.items[0].amountKnown === true, 'unknown-amt 1: amountKnown');
+  assert(knownValue.items[0].payoutPerUnit === 64.82, 'unknown-amt 1: per unit');
+  assert(knownValue.items[0].amountRub === 324.1, 'unknown-amt 1: 5 × 64.82');
+  assert(knownValue.totalCouponsRub === 324.1 && knownValue.totalUpcomingRub === 324.1, 'unknown-amt 1: totals');
+  assert(knownValue.isPartial === false && knownValue.hasUnknownAmounts !== true, 'unknown-amt 1: complete');
+
+  const knownPct = runUp('OFZ_26250', [{
+    couponDate: '2026-12-23', recordDate: '2026-12-22', value: null, valuePct: 12
+  }], { qty: 4 });
+  assert(knownPct.items.length === 1, 'unknown-amt 2: valuePct kept');
+  assert(knownPct.items[0].payoutPerUnit === 120, 'unknown-amt 2: 12% × 1000');
+  assert(knownPct.items[0].amountRub === 480, 'unknown-amt 2: 4 × 120');
+  assert(knownPct.hasUnknownAmounts !== true, 'unknown-amt 2: amount known from pct');
+
+  const liveShape = [
+    { couponDate: '2026-09-11', recordDate: '2026-09-10', value: 35.99, valuePct: 14.28 },
+    { couponDate: '2026-12-11', recordDate: '2026-12-10', value: null, valuePct: null }
+  ];
+  const unknownFuture = runUp('OFZ_26248', liveShape);
+  assert(unknownFuture.items.length === 1, 'unknown-amt 3: future event kept');
+  assert(unknownFuture.items[0].date === '2026-12-11', 'unknown-amt 3: couponDate shown');
+  assert(unknownFuture.items[0].recordDate === '2026-12-10', 'unknown-amt 3: recordDate kept');
+  assert(unknownFuture.items[0].eligibilityDate === '2026-12-10', 'unknown-amt 3: eligibility recordDate');
+  assert(unknownFuture.items[0].qtyHeld === 5, 'unknown-amt 3: current qty');
+  assert(unknownFuture.items[0].amountKnown === false, 'unknown-amt 3: amount unknown');
+  assert(unknownFuture.items[0].payoutPerUnit == null, 'unknown-amt 4: per unit null not 0');
+  assert(unknownFuture.items[0].amountRub == null, 'unknown-amt 4: total null not 0');
+  assert(unknownFuture.totalUpcomingRub === 0 && unknownFuture.totalCouponsRub === 0,
+    'unknown-amt 5: known totals exclude unknown');
+  assert(unknownFuture.isPartial === false, 'unknown-amt 6: not feed failure');
+  assert(unknownFuture.hasUnknownAmounts === true, 'unknown-amt 6: hasUnknownAmounts');
+  assert(unknownFuture.warnings.some((w) => w === 'OFZ_26248: размер будущего купона пока неизвестен'),
+    'unknown-amt 6: ticker warning');
+  assert(/не определён в доступных данных/.test(unknownFuture.items[0].note), 'unknown-amt 6: row note');
+  assert(!/не опубликован/.test(unknownFuture.items[0].note), 'unknown-amt 6: no unpublished claim');
+  assert(!/зафиксировано/.test(unknownFuture.items[0].note), 'unknown-amt 6: no vested copy');
+
+  const hist = calc.buildTickerPayoutsForHoldingPeriod(
+    'OFZ_26248',
+    held('OFZ_26248', 5),
+    '2026-01-01',
+    '2026-09-17',
+    { now: NOW, payoutsByTicker: bondFeed('OFZ_26248', liveShape) }
+  );
+  assert(hist.items.length === 1, 'unknown-amt 7: historical still one paid coupon');
+  assert(hist.items[0].payoutPerUnit === 35.99, 'unknown-amt 7: 35.99 unchanged');
+  assert(hist.items[0].amountRub === 179.95, 'unknown-amt 7: 5 × 35.99');
+  assert(hist.isPartial === false, 'unknown-amt 7: historical not partial');
+  assert(hist.items[0].eligibilityDate === '2026-09-10', 'unknown-amt 8: historical recordDate eligibility');
+
+  const missingFeed = runUp('OFZ_26254', [], { payoutsByTicker: {} });
+  assert(missingFeed.items.length === 0, 'unknown-amt 9: missing feed has no event');
+  assert(missingFeed.isPartial === true && missingFeed.hasUnknownAmounts !== true,
+    'unknown-amt 9: missing feed is partial, not unknown-amount');
+  assert(missingFeed.warnings.some((w) => /нет данных по выплатам для OFZ_26254/.test(w)),
+    'unknown-amt 9: missing-feed warning');
+  const unknownTickers = calc.collectUnknownFutureCouponTickersFromWarnings(unknownFuture.warnings);
+  const missingTickers = calc.collectPayoutPartialTickersFromWarnings(missingFeed.warnings);
+  assert(unknownTickers.join(',') === 'OFZ_26248', 'unknown-amt 9: unknown collector');
+  assert(missingTickers.join(',') === 'OFZ_26254', 'unknown-amt 9: missing-feed collector');
+  assert(calc.collectUnknownFutureCouponTickersFromWarnings(missingFeed.warnings).length === 0,
+    'unknown-amt 9: missing feed is not unknown-amount');
+  assert(calc.collectPayoutPartialTickersFromWarnings(unknownFuture.warnings).length === 0,
+    'unknown-amt 9: unknown amount is not missing-feed ticker');
+
+  const mixedKnownUnknown = calc.buildUpcomingPortfolioPayouts({
+    positions: [
+      { ticker: 'OFZ_26254', lotId: 'A', qty: 5, avgPrice: 95, buyDate: '2025-01-10', faceValue: 1000 },
+      { ticker: 'OFZ_26248', lotId: 'B', qty: 5, avgPrice: 95, buyDate: '2025-01-10', faceValue: 1000 }
+    ],
+    sales: []
+  }, {
+    now: NOW,
+    horizonDays: 365,
+    payoutsByTicker: Object.assign(
+      {},
+      bondFeed('OFZ_26254', [{ couponDate: '2026-10-21', recordDate: '2026-10-20', value: 64.82 }]),
+      bondFeed('OFZ_26248', [{ couponDate: '2026-12-11', recordDate: '2026-12-10' }])
+    )
+  });
+  assert(mixedKnownUnknown.items.length === 2, 'unknown-amt 5: both events listed');
+  const knownItem = mixedKnownUnknown.items.find((x) => x.ticker === 'OFZ_26254');
+  const unknownItem = mixedKnownUnknown.items.find((x) => x.ticker === 'OFZ_26248');
+  assert(knownItem && knownItem.amountRub === 324.1, 'unknown-amt 5: known coupon in totals');
+  assert(unknownItem && unknownItem.amountRub == null, 'unknown-amt 5: unknown not zero');
+  assert(mixedKnownUnknown.totalUpcomingRub === 324.1 && mixedKnownUnknown.totalCouponsRub === 324.1,
+    'unknown-amt 5: totals are known-only');
+  assert(mixedKnownUnknown.hasUnknownAmounts === true, 'unknown-amt 5: flag');
+  const warnText = calc.formatUpcomingPayoutsWarningText(mixedKnownUnknown, {
+    positions: mixedKnownUnknown.items
+  });
+  assert(/Для OFZ_26248 размер будущего купона пока неизвестен/.test(warnText),
+    'unknown-amt 6: precise unknown warning');
+  assert(/итог рассчитан по выплатам с известной суммой/.test(warnText),
+    'unknown-amt 6: known-totals clause');
+  assert(!/нет данных о выплатах или сумме на 1 шт/.test(warnText),
+    'unknown-amt 6: not the feed-failure copy');
+  assert(calc.upcomingKnownTotalsLabel('Всего впереди', mixedKnownUnknown) ===
+    'Всего впереди · по известным суммам', 'unknown-amt 5: total caption');
+  assert(calc.upcomingKnownTotalsLabel('Купоны', mixedKnownUnknown) ===
+    'Купоны · по известным суммам', 'unknown-amt 5: coupons caption');
+  assert(calc.upcomingKnownTotalsLabel('Всего впереди', knownValue) === 'Всего впереди',
+    'unknown-amt 1: no caption when all known');
+
+  const tableHtml = calc.buildUpcomingPayoutsTableHtml(unknownFuture.items);
+  const cardHtml = calc.buildUpcomingPayoutsCardsHtml(unknownFuture.items);
+  assert(/OFZ_26248/.test(tableHtml) && /OFZ_26248/.test(cardHtml), 'unknown-amt ui: ticker');
+  assert(/Выплата за 1 шт\./.test(tableHtml), 'unknown-amt ui: per-unit label');
+  assert((tableHtml.match(/—/g) || []).length >= 2, 'unknown-amt ui: dashes for unknown amount');
+  assert(/Размер купона пока не определён в доступных данных/.test(tableHtml + cardHtml),
+    'unknown-amt ui: local note');
+  assert(calc.upcomingPayoutsItemHint(unknownFuture.items[0]).indexOf('не определён') >= 0,
+    'unknown-amt ui: hint');
+
+  const synth = runUp('SU26238RMFS9', [{ couponDate: '2026-12-01', recordDate: '2026-11-30' }]);
+  assert(synth.items.length === 1 && synth.items[0].amountKnown === false, 'unknown-amt synth: event kept');
+  assert(synth.hasUnknownAmounts === true && synth.isPartial === false, 'unknown-amt synth: unknown not feed fail');
+
+  const elig = calc.buildUpcomingPortfolioPayouts(held('OFZ_26250', 10), {
+    now: '2026-12-21',
+    horizonDays: 365,
+    payoutsByTicker: bondFeed('OFZ_26250', [{
+      couponDate: '2026-12-23', recordDate: '2026-12-22', value: 59.84
+    }])
+  });
+  assert(elig.items.length === 1, 'unknown-amt 8: still upcoming before recordDate');
+  const eligOn = calc.buildUpcomingPortfolioPayouts(held('OFZ_26250', 10), {
+    now: '2026-12-22',
+    horizonDays: 365,
+    payoutsByTicker: bondFeed('OFZ_26250', [{
+      couponDate: '2026-12-23', recordDate: '2026-12-22', value: 59.84
+    }])
+  });
+  assert(eligOn.items.length === 0, 'unknown-amt 8: recordDate eligibility unchanged');
+
+  const src = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const ofzSrc = fs.readFileSync(path.join(__dirname, '..', 'ofz.js'), 'utf8');
+  const upcomingFn = src.slice(
+    src.indexOf('function buildUpcomingPortfolioPayouts'),
+    src.indexOf('function asOfIsoToRu')
+  );
+  assert(!/OFZ_29027/.test(upcomingFn), 'unknown-amt 10: no ticker hardcode in upcoming');
+  assert(/bondization\.json\?iss\.only=coupons/.test(ofzSrc), 'unknown-amt 11: existing coupons endpoint');
+  assert(!/iss\.only=amortizations/.test(upcomingFn), 'unknown-amt 11: no new amortization endpoint');
+  const drawSrc = Function.prototype.toString.call(calc.drawPortfolioDynamicsChart);
+  const ensureSrc = Function.prototype.toString.call(calc.pfDynEnsureResultSeries);
+  assert(!/loadPayoutFeedsForPortfolio|buildPortfolioPayoutsForHoldingPeriod|buildUpcomingPortfolioPayouts/.test(
+    drawSrc + ensureSrc
+  ), 'unknown-amt 12: Result graph unaffected');
 }
 
 {
