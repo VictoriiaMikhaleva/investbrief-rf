@@ -432,9 +432,13 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__dynEnsureResult = pfDynEnsureResultSeries;' +
       '\nthis.__dynNormMode = normalizePortfolioDynamicsMode;' +
       '\nthis.__dynDiscloseHtml = buildPortfolioDynamicsDisclosureHtml;' +
+      '\nthis.__dynExplainHtml = buildPortfolioDynamicsExplainHtml;' +
+      '\nthis.__dynExplain = renderPortfolioDynamicsExplain;' +
+      '\nthis.__dynExplainSegment = pfDynBuildSelectedSegmentExplanation;' +
       '\nthis.__asOfChange = buildPortfolioValueChangeBetweenDates;' +
       '\nthis.__asOfBridge = buildPortfolioValueChangeBridge;' +
       '\nthis.__asOfResultSeries = buildPortfolioResultSeries;' +
+      '\nthis.__asOfSegmentExplain = buildPortfolioResultSegmentExplanation;' +
       '\nthis.__asOfChangeExplain = buildPortfolioValueChangeExplanation;' +
       '\nthis.__collectPeriodOps = collectComparePeriodOperations;' +
       '\nthis.__asOfTable = buildPortfolioAsOfTableHtml;' +
@@ -575,9 +579,13 @@ function loadPortfolioCalcHelpers() {
     pfDynEnsureResultSeries: sandbox.__dynEnsureResult,
     normalizePortfolioDynamicsMode: sandbox.__dynNormMode,
     buildPortfolioDynamicsDisclosureHtml: sandbox.__dynDiscloseHtml,
+    buildPortfolioDynamicsExplainHtml: sandbox.__dynExplainHtml,
+    renderPortfolioDynamicsExplain: sandbox.__dynExplain,
+    pfDynBuildSelectedSegmentExplanation: sandbox.__dynExplainSegment,
     buildPortfolioValueChangeBetweenDates: sandbox.__asOfChange,
     buildPortfolioValueChangeBridge: sandbox.__asOfBridge,
     buildPortfolioResultSeries: sandbox.__asOfResultSeries,
+    buildPortfolioResultSegmentExplanation: sandbox.__asOfSegmentExplain,
     collectComparePeriodOperations: sandbox.__collectPeriodOps,
     buildPortfolioValueChangeExplanation: sandbox.__asOfChangeExplain,
     buildPortfolioAsOfTableHtml: sandbox.__asOfTable,
@@ -9836,9 +9844,885 @@ function loadPortfolioWriterSandbox() {
   assert(!/requestPortfolioDynamicsRefresh/.test(modeSrc), 'result ui: setMode does not refresh series');
 }
 
+{
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'split-events.json'), 'utf8'));
+  calc.setSplitEventsCatalog(catalog);
+  const events = calc.getSplitEventsSync();
+  const NOW = '2026-09-04';
+
+  function priceOk(price, extra) {
+    extra = extra || {};
+    return {
+      status: 'ok',
+      price: price,
+      priceDate: extra.priceDate || extra.date || extra.priceDate,
+      priceType: extra.priceType || 'close',
+      unit: extra.unit || 'rub'
+    };
+  }
+  function mockPricesOnOrBefore(map) {
+    return function (ticker, date) {
+      const t = String(ticker || '').toUpperCase();
+      const iso = String(date || '').slice(0, 10);
+      const byTicker = map[t];
+      if (!byTicker) return Promise.resolve({ status: 'missing', price: null, priceDate: null });
+      const keys = Object.keys(byTicker).filter((d) => d !== 'default' && d <= iso).sort();
+      const key = keys.length ? keys[keys.length - 1] : null;
+      const row = key ? byTicker[key] : byTicker.default;
+      return Promise.resolve(row || { status: 'missing', price: null, priceDate: null });
+    };
+  }
+  function saleRec(extra) {
+    extra = extra || {};
+    const qty = extra.qty != null ? extra.qty : 10;
+    const buyDate = extra.buyDate || '2023-01-01';
+    const lotId = extra.lotId || 'S1';
+    return {
+      ticker: extra.ticker || 'SBER',
+      qty: qty,
+      salePrice: extra.salePrice,
+      buyPrice: extra.buyPrice,
+      saleDate: extra.saleDate,
+      buyDate: buyDate,
+      lotId: lotId,
+      fee: extra.fee,
+      faceValue: extra.faceValue,
+      allocations: extra.allocations || [{
+        lotId: lotId,
+        qty: qty,
+        buyPrice: extra.buyPrice,
+        buyDate: buyDate,
+        lotQtyDelta: extra.lotQtyDelta != null ? extra.lotQtyDelta : qty,
+        faceValue: extra.faceValue
+      }]
+    };
+  }
+  function findPt(points, iso) {
+    return (points || []).find((p) => p.date === iso);
+  }
+  function near(a, b, eps) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return Math.abs(Number(a) - Number(b)) <= (eps != null ? eps : 0.02);
+  }
+  function contrib(expl, ticker) {
+    return (expl.contributors || []).find((row) => String(row.ticker || '').toUpperCase() === String(ticker).toUpperCase());
+  }
+  async function explainRange(pf, from, to, priceMap, extra) {
+    extra = extra || {};
+    const opts = {
+      interval: extra.interval || 'day',
+      maxPoints: extra.maxPoints,
+      includePositions: true,
+      splitEvents: events,
+      currentDate: NOW,
+      getInstrumentPriceAtDate: mockPricesOnOrBefore(priceMap),
+      bondMetaMap: extra.bondMetaMap || {}
+    };
+    const frozen = JSON.stringify(pf);
+    const valueSeries = await calc.buildPortfolioValueSeries(pf, from, to, opts);
+    const result = await calc.buildPortfolioResultSeries(pf, from, to, Object.assign({}, opts, { valueSeries: valueSeries }));
+    const prevIso = extra.prevIso || from;
+    const selIso = extra.selIso || to;
+    const prevIdx = result.points.findIndex((p) => p.date === prevIso);
+    const selIdx = result.points.findIndex((p) => p.date === selIso);
+    const prev = prevIdx >= 0 ? result.points[prevIdx] : result.points[0];
+    const sel = selIdx >= 0 ? result.points[selIdx] : result.points[result.points.length - 1];
+    const pIdx = prevIdx >= 0 ? prevIdx : 0;
+    const sIdx = selIdx >= 0 ? selIdx : result.points.length - 1;
+    const expl = calc.buildPortfolioResultSegmentExplanation(pf, extra.skipPrevious ? null : prev, sel, {
+      fromValuePoint: valueSeries[pIdx],
+      toValuePoint: valueSeries[sIdx],
+      valueSeries: valueSeries,
+      previousIndex: extra.skipPrevious ? null : pIdx,
+      selectedIndex: sIdx,
+      bondMetaMap: opts.bondMetaMap
+    });
+    assert(JSON.stringify(pf) === frozen, (extra.label || 'segment') + ': portfolio not mutated');
+    return { valueSeries, result, prev, sel, prevIdx: pIdx, selIdx: sIdx, expl, opts };
+  }
+  async function assertBridge(pf, expl, opts, label) {
+    if (!expl.hasSegment || expl.segmentResultDeltaRub == null || expl.operationsPartial) return null;
+    const bridge = await calc.buildPortfolioValueChangeBridge(pf, expl.fromDate, expl.toDate, opts);
+    assert(near(expl.segmentResultDeltaRub, bridge.priceEffectRub, 0.02),
+      label + ': segment delta vs bridge.priceEffectRub');
+    return bridge;
+  }
+
+  await (async () => {
+    const hold = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 110 }],
+      sales: []
+    };
+    const rHold = await explainRange(hold, '2024-01-01', '2024-01-10', {
+      SBER: { '2024-01-01': priceOk(100, { date: '2024-01-01' }), '2024-01-10': priceOk(110, { date: '2024-01-10' }) }
+    }, { label: 'seg hold' });
+    assert(rHold.expl.hasSegment === true, 'seg 1: hasSegment');
+    assert(rHold.expl.operations.length === 0, 'seg 1: no operations');
+    assert(rHold.expl.segmentResultDeltaRub === 10, 'seg 1: hold +10');
+    const holdC = contrib(rHold.expl, 'SBER');
+    assert(holdC && holdC.effectRub === 10 && holdC.purchasesRub === 0 && holdC.salesRub === 0, 'seg 1: SBER effect +10');
+    assert(rHold.expl.contributorsIdentityOk === true, 'seg 1: contributors identity');
+    assert(rHold.expl.stocksEffectRub === 10 && rHold.expl.bondsEffectRub === 0, 'seg 1: stocks/bonds');
+    await assertBridge(hold, rHold.expl, rHold.opts, 'seg 1');
+
+    const buyGap = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 100, buyDate: '2024-01-05', currentPrice: 120 }],
+      sales: []
+    };
+    const rBuy = await explainRange(buyGap, '2024-01-01', '2024-01-10', {
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-01-05': priceOk(100, { date: '2024-01-05' }),
+        '2024-01-10': priceOk(120, { date: '2024-01-10' })
+      }
+    }, { prevIso: '2024-01-04', selIso: '2024-01-10', label: 'seg buy' });
+    assert(rBuy.expl.operations.length === 1 && rBuy.expl.operations[0].type === 'buy', 'seg 2: buy operation');
+    assert(rBuy.expl.operations[0].date === '2024-01-05', 'seg 2: buy between points');
+    assert(rBuy.expl.operations[0].amountRub === 500, 'seg 2: buy amount 500');
+    const buyC = contrib(rBuy.expl, 'SBER');
+    assert(buyC && buyC.fromValueRub === 0 && buyC.purchasesRub === 500, 'seg 2: from 0, P 500');
+    assert(buyC.effectRub === 100, 'seg 3: transaction 100 ≠ valuation 120 → effect +100');
+    assert(buyC.effectRub !== buyC.purchasesRub, 'seg 3: amount !== effect');
+    await assertBridge(buyGap, rBuy.expl, rBuy.opts, 'seg 2/3');
+
+    const partSell = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 5, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 130 }],
+      sales: [saleRec({ qty: 5, salePrice: 130, buyPrice: 100, saleDate: '2024-01-05', buyDate: '2023-01-01' })]
+    };
+    const rPart = await explainRange(partSell, '2024-01-01', '2024-01-10', {
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-01-05': priceOk(130, { date: '2024-01-05' }),
+        '2024-01-10': priceOk(130, { date: '2024-01-10' })
+      }
+    }, { prevIso: '2024-01-04', selIso: '2024-01-10', label: 'seg partial sale' });
+    assert(rPart.expl.operations.some((op) => op.type === 'sell' && op.qty === 5), 'seg 4: partial sell');
+    const partC = contrib(rPart.expl, 'SBER');
+    assert(partC && partC.toQty === 5 && partC.salesRub === 650, 'seg 4: remainder qty 5, S 650');
+    assert(partC.effectRub != null, 'seg 4: effect known');
+    await assertBridge(partSell, rPart.expl, rPart.opts, 'seg 4');
+
+    const fullExit = {
+      positions: [],
+      sales: [saleRec({ qty: 10, salePrice: 130, buyPrice: 100, saleDate: '2024-01-05', buyDate: '2023-01-01' })]
+    };
+    const rFull = await explainRange(fullExit, '2024-01-01', '2024-01-10', {
+      SBER: {
+        '2024-01-01': priceOk(120, { date: '2024-01-01' }),
+        '2024-01-05': priceOk(130, { date: '2024-01-05' }),
+        '2024-01-10': priceOk(130, { date: '2024-01-10' })
+      }
+    }, { prevIso: '2024-01-04', selIso: '2024-01-10', label: 'seg full sale' });
+    assert(rFull.expl.operations.some((op) => op.type === 'sell'), 'seg 5/18: sell remains');
+    const fullC = contrib(rFull.expl, 'SBER');
+    assert(!!fullC, 'seg 5/18: closed ticker stays contributor');
+    assert(fullC.toValueRub === 0 && fullC.toQty === 0, 'seg 5/18: toValue 0');
+    assert(fullC.effectRub != null, 'seg 5/18: effect known');
+    await assertBridge(fullExit, rFull.expl, rFull.opts, 'seg 5/18');
+
+    const roundTrip = {
+      positions: [],
+      sales: [saleRec({ qty: 10, salePrice: 130, buyPrice: 100, saleDate: '2024-01-05', buyDate: '2024-01-05' })]
+    };
+    const rRt = await explainRange(roundTrip, '2024-01-01', '2024-01-10', {
+      SBER: {
+        '2024-01-01': priceOk(100, { date: '2024-01-01' }),
+        '2024-01-05': priceOk(130, { date: '2024-01-05' }),
+        '2024-01-10': priceOk(130, { date: '2024-01-10' })
+      }
+    }, { prevIso: '2024-01-04', selIso: '2024-01-10', label: 'seg round-trip' });
+    const types = rRt.expl.operations.map((op) => op.type);
+    assert(types[0] === 'buy' && types[1] === 'sell', 'seg 6/19: buy then sell');
+    const rtC = contrib(rRt.expl, 'SBER');
+    assert(rtC && rtC.purchasesRub === 1000 && rtC.salesRub === 1300 && rtC.effectRub === 300, 'seg 6/19: effect +300');
+    assert(rRt.expl.segmentResultDeltaRub === 300, 'seg 6/19: delta is price effect, not 2× realized');
+    await assertBridge(roundTrip, rRt.expl, rRt.opts, 'seg 6/19');
+
+    const multiBuy = {
+      positions: [
+        { ticker: 'SBER', lotId: 'A', qty: 2, avgPrice: 100, buyDate: '2024-01-05', currentPrice: 100 },
+        { ticker: 'SBER', lotId: 'B', qty: 3, avgPrice: 110, buyDate: '2024-01-06', currentPrice: 100 }
+      ],
+      sales: []
+    };
+    const rMb = await explainRange(multiBuy, '2024-01-01', '2024-01-10', {
+      SBER: { '2024-01-01': priceOk(100, { date: '2024-01-01' }), '2024-01-10': priceOk(100, { date: '2024-01-10' }) }
+    }, { prevIso: '2024-01-04', selIso: '2024-01-10', label: 'seg multi buy' });
+    assert(rMb.expl.operations.filter((op) => op.type === 'buy').length === 2, 'seg 7: two buys');
+    const mbC = contrib(rMb.expl, 'SBER');
+    assert(mbC && mbC.purchasesRub === 530, 'seg 7: P aggregated 200+330');
+
+    const multiSell = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 2, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 100 }],
+      sales: [
+        saleRec({ qty: 3, salePrice: 100, buyPrice: 100, saleDate: '2024-01-05', lotId: 'S2' }),
+        saleRec({ qty: 2, salePrice: 100, buyPrice: 100, saleDate: '2024-01-06', lotId: 'S3' })
+      ]
+    };
+    const rMs = await explainRange(multiSell, '2024-01-01', '2024-01-10', {
+      SBER: { '2024-01-01': priceOk(100, { date: '2024-01-01' }), '2024-01-10': priceOk(100, { date: '2024-01-10' }) }
+    }, { prevIso: '2024-01-04', selIso: '2024-01-10', label: 'seg multi sell' });
+    assert(rMs.expl.operations.filter((op) => op.type === 'sell').length === 2, 'seg 8: two sells');
+    const msC = contrib(rMs.expl, 'SBER');
+    assert(msC && msC.salesRub === 500, 'seg 8: S aggregated');
+
+    const multiT = {
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 150 },
+        { ticker: 'GAZP', lotId: 'G1', qty: 2, avgPrice: 50, buyDate: '2023-01-01', currentPrice: 60 }
+      ],
+      sales: []
+    };
+    const rMt = await explainRange(multiT, '2024-01-01', '2024-01-10', {
+      SBER: { '2024-01-01': priceOk(100, { date: '2024-01-01' }), '2024-01-10': priceOk(150, { date: '2024-01-10' }) },
+      GAZP: { '2024-01-01': priceOk(50, { date: '2024-01-01' }), '2024-01-10': priceOk(60, { date: '2024-01-10' }) }
+    }, { label: 'seg multi ticker' });
+    assert(contrib(rMt.expl, 'SBER') && contrib(rMt.expl, 'GAZP'), 'seg 9: both tickers');
+    assert(near(rMt.expl.contributors.reduce((s, r) => s + Number(r.effectRub), 0), rMt.expl.segmentResultDeltaRub),
+      'seg 9/26: sum contributors ≈ delta');
+    await assertBridge(multiT, rMt.expl, rMt.opts, 'seg 9');
+
+    const mix = {
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 150 },
+        { ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95, buyDate: '2023-06-01', faceValue: 1000, currentPrice: 96 }
+      ],
+      sales: []
+    };
+    const rMix = await explainRange(mix, '2024-01-01', '2024-01-10', {
+      SBER: { '2024-01-01': priceOk(100, { date: '2024-01-01' }), '2024-01-10': priceOk(150, { date: '2024-01-10' }) },
+      OFZ_26238: {
+        '2024-01-01': priceOk(95, { date: '2024-01-01', unit: 'pct-of-face-value' }),
+        '2024-01-10': priceOk(96, { date: '2024-01-10', unit: 'pct-of-face-value' })
+      }
+    }, { label: 'seg stocks+bonds' });
+    assert(near(rMix.expl.stocksEffectRub, rMix.sel.stocksResultRub - rMix.prev.stocksResultRub),
+      'seg 10/27: stocks effect ≈ stocks result delta');
+    assert(near(rMix.expl.bondsEffectRub, rMix.sel.bondsResultRub - rMix.prev.bondsResultRub),
+      'seg 10/27: bonds effect ≈ bonds result delta');
+    assert(rMix.expl.hasBondNkdAdvisory === true, 'seg 10: OFZ NKD advisory');
+
+    const ofzBuy = {
+      positions: [{
+        ticker: 'OFZ_TEST', lotId: 'OT1', qty: 233, avgPrice: 111.2, buyDate: '2026-07-02',
+        faceValue: 1000, currentPrice: 84.49
+      }],
+      sales: []
+    };
+    const rOfz = await explainRange(ofzBuy, '2026-06-30', '2026-07-03', {
+      OFZ_TEST: {
+        '2026-06-30': priceOk(84.49, { date: '2026-06-30', unit: 'pct-of-face-value' }),
+        '2026-07-03': priceOk(84.49, { date: '2026-07-03', unit: 'pct-of-face-value' })
+      }
+    }, { prevIso: '2026-06-30', selIso: '2026-07-03', label: 'seg OFZ fixture' });
+    const ofzOp = rOfz.expl.operations.find((op) => op.type === 'buy');
+    assert(!!ofzOp && ofzOp.date === '2026-07-02', 'seg 11/13: OFZ buy on 02.07 in (30.06, 03.07]');
+    assert(ofzOp.amountRub === 259096, 'seg 13: amountRub 259096');
+    const ofzC = contrib(rOfz.expl, 'OFZ_TEST');
+    assert(ofzC && ofzC.toValueRub === 196861.7, 'seg 13: selected value 233×84.49%×1000');
+    assert(ofzC.effectRub === -62234.3, 'seg 13: effect −62234.3');
+    assert(Math.abs(ofzC.effectRub) !== ofzC.purchasesRub, 'seg 13: amount !== |effect|');
+    assert(rOfz.expl.hasBondNkdAdvisory === true, 'seg 13: NKD advisory');
+    assert(rOfz.expl.topContributors[0] && rOfz.expl.topContributors[0].ticker === 'OFZ_TEST',
+      'seg 13: OFZ is a contributor, not mixed with amount');
+    await assertBridge(ofzBuy, rOfz.expl, rOfz.opts, 'seg 13');
+
+    const ofzSold = {
+      positions: [],
+      sales: [saleRec({
+        ticker: 'OFZ_26238', qty: 10, salePrice: 96, buyPrice: 95, saleDate: '2024-01-05',
+        buyDate: '2023-06-01', lotId: 'O2', faceValue: 1000
+      })]
+    };
+    const rOfzS = await explainRange(ofzSold, '2024-01-01', '2024-01-10', {
+      OFZ_26238: {
+        '2024-01-01': priceOk(95, { date: '2024-01-01', unit: 'pct-of-face-value' }),
+        '2024-01-10': priceOk(96, { date: '2024-01-10', unit: 'pct-of-face-value' })
+      }
+    }, { prevIso: '2024-01-04', selIso: '2024-01-10', label: 'seg OFZ sell' });
+    assert(rOfzS.expl.operations.some((op) => op.type === 'sell' && op.isBond), 'seg 12: OFZ sell');
+    assert(contrib(rOfzS.expl, 'OFZ_26238'), 'seg 12: OFZ contributor after sale');
+
+    const combo = {
+      positions: [
+        {
+          ticker: 'OFZ_TEST', lotId: 'OT1', qty: 233, avgPrice: 111.2, buyDate: '2026-07-02',
+          faceValue: 1000, currentPrice: 84.49
+        },
+        { ticker: 'GAZP', lotId: 'G1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 90 },
+        { ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 110 }
+      ],
+      sales: []
+    };
+    const rCombo = await explainRange(combo, '2026-06-30', '2026-07-03', {
+      OFZ_TEST: {
+        '2026-06-30': priceOk(84.49, { date: '2026-06-30', unit: 'pct-of-face-value' }),
+        '2026-07-03': priceOk(84.49, { date: '2026-07-03', unit: 'pct-of-face-value' })
+      },
+      GAZP: { '2026-06-30': priceOk(100, { date: '2026-06-30' }), '2026-07-03': priceOk(90, { date: '2026-07-03' }) },
+      SBER: { '2026-06-30': priceOk(100, { date: '2026-06-30' }), '2026-07-03': priceOk(110, { date: '2026-07-03' }) }
+    }, { label: 'seg top contributors' });
+    assert(rCombo.expl.topContributors[0].ticker === 'OFZ_TEST', 'seg 17: top is OFZ');
+    assert(rCombo.expl.topContributors.length >= 2, 'seg 17: not a single-cause list');
+    assert(rCombo.expl.contributorsIdentityOk === true, 'seg 17: sum matches total');
+    assert(near(rCombo.expl.contributors.reduce((s, r) => s + Number(r.effectRub), 0), rCombo.expl.segmentResultDeltaRub),
+      'seg 17: sum ≈ delta');
+
+    const gmkn = {
+      positions: [{ ticker: 'GMKN', lotId: 'G1', qty: 10, avgPrice: 22000, buyDate: '2021-06-04', currentPrice: 129.92 }],
+      sales: []
+    };
+    const rGmkn = await explainRange(gmkn, '2024-03-01', '2024-06-01', {
+      GMKN: { '2024-03-01': priceOk(25014, { date: '2024-03-01' }), '2024-06-01': priceOk(129.92, { date: '2024-06-01' }) }
+    }, { label: 'seg GMKN' });
+    assert(rGmkn.expl.operations.length === 0, 'seg 14: split is not buy/sell');
+    const gmknC = contrib(rGmkn.expl, 'GMKN');
+    assert(gmknC && gmknC.purchasesRub === 0 && gmknC.salesRub === 0, 'seg 14: no fake trade');
+    assert(gmknC.toValueRub !== gmknC.fromValueRub * 100, 'seg 14: no ×100');
+
+    const tCurr = {
+      positions: [{
+        ticker: 'T', lotId: 'T1', qty: 10, avgPrice: 262, buyDate: '2025-12-01',
+        currentPrice: 262, splitLotScale: 'current'
+      }],
+      sales: []
+    };
+    const rTc = await explainRange(tCurr, '2026-05-01', '2026-09-04', {
+      T: { '2026-05-01': priceOk(250, { date: '2026-05-01' }), '2026-09-04': priceOk(262, { date: '2026-09-04' }) }
+    }, { label: 'seg T current' });
+    assert(rTc.expl.operations.length === 0, 'seg 15: T current no trade');
+    assert(contrib(rTc.expl, 'T').effectRub === 120, 'seg 15: +120 not ×10');
+
+    const tHist = {
+      positions: [{
+        ticker: 'T', lotId: 'T2', qty: 1, avgPrice: 3126, buyDate: '2025-12-01',
+        currentPrice: 262, splitLotScale: 'historical'
+      }],
+      sales: []
+    };
+    const rTh = await explainRange(tHist, '2026-03-01', '2026-09-04', {
+      T: { '2026-03-01': priceOk(3126, { date: '2026-03-01' }), '2026-09-04': priceOk(262, { date: '2026-09-04' }) }
+    }, { label: 'seg T hist' });
+    assert(rTh.expl.operations.length === 0, 'seg 16: T hist no trade');
+    const thC = contrib(rTh.expl, 'T');
+    assert(thC.toValueRub === 2620 && thC.toValueRub !== 262 && thC.toValueRub !== 26200, 'seg 16: scaled qty not fake ×10');
+
+    const unk = {
+      positions: [{ ticker: 'GMKN', lotId: 'G2', qty: 1000, avgPrice: 220, buyDate: '2021-06-04', currentPrice: 129.92 }],
+      sales: []
+    };
+    const rUnk = await explainRange(unk, '2023-12-01', '2024-06-01', {
+      GMKN: { '2023-12-01': priceOk(22000, { date: '2023-12-01' }), '2024-06-01': priceOk(129.92, { date: '2024-06-01' }) }
+    }, { label: 'seg split unknown' });
+    assert(rUnk.expl.operations.length === 0, 'seg 17 unknown: still no trade');
+    const unkC = contrib(rUnk.expl, 'GMKN');
+    assert(rUnk.expl.isPartial === true, 'seg 17 unknown: partial');
+    assert(!unkC || unkC.effectRub == null || unkC.isPartial === true, 'seg 17 unknown: not a fake 0-ranked fully-known effect');
+
+    const plzl = {
+      positions: [{ ticker: 'PLZL', lotId: 'P1', qty: 1, avgPrice: 19000, buyDate: '2024-06-01', currentPrice: 1900 }],
+      sales: []
+    };
+    const rPlzl = await explainRange(plzl, '2025-02-01', '2025-06-01', {
+      PLZL: { '2025-02-01': priceOk(19000, { date: '2025-02-01' }), '2025-06-01': priceOk(1900, { date: '2025-06-01' }) }
+    }, { label: 'seg PLZL' });
+    assert(rPlzl.expl.operations.length === 0, 'seg PLZL: split not an op');
+    assert(contrib(rPlzl.expl, 'PLZL').effectRub === 0, 'seg PLZL: result 0, not ×10');
+
+    const missing = {
+      positions: [
+        { ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 110 },
+        { ticker: 'GAZP', lotId: 'G1', qty: 1, avgPrice: 50, buyDate: '2023-01-01', currentPrice: 60 }
+      ],
+      sales: []
+    };
+    const rMiss = await explainRange(missing, '2024-01-01', '2024-01-10', {
+      SBER: { '2024-01-01': priceOk(100, { date: '2024-01-01' }), '2024-01-10': priceOk(110, { date: '2024-01-10' }) }
+    }, { label: 'seg missing close' });
+    const gazpC = contrib(rMiss.expl, 'GAZP');
+    assert(rMiss.expl.isPartial === true, 'seg 19: market partial');
+    assert(gazpC && gazpC.effectRub == null, 'seg 19: missing CLOSE → effect null, not 0');
+    assert(rMiss.expl.topContributors.every((row) => row.effectRub != null), 'seg 19: top does not rank missing as 0');
+    assert(rMiss.expl.contributorsIdentityOk === false, 'seg 19: identity not forced');
+
+    const incomplete = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2023-01-01', currentPrice: 100 }],
+      sales: [{
+        ticker: 'SBER', qty: 1, buyPrice: 100, saleDate: '2024-01-05',
+        buyDate: '2023-01-01', lotId: 'SX',
+        allocations: [{ lotId: 'SX', qty: 1, buyPrice: 100, buyDate: '2023-01-01', lotQtyDelta: 1 }]
+      }]
+    };
+    const rInc = await explainRange(incomplete, '2024-01-01', '2024-01-10', {
+      SBER: { '2024-01-01': priceOk(100, { date: '2024-01-01' }), '2024-01-10': priceOk(100, { date: '2024-01-10' }) }
+    }, { prevIso: '2024-01-04', selIso: '2024-01-10', label: 'seg incomplete op' });
+    const incOp = rInc.expl.operations.find((op) => op.type === 'sell');
+    assert(!!incOp, 'seg 20: incomplete operation still listed');
+    assert(incOp.amountRub == null, 'seg 20: amountRub null');
+    assert(rInc.expl.operationsPartial === true, 'seg 20: operationsPartial');
+    const incC = contrib(rInc.expl, 'SBER');
+    assert(incC && incC.effectRub == null, 'seg 20: effect null, not 0');
+    assert(rInc.expl.segmentResultDeltaRub == null || rInc.expl.isPartial === true, 'seg 20: total partial');
+
+    const rFirst = await explainRange(hold, '2024-01-01', '2024-01-10', {
+      SBER: { '2024-01-01': priceOk(100, { date: '2024-01-01' }), '2024-01-10': priceOk(110, { date: '2024-01-10' }) }
+    }, { skipPrevious: true, selIso: '2024-01-01', label: 'seg first' });
+    assert(rFirst.expl.hasSegment === false, 'seg 21: first point has no segment');
+    assert(rFirst.expl.segmentResultDeltaRub == null, 'seg 21: no fake delta');
+    assert(rFirst.expl.operations.length === 0, 'seg 21: no ops invented');
+
+    const weekend = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2024-06-08', currentPrice: 110 }],
+      sales: []
+    };
+    const rWe = await explainRange(weekend, '2024-06-07', '2024-06-09', {
+      SBER: {
+        '2024-06-07': priceOk(100, { date: '2024-06-07' }),
+        '2024-06-09': priceOk(110, { date: '2024-06-07' })
+      }
+    }, { prevIso: '2024-06-07', selIso: '2024-06-09', label: 'seg weekend' });
+    assert(rWe.expl.operations.some((op) => op.date === '2024-06-08'), 'seg 23: weekend buy in (Fri, Sun]');
+
+    const longPf = {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 1, avgPrice: 100, buyDate: '2026-07-02', currentPrice: 110 }],
+      sales: []
+    };
+    const rDs = await explainRange(longPf, '2026-01-01', '2026-12-31', {
+      SBER: {
+        '2026-01-01': priceOk(100, { date: '2026-01-01' }),
+        '2026-07-02': priceOk(100, { date: '2026-07-02' }),
+        '2026-12-31': priceOk(110, { date: '2026-12-31' })
+      }
+    }, { interval: 'day', maxPoints: 8, label: 'seg downsample' });
+    const dsPrev = rDs.result.points.find((p) => p.date < '2026-07-02');
+    const dsSel = rDs.result.points.find((p) => p.date >= '2026-07-02');
+    assert(dsPrev && dsSel && dsPrev.date !== '2026-07-02', 'seg 24: sampled points skip the trade date');
+    const dsExpl = calc.buildPortfolioResultSegmentExplanation(longPf, dsPrev, dsSel, {
+      valueSeries: rDs.valueSeries,
+      previousIndex: rDs.result.points.indexOf(dsPrev),
+      selectedIndex: rDs.result.points.indexOf(dsSel)
+    });
+    assert(dsExpl.operations.some((op) => op.date === '2026-07-02'), 'seg 24: op between sampled points is listed');
+
+    const roundExpl = calc.buildPortfolioResultSegmentExplanation(
+      {
+        positions: [
+          { ticker: 'AAA', lotId: 'A1', qty: 1, avgPrice: 10, buyDate: '2023-01-01', currentPrice: 13.33 },
+          { ticker: 'BBB', lotId: 'B1', qty: 1, avgPrice: 10, buyDate: '2023-01-01', currentPrice: 13.34 }
+        ],
+        sales: []
+      },
+      { date: '2024-01-01', resultRub: 0, stocksResultRub: 0, bondsResultRub: 0 },
+      { date: '2024-01-02', resultRub: 6.67, stocksResultRub: 6.67, bondsResultRub: 0 },
+      {
+        fromValuePoint: {
+          date: '2024-01-01',
+          isPartial: false,
+          positions: [
+            { ticker: 'AAA', type: 'stock', qty: 1, price: 10, valueRub: 10, status: 'ok' },
+            { ticker: 'BBB', type: 'stock', qty: 1, price: 10, valueRub: 10, status: 'ok' }
+          ]
+        },
+        toValuePoint: {
+          date: '2024-01-02',
+          isPartial: false,
+          positions: [
+            { ticker: 'AAA', type: 'stock', qty: 1, price: 13.33, valueRub: 13.33, status: 'ok' },
+            { ticker: 'BBB', type: 'stock', qty: 1, price: 13.34, valueRub: 13.34, status: 'ok' }
+          ]
+        }
+      }
+    );
+    assert(roundExpl.segmentResultDeltaRub === 6.67, 'seg 28: displayed delta kept');
+    assert(Math.abs(roundExpl.roundingDeltaRub) <= 0.02, 'seg 28: rounding within 2 kopeks');
+    assert(roundExpl.contributorsIdentityOk === true, 'seg 28: identity allows 1–2 kopeks');
+
+    const helperSrc = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+    const segSrc = helperSrc.slice(
+      helperSrc.indexOf('function buildPortfolioResultSegmentExplanation'),
+      helperSrc.indexOf('var PF_UI_STORAGE_KEY')
+    );
+    assert(/collectComparePeriodOperations/.test(segSrc), 'seg src: reuses period ops');
+    assert(/resultSeriesEffectRub/.test(segSrc), 'seg src: reuses resultSeriesEffectRub');
+    assert(!/buildPortfolioValueChangeBridge/.test(segSrc), 'seg src: no runtime bridge');
+    assert(!/\bfetch\s*\(/.test(segSrc), 'seg src: no fetch');
+    assert(!/loadInstrumentHistoryForDateRange/.test(segSrc), 'seg src: no history reload');
+    assert(!/paid12m|forecast12m|buildPortfolioPayoutsForHoldingPeriod/.test(segSrc), 'seg src: no payouts');
+    assert(!/resultPct|returnPct/.test(segSrc), 'seg src: no %');
+    assert(!/currentPrice/.test(segSrc), 'seg src: no currentPrice fallback');
+    assert(!/getTotalRealizedPnl/.test(segSrc), 'seg src: no realized helper');
+  })();
+}
+
+{
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const pfJs = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'theme-luxury.css'), 'utf8');
+  const dynHtml = indexHtml.slice(
+    indexHtml.indexOf('id="portfolioDynamicsBlock"'),
+    indexHtml.indexOf('id="portfolioAsOfBlock"')
+  );
+  assert(/id="pfDynExplain"/.test(dynHtml), 'explain ui: block exists');
+  assert(dynHtml.indexOf('id="pfDynCard"') < dynHtml.indexOf('id="pfDynExplain"'),
+    'explain ui: block is under selected card');
+  assert(dynHtml.indexOf('id="pfDynExplain"') < dynHtml.indexOf('id="portfolioAsOfBlock"') ||
+    dynHtml.indexOf('id="pfDynExplain"') > 0, 'explain ui: before next analytics section');
+  assert((dynHtml.match(/id="pfDynChart"/g) || []).length === 1, 'explain ui: canvas unchanged count');
+  assert(!/marker|pfDynMark/i.test(dynHtml), 'explain ui: no marker markup');
+
+  const explainSrc = pfJs.slice(
+    pfJs.indexOf('function buildPortfolioDynamicsExplainHtml'),
+    pfJs.indexOf('function pfDynSyncHorizonButtons')
+  );
+  const cardSrc = pfJs.slice(
+    pfJs.indexOf('function renderPortfolioDynamicsCard'),
+    pfJs.indexOf('function pfDynIndexAtClientX')
+  );
+  const pointerSrc = Function.prototype.toString.call(calc.applyPortfolioDynamicsPointer);
+  const tipSrc = Function.prototype.toString.call(calc.buildPortfolioDynamicsTipLines);
+  const drawSrc = Function.prototype.toString.call(calc.drawPortfolioDynamicsChart);
+  const modeSrc = Function.prototype.toString.call(calc.setPortfolioDynamicsMode);
+  const segPickSrc = Function.prototype.toString.call(calc.pfDynBuildSelectedSegmentExplanation);
+  assert(/selectedIndex/.test(segPickSrc), 'explain ui: uses selectedIndex');
+  assert(!/hoverIndex/.test(segPickSrc), 'explain ui: does not use hoverIndex');
+  assert(/renderPortfolioDynamicsExplain/.test(cardSrc), 'explain ui: selected card render updates explainer');
+  assert(/mode === 'select'/.test(pointerSrc) && /renderPortfolioDynamicsCard/.test(pointerSrc),
+    'explain ui: click/tap select still renders card');
+  assert(!/renderPortfolioDynamicsExplain|pfDynBuildSelectedSegmentExplanation/.test(pointerSrc),
+    'explain ui: pointer does not run helper on hover');
+  assert(!/buildPortfolioResultSegmentExplanation/.test(tipSrc), 'explain ui: tooltip unchanged, no helper');
+  assert(!/2 операции|есть события/.test(tipSrc), 'explain ui: tooltip has no ops hint');
+  assert(!/buildPortfolioResultSegmentExplanation/.test(drawSrc), 'explain ui: canvas draw does not call helper');
+  assert(!/pf-dyn-explain|marker/.test(drawSrc), 'explain ui: no markers in canvas');
+  assert(!/buildPortfolioValueChangeBridge/.test(explainSrc + segPickSrc), 'explain ui: no runtime bridge');
+  assert(!/\bfetch\s*\(|iss\.moex\.com|loadInstrumentHistoryForDateRange/.test(explainSrc + segPickSrc),
+    'explain ui: no fetch/MOEX');
+  assert(!/loadPayoutFeedsForPortfolio|buildPortfolioPayoutsForHoldingPeriod/.test(explainSrc),
+    'explain ui: no payout fetch');
+  assert(!/resultPct|returnPct|changePct/.test(explainSrc), 'explain ui: no % fields');
+  assert(!/выплат/i.test(explainSrc), 'explain ui: no payout copy');
+  assert(!/из-за|главная причина|причиной стало/.test(explainSrc), 'explain ui: no causality claims');
+  assert(/#tab-portfolio \.pf-dyn-explain \{/.test(css), 'explain ui: styles exist');
+  assert(!/#007|#0d6efd|#1e90ff/i.test((css.match(/#tab-portfolio \.pf-dyn-explain[\s\S]*?@media \(max-width: 720px\)/) || [''])[0]),
+    'explain ui: no blue');
+
+  const firstHtml = calc.buildPortfolioDynamicsExplainHtml({ hasSegment: false });
+  assert(/Что повлияло на изменение/.test(firstHtml), 'explain ui: title');
+  assert(/Начало выбранного периода/.test(firstHtml), 'explain ui: first point copy');
+  assert(!/Изменение результата/.test(firstHtml), 'explain ui: first point has no fake delta');
+
+  const buyHtml = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2026-06-30',
+    toDate: '2026-07-03',
+    segmentResultDeltaRub: -62234.3,
+    operations: [{
+      type: 'buy', ticker: 'OFZ_TEST', qty: 233, amountRub: 259096, isBond: true
+    }],
+    contributors: [
+      { ticker: 'OFZ_TEST', effectRub: -62234.3 },
+      { ticker: 'GMKN', effectRub: -3200 },
+      { ticker: 'SBER', effectRub: 1100 },
+      { ticker: 'GAZP', effectRub: -400 }
+    ],
+    topContributors: [
+      { ticker: 'OFZ_TEST', effectRub: -62234.3 },
+      { ticker: 'GMKN', effectRub: -3200 },
+      { ticker: 'SBER', effectRub: 1100 }
+    ],
+    othersEffectRub: -400,
+    isPartial: false,
+    operationsPartial: false,
+    hasBondNkdAdvisory: true
+  });
+  assert(/30\.06\.2026|30.06.2026/.test(buyHtml) || /2026/.test(buyHtml), 'explain ui: segment dates');
+  assert(/Изменение результата/.test(buyHtml), 'explain ui: result delta label');
+  assert(/Покупка/.test(buyHtml) && /OFZ_TEST/.test(buyHtml), 'explain ui: buy event');
+  assert(/259/.test(buyHtml) && /096/.test(buyHtml), 'explain ui: operation amount separate');
+  assert(/Основной вклад/.test(buyHtml), 'explain ui: contribution section');
+  assert(/−62.?234|-\s?62.?234|-62234/.test(buyHtml.replace(/\s/g, '')), 'explain ui: contributor effect');
+  assert(/Подробнее/.test(buyHtml) && /data-pf-open-history="OFZ_TEST"/.test(buyHtml),
+    'explain ui: details uses existing history nav');
+  assert(/Остальные/.test(buyHtml), 'explain ui: others when known');
+  assert(/без исторического НКД/.test(buyHtml), 'explain ui: OFZ NKD advisory');
+  assert(!/Акции:/.test(buyHtml) && !/Облигации:/.test(buyHtml), 'explain ui: does not repeat card subsets');
+  const amountIdx = buyHtml.indexOf('259');
+  const effectIdx = buyHtml.search(/Основной вклад/);
+  assert(amountIdx >= 0 && effectIdx > amountIdx, 'explain ui: amount before effect section');
+
+  const fourOps = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [
+      { type: 'buy', ticker: 'SBER', qty: 1, amountRub: 100 },
+      { type: 'buy', ticker: 'GAZP', qty: 1, amountRub: 200 },
+      { type: 'sell', ticker: 'SBER', qty: 1, amountRub: 110 },
+      { type: 'buy', ticker: 'LKOH', qty: 1, amountRub: 300 }
+    ],
+    topContributors: [
+      { ticker: 'AAA', effectRub: 5 },
+      { ticker: 'BBB', effectRub: 3 },
+      { ticker: 'CCC', effectRub: 2 }
+    ],
+    contributors: [
+      { ticker: 'AAA', effectRub: 5 },
+      { ticker: 'BBB', effectRub: 3 },
+      { ticker: 'CCC', effectRub: 2 }
+    ],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert((fourOps.match(/Покупка|Продажа/g) || []).length === 3, 'explain ui: max 3 operations');
+  assert(/И ещё 1 операций/.test(fourOps), 'explain ui: remaining ops note');
+  assert((fourOps.match(/pf-dyn-explain-row-t/g) || []).length === 3, 'explain ui: max 3 contributors');
+  assert(!/Остальные/.test(fourOps), 'explain ui: others hidden when remainder empty');
+
+  const noOps = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 10 }],
+    contributors: [{ ticker: 'SBER', effectRub: 10 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Покупок и продаж на этом участке не было/.test(noOps), 'explain ui: no-ops copy');
+  assert(!/pf-dyn-explain-ops/.test(noOps), 'explain ui: no empty ops list');
+
+  const quiet = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-02',
+    segmentResultDeltaRub: 0,
+    operations: [],
+    topContributors: [],
+    contributors: [],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/существенных изменений не было/.test(quiet), 'explain ui: quiet segment');
+  assert(/Изменение результата/.test(quiet), 'explain ui: zero delta still shown');
+
+  const unknownAmt = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: null,
+    operations: [{ type: 'sell', ticker: 'SBER', qty: 1, amountRub: null }],
+    topContributors: [],
+    contributors: [{ ticker: 'SBER', effectRub: null }],
+    othersEffectRub: null,
+    isPartial: true,
+    operationsPartial: true
+  });
+  assert(/Сумму операции не удалось оценить/.test(unknownAmt), 'explain ui: unknown amount copy');
+  assert(!/0,00 ₽/.test(unknownAmt) && !/>0 ₽</.test(unknownAmt), 'explain ui: unknown amount not 0');
+  assert(/Не все операции на этом участке удалось оценить/.test(unknownAmt), 'explain ui: ops partial warning');
+  assert(!/Основной вклад/.test(unknownAmt), 'explain ui: unknown effect not shown as 0');
+
+  const marketPartial = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 10 }],
+    contributors: [
+      { ticker: 'SBER', effectRub: 10 },
+      { ticker: 'GAZP', effectRub: null }
+    ],
+    othersEffectRub: null,
+    isPartial: true,
+    operationsPartial: false
+  });
+  assert(/не хватает исторических данных/.test(marketPartial), 'explain ui: market partial warning');
+  assert(/по доступным данным/.test(marketPartial), 'explain ui: partial lead');
+  assert(/SBER/.test(marketPartial) && !/GAZP/.test(marketPartial), 'explain ui: missing ticker not ranked as 0');
+  assert(!/Остальные/.test(marketPartial), 'explain ui: others omitted when not known');
+
+  const closedHtml = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 100,
+    operations: [{ type: 'sell', ticker: 'SBER', qty: 10, amountRub: 1300 }],
+    topContributors: [{ ticker: 'SBER', effectRub: 100 }],
+    contributors: [{ ticker: 'SBER', effectRub: 100 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Продажа · SBER/.test(closedHtml), 'explain ui: closed ticker remains');
+  assert(/data-pf-open-history="SBER"/.test(closedHtml), 'explain ui: closed ticker still has details');
+
+  const zeroDeltaOps = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 0,
+    operations: [{ type: 'buy', ticker: 'SBER', qty: 1, amountRub: 100 }],
+    topContributors: [{ ticker: 'SBER', effectRub: 0 }],
+    contributors: [{ ticker: 'SBER', effectRub: 0 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Изменение результата/.test(zeroDeltaOps) && /Покупка/.test(zeroDeltaOps),
+    'explain ui: zero delta still lists events');
+  assert(!/Основной вклад/.test(zeroDeltaOps), 'explain ui: display-zero contributor hides section');
+  assert(!/pf-dyn-explain-row/.test(zeroDeltaOps), 'explain ui: display-zero contributor row omitted');
+
+  const zeroRowKept = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 12.34,
+    operations: [],
+    topContributors: [
+      { ticker: 'GAZP', effectRub: 12.34 },
+      { ticker: 'SBER', effectRub: 0 },
+      { ticker: 'LKOH', effectRub: 0.004 }
+    ],
+    contributors: [
+      { ticker: 'GAZP', effectRub: 12.34 },
+      { ticker: 'SBER', effectRub: 0 },
+      { ticker: 'LKOH', effectRub: 0.004 }
+    ],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Основной вклад/.test(zeroRowKept) && /GAZP/.test(zeroRowKept),
+    'explain ui: non-zero contributor still shown');
+  assert(!/SBER/.test(zeroRowKept), 'explain ui: exact 0 ₽ contributor row hidden');
+  assert(!/LKOH/.test(zeroRowKept), 'explain ui: sub-kopeck 0,00 ₽ contributor row hidden');
+  assert(!/Остальные/.test(zeroRowKept), 'explain ui: others hidden when remainder is 0 ₽');
+
+  const othersExactZero = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [],
+    topContributors: [
+      { ticker: 'AAA', effectRub: 5 },
+      { ticker: 'BBB', effectRub: 3 },
+      { ticker: 'CCC', effectRub: 2 }
+    ],
+    contributors: [
+      { ticker: 'AAA', effectRub: 5 },
+      { ticker: 'BBB', effectRub: 3 },
+      { ticker: 'CCC', effectRub: 2 },
+      { ticker: 'DDD', effectRub: 0 }
+    ],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(/Основной вклад/.test(othersExactZero), 'explain ui: others=0 still keeps non-zero top');
+  assert(!/Остальные/.test(othersExactZero), 'explain ui: others row hidden when display is 0 ₽');
+
+  const othersTinyZero = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 10 }],
+    contributors: [
+      { ticker: 'SBER', effectRub: 10 },
+      { ticker: 'GAZP', effectRub: 0.004 }
+    ],
+    othersEffectRub: 0.004,
+    isPartial: false
+  });
+  assert(/SBER/.test(othersTinyZero), 'explain ui: 10 ₽ contributor kept');
+  assert(!/Остальные/.test(othersTinyZero), 'explain ui: others hidden when rounded to 0 ₽');
+
+  const othersOneKopeck = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 10.01,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 10 }],
+    contributors: [
+      { ticker: 'SBER', effectRub: 10 },
+      { ticker: 'GAZP', effectRub: 0.005 }
+    ],
+    othersEffectRub: 0.005,
+    isPartial: false
+  });
+  assert(/Остальные/.test(othersOneKopeck), 'explain ui: 1 kopeck others is not a threshold hide');
+  assert(/0,01/.test(othersOneKopeck), 'explain ui: 0.005 ₽ displays as 0,01 ₽');
+
+  const onlySubKopeck = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 0.004,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 0.004 }],
+    contributors: [{ ticker: 'SBER', effectRub: 0.004 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(!/Основной вклад/.test(onlySubKopeck), 'explain ui: only 0,00 ₽ contributors omit section');
+  assert(/Покупок и продаж на этом участке не было/.test(onlySubKopeck),
+    'explain ui: events stay when delta is not exact 0');
+  assert(/Изменение результата/.test(onlySubKopeck), 'explain ui: result delta still shown');
+
+  const displayZeroQuiet = calc.buildPortfolioDynamicsExplainHtml({
+    hasSegment: true,
+    fromDate: '2024-01-01',
+    toDate: '2024-01-10',
+    segmentResultDeltaRub: 0,
+    operations: [],
+    topContributors: [{ ticker: 'SBER', effectRub: 0 }],
+    contributors: [{ ticker: 'SBER', effectRub: 0 }],
+    othersEffectRub: 0,
+    isPartial: false
+  });
+  assert(!/Основной вклад/.test(displayZeroQuiet), 'explain ui: 0 ₽-only list omits contribution section');
+  assert(!/SBER/.test(displayZeroQuiet), 'explain ui: 0 ₽ SBER row not rendered');
+  assert(/существенных изменений не было/.test(displayZeroQuiet),
+    'explain ui: 0 ₽-only contributors do not keep an empty contribution column');
+
+  calc.pfDynState.mode = 'value';
+  calc.pfDynState.series = [{ date: '2024-01-01' }, { date: '2024-01-10' }];
+  calc.pfDynState.resultSeries = [
+    { date: '2024-01-01', resultRub: 0 },
+    { date: '2024-01-10', resultRub: 10 }
+  ];
+  calc.pfDynState.selectedIndex = 1;
+  calc.pfDynState.hoverIndex = 0;
+  assert(calc.pfDynBuildSelectedSegmentExplanation() == null, 'explain ui: cost mode skips helper');
+  calc.pfDynState.mode = 'result';
+  const picked = calc.pfDynBuildSelectedSegmentExplanation();
+  assert(picked && picked.hasSegment === true, 'explain ui: result mode builds segment');
+  assert(picked.fromDate === '2024-01-01' && picked.toDate === '2024-01-10',
+    'explain ui: previous is selectedIndex-1, not hover');
+  calc.pfDynState.selectedIndex = 0;
+  const firstSeg = calc.pfDynBuildSelectedSegmentExplanation();
+  assert(firstSeg && firstSeg.hasSegment === false, 'explain ui: selectedIndex 0 is not a fake segment');
+  calc.pfDynState.mode = 'value';
+  calc.pfDynState.series = [];
+  calc.pfDynState.resultSeries = [];
+  calc.pfDynState.selectedIndex = -1;
+  calc.pfDynState.hoverIndex = -1;
+
+  const helperKeep = pfJs.slice(
+    pfJs.indexOf('function buildPortfolioResultSegmentExplanation'),
+    pfJs.indexOf('var PF_UI_STORAGE_KEY')
+  );
+  assert(/function buildPortfolioResultSegmentExplanation/.test(helperKeep), 'explain ui: wave-1 helper still present');
+  assert(!/pfDynExplain/.test(helperKeep), 'explain ui: wave-1 helper body not used for DOM');
+}
+
 if (errors.length) {
   console.error('FAIL');
   errors.forEach((e) => console.error(' •', e));
   process.exit(1);
 }
-console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary + value-change bridge + result series + result chart UI');
+console.log('OK  portfolio wave-0/1 + dates + new-lot prefill + wave-2.1/2.2/2.5/2.6 + wave-3.1 timeline + wave-3.2 as-of + wave-3.3 price-at-date + wave-3.4 value-at-date + wave-3.5 value-change + explain + wave-4.1 holding-period payouts + wave-4.2 payout feeds + wave-4.3 upcoming payouts + wave-5.1 ticker return with payouts + wave-5.2 portfolio return with payouts + wave-5.3 ticker return UI + generic split matrix + v1.1 series wave-1 + dynamics UI wave-2 + portfolio result summary + value-change bridge + result series + result chart UI + result segment explainer + result segment explain UI');
