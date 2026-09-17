@@ -6659,6 +6659,268 @@
     });
   }
 
+  function resultSeriesAmountKnown(op) {
+    if (!op) return false;
+    var px = Number(op.price);
+    return op.amountRub != null && isFinite(Number(op.amountRub)) && isFinite(px) && px > 0;
+  }
+
+  function resultSeriesOpSubset(op) {
+    if (op && op.isBond) return 'bond';
+    if (op && isPortfolioBondPosition({ ticker: op.ticker })) return 'bond';
+    return 'stock';
+  }
+
+  function collectResultSeriesOperationRecords(portfolio, options) {
+    options = options || {};
+    var positions = (portfolio && portfolio.positions) || [];
+    var sales = (portfolio && portfolio.sales) || [];
+    var bondMetaMap = options.bondMetaMap || {};
+    var records = [];
+    var undatedIncomplete = false;
+    seriesCollectTickers(portfolio, options).forEach(function (ticker) {
+      var ops = buildTickerOperationTimeline(ticker, positions, sales, bondMetaMap[ticker] || null);
+      (ops || []).forEach(function (op) {
+        if (!op || (op.type !== 'buy' && op.type !== 'sell')) return;
+        if (!op.date) {
+          undatedIncomplete = true;
+          return;
+        }
+        records.push({
+          date: op.date,
+          type: op.type,
+          ticker: op.ticker || ticker,
+          amountRub: op.amountRub,
+          amountKnown: resultSeriesAmountKnown(op),
+          subset: resultSeriesOpSubset(op),
+          _seq: op._seq
+        });
+      });
+    });
+    records.sort(function (a, b) {
+      var da = a.date || '';
+      var db = b.date || '';
+      if (da !== db) return da < db ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'buy' ? -1 : 1;
+      return (a._seq || 0) - (b._seq || 0);
+    });
+    return { records: records, undatedIncomplete: undatedIncomplete };
+  }
+
+  function resultSeriesRoundOrNull(known, raw) {
+    return known ? (asOfRoundRub(raw) || 0) : null;
+  }
+
+  function resultSeriesEffectRub(valueT, valueStart, purchases, sales) {
+    if (valueT == null || valueStart == null || purchases == null || sales == null) return null;
+    if (!isFinite(Number(valueT)) || !isFinite(Number(valueStart))) return null;
+    return asOfRoundRub(Number(valueT) - Number(valueStart) - Number(purchases) + Number(sales));
+  }
+
+  function emptyPortfolioResultSeries(fromIso, toIso, extra) {
+    extra = extra || {};
+    return {
+      fromDate: fromIso || '',
+      toDate: toIso || '',
+      invalidDate: extra.invalidDate != null ? !!extra.invalidDate : (!fromIso || !toIso),
+      points: extra.points || [],
+      isPartial: !!extra.isPartial,
+      operationsPartial: !!extra.operationsPartial,
+      identityOk: false,
+      notes: extra.notes || []
+    };
+  }
+
+  /**
+   * Read-only ряд инвестиционного результата за выбранный период.
+   * resultRub(t) = V(t) − V(start) − P(start, t] + S(start, t]  (= priceEffect моста к каждой точке).
+   * Не включает realized, выплаты, cashFlows, комиссии и %.
+   * Сложность после готового value series: O(tickers × timeline + operations + points).
+   */
+  function buildPortfolioResultSeries(portfolio, fromDate, toDate, options) {
+    options = options || {};
+    var fromIso = timelineIsoDate(fromDate);
+    var toIso = timelineIsoDate(toDate);
+    if (!fromIso || !toIso || fromIso > toIso) {
+      return Promise.resolve(emptyPortfolioResultSeries(fromIso, toIso, {
+        invalidDate: true,
+        notes: ['Укажите корректные даты для сравнения.']
+      }));
+    }
+
+    var readySeries = Array.isArray(options.valueSeries) ? options.valueSeries : null;
+    var seriesPromise = readySeries
+      ? Promise.resolve(readySeries)
+      : Promise.resolve(
+        (typeof options.buildPortfolioValueSeries === 'function'
+          ? options.buildPortfolioValueSeries
+          : buildPortfolioValueSeries)(portfolio, fromDate, toDate, options)
+      );
+
+    return seriesPromise.then(function (valuePoints) {
+      valuePoints = valuePoints || [];
+      if (!valuePoints.length) {
+        var emptyCollected = collectResultSeriesOperationRecords(portfolio, options);
+        return emptyPortfolioResultSeries(fromIso, toIso, {
+          invalidDate: false,
+          operationsPartial: !!emptyCollected.undatedIncomplete,
+          isPartial: !!emptyCollected.undatedIncomplete,
+          notes: emptyCollected.undatedIncomplete ? [BRIDGE_OPS_PARTIAL_NOTE] : []
+        });
+      }
+
+      var startIso = timelineIsoDate(valuePoints[0] && valuePoints[0].date) || fromIso;
+      var startTotal = Number(valuePoints[0].totalValueRub);
+      if (!isFinite(startTotal) && valuePoints[0].portfolioValueRub != null) {
+        startTotal = Number(valuePoints[0].portfolioValueRub);
+      }
+      if (!isFinite(startTotal)) startTotal = 0;
+      startTotal = asOfRoundRub(startTotal) || 0;
+      var startStocks = asOfRoundRub(Number(valuePoints[0].stocksValueRub) || 0) || 0;
+      var startBonds = asOfRoundRub(Number(valuePoints[0].bondsValueRub) || 0) || 0;
+
+      var collected = collectResultSeriesOperationRecords(portfolio, options);
+      var records = collected.records || [];
+      var undatedIncomplete = !!collected.undatedIncomplete;
+      var opIndex = 0;
+      var cum = {
+        p: 0,
+        s: 0,
+        sp: 0,
+        ss: 0,
+        bp: 0,
+        bs: 0,
+        pKnown: true,
+        sKnown: true,
+        spKnown: true,
+        ssKnown: true,
+        bpKnown: true,
+        bsKnown: true
+      };
+
+      function addRecord(rec) {
+        if (!rec) return;
+        var known = !!rec.amountKnown;
+        var amt = known ? Number(rec.amountRub) : 0;
+        if (rec.type === 'buy') {
+          if (!known) cum.pKnown = false;
+          else if (cum.pKnown) cum.p += amt;
+          if (rec.subset === 'bond') {
+            if (!known) cum.bpKnown = false;
+            else if (cum.bpKnown) cum.bp += amt;
+          } else {
+            if (!known) cum.spKnown = false;
+            else if (cum.spKnown) cum.sp += amt;
+          }
+        } else if (rec.type === 'sell') {
+          if (!known) cum.sKnown = false;
+          else if (cum.sKnown) cum.s += amt;
+          if (rec.subset === 'bond') {
+            if (!known) cum.bsKnown = false;
+            else if (cum.bsKnown) cum.bs += amt;
+          } else {
+            if (!known) cum.ssKnown = false;
+            else if (cum.ssKnown) cum.ss += amt;
+          }
+        }
+      }
+
+      var seriesMarketPartial = false;
+      var seriesOpsPartial = undatedIncomplete;
+      var seriesNotes = [];
+      var points = valuePoints.map(function (vp) {
+        var iso = timelineIsoDate(vp && vp.date) || '';
+        while (opIndex < records.length && records[opIndex].date <= iso) {
+          if (records[opIndex].date > startIso) addRecord(records[opIndex]);
+          opIndex += 1;
+        }
+
+        var purchasesRub = resultSeriesRoundOrNull(cum.pKnown, cum.p);
+        var salesRub = resultSeriesRoundOrNull(cum.sKnown, cum.s);
+        var stocksPurchasesRub = resultSeriesRoundOrNull(cum.spKnown, cum.sp);
+        var stocksSalesRub = resultSeriesRoundOrNull(cum.ssKnown, cum.ss);
+        var bondsPurchasesRub = resultSeriesRoundOrNull(cum.bpKnown, cum.bp);
+        var bondsSalesRub = resultSeriesRoundOrNull(cum.bsKnown, cum.bs);
+
+        var valueRub = vp && vp.totalValueRub != null && isFinite(Number(vp.totalValueRub))
+          ? asOfRoundRub(Number(vp.totalValueRub))
+          : (vp && vp.portfolioValueRub != null && isFinite(Number(vp.portfolioValueRub))
+            ? asOfRoundRub(Number(vp.portfolioValueRub))
+            : 0);
+        var stocksValueRub = vp && vp.stocksValueRub != null && isFinite(Number(vp.stocksValueRub))
+          ? asOfRoundRub(Number(vp.stocksValueRub))
+          : 0;
+        var bondsValueRub = vp && vp.bondsValueRub != null && isFinite(Number(vp.bondsValueRub))
+          ? asOfRoundRub(Number(vp.bondsValueRub))
+          : 0;
+
+        var opsPartialPoint = undatedIncomplete || !cum.pKnown || !cum.sKnown;
+        var resultRub = (!cum.pKnown || !cum.sKnown)
+          ? null
+          : resultSeriesEffectRub(valueRub, startTotal, purchasesRub, salesRub);
+        var stocksResultRub = (!cum.spKnown || !cum.ssKnown)
+          ? null
+          : resultSeriesEffectRub(stocksValueRub, startStocks, stocksPurchasesRub, stocksSalesRub);
+        var bondsResultRub = (!cum.bpKnown || !cum.bsKnown)
+          ? null
+          : resultSeriesEffectRub(bondsValueRub, startBonds, bondsPurchasesRub, bondsSalesRub);
+
+        if (vp && vp.isPartial) seriesMarketPartial = true;
+        if (opsPartialPoint) seriesOpsPartial = true;
+
+        var pointNotes = asOfUniqueNotes([
+          vp && vp.warnings,
+          vp && vp.notes,
+          ((vp && vp.advisories) || []).map(function (a) { return a && a.text; }),
+          opsPartialPoint ? [BRIDGE_OPS_PARTIAL_NOTE] : []
+        ]);
+        seriesNotes.push(pointNotes);
+
+        return {
+          date: iso,
+          portfolioValueRub: valueRub,
+          totalValueRub: valueRub,
+          stocksValueRub: stocksValueRub,
+          bondsValueRub: bondsValueRub,
+          cumulativePurchasesRub: purchasesRub,
+          cumulativeSalesRub: salesRub,
+          stocksCumulativePurchasesRub: stocksPurchasesRub,
+          stocksCumulativeSalesRub: stocksSalesRub,
+          bondsCumulativePurchasesRub: bondsPurchasesRub,
+          bondsCumulativeSalesRub: bondsSalesRub,
+          resultRub: resultRub,
+          stocksResultRub: stocksResultRub,
+          bondsResultRub: bondsResultRub,
+          isPartial: !!(vp && vp.isPartial),
+          operationsPartial: opsPartialPoint,
+          notes: pointNotes
+        };
+      });
+
+      var last = points[points.length - 1];
+      var identityOk = false;
+      if (last && last.resultRub != null && last.cumulativePurchasesRub != null &&
+          last.cumulativeSalesRub != null && last.portfolioValueRub != null && !seriesOpsPartial) {
+        identityOk = asOfRoundRub(
+          startTotal + last.cumulativePurchasesRub - last.cumulativeSalesRub + last.resultRub
+        ) === asOfRoundRub(last.portfolioValueRub);
+      }
+
+      return {
+        fromDate: fromIso,
+        toDate: toIso,
+        invalidDate: false,
+        points: points,
+        isPartial: !!(seriesMarketPartial || seriesOpsPartial),
+        operationsPartial: seriesOpsPartial,
+        identityOk: identityOk,
+        notes: asOfUniqueNotes(seriesNotes.concat([
+          seriesOpsPartial ? [BRIDGE_OPS_PARTIAL_NOTE] : []
+        ]))
+      };
+    });
+  }
+
   function cmpExplainQtyPart(ticker, qty) {
     var t = String(ticker || '').trim();
     if (!t) return '';
