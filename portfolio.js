@@ -4145,6 +4145,43 @@
     return null;
   }
 
+  function payoutsIsoDateOrNull(raw) {
+    return timelineIsoDate(raw) || null;
+  }
+
+  function payoutsPickCouponDate(c) {
+    if (!c) return null;
+    return payoutsIsoDateOrNull(c.couponDate) ||
+      payoutsIsoDateOrNull(c.coupondate) ||
+      payoutsIsoDateOrNull(c.date);
+  }
+
+  function payoutsPickRecordDate(c) {
+    if (!c) return null;
+    // coupondate != recorddate: never copy couponDate into recordDate.
+    if (Object.prototype.hasOwnProperty.call(c, 'recordDate')) {
+      return payoutsIsoDateOrNull(c.recordDate);
+    }
+    if (Object.prototype.hasOwnProperty.call(c, 'recorddate')) {
+      return payoutsIsoDateOrNull(c.recorddate);
+    }
+    return null;
+  }
+
+  function payoutsDisplayDate(row) {
+    if (!row) return null;
+    if (row.type === 'coupon') {
+      return payoutsIsoDateOrNull(row.couponDate) ||
+        payoutsIsoDateOrNull(row.eligibilityDate) ||
+        payoutsIsoDateOrNull(row.recordDate) ||
+        null;
+    }
+    return payoutsIsoDateOrNull(row.recordDate) ||
+      payoutsIsoDateOrNull(row.eligibilityDate) ||
+      payoutsIsoDateOrNull(row.date) ||
+      null;
+  }
+
   function payoutsCouponPerUnit(coupon, faceValue) {
     if (!coupon) return null;
     var v = Number(coupon.value);
@@ -4255,7 +4292,9 @@
     var i;
     for (i = 0; i < events.length; i++) {
       var ev = events[i] || {};
-      var eventIso = timelineIsoDate(ev.date);
+      var eventIso = timelineIsoDate(ev.date) ||
+        timelineIsoDate(ev.couponDate) ||
+        timelineIsoDate(ev.coupondate);
       if (!eventIso || eventIso < window.fromIso || eventIso > window.endIso) continue;
       var qtyHeld = 0;
       if (useSplitQty) {
@@ -4307,18 +4346,23 @@
       var amountRub = asOfRoundRub(qtyHeld * perUnit);
       if (amountRub == null) continue;
       var currency = ev.currency ? String(ev.currency) : 'RUB';
-      items.push({
+      var item = {
         ticker: ticker,
         type: type,
         payoutDate: null,
-        recordDate: eventIso,
+        recordDate: type === 'dividend' ? eventIso : payoutsPickRecordDate(ev),
         qtyHeld: qtyHeld,
         payoutPerUnit: perUnit,
         amountRub: amountRub,
         currency: currency,
         source: source,
         note: type === 'dividend' ? PAYOUT_DIV_NOTE : PAYOUT_COUPON_NOTE
-      });
+      };
+      if (type === 'coupon') {
+        item.couponDate = payoutsPickCouponDate(ev) || eventIso;
+        item.eligibilityDate = eventIso;
+      }
+      items.push(item);
     }
 
     var totalDiv = 0;
@@ -5094,8 +5138,8 @@
     });
 
     items.sort(function (a, b) {
-      var da = a.recordDate || '';
-      var db = b.recordDate || '';
+      var da = payoutsDisplayDate(a) || '';
+      var db = payoutsDisplayDate(b) || '';
       if (da !== db) return da < db ? -1 : 1;
       if (a.ticker !== b.ticker) return a.ticker < b.ticker ? -1 : 1;
       if (a.type !== b.type) return a.type < b.type ? -1 : 1;
@@ -5202,11 +5246,16 @@
     var out = [];
     (raw || []).forEach(function (c) {
       if (!c) return;
-      var date = String(c.date || '').slice(0, 10);
-      if (date.length !== 10) return;
-      var row = { date: date };
+      var couponDate = payoutsPickCouponDate(c);
+      if (!couponDate) return;
+      var pctRaw = c.valuePct != null ? c.valuePct : c.valueprc;
+      var row = {
+        date: couponDate,
+        couponDate: couponDate,
+        recordDate: payoutsPickRecordDate(c)
+      };
       if (c.value != null && isFinite(Number(c.value))) row.value = Number(c.value);
-      if (c.valuePct != null && isFinite(Number(c.valuePct))) row.valuePct = Number(c.valuePct);
+      if (pctRaw != null && isFinite(Number(pctRaw))) row.valuePct = Number(pctRaw);
       out.push(row);
     });
     return out;
@@ -5471,7 +5520,9 @@
       var e;
       for (e = 0; e < events.length; e++) {
         var ev = events[e] || {};
-        var eventIso = timelineIsoDate(ev.date);
+        var eventIso = timelineIsoDate(ev.date) ||
+          timelineIsoDate(ev.couponDate) ||
+          timelineIsoDate(ev.coupondate);
         if (!eventIso || eventIso <= nowIso || eventIso > endIso) continue;
 
         var perUnit = null;
@@ -5495,7 +5546,7 @@
 
         var amountRub = asOfRoundRub(currentQty * perUnit);
         if (amountRub == null) continue;
-        items.push({
+        var upcoming = {
           ticker: ticker,
           type: type,
           date: eventIso,
@@ -5505,7 +5556,12 @@
           currency: ev.currency ? String(ev.currency) : 'RUB',
           source: source,
           note: type === 'dividend' ? UPCOMING_DIV_NOTE : UPCOMING_COUPON_NOTE
-        });
+        };
+        if (type === 'coupon') {
+          upcoming.couponDate = payoutsPickCouponDate(ev) || eventIso;
+          upcoming.recordDate = payoutsPickRecordDate(ev);
+        }
+        items.push(upcoming);
       }
     }
 
@@ -11801,8 +11857,8 @@
 
   function payoutsSortItemsNewestFirst(items) {
     return (items || []).slice().sort(function (a, b) {
-      var da = a && a.recordDate ? String(a.recordDate) : '';
-      var db = b && b.recordDate ? String(b.recordDate) : '';
+      var da = payoutsDisplayDate(a) || '';
+      var db = payoutsDisplayDate(b) || '';
       if (da !== db) return da > db ? -1 : 1;
       var ta = a && a.ticker ? String(a.ticker) : '';
       var tb = b && b.ticker ? String(b.ticker) : '';
@@ -11854,7 +11910,7 @@
           '</span>' +
         '</div>' +
         '<div class="pf-pay-card-kpis">' +
-          '<span><span class="lbl">Дата</span> ' + escapeHtml(formatAsOfDateDisplay(row.recordDate)) + '</span>' +
+          '<span><span class="lbl">Дата</span> ' + escapeHtml(formatAsOfDateDisplay(payoutsDisplayDate(row))) + '</span>' +
           '<span><span class="lbl">Кол-во на дату</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) + '</span>' +
           '<span><span class="lbl">Выплата за 1 шт.</span> ' + escapeHtml(formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</span>' +
           '<span class="pf-pay-card-sum"><span class="lbl">Сумма</span> ' +
@@ -11874,7 +11930,7 @@
       var name = payoutsTickerName(row.ticker);
       return '<tr class="pf-pay-row">' +
         '<td class="pf-pay-td-date" title="' + escapeHtml(hint) + '">' +
-          escapeHtml(formatAsOfDateDisplay(row.recordDate)) +
+          escapeHtml(formatAsOfDateDisplay(payoutsDisplayDate(row))) +
         '</td>' +
         '<td class="pf-pay-td-paper">' +
           '<span class="pf-pay-ticker">' + escapeHtml(row.ticker || '') + '</span>' +

@@ -675,16 +675,39 @@
     }).catch(function () { return {}; });
   }
 
+  function ofzCouponIsoOrNull(raw) {
+    if (raw == null || raw === '') return null;
+    var s = String(raw).slice(0, 10);
+    return s.length === 10 ? s : null;
+  }
+
+  // coupondate != recorddate: ISS coupondate is the coupon event; recorddate is cutoff if present.
+  function mapOfzCouponIssRow(c) {
+    if (!c) return null;
+    var couponDate = ofzCouponIsoOrNull(c.coupondate) ||
+      ofzCouponIsoOrNull(c.couponDate) ||
+      ofzCouponIsoOrNull(c.date);
+    if (!couponDate) return null;
+    var recordRaw;
+    if (Object.prototype.hasOwnProperty.call(c, 'recorddate')) recordRaw = c.recorddate;
+    else if (Object.prototype.hasOwnProperty.call(c, 'recordDate')) recordRaw = c.recordDate;
+    var recordDate = ofzCouponIsoOrNull(recordRaw);
+    var valuePctRaw = c.valueprc != null ? c.valueprc : c.valuePct;
+    return {
+      date: couponDate,
+      couponDate: couponDate,
+      recordDate: recordDate,
+      value: c.value != null ? Number(c.value) : null,
+      valuePct: valuePctRaw != null ? Number(valuePctRaw) : null
+    };
+  }
+
   function fetchOfzCouponSchedule(secid) {
     return moexFetchJson(MOEX_ISS + '/securities/' + encodeURIComponent(secid) +
       '/bondization.json?iss.only=coupons&iss.meta=off&limit=500').then(function (json) {
-      return parseIssRows(json.coupons).map(function (c) {
-        return {
-          date: c.coupondate,
-          value: c.value != null ? Number(c.value) : null,
-          valuePct: c.valueprc != null ? Number(c.valueprc) : null
-        };
-      }).filter(function (c) { return c.date; });
+      return parseIssRows(json.coupons).map(mapOfzCouponIssRow).filter(function (c) {
+        return c && c.date;
+      });
     }).catch(function () { return []; });
   }
 
@@ -1530,6 +1553,7 @@
   window.renderOfzSection = renderOfzSection;
   window.loadOfzData = loadOfzData;
   window.fetchOfzBondSnapshot = fetchOfzBondSnapshot;
+  window.mapOfzCouponIssRow = mapOfzCouponIssRow;
   window.buildOfzCouponBarSeries = buildCouponBarSeries;
   window.selectOfzTicker = selectOfzTicker;
   window.classifyOfzMaturityTerm = classifyOfzMaturityTerm;
