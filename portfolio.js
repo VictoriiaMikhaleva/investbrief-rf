@@ -6515,6 +6515,150 @@
     };
   }
 
+  var BRIDGE_OPS_PARTIAL_NOTE =
+    'Сумма сделок за период рассчитана частично: у части операций нет суммы или даты';
+
+  function bridgeTotalFromAggregates(rows) {
+    if (!rows || !rows.length) return { value: 0, known: true };
+    var sum = 0;
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      var rec = rows[i];
+      if (!rec || rec.amountKnown === false || rec.amountRub == null || !isFinite(Number(rec.amountRub))) {
+        return { value: null, known: false };
+      }
+      sum += Number(rec.amountRub);
+    }
+    return { value: asOfRoundRub(sum), known: true };
+  }
+
+  /**
+   * Read-only декомпозиция изменения стоимости портфеля между датами.
+   * Identity: V_from + Purchases − Sales + priceEffectRub = V_to.
+   * Purchases/Sales — сумма amountRub сделок (fromDate, toDate], цена сделки, не CLOSE.
+   * priceEffectRub — остаток (оценка открытых, ценовой эффект сделок, округление, clean ОФЗ).
+   * Не включает realized, выплаты, cashFlows и комиссии.
+   */
+  function buildPortfolioValueChangeBridge(portfolio, fromDate, toDate, options) {
+    options = options || {};
+    var fromIso = timelineIsoDate(fromDate);
+    var toIso = timelineIsoDate(toDate);
+    var changeFn = typeof options.buildPortfolioValueChangeBetweenDates === 'function'
+      ? options.buildPortfolioValueChangeBetweenDates
+      : buildPortfolioValueChangeBetweenDates;
+    var opsFn = typeof options.collectComparePeriodOperations === 'function'
+      ? options.collectComparePeriodOperations
+      : collectComparePeriodOperations;
+
+    function emptyBridge(extra) {
+      extra = extra || {};
+      return {
+        fromDate: fromIso || '',
+        toDate: toIso || '',
+        invalidDate: extra.invalidDate != null ? !!extra.invalidDate : (!fromIso || !toIso),
+        fromValueRub: extra.fromValueRub != null ? extra.fromValueRub : null,
+        toValueRub: extra.toValueRub != null ? extra.toValueRub : null,
+        changeRub: extra.changeRub != null ? extra.changeRub : null,
+        purchasesRub: extra.purchasesRub != null ? extra.purchasesRub : null,
+        salesRub: extra.salesRub != null ? extra.salesRub : null,
+        priceEffectRub: extra.priceEffectRub != null ? extra.priceEffectRub : null,
+        operationsCount: extra.operationsCount || 0,
+        buyOperationsCount: extra.buyOperationsCount || 0,
+        sellOperationsCount: extra.sellOperationsCount || 0,
+        operationsPartial: !!extra.operationsPartial,
+        isPartial: !!extra.isPartial,
+        hasIncompleteHistory: !!extra.hasIncompleteHistory,
+        warnings: extra.warnings || [],
+        notes: extra.notes || [],
+        identityOk: false
+      };
+    }
+
+    if (!fromIso || !toIso) {
+      return Promise.resolve(emptyBridge({
+        invalidDate: true,
+        notes: ['Укажите корректные даты для сравнения.']
+      }));
+    }
+
+    return Promise.resolve(changeFn(portfolio, fromDate, toDate, options)).then(function (change) {
+      change = change || {};
+      var ops = opsFn(portfolio, fromDate, toDate, {
+        bondMetaMap: options.bondMetaMap,
+        items: change.items
+      }) || {};
+      var buyOps = ops.buyOps || [];
+      var sellOps = ops.sellOps || [];
+      var buyTotal = bridgeTotalFromAggregates(ops.buys);
+      var sellTotal = bridgeTotalFromAggregates(ops.sells);
+      var operationsPartial = !!ops.incomplete || !buyTotal.known || !sellTotal.known;
+
+      var purchasesRub = buyTotal.known ? buyTotal.value : null;
+      var salesRub = sellTotal.known ? sellTotal.value : null;
+
+      var fromValueRub = change.fromValue != null && isFinite(Number(change.fromValue))
+        ? asOfRoundRub(Number(change.fromValue))
+        : null;
+      var toValueRub = change.toValue != null && isFinite(Number(change.toValue))
+        ? asOfRoundRub(Number(change.toValue))
+        : null;
+      var changeRub = null;
+      if (change.changeRub != null && isFinite(Number(change.changeRub))) {
+        changeRub = asOfRoundRub(Number(change.changeRub));
+      } else if (fromValueRub != null && toValueRub != null) {
+        changeRub = asOfRoundRub(toValueRub - fromValueRub);
+      }
+
+      var priceEffectRub = null;
+      if (fromValueRub != null && toValueRub != null && purchasesRub != null && salesRub != null) {
+        priceEffectRub = asOfRoundRub(toValueRub - fromValueRub - purchasesRub + salesRub);
+      }
+
+      var identityOk = false;
+      if (!change.invalidDate && !operationsPartial &&
+          fromValueRub != null && toValueRub != null &&
+          purchasesRub != null && salesRub != null && priceEffectRub != null) {
+        identityOk = asOfRoundRub(fromValueRub + purchasesRub - salesRub + priceEffectRub) ===
+          asOfRoundRub(toValueRub);
+      }
+
+      var warnings = [];
+      if (operationsPartial) warnings.push(BRIDGE_OPS_PARTIAL_NOTE);
+
+      var itemNotes = [];
+      function collectItemNotes(result) {
+        ((result && result.items) || []).forEach(function (row) {
+          ((row && row.notes) || []).forEach(function (n) {
+            itemNotes.push(n);
+          });
+        });
+      }
+      collectItemNotes(change.fromResult);
+      collectItemNotes(change.toResult);
+
+      return {
+        fromDate: change.fromDate || fromIso,
+        toDate: change.toDate || toIso,
+        invalidDate: !!change.invalidDate,
+        fromValueRub: fromValueRub,
+        toValueRub: toValueRub,
+        changeRub: changeRub,
+        purchasesRub: purchasesRub,
+        salesRub: salesRub,
+        priceEffectRub: priceEffectRub,
+        operationsCount: buyOps.length + sellOps.length,
+        buyOperationsCount: buyOps.length,
+        sellOperationsCount: sellOps.length,
+        operationsPartial: operationsPartial,
+        isPartial: !!(change.isPartial || operationsPartial),
+        hasIncompleteHistory: !!change.hasIncompleteHistory,
+        warnings: warnings,
+        notes: asOfUniqueNotes([change.notes, itemNotes]),
+        identityOk: identityOk
+      };
+    });
+  }
+
   function cmpExplainQtyPart(ticker, qty) {
     var t = String(ticker || '').trim();
     if (!t) return '';
