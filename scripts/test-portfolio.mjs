@@ -450,6 +450,12 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__tickerReturn = buildTickerReturnWithPayouts;' +
       '\nthis.__portfolioReturn = buildPortfolioReturnWithPayouts;' +
       '\nthis.__loadPayoutFeeds = loadPayoutFeedsForPortfolio;' +
+      '\nthis.__normalizeCoupons = payoutsNormalizeCouponRows;' +
+      '\nthis.__couponElig = payoutsCouponEligibility;' +
+      '\nthis.__payoutsDisplayDate = payoutsDisplayDate;' +
+      '\nthis.__payoutsSortNewest = payoutsSortItemsNewestFirst;' +
+      '\nthis.__payoutsCardsHtml = buildPortfolioPayoutsCardsHtml;' +
+      '\nthis.__payoutsTableHtml = buildPortfolioPayoutsTableHtml;' +
       '\nthis.__upcomingPayouts = buildUpcomingPortfolioPayouts;' +
       '\nthis.__splitWarn = portfolioTickerNeedsSplitWarning;' +
       '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;' +
@@ -591,6 +597,12 @@ function loadPortfolioCalcHelpers() {
     buildTickerReturnWithPayouts: sandbox.__tickerReturn,
     buildPortfolioReturnWithPayouts: sandbox.__portfolioReturn,
     loadPayoutFeedsForPortfolio: sandbox.__loadPayoutFeeds,
+    payoutsNormalizeCouponRows: sandbox.__normalizeCoupons,
+    payoutsCouponEligibility: sandbox.__couponElig,
+    payoutsDisplayDate: sandbox.__payoutsDisplayDate,
+    payoutsSortItemsNewestFirst: sandbox.__payoutsSortNewest,
+    buildPortfolioPayoutsCardsHtml: sandbox.__payoutsCardsHtml,
+    buildPortfolioPayoutsTableHtml: sandbox.__payoutsTableHtml,
     buildUpcomingPortfolioPayouts: sandbox.__upcomingPayouts,
     portfolioTickerNeedsSplitWarning: sandbox.__splitWarn,
     buildPortfolioSplitWarningHtml: sandbox.__splitWarnHtml,
@@ -2611,6 +2623,605 @@ function loadPriceAtDateHelpers() {
   });
   assert(badDivValue.items.length === 0 && badDivValue.isPartial === true, 'payouts: dividend value <= 0 skipped');
   assert(badDivValue.warnings.some((w) => /дивиденд без суммы/i.test(w)), 'payouts: dividend value warning');
+}
+
+{
+  // Wave 1: couponDate vs recordDate contract. Eligibility still coupon-date based.
+  const ofzSrc = fs.readFileSync(path.join(__dirname, '..', 'ofz.js'), 'utf8');
+  const parseStart = ofzSrc.indexOf('function parseIssRows');
+  const parseEnd = ofzSrc.indexOf('function fetchOfzSecurityMeta');
+  const mapStart = ofzSrc.indexOf('function ofzCouponIsoOrNull');
+  const mapEnd = ofzSrc.indexOf('function fetchOfzCouponSchedule');
+  assert(parseStart >= 0 && parseEnd > parseStart, 'wave1: parseIssRows present');
+  assert(mapStart >= 0 && mapEnd > mapStart, 'wave1: mapOfzCouponIssRow present');
+  const ofzHelpers = { Object, Number, String };
+  vm.runInNewContext(
+    ofzSrc.slice(parseStart, parseEnd) +
+    ofzSrc.slice(mapStart, mapEnd) +
+    '\nthis.parseIssRows = parseIssRows;' +
+    '\nthis.mapOfzCouponIssRow = mapOfzCouponIssRow;',
+    ofzHelpers,
+    { timeout: 1000 }
+  );
+
+  const issBoth = {
+    columns: [
+      'isin', 'name', 'issuevalue', 'coupondate', 'recorddate', 'startdate',
+      'initialfacevalue', 'facevalue', 'faceunit', 'value', 'valueprc', 'value_rub',
+      'secid', 'primary_boardid'
+    ],
+    data: [[
+      'RU000A1038V6', 'ОФЗ-ПД 26238', 1000000000000, '2026-07-15', '2026-07-14',
+      '2026-01-15', 1000, 1000, 'RUB', 35.00, 7.0, 35.00, 'SU26238RMFS4', 'TQOB'
+    ]]
+  };
+  const parsedBoth = ofzHelpers.parseIssRows(issBoth).map(ofzHelpers.mapOfzCouponIssRow);
+  assert(parsedBoth.length === 1, 'wave1 parser: one coupon row');
+  assert(parsedBoth[0].couponDate === '2026-07-15', 'wave1 parser: couponDate parsed');
+  assert(parsedBoth[0].recordDate === '2026-07-14', 'wave1 parser: recordDate parsed');
+  assert(parsedBoth[0].couponDate !== parsedBoth[0].recordDate, 'wave1 parser: dates differ and both preserved');
+  assert(parsedBoth[0].date === parsedBoth[0].couponDate, 'wave1 parser: legacy date remains couponDate');
+  assert(parsedBoth[0].value === 35, 'wave1 parser: value unchanged');
+  assert(parsedBoth[0].valuePct === 7, 'wave1 parser: valuePct unchanged');
+  assert(parsedBoth[0].facevalue == null && parsedBoth[0].status == null, 'wave1 parser: extra ISS fields not copied');
+
+  const issMissingCol = {
+    columns: ['coupondate', 'value', 'valueprc'],
+    data: [['2026-07-15', 35.00, 7.0]]
+  };
+  const parsedMissingCol = ofzHelpers.parseIssRows(issMissingCol).map(ofzHelpers.mapOfzCouponIssRow);
+  assert(parsedMissingCol[0].couponDate === '2026-07-15', 'wave1 parser: couponDate when recorddate absent');
+  assert(parsedMissingCol[0].recordDate === null, 'wave1 parser: missing recorddate → null, not couponDate');
+  assert(parsedMissingCol[0].date === '2026-07-15', 'wave1 parser: legacy date still couponDate if recorddate absent');
+
+  const issNullRecord = {
+    columns: ['coupondate', 'recorddate', 'value', 'valueprc'],
+    data: [['2026-07-15', null, 35.00, 7.0]]
+  };
+  const parsedNullRecord = ofzHelpers.parseIssRows(issNullRecord).map(ofzHelpers.mapOfzCouponIssRow);
+  assert(parsedNullRecord[0].recordDate === null, 'wave1 parser: null recorddate → null');
+  assert(parsedNullRecord[0].couponDate === '2026-07-15', 'wave1 parser: couponDate kept when recorddate null');
+
+  const normBoth = calc.payoutsNormalizeCouponRows([{
+    coupondate: '2026-07-15',
+    recorddate: '2026-07-14',
+    value: 35.00,
+    valueprc: 7.0
+  }]);
+  assert(normBoth.length === 1, 'wave1 normalize: one row');
+  assert(normBoth[0].couponDate === '2026-07-15', 'wave1 normalize: couponDate');
+  assert(normBoth[0].recordDate === '2026-07-14', 'wave1 normalize: recordDate');
+  assert(normBoth[0].date === '2026-07-15', 'wave1 normalize: legacy date = couponDate');
+  assert(normBoth[0].date !== normBoth[0].recordDate, 'wave1 normalize: date is not recordDate');
+  assert(normBoth[0].value === 35 && normBoth[0].valuePct === 7, 'wave1 normalize: value/valuePct unchanged');
+
+  const normMissing = calc.payoutsNormalizeCouponRows([{
+    coupondate: '2026-07-15',
+    value: 35.00,
+    valueprc: 7.0
+  }]);
+  assert(normMissing[0].recordDate === null, 'wave1 normalize: absent recorddate → null');
+  assert(normMissing[0].couponDate === '2026-07-15', 'wave1 normalize: couponDate when recorddate absent');
+
+  const normLegacy = calc.payoutsNormalizeCouponRows([{ date: '2024-06-19', value: 42.38 }]);
+  assert(normLegacy[0].date === '2024-06-19' && normLegacy[0].couponDate === '2024-06-19',
+    'wave1 normalize: legacy date feed → couponDate');
+  assert(normLegacy[0].recordDate === null, 'wave1 normalize: legacy feed has no fake recordDate');
+
+  const NOW = '2025-12-31';
+  const ofzPf = {
+    positions: [{
+      ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95.4, buyDate: '2024-02-01', faceValue: 1000
+    }],
+    sales: []
+  };
+  function ofzFeed(coupons) {
+    return {
+      OFZ_26238: {
+        kind: 'bond',
+        source: 'bondization',
+        coupons: coupons,
+        faceValue: 1000
+      }
+    };
+  }
+  const amountBefore = calc.buildPortfolioPayoutsForHoldingPeriod(ofzPf, '2024-01-01', '2024-12-31', {
+    now: NOW,
+    payoutsByTicker: ofzFeed([{ date: '2024-06-19', value: 42.38 }])
+  });
+  assert(amountBefore.totalCouponsRub === 423.8 && amountBefore.totalPayoutsRub === 423.8,
+    'wave1 payoutsRub: existing coupon fixture amount unchanged');
+
+  const amountAfterDates = calc.buildPortfolioPayoutsForHoldingPeriod(ofzPf, '2024-01-01', '2024-12-31', {
+    now: NOW,
+    payoutsByTicker: ofzFeed([{
+      date: '2024-06-19',
+      couponDate: '2024-06-19',
+      recordDate: '2024-06-18',
+      value: 42.38
+    }])
+  });
+  assert(amountAfterDates.totalPayoutsRub === 423.8 && amountAfterDates.totalCouponsRub === 423.8,
+    'wave1 payoutsRub: adding recordDate does not change amount');
+
+  const itemBoth = calc.buildTickerPayoutsForHoldingPeriod(
+    'OFZ_26238', ofzPf, '2024-01-01', '2024-12-31', {
+      now: NOW,
+      payoutsByTicker: ofzFeed([{
+        couponDate: '2024-07-15',
+        recordDate: '2024-07-14',
+        date: '2024-07-15',
+        value: 35
+      }])
+    }
+  );
+  assert(itemBoth.items.length === 1, 'wave1 item: coupon included by couponDate window');
+  assert(itemBoth.items[0].couponDate === '2024-07-15', 'wave1 item: couponDate = couponDate');
+  assert(itemBoth.items[0].recordDate === '2024-07-14', 'wave1 item: real recordDate');
+  assert(itemBoth.items[0].recordDate !== itemBoth.items[0].couponDate, 'wave1 item: no fake recordDate=couponDate');
+  assert(itemBoth.items[0].eligibilityDate === '2024-07-14', 'wave2 item: eligibilityDate is recordDate');
+  assert(itemBoth.items[0].eligibilitySource === 'recordDate', 'wave2 item: eligibilitySource recordDate');
+  assert(itemBoth.items[0].amountRub === 350, 'wave1 item: amount still qty × value');
+
+  const itemMissing = calc.buildTickerPayoutsForHoldingPeriod(
+    'OFZ_26238', ofzPf, '2024-01-01', '2024-12-31', {
+      now: NOW,
+      payoutsByTicker: ofzFeed([{ date: '2024-06-19', value: 42.38 }])
+    }
+  );
+  assert(itemMissing.items[0].couponDate === '2024-06-19', 'wave1 item: couponDate from legacy date');
+  assert(itemMissing.items[0].recordDate === null, 'wave1 item: missing recordDate stays null');
+  assert(itemMissing.items[0].recordDate !== itemMissing.items[0].couponDate, 'wave1 item: null is not couponDate');
+  assert(itemMissing.items[0].eligibilityDate === '2024-06-19', 'wave2 item: missing recordDate fallback couponDate');
+  assert(itemMissing.items[0].eligibilitySource === 'couponDateFallback', 'wave2 item: missing recordDate estimated');
+  assert(itemMissing.items[0].isEstimated === true && itemMissing.isPartial === true,
+    'wave2 item: missing recordDate marked partial');
+
+  const displayBoth = {
+    type: 'coupon', ticker: 'OFZ_26238',
+    couponDate: '2026-07-15', recordDate: '2026-07-14', eligibilityDate: '2026-07-15',
+    qtyHeld: 10, payoutPerUnit: 35, amountRub: 350
+  };
+  assert(displayBoth.couponDate === '2026-07-15' && displayBoth.recordDate === '2026-07-14',
+    'wave1 display: contract keeps both dates');
+  assert(calc.payoutsDisplayDate(displayBoth) === '2026-07-15', 'wave1 display: coupon date is couponDate');
+  const cardsBoth = calc.buildPortfolioPayoutsCardsHtml([displayBoth]);
+  const tableBoth = calc.buildPortfolioPayoutsTableHtml([displayBoth]);
+  assert(/Дата<\/span> 2026-07-15/.test(cardsBoth), 'wave1 display html: couponDate in cards');
+  assert(!/Дата<\/span> 2026-07-14/.test(cardsBoth) && !/Дата<\/span> —/.test(cardsBoth),
+    'wave1 display html: cutoff not shown as card date');
+  assert(/2026-07-15/.test(tableBoth) && !/2026-07-14/.test(tableBoth),
+    'wave1 display html: table uses couponDate');
+
+  const displayMissing = {
+    type: 'coupon', ticker: 'OFZ_26238',
+    couponDate: '2026-07-15', recordDate: null, eligibilityDate: '2026-07-15',
+    qtyHeld: 10, payoutPerUnit: 35, amountRub: 350
+  };
+  assert(displayMissing.recordDate === null, 'wave1 display: missing recordDate stays null');
+  assert(calc.payoutsDisplayDate(displayMissing) === '2026-07-15',
+    'wave1 display: missing recordDate still couponDate, not em dash');
+  const cardsMissing = calc.buildPortfolioPayoutsCardsHtml([displayMissing]);
+  assert(/Дата<\/span> 2026-07-15/.test(cardsMissing), 'wave1 display html: couponDate when recordDate null');
+  assert(!/Дата<\/span> —/.test(cardsMissing), 'wave1 display html: not — when recordDate null');
+
+  const newest = calc.payoutsSortItemsNewestFirst([
+    { type: 'coupon', ticker: 'OFZ_26238', couponDate: '2024-08-01', recordDate: '2024-07-01' },
+    { type: 'coupon', ticker: 'OFZ_26238', couponDate: '2024-07-15', recordDate: '2024-07-14' }
+  ]);
+  assert(newest[0].couponDate === '2024-08-01' && newest[1].couponDate === '2024-07-15',
+    'wave1 sort: coupon rows by couponDate newest first');
+  assert(newest[0].recordDate === '2024-07-01' && newest[1].recordDate === '2024-07-14',
+    'wave1 sort: recordDate not used as coupon sort key');
+
+  const mixedSort = calc.payoutsSortItemsNewestFirst([
+    { type: 'coupon', ticker: 'OFZ_26238', couponDate: '2024-07-20', recordDate: '2024-07-10' },
+    { type: 'dividend', ticker: 'SBER', recordDate: '2024-07-17' }
+  ]);
+  assert(mixedSort[0].type === 'coupon' && mixedSort[1].type === 'dividend',
+    'wave1 sort: coupon by couponDate, dividend by recordDate');
+  assert(calc.payoutsDisplayDate({ type: 'dividend', recordDate: '2024-07-17' }) === '2024-07-17',
+    'wave1 display: dividend still registry recordDate');
+
+  const twoCpns = calc.buildPortfolioPayoutsForHoldingPeriod(ofzPf, '2024-01-01', '2024-12-31', {
+    now: NOW,
+    payoutsByTicker: ofzFeed([
+      { date: '2024-08-01', couponDate: '2024-08-01', recordDate: '2024-07-01', value: 10 },
+      { date: '2024-07-15', couponDate: '2024-07-15', recordDate: '2024-07-14', value: 10 }
+    ])
+  });
+  assert(twoCpns.items[0].couponDate === '2024-07-15' && twoCpns.items[1].couponDate === '2024-08-01',
+    'wave1 sort: holding-period items oldest couponDate first');
+  assert(twoCpns.items[0].recordDate === '2024-07-14' && twoCpns.items[1].recordDate === '2024-07-01',
+    'wave1 sort: holding-period recordDates preserved');
+  assert(twoCpns.totalPayoutsRub === 200, 'wave1 payoutsRub: two-coupon sort fixture amount unchanged');
+
+  assert(itemMissing.items[0].eligibilityDate === '2024-06-19', 'wave2 item: missing recordDate fallback couponDate');
+  assert(itemMissing.items[0].eligibilitySource === 'couponDateFallback', 'wave2 item: missing recordDate estimated');
+  assert(itemMissing.items[0].isEstimated === true && itemMissing.isPartial === true,
+    'wave2 item: missing recordDate marked partial');
+
+  const buyOnCouponAfterRecord = calc.buildTickerPayoutsForHoldingPeriod(
+    'OFZ_26238',
+    {
+      positions: [{
+        ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95, buyDate: '2024-06-19', faceValue: 1000
+      }],
+      sales: []
+    },
+    '2024-01-01',
+    '2024-12-31',
+    {
+      now: NOW,
+      payoutsByTicker: ofzFeed([{
+        date: '2024-06-19',
+        couponDate: '2024-06-19',
+        recordDate: '2024-06-18',
+        value: 42.38
+      }])
+    }
+  );
+  assert(buyOnCouponAfterRecord.items.length === 0 && buyOnCouponAfterRecord.totalPayoutsRub === 0,
+    'wave2: buy between record and coupon not eligible');
+
+  const buyAfterCoupon = calc.buildTickerPayoutsForHoldingPeriod(
+    'OFZ_26238',
+    {
+      positions: [{
+        ticker: 'OFZ_26238', lotId: 'O1', qty: 10, avgPrice: 95, buyDate: '2024-06-20', faceValue: 1000
+      }],
+      sales: []
+    },
+    '2024-01-01',
+    '2024-12-31',
+    {
+      now: NOW,
+      payoutsByTicker: ofzFeed([{
+        date: '2024-06-19',
+        couponDate: '2024-06-19',
+        recordDate: '2024-06-18',
+        value: 42.38
+      }])
+    }
+  );
+  assert(buyAfterCoupon.items.length === 0 && buyAfterCoupon.totalPayoutsRub === 0,
+    'wave1 eligibility: buy after couponDate still excluded');
+
+  const sberPf = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
+    sales: []
+  };
+  const divItem = calc.buildTickerPayoutsForHoldingPeriod(
+    'SBER', sberPf, '2024-01-01', '2024-12-31', {
+      now: NOW,
+      payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2024-07-17', value: 33.3 }] } }
+    }
+  );
+  assert(divItem.items.length === 1 && divItem.items[0].type === 'dividend', 'wave1 dividend: still one item');
+  assert(divItem.items[0].recordDate === '2024-07-17', 'wave1 dividend: recordDate = registryclosedate');
+  assert(divItem.items[0].couponDate == null, 'wave1 dividend: no couponDate field');
+  assert(divItem.items[0].amountRub === 333, 'wave1 dividend: eligibility/amount unchanged');
+
+  const divAfterCutoff = calc.buildTickerPayoutsForHoldingPeriod(
+    'SBER',
+    {
+      positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-08-01' }],
+      sales: []
+    },
+    '2024-01-01',
+    '2024-12-31',
+    {
+      now: NOW,
+      payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2024-07-17', value: 33.3 }] } }
+    }
+  );
+  assert(divAfterCutoff.items.length === 0, 'wave1 dividend: buy after registry cutoff still excluded');
+
+  const feeds = await calc.loadPayoutFeedsForPortfolio(ofzPf, {
+    fetchOfzBondSnapshot: () => Promise.resolve({
+      ticker: 'OFZ_26238',
+      faceValue: 1000,
+      accruedInt: 12.5,
+      coupons: [{
+        coupondate: '2026-07-15',
+        recorddate: '2026-07-14',
+        value: 35.00,
+        valueprc: 7.0
+      }]
+    })
+  });
+  const feedCpn = feeds.payoutsByTicker.OFZ_26238.coupons[0];
+  assert(feedCpn.couponDate === '2026-07-15', 'wave1 feed: couponDate preserved');
+  assert(feedCpn.recordDate === '2026-07-14', 'wave1 feed: recordDate preserved');
+  assert(feedCpn.date === '2026-07-15', 'wave1 feed: legacy date = couponDate');
+  assert(feeds.payoutsByTicker.OFZ_26238.accruedInt == null, 'wave1 feed: NKD still not copied');
+
+  assert(/bondization\.json\?iss\.only=coupons/.test(ofzSrc), 'wave1 network: still existing bondization coupons endpoint');
+  assert(!/iss\.only=amortizations|iss\.only=offers/.test(ofzSrc.slice(mapStart, ofzSrc.indexOf('function fetchOfzBondSnapshot'))),
+    'wave1 network: no extra coupon endpoint');
+  assert(/recorddate/.test(ofzSrc.slice(mapStart, mapEnd)), 'wave1 ofz mapper reads ISS recorddate');
+}
+
+{
+  // Wave 2: coupon eligibility uses real ISS recordDate when trustworthy.
+  const NOW = '2026-12-31';
+  function ofzFeed(coupons) {
+    return {
+      OFZ_26238: {
+        kind: 'bond', source: 'bondization', coupons: coupons, faceValue: 1000
+      }
+    };
+  }
+  function ofzPos(buyDate, qty, extra) {
+    return Object.assign({
+      ticker: 'OFZ_26238', lotId: extra && extra.lotId ? extra.lotId : 'O1',
+      qty: qty, avgPrice: 95, buyDate: buyDate, faceValue: 1000, currentPrice: 98
+    }, extra || {});
+  }
+  function runTicker(portfolio, coupons, extra) {
+    return calc.buildTickerPayoutsForHoldingPeriod(
+      'OFZ_26238',
+      portfolio,
+      extra && extra.fromDate ? extra.fromDate : '2026-01-01',
+      extra && extra.toDate ? extra.toDate : '2026-12-31',
+      Object.assign({
+        now: extra && extra.now ? extra.now : NOW,
+        payoutsByTicker: ofzFeed(coupons)
+      }, extra || {})
+    );
+  }
+  const cpn = {
+    couponDate: '2026-07-15',
+    recordDate: '2026-07-14',
+    date: '2026-07-15',
+    value: 35
+  };
+  const elig = calc.payoutsCouponEligibility(cpn);
+  assert(elig.eligibilityDate === '2026-07-14' && elig.eligibilitySource === 'recordDate',
+    'wave2 helper: valid recordDate used');
+  assert(elig.eligibilityEstimated === false, 'wave2 helper: not estimated when recordDate valid');
+
+  const heldBoth = { positions: [ofzPos('2026-01-10', 10)], sales: [] };
+  const caseA = runTicker(heldBoth, [cpn]);
+  assert(caseA.items.length === 1 && caseA.items[0].qtyHeld === 10, 'wave2 A: qty on recordDate');
+  assert(caseA.items[0].amountRub === 350 && caseA.totalPayoutsRub === 350, 'wave2 A: 10×35 held both days');
+  assert(caseA.items[0].eligibilityDate === '2026-07-14', 'wave2 A: eligibilityDate = recordDate');
+  assert(caseA.items[0].couponDate === '2026-07-15', 'wave2 A: couponDate preserved');
+  assert(caseA.items[0].recordDate === '2026-07-14', 'wave2 A: recordDate preserved');
+  assert(caseA.items[0].eligibilitySource === 'recordDate' && !caseA.items[0].isEstimated,
+    'wave2 A: exact entitlement');
+  assert(calc.payoutsDisplayDate(caseA.items[0]) === '2026-07-15', 'wave2 A: display remains couponDate');
+  assert(caseA.isPartial === false, 'wave2 A: not partial');
+  assert(caseA.items[0].payoutDate === null, 'wave2 A: payoutDate null');
+
+  const buyBetween = runTicker({ positions: [ofzPos('2026-07-15', 10)], sales: [] }, [cpn]);
+  assert(buyBetween.items.length === 0 && buyBetween.totalPayoutsRub === 0,
+    'wave2 B: buy after record / on couponDate → 0');
+
+  const sellAfterRecord = runTicker({
+    positions: [],
+    sales: [{
+      saleId: 'OS1', ticker: 'OFZ_26238', qty: 10, buyPrice: 95, salePrice: 98,
+      saleDate: '2026-07-15', faceValue: 1000,
+      allocations: [{ lotId: 'O1', qty: 10, buyPrice: 95, buyDate: '2026-01-10' }]
+    }]
+  }, [cpn]);
+  assert(sellAfterRecord.items.length === 1 && sellAfterRecord.items[0].qtyHeld === 10,
+    'wave2 C: sell after record keeps 10');
+  assert(sellAfterRecord.totalPayoutsRub === 350, 'wave2 C: 10×35 after full sell');
+  assert(sellAfterRecord.items[0].eligibilityDate === '2026-07-14', 'wave2 C: closed still eligible');
+
+  const buyBefore = runTicker({ positions: [ofzPos('2026-07-01', 10)], sales: [] }, [cpn]);
+  assert(buyBefore.items[0].qtyHeld === 10 && buyBefore.totalPayoutsRub === 350, 'wave2: buy before record');
+
+  const buyOnRecord = runTicker({ positions: [ofzPos('2026-07-14', 10)], sales: [] }, [cpn]);
+  assert(buyOnRecord.items.length === 1 && buyOnRecord.items[0].qtyHeld === 10,
+    'wave2: buy on recordDate eligible in day-level model');
+
+  const sellBefore = runTicker({
+    positions: [],
+    sales: [{
+      saleId: 'OS2', ticker: 'OFZ_26238', qty: 10, buyPrice: 95, salePrice: 98,
+      saleDate: '2026-07-13', faceValue: 1000,
+      allocations: [{ lotId: 'O1', qty: 10, buyPrice: 95, buyDate: '2026-01-10' }]
+    }]
+  }, [cpn]);
+  assert(sellBefore.items.length === 0 && sellBefore.totalPayoutsRub === 0, 'wave2: sell before record');
+
+  const partialAfter = runTicker({
+    positions: [ofzPos('2026-01-10', 6)],
+    sales: [{
+      saleId: 'OS3', ticker: 'OFZ_26238', qty: 4, buyPrice: 95, salePrice: 98,
+      saleDate: '2026-07-15', faceValue: 1000,
+      allocations: [{ lotId: 'O1', qty: 4, buyPrice: 95, buyDate: '2026-01-10' }]
+    }]
+  }, [cpn]);
+  assert(partialAfter.items[0].qtyHeld === 10 && partialAfter.totalPayoutsRub === 350,
+    'wave2: partial sell after record keeps 10');
+
+  const partialBefore = runTicker({
+    positions: [ofzPos('2026-01-10', 6)],
+    sales: [{
+      saleId: 'OS4', ticker: 'OFZ_26238', qty: 4, buyPrice: 95, salePrice: 98,
+      saleDate: '2026-07-10', faceValue: 1000,
+      allocations: [{ lotId: 'O1', qty: 4, buyPrice: 95, buyDate: '2026-01-10' }]
+    }]
+  }, [cpn]);
+  assert(partialBefore.items[0].qtyHeld === 6 && partialBefore.totalPayoutsRub === 210,
+    'wave2: partial sell before record → 6');
+
+  const lots = runTicker({
+    positions: [ofzPos('2026-01-01', 2, { lotId: 'A' }), ofzPos('2026-02-01', 7, { lotId: 'B' })],
+    sales: [{
+      saleId: 'OS5', ticker: 'OFZ_26238', qty: 3, buyPrice: 95, salePrice: 98,
+      saleDate: '2026-07-01', faceValue: 1000,
+      allocations: [{ lotId: 'A', qty: 3, buyPrice: 95, buyDate: '2026-01-01' }]
+    }]
+  }, [cpn]);
+  assert(lots.items[0].qtyHeld === 9 && lots.totalPayoutsRub === 315, 'wave2: multiple lots 5+7-3=9');
+
+  const twoEvents = runTicker(heldBoth, [
+    { couponDate: '2026-01-15', recordDate: '2026-01-14', date: '2026-01-15', value: 20 },
+    { couponDate: '2026-07-15', recordDate: '2026-07-14', date: '2026-07-15', value: 35 }
+  ]);
+  assert(twoEvents.items.length === 2, 'wave2: multiple coupons independent');
+  assert(twoEvents.items[0].amountRub === 200 && twoEvents.items[1].amountRub === 350,
+    'wave2: each coupon uses own recordDate qty');
+  assert(twoEvents.totalPayoutsRub === 550, 'wave2: two coupons summed');
+  assert(calc.payoutsDisplayDate(twoEvents.items[0]) === '2026-01-15', 'wave2: sort/display still couponDate');
+  assert(twoEvents.items[0].couponDate === '2026-01-15' && twoEvents.items[1].couponDate === '2026-07-15',
+    'wave2: holding-period sort by couponDate');
+
+  const missing = runTicker(heldBoth, [{ couponDate: '2026-07-15', date: '2026-07-15', value: 35 }]);
+  assert(missing.items.length === 1 && missing.items[0].amountRub === 350, 'wave2 fallback: amount kept');
+  assert(missing.items[0].recordDate === null, 'wave2 fallback: recordDate null');
+  assert(missing.items[0].eligibilityDate === '2026-07-15', 'wave2 fallback: couponDate');
+  assert(missing.items[0].eligibilitySource === 'couponDateFallback' && missing.items[0].isEstimated === true,
+    'wave2 fallback: estimated');
+  assert(missing.isPartial === true, 'wave2 fallback: aggregate partial');
+  assert(missing.warnings.some((w) => /дата фиксации не найдена/i.test(w)), 'wave2 fallback: warning');
+  assert(/оценено по дате купона/.test(missing.items[0].note), 'wave2 fallback: item note');
+  assert(/без НКД/.test(missing.items[0].note), 'wave2 fallback: NKD still mentioned');
+  assert(calc.payoutsDisplayDate(missing.items[0]) === '2026-07-15', 'wave2 fallback: display couponDate');
+
+  const invalidGt = runTicker(heldBoth, [{
+    couponDate: '2026-07-15', recordDate: '2026-07-16', date: '2026-07-15', value: 35
+  }]);
+  assert(invalidGt.items[0].eligibilityDate === '2026-07-15', 'wave2 invalid: fallback couponDate');
+  assert(invalidGt.items[0].recordDate === '2026-07-16', 'wave2 invalid: ISS date kept, not auto-fixed');
+  assert(invalidGt.items[0].isEstimated === true && invalidGt.isPartial === true, 'wave2 invalid: partial');
+  assert(invalidGt.warnings.some((w) => /дата фиксации некорректна/i.test(w)), 'wave2 invalid: warning');
+
+  const malformed = runTicker(heldBoth, [{
+    couponDate: '2026-07-15', recordDate: 'not-a-date', date: '2026-07-15', value: 35
+  }]);
+  assert(malformed.items[0].recordDate == null, 'wave2 malformed: recordDate null');
+  assert(malformed.items[0].eligibilitySource === 'couponDateFallback' && malformed.isPartial === true,
+    'wave2 malformed: fallback partial');
+
+  const golden = calc.buildTickerPayoutsForHoldingPeriod(
+    'OFZ_26238',
+    { positions: [ofzPos('2024-02-01', 10)], sales: [] },
+    '2024-01-01', '2024-12-31',
+    {
+      now: '2025-12-31',
+      payoutsByTicker: ofzFeed([{
+        date: '2024-06-19', couponDate: '2024-06-19', recordDate: '2024-06-18', value: 42.38
+      }])
+    }
+  );
+  assert(golden.totalPayoutsRub === 423.8 && golden.items[0].qtyHeld === 10,
+    'wave2 golden: 10×42.38 unchanged when qty same on both dates');
+
+  const rangeElig = runTicker(heldBoth, [cpn], { fromDate: '2026-07-14', toDate: '2026-07-14', now: '2026-07-14' });
+  assert(rangeElig.items.length === 1 && rangeElig.items[0].amountRub === 350,
+    'wave2 range: included by eligibilityDate even if couponDate is next day');
+  assert(calc.payoutsDisplayDate(rangeElig.items[0]) === '2026-07-15',
+    'wave2 range: display still couponDate');
+
+  const rangeCouponOnly = runTicker(heldBoth, [cpn], {
+    fromDate: '2026-07-15', toDate: '2026-07-15', now: '2026-07-15'
+  });
+  assert(rangeCouponOnly.items.length === 0, 'wave2 range: couponDate in window is not enough without eligibilityDate');
+
+  const pfMix = calc.buildPortfolioPayoutsForHoldingPeriod(
+    {
+      positions: [
+        ofzPos('2026-01-10', 10),
+        { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2026-01-10' }
+      ],
+      sales: []
+    },
+    '2026-01-01', '2026-12-31',
+    {
+      now: NOW,
+      payoutsByTicker: Object.assign(ofzFeed([cpn]), {
+        SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-07-17', value: 10 }] }
+      })
+    }
+  );
+  assert(pfMix.totalCouponsRub === 350 && pfMix.totalDividendsRub === 100, 'wave2 portfolio: coupon+div');
+  assert(pfMix.totalPayoutsRub === 450, 'wave2 portfolio: aggregated once');
+  const divRow = pfMix.items.find((r) => r.type === 'dividend');
+  assert(divRow && divRow.recordDate === '2026-07-17' && divRow.couponDate == null,
+    'wave2 dividend: registry semantics unchanged');
+
+  const twpHeld = calc.buildTickerReturnWithPayouts('OFZ_26238', heldBoth, {
+    now: NOW, payoutsByTicker: ofzFeed([cpn]), bondMeta: { faceValue: 1000 }
+  });
+  assert(twpHeld.couponsRub === 350 && twpHeld.payoutsRub === 350, 'wave2 twp: same holdings');
+
+  const twpBuyBetween = calc.buildTickerReturnWithPayouts(
+    'OFZ_26238',
+    { positions: [ofzPos('2026-07-15', 10)], sales: [] },
+    { now: NOW, payoutsByTicker: ofzFeed([cpn]), bondMeta: { faceValue: 1000 } }
+  );
+  assert(twpBuyBetween.couponsRub === 0 && twpBuyBetween.payoutsRub === 0, 'wave2 twp: buy-between changes payoutsRub');
+
+  const twpSellBetween = calc.buildTickerReturnWithPayouts(
+    'OFZ_26238',
+    {
+      positions: [],
+      sales: [{
+        saleId: 'OS1', ticker: 'OFZ_26238', qty: 10, buyPrice: 95, salePrice: 98,
+        saleDate: '2026-07-15', faceValue: 1000,
+        allocations: [{ lotId: 'O1', qty: 10, buyPrice: 95, buyDate: '2026-01-10' }]
+      }]
+    },
+    { now: NOW, payoutsByTicker: ofzFeed([cpn]), bondMeta: { faceValue: 1000 } }
+  );
+  assert(twpSellBetween.couponsRub === 350 && twpSellBetween.payoutsRub === 350,
+    'wave2 twp: sell-between preserves earned coupon');
+  assert(twpSellBetween.isClosed === true, 'wave2 twp: closed after record');
+
+  const prs = calc.buildPortfolioResultSummary(heldBoth, {
+    now: NOW, payoutsByTicker: ofzFeed([cpn]), bondMetaMap: { OFZ_26238: { faceValue: 1000 } }
+  });
+  assert(prs.couponsRub === 350 && prs.payoutsRub === 350, 'wave2 prs: holding-period helper only');
+
+  const upBefore = calc.buildUpcomingPortfolioPayouts(heldBoth, {
+    now: '2026-07-13', horizonDays: 365, payoutsByTicker: ofzFeed([cpn])
+  });
+  assert(upBefore.items.length === 1, 'wave2 upcoming: before record is future entitlement');
+  assert(upBefore.items[0].date === '2026-07-15', 'wave2 upcoming: display couponDate');
+  assert(upBefore.items[0].eligibilityDate === '2026-07-14', 'wave2 upcoming: eligibility recordDate');
+  assert(upBefore.nextDate === '2026-07-15', 'wave2 upcoming: nextDate is display couponDate');
+
+  const upOnRecord = calc.buildUpcomingPortfolioPayouts(heldBoth, {
+    now: '2026-07-14', horizonDays: 365, payoutsByTicker: ofzFeed([cpn])
+  });
+  assert(upOnRecord.items.length === 0, 'wave2 upcoming: on/after record no longer future entitlement');
+
+  const upAfterRecord = calc.buildUpcomingPortfolioPayouts(heldBoth, {
+    now: '2026-07-15', horizonDays: 365, payoutsByTicker: ofzFeed([cpn])
+  });
+  assert(upAfterRecord.items.length === 0, 'wave2 upcoming: couponDate alone does not keep it upcoming');
+
+  const upMissing = calc.buildUpcomingPortfolioPayouts(heldBoth, {
+    now: '2026-07-13', horizonDays: 365,
+    payoutsByTicker: ofzFeed([{ couponDate: '2026-07-15', date: '2026-07-15', value: 35 }])
+  });
+  assert(upMissing.items.length === 1 && upMissing.items[0].date === '2026-07-15',
+    'wave2 upcoming fallback: still listed by couponDate');
+  assert(upMissing.isPartial === true && upMissing.items[0].isEstimated === true,
+    'wave2 upcoming fallback: partial/estimated');
+  assert(upMissing.warnings.some((w) => /дата фиксации не найдена/i.test(w)),
+    'wave2 upcoming fallback: warning');
+
+  const newest = calc.payoutsSortItemsNewestFirst([
+    { type: 'coupon', couponDate: '2026-07-15', recordDate: '2026-07-01', eligibilityDate: '2026-07-01' },
+    { type: 'coupon', couponDate: '2026-07-10', recordDate: '2026-07-09', eligibilityDate: '2026-07-09' }
+  ]);
+  assert(newest[0].couponDate === '2026-07-15', 'wave2 sort: still couponDate not recordDate');
+
+  const pfJs = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  assert(/bondization\.json\?iss\.only=coupons/.test(fs.readFileSync(path.join(__dirname, '..', 'ofz.js'), 'utf8')),
+    'wave2 network: no new coupon endpoint');
+  assert(!/iss\.only=amortizations/.test(pfJs), 'wave2: no amortization');
+  const drawSrc = Function.prototype.toString.call(calc.drawPortfolioDynamicsChart);
+  const ensureSrc = Function.prototype.toString.call(calc.pfDynEnsureResultSeries);
+  assert(!/loadPayoutFeedsForPortfolio|buildPortfolioPayoutsForHoldingPeriod/.test(drawSrc + ensureSrc),
+    'wave2: Result graph still has no payouts');
 }
 
 {
@@ -4675,6 +5286,8 @@ function loadPriceAtDateHelpers() {
   html = calc.buildTickerReturnWithPayoutsBlockHtml('OFZ_26238', true);
   assert(/найденные купоны за период владения/.test(html), 'twp ui ofz formula');
   assert(/Цены ОФЗ — в % от номинала/.test(html), 'twp ui ofz notes');
+  assert(/показана дата купона/.test(html) && /по дате фиксации/.test(html),
+    'twp ui ofz: display couponDate vs entitlement recordDate');
   assert(/без НКД/.test(html), 'twp ui ofz no NKD');
 
   calc.setSplitEventsCatalog({
@@ -7498,6 +8111,11 @@ await (async () => {
     /id="pfDynSplitScaleCta"/.test(analytics), 'inner tabs: analytics hosts dynamics');
   assert(/id="portfolioAsOfBlock"/.test(analytics) && /id="portfolioCompareBlock"/.test(analytics) &&
     /id="portfolioPayoutsBlock"/.test(analytics), 'inner tabs: analytics hosts as-of/compare/holding');
+  assert(/Для ОФЗ в таблице показана дата купона/.test(tabHtml) &&
+    /Право на выплату оценивается по дате фиксации/.test(tabHtml),
+    'inner tabs: OFZ payout copy splits display vs entitlement');
+  assert(!/ОФЗ — по дате купона/.test(tabHtml) && !/ОФЗ — по дате купона/.test(pfJs),
+    'inner tabs: old OFZ coupon-date-only copy removed');
   assert(/id="portfolioFolderSection"/.test(analytics) && /id="portfolioInsightsSection"/.test(analytics),
     'inner tabs: folder+insights stay together');
   assert(!/За счёт чего изменился портфель/.test(tabHtml), 'inner tabs: no attribution stub');
