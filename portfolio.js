@@ -7193,6 +7193,477 @@
     };
   }
 
+  var RESULT_SEGMENT_TOP_LIMIT = 3;
+  var RESULT_SEGMENT_ROUND_EPS = 0.02;
+
+  function emptyPortfolioResultSegmentExplanation(extra) {
+    extra = extra || {};
+    return {
+      hasSegment: extra.hasSegment != null ? !!extra.hasSegment : false,
+      fromDate: extra.fromDate || '',
+      toDate: extra.toDate || '',
+      previousIndex: extra.previousIndex != null && isFinite(Number(extra.previousIndex))
+        ? Number(extra.previousIndex)
+        : null,
+      selectedIndex: extra.selectedIndex != null && isFinite(Number(extra.selectedIndex))
+        ? Number(extra.selectedIndex)
+        : null,
+      fromResultRub: extra.fromResultRub != null && isFinite(Number(extra.fromResultRub))
+        ? Number(extra.fromResultRub)
+        : null,
+      toResultRub: extra.toResultRub != null && isFinite(Number(extra.toResultRub))
+        ? Number(extra.toResultRub)
+        : null,
+      segmentResultDeltaRub: extra.segmentResultDeltaRub != null && isFinite(Number(extra.segmentResultDeltaRub))
+        ? Number(extra.segmentResultDeltaRub)
+        : null,
+      operations: extra.operations || [],
+      contributors: extra.contributors || [],
+      topContributors: extra.topContributors || [],
+      othersEffectRub: extra.othersEffectRub != null && isFinite(Number(extra.othersEffectRub))
+        ? Number(extra.othersEffectRub)
+        : null,
+      stocksEffectRub: extra.stocksEffectRub != null && isFinite(Number(extra.stocksEffectRub))
+        ? extra.stocksEffectRub
+        : extra.stocksEffectRub === 0 ? 0 : null,
+      bondsEffectRub: extra.bondsEffectRub != null && isFinite(Number(extra.bondsEffectRub))
+        ? extra.bondsEffectRub
+        : extra.bondsEffectRub === 0 ? 0 : null,
+      isPartial: !!extra.isPartial,
+      operationsPartial: !!extra.operationsPartial,
+      hasBondNkdAdvisory: !!extra.hasBondNkdAdvisory,
+      contributorsIdentityOk: !!extra.contributorsIdentityOk,
+      roundingDeltaRub: extra.roundingDeltaRub != null && isFinite(Number(extra.roundingDeltaRub))
+        ? Number(extra.roundingDeltaRub)
+        : null,
+      notes: extra.notes || []
+    };
+  }
+
+  function segmentExplainFiniteRub(raw) {
+    if (raw == null || !isFinite(Number(raw))) return null;
+    return Number(raw);
+  }
+
+  function segmentExplainIndex(raw) {
+    if (raw == null || raw === '') return null;
+    var n = Number(raw);
+    return isFinite(n) ? n : null;
+  }
+
+  function segmentExplainValuePoint(resultPoint, options, side) {
+    options = options || {};
+    var explicit = side === 'from' ? options.fromValuePoint : options.toValuePoint;
+    if (explicit && typeof explicit === 'object') return explicit;
+    var series = options.valueSeries;
+    var idx = side === 'from' ? options.previousIndex : options.selectedIndex;
+    if (Array.isArray(series)) {
+      if (idx != null && isFinite(Number(idx)) && series[Number(idx)]) return series[Number(idx)];
+      var iso = timelineIsoDate(resultPoint && resultPoint.date);
+      var i;
+      for (i = 0; i < series.length; i++) {
+        if (timelineIsoDate(series[i] && series[i].date) === iso) return series[i];
+      }
+    }
+    return null;
+  }
+
+  function segmentExplainFindPosition(point, ticker) {
+    var key = asOfNormTicker(ticker);
+    if (!key) return null;
+    var list = (point && point.positions) || [];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (asOfNormTicker(list[i] && list[i].ticker) === key) return list[i];
+    }
+    return null;
+  }
+
+  function segmentExplainSideState(snapshot, ticker) {
+    var emptyNotes = [];
+    if (!snapshot) {
+      return {
+        snapshotMissing: true,
+        valueRub: null,
+        qty: null,
+        price: null,
+        known: false,
+        isPartial: true,
+        type: '',
+        notes: emptyNotes,
+        splitAdjusted: false,
+        splitConfidence: ''
+      };
+    }
+    var row = segmentExplainFindPosition(snapshot, ticker);
+    if (!row) {
+      return {
+        snapshotMissing: false,
+        valueRub: 0,
+        qty: 0,
+        price: null,
+        known: true,
+        isPartial: false,
+        type: '',
+        notes: emptyNotes,
+        splitAdjusted: false,
+        splitConfidence: ''
+      };
+    }
+    var qtyRaw = row.qty;
+    var qty = Number(qtyRaw);
+    var notes = [];
+    (row.notes || []).forEach(function (n) { if (n) notes.push(n); });
+    if (row.note) notes.push(row.note);
+    if (row.splitConfidence === 'unknown' || !asOfItemValueUsable(row)) {
+      return {
+        snapshotMissing: false,
+        valueRub: null,
+        qty: qtyRaw == null || !isFinite(qty) ? null : qty,
+        price: row.price != null && isFinite(Number(row.price)) ? Number(row.price) : null,
+        known: false,
+        isPartial: true,
+        type: row.type || '',
+        notes: notes,
+        splitAdjusted: !!row.splitAdjusted,
+        splitConfidence: row.splitConfidence || ''
+      };
+    }
+    if (!isFinite(qty) || qty <= 0) {
+      return {
+        snapshotMissing: false,
+        valueRub: 0,
+        qty: 0,
+        price: row.price != null && isFinite(Number(row.price)) ? Number(row.price) : null,
+        known: true,
+        isPartial: false,
+        type: row.type || '',
+        notes: notes,
+        splitAdjusted: !!row.splitAdjusted,
+        splitConfidence: row.splitConfidence || ''
+      };
+    }
+    return {
+      snapshotMissing: false,
+      valueRub: asOfRoundRub(Number(row.valueRub)),
+      qty: qty,
+      price: row.price != null && isFinite(Number(row.price)) ? Number(row.price) : null,
+      known: true,
+      isPartial: false,
+      type: row.type || '',
+      notes: notes,
+      splitAdjusted: !!row.splitAdjusted,
+      splitConfidence: row.splitConfidence || ''
+    };
+  }
+
+  function segmentExplainMapOperation(op) {
+    if (!op) return null;
+    var amount = resultSeriesAmountKnown(op) ? Number(op.amountRub) : null;
+    return {
+      date: op.date || '',
+      ticker: op.ticker || '',
+      type: op.type === 'sell' ? 'sell' : 'buy',
+      qty: op.qty != null && isFinite(Number(op.qty)) ? Number(op.qty) : null,
+      price: op.price != null && isFinite(Number(op.price)) ? Number(op.price) : null,
+      amountRub: amount,
+      isBond: !!op.isBond,
+      note: op.note || '',
+      quality: op.quality || '',
+      lotId: op.lotId || '',
+      saleId: op.saleId || '',
+      isPartial: op.quality === 'partial' || !resultSeriesAmountKnown(op)
+    };
+  }
+
+  function segmentExplainSnapshotHasBondNkd(point) {
+    if (!point) return false;
+    if (point.hasBondNkdAdvisory) return true;
+    var ads = point.advisories || [];
+    var i;
+    for (i = 0; i < ads.length; i++) {
+      if (!ads[i]) continue;
+      if (ads[i].kind === 'bond-nkd') return true;
+      if (/без исторического НКД/i.test(String(ads[i].text || ''))) return true;
+    }
+    var blob = ((point.notes || []).concat(point.warnings || [])).join(' ');
+    return /без исторического НКД/i.test(blob);
+  }
+
+  function segmentExplainSubsetSum(rows, isBond) {
+    var sum = 0;
+    var known = true;
+    var any = false;
+    (rows || []).forEach(function (row) {
+      if (!row) return;
+      if (!!row.isBond !== !!isBond) return;
+      any = true;
+      if (row.effectRub == null || !isFinite(Number(row.effectRub))) {
+        known = false;
+        return;
+      }
+      if (known) sum += Number(row.effectRub);
+    });
+    if (!known) return null;
+    if (!any) return 0;
+    return asOfRoundRub(sum) || 0;
+  }
+
+  /**
+   * Read-only объяснение изменения Result между двумя видимыми точками графика.
+   * Сегмент: (previous.date, selected.date]. Sync, без fetch и без bridge runtime.
+   * Операции и вклад тикера разделены: amountRub сделки ≠ effectRub.
+   */
+  function buildPortfolioResultSegmentExplanation(portfolio, previousPoint, selectedPoint, options) {
+    options = options || {};
+    var previousIndex = segmentExplainIndex(options.previousIndex);
+    var selectedIndex = segmentExplainIndex(options.selectedIndex);
+    var fromResultRub = segmentExplainFiniteRub(previousPoint && previousPoint.resultRub);
+    var toResultRub = segmentExplainFiniteRub(selectedPoint && selectedPoint.resultRub);
+
+    if (!previousPoint || !selectedPoint) {
+      return emptyPortfolioResultSegmentExplanation({
+        fromDate: timelineIsoDate(previousPoint && previousPoint.date) || '',
+        toDate: timelineIsoDate(selectedPoint && selectedPoint.date) || '',
+        previousIndex: previousIndex,
+        selectedIndex: selectedIndex,
+        fromResultRub: fromResultRub,
+        toResultRub: toResultRub,
+        notes: ['Начало выбранного периода']
+      });
+    }
+
+    var fromIso = timelineIsoDate(previousPoint.date);
+    var toIso = timelineIsoDate(selectedPoint.date);
+    if (!fromIso || !toIso || fromIso >= toIso) {
+      return emptyPortfolioResultSegmentExplanation({
+        fromDate: fromIso || '',
+        toDate: toIso || '',
+        previousIndex: previousIndex,
+        selectedIndex: selectedIndex,
+        fromResultRub: fromResultRub,
+        toResultRub: toResultRub,
+        notes: fromIso && toIso && fromIso === toIso
+          ? ['Начало выбранного периода']
+          : ['Укажите корректные даты сегмента.']
+      });
+    }
+
+    var segmentResultDeltaRub = (fromResultRub != null && toResultRub != null)
+      ? asOfRoundRub(toResultRub - fromResultRub)
+      : null;
+    if (segmentResultDeltaRub == null && fromResultRub != null && toResultRub != null) {
+      segmentResultDeltaRub = 0;
+    }
+
+    var fromValuePoint = segmentExplainValuePoint(previousPoint, options, 'from');
+    var toValuePoint = segmentExplainValuePoint(selectedPoint, options, 'to');
+    var snapshotsMissing = !fromValuePoint || !toValuePoint;
+
+    var opsFn = typeof options.collectComparePeriodOperations === 'function'
+      ? options.collectComparePeriodOperations
+      : collectComparePeriodOperations;
+    var periodOps = opsFn(portfolio, fromIso, toIso, {
+      bondMetaMap: options.bondMetaMap || {},
+      items: ((fromValuePoint && fromValuePoint.positions) || []).concat(
+        (toValuePoint && toValuePoint.positions) || []
+      )
+    }) || { buys: [], sells: [], buyOps: [], sellOps: [], incomplete: false };
+
+    var rawOps = (periodOps.buyOps || []).concat(periodOps.sellOps || []);
+    rawOps.sort(function (a, b) {
+      var da = (a && a.date) || '';
+      var db = (b && b.date) || '';
+      if (da !== db) return da < db ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'buy' ? -1 : 1;
+      return 0;
+    });
+    var operations = [];
+    rawOps.forEach(function (op) {
+      var mapped = segmentExplainMapOperation(op);
+      if (mapped) operations.push(mapped);
+    });
+
+    var buyByTicker = {};
+    (periodOps.buys || []).forEach(function (row) {
+      if (!row) return;
+      buyByTicker[asOfNormTicker(row.ticker)] = row;
+    });
+    var sellByTicker = {};
+    (periodOps.sells || []).forEach(function (row) {
+      if (!row) return;
+      sellByTicker[asOfNormTicker(row.ticker)] = row;
+    });
+
+    var seen = {};
+    var tickers = [];
+    function addTicker(raw) {
+      var t = asOfNormTicker(raw);
+      if (!t || seen[t]) return;
+      seen[t] = true;
+      tickers.push(t);
+    }
+    ((fromValuePoint && fromValuePoint.positions) || []).forEach(function (row) { addTicker(row && row.ticker); });
+    ((toValuePoint && toValuePoint.positions) || []).forEach(function (row) { addTicker(row && row.ticker); });
+    operations.forEach(function (op) { addTicker(op && op.ticker); });
+
+    var notes = [];
+    var marketPartial = !!(
+      snapshotsMissing ||
+      (fromValuePoint && fromValuePoint.isPartial) ||
+      (toValuePoint && toValuePoint.isPartial)
+    );
+    var operationsPartial = !!periodOps.incomplete;
+    var hasBond = false;
+
+    var contributors = tickers.map(function (ticker) {
+      var fromState = segmentExplainSideState(fromValuePoint, ticker);
+      var toState = segmentExplainSideState(toValuePoint, ticker);
+      var buyRow = buyByTicker[ticker];
+      var sellRow = sellByTicker[ticker];
+      var purchasesRub = buyRow
+        ? (buyRow.amountKnown === false ? null : (buyRow.amountRub != null && isFinite(Number(buyRow.amountRub))
+          ? asOfRoundRub(Number(buyRow.amountRub)) : null))
+        : 0;
+      var salesRub = sellRow
+        ? (sellRow.amountKnown === false ? null : (sellRow.amountRub != null && isFinite(Number(sellRow.amountRub))
+          ? asOfRoundRub(Number(sellRow.amountRub)) : null))
+        : 0;
+      if (buyRow && purchasesRub == null) operationsPartial = true;
+      if (sellRow && salesRub == null) operationsPartial = true;
+      var tickerOpsPartial = (buyRow && (buyRow.amountKnown === false || purchasesRub == null)) ||
+        (sellRow && (sellRow.amountKnown === false || salesRub == null));
+      if (tickerOpsPartial) operationsPartial = true;
+
+      var isBond = fromState.type === 'bond' || toState.type === 'bond' ||
+        !!(buyRow && (buyRow.ops || []).some(function (op) { return op && op.isBond; })) ||
+        !!(sellRow && (sellRow.ops || []).some(function (op) { return op && op.isBond; })) ||
+        isPortfolioBondPosition({ ticker: ticker });
+      if (isBond) hasBond = true;
+
+      var contributorNotes = asOfUniqueNotes([fromState.notes, toState.notes]);
+      if (fromState.splitAdjusted || toState.splitAdjusted) {
+        contributorNotes = asOfUniqueNotes([contributorNotes, ['учтен сплит']]);
+      }
+      if (fromState.splitConfidence === 'unknown' || toState.splitConfidence === 'unknown') {
+        contributorNotes = asOfUniqueNotes([contributorNotes, [ticker + PF_LOT_SCALE_UNKNOWN_SUFFIX]]);
+      }
+
+      var effectRub = resultSeriesEffectRub(
+        toState.known ? toState.valueRub : null,
+        fromState.known ? fromState.valueRub : null,
+        purchasesRub,
+        salesRub
+      );
+
+      var rowPartial = !!(fromState.isPartial || toState.isPartial || tickerOpsPartial || snapshotsMissing);
+      if (rowPartial && (fromState.isPartial || toState.isPartial || snapshotsMissing)) marketPartial = true;
+
+      return {
+        ticker: ticker,
+        type: isBond ? 'bond' : 'stock',
+        isBond: !!isBond,
+        fromValueRub: fromState.known ? fromState.valueRub : null,
+        toValueRub: toState.known ? toState.valueRub : null,
+        fromQty: fromState.qty,
+        toQty: toState.qty,
+        fromPrice: fromState.price,
+        toPrice: toState.price,
+        purchasesRub: purchasesRub,
+        salesRub: salesRub,
+        effectRub: effectRub,
+        isPartial: rowPartial,
+        operationsPartial: !!tickerOpsPartial,
+        notes: contributorNotes
+      };
+    });
+
+    contributors.sort(function (a, b) {
+      var aKnown = a.effectRub != null && isFinite(Number(a.effectRub));
+      var bKnown = b.effectRub != null && isFinite(Number(b.effectRub));
+      if (aKnown && bKnown) {
+        var diff = Math.abs(Number(b.effectRub)) - Math.abs(Number(a.effectRub));
+        if (diff) return diff;
+        return String(a.ticker || '').localeCompare(String(b.ticker || ''));
+      }
+      if (aKnown) return -1;
+      if (bKnown) return 1;
+      return String(a.ticker || '').localeCompare(String(b.ticker || ''));
+    });
+
+    var topContributors = [];
+    contributors.forEach(function (row) {
+      if (topContributors.length >= RESULT_SEGMENT_TOP_LIMIT) return;
+      if (row && row.effectRub != null && isFinite(Number(row.effectRub))) topContributors.push(row);
+    });
+
+    var allKnown = contributors.length === 0 || contributors.every(function (row) {
+      return row && row.effectRub != null && isFinite(Number(row.effectRub));
+    });
+    var contribSum = 0;
+    if (allKnown) {
+      contributors.forEach(function (row) { contribSum += Number(row.effectRub); });
+      contribSum = asOfRoundRub(contribSum);
+      if (contribSum == null) contribSum = 0;
+    }
+
+    var othersEffectRub = null;
+    if (allKnown) {
+      var topSum = 0;
+      topContributors.forEach(function (row) { topSum += Number(row.effectRub); });
+      othersEffectRub = asOfRoundRub(contribSum - (asOfRoundRub(topSum) || 0));
+      if (othersEffectRub == null) othersEffectRub = 0;
+    }
+
+    var roundingDeltaRub = null;
+    var contributorsIdentityOk = false;
+    if (allKnown && segmentResultDeltaRub != null) {
+      roundingDeltaRub = asOfRoundRub(contribSum - segmentResultDeltaRub);
+      if (roundingDeltaRub == null) roundingDeltaRub = 0;
+      contributorsIdentityOk = Math.abs(roundingDeltaRub) <= RESULT_SEGMENT_ROUND_EPS;
+    }
+
+    var stocksEffectRub = segmentExplainSubsetSum(contributors, false);
+    var bondsEffectRub = segmentExplainSubsetSum(contributors, true);
+
+    if (snapshotsMissing) notes.push('Нет снимка стоимости для выбранного сегмента.');
+    if (marketPartial) notes.push(ASOF_MISSING_PRICE_NOTE);
+    if (operationsPartial) notes.push(BRIDGE_OPS_PARTIAL_NOTE);
+    if (fromValuePoint && fromValuePoint.warnings) notes = notes.concat(fromValuePoint.warnings);
+    if (toValuePoint && toValuePoint.warnings) notes = notes.concat(toValuePoint.warnings);
+    contributors.forEach(function (row) {
+      notes = notes.concat(row.notes || []);
+    });
+
+    var hasBondNkdAdvisory = hasBond ||
+      segmentExplainSnapshotHasBondNkd(fromValuePoint) ||
+      segmentExplainSnapshotHasBondNkd(toValuePoint);
+
+    return {
+      hasSegment: true,
+      fromDate: fromIso,
+      toDate: toIso,
+      previousIndex: previousIndex,
+      selectedIndex: selectedIndex,
+      fromResultRub: fromResultRub,
+      toResultRub: toResultRub,
+      segmentResultDeltaRub: segmentResultDeltaRub,
+      operations: operations,
+      contributors: contributors,
+      topContributors: topContributors,
+      othersEffectRub: othersEffectRub,
+      stocksEffectRub: stocksEffectRub,
+      bondsEffectRub: bondsEffectRub,
+      isPartial: !!(marketPartial || operationsPartial || snapshotsMissing ||
+        (fromResultRub == null || toResultRub == null)),
+      operationsPartial: operationsPartial,
+      hasBondNkdAdvisory: !!hasBondNkdAdvisory,
+      contributorsIdentityOk: contributorsIdentityOk,
+      roundingDeltaRub: roundingDeltaRub,
+      notes: asOfUniqueNotes([notes])
+    };
+  }
+
 
   /** UI-настройки портфеля (не часть portfolio JSON). */
   var PF_UI_STORAGE_KEY = 'ibrf.portfolioUi.v1';
@@ -12214,6 +12685,16 @@
   var PF_DYN_CAPTION_RESULT = 'Результат за выбранный период. Покупки и продажи отделены от изменения стоимости активов.';
   var PF_DYN_CHART_LABEL_VALUE = 'График оценки портфеля по датам';
   var PF_DYN_CHART_LABEL_RESULT = 'График результата портфеля за выбранный период';
+  var PF_DYN_EXPLAIN_TITLE = 'Что повлияло на изменение';
+  var PF_DYN_EXPLAIN_FIRST = 'Начало выбранного периода — предыдущей точки для сравнения нет.';
+  var PF_DYN_EXPLAIN_NO_OPS = 'Покупок и продаж на этом участке не было.';
+  var PF_DYN_EXPLAIN_NO_CHANGE = 'На этом участке существенных изменений не было.';
+  var PF_DYN_EXPLAIN_PARTIAL = 'Расчёт по этому участку частичный: для части позиций не хватает исторических данных.';
+  var PF_DYN_EXPLAIN_OPS_PARTIAL = 'Не все операции на этом участке удалось оценить.';
+  var PF_DYN_EXPLAIN_AMOUNT_UNKNOWN = 'Сумму операции не удалось оценить';
+  var PF_DYN_EXPLAIN_NKD = 'Для ОФЗ оценка на дату — без исторического НКД.';
+  var PF_DYN_EXPLAIN_PARTIAL_LEAD = 'Основной вклад — по доступным данным.';
+  var PF_DYN_EXPLAIN_OPS_LIMIT = 3;
   var PF_DYN_MAX_POINTS = 140;
   var PF_DYN_DEBOUNCE_MS = 80;
   var pfDynSeq = 0;
@@ -12233,7 +12714,8 @@
     hoverIndex: -1,
     fromDate: '',
     toDate: '',
-    catalogBlocked: false
+    catalogBlocked: false,
+    bondMetaMap: {}
   };
 
   function pfDynEarliestOperationDate(portfolio) {
@@ -12535,6 +13017,191 @@
     return html;
   }
 
+  function pfDynExplainToneClass(n) {
+    var tone = cmpChangeTone(n);
+    if (tone === 'up') return ' pnl-pos';
+    if (tone === 'down') return ' pnl-neg';
+    return '';
+  }
+
+  function pfDynExplainEffectDisplaysZero(effectRub) {
+    if (effectRub == null || !isFinite(Number(effectRub))) return false;
+    var rounded = typeof asOfRoundRub === 'function'
+      ? asOfRoundRub(effectRub)
+      : Math.round(Number(effectRub) * 100) / 100;
+    return Number(rounded) === 0;
+  }
+
+  function pfDynExplainContribRowVisible(row) {
+    if (!row || row.effectRub == null || !isFinite(Number(row.effectRub))) return false;
+    return !pfDynExplainEffectDisplaysZero(row.effectRub);
+  }
+
+  function pfDynExplainOpHtml(op) {
+    if (!op) return '';
+    var kind = op.type === 'sell' ? 'Продажа' : 'Покупка';
+    var ticker = String(op.ticker || '').trim();
+    var qtyTxt = op.qty != null && isFinite(Number(op.qty))
+      ? formatAsOfQtyDisplay(op.qty) + ' шт.'
+      : '';
+    var amtTxt = (op.amountRub == null || !isFinite(Number(op.amountRub)))
+      ? PF_DYN_EXPLAIN_AMOUNT_UNKNOWN
+      : formatPortfolioRubAmount(op.amountRub);
+    var sub = qtyTxt ? qtyTxt + ' · ' + amtTxt : amtTxt;
+    return '<li class="pf-dyn-explain-op">' +
+      '<div class="pf-dyn-explain-op-title">' + escapeHtml(kind + (ticker ? ' · ' + ticker : '')) + '</div>' +
+      '<div class="pf-dyn-explain-op-sub">' + escapeHtml(sub) + '</div>' +
+      '</li>';
+  }
+
+  function pfDynExplainContribRowHtml(row, extraLabel) {
+    if (!pfDynExplainContribRowVisible(row)) return '';
+    var ticker = extraLabel || String(row.ticker || '').trim();
+    var tone = pfDynExplainToneClass(row.effectRub);
+    var more = extraLabel || !ticker ? '' :
+      '<button type="button" class="pf-dyn-explain-more" data-pf-open-history="' +
+        escapeHtml(ticker) + '">Подробнее</button>';
+    return '<li class="pf-dyn-explain-row">' +
+      '<span class="pf-dyn-explain-row-t">' + escapeHtml(ticker) + (more ? ' ' + more : '') + '</span>' +
+      '<span class="pf-dyn-explain-row-amt' + tone + '">' +
+        escapeHtml(formatCmpSignedRub(row.effectRub)) + '</span>' +
+      '</li>';
+  }
+
+  function buildPortfolioDynamicsExplainHtml(explanation) {
+    explanation = explanation || {};
+    var html = '<section class="pf-dyn-explain-box" aria-label="' + escapeHtml(PF_DYN_EXPLAIN_TITLE) + '">' +
+      '<h4 class="pf-dyn-explain-title">' + escapeHtml(PF_DYN_EXPLAIN_TITLE) + '</h4>';
+    if (!explanation.hasSegment) {
+      html += '<p class="pf-dyn-explain-empty">' + escapeHtml(PF_DYN_EXPLAIN_FIRST) + '</p></section>';
+      return html;
+    }
+    var fromLbl = formatAsOfDateDisplay(explanation.fromDate);
+    var toLbl = formatAsOfDateDisplay(explanation.toDate);
+    html += '<p class="pf-dyn-explain-meta">' + escapeHtml(fromLbl + ' → ' + toLbl) + '</p>';
+    var delta = explanation.segmentResultDeltaRub;
+    var deltaTxt = delta == null ? '—' : formatCmpSignedRub(delta);
+    html += '<p class="pf-dyn-explain-delta">Изменение результата: <span class="pf-dyn-explain-delta-val' +
+      pfDynExplainToneClass(delta) + '">' + escapeHtml(deltaTxt) + '</span></p>';
+
+    var ops = explanation.operations || [];
+    var top = explanation.topContributors || [];
+    var knownCount = 0;
+    (explanation.contributors || []).forEach(function (row) {
+      if (row && row.effectRub != null && isFinite(Number(row.effectRub))) knownCount += 1;
+    });
+    var visibleTop = top.filter(pfDynExplainContribRowVisible);
+    var showOthers = explanation.othersEffectRub != null && isFinite(Number(explanation.othersEffectRub)) &&
+      knownCount > top.length && !pfDynExplainEffectDisplaysZero(explanation.othersEffectRub);
+    var hasVisibleContrib = visibleTop.length > 0 || showOthers;
+    var noMove = (delta == null || Number(delta) === 0) && !ops.length && !hasVisibleContrib;
+    if (noMove) {
+      html += '<p class="pf-dyn-explain-empty">' + escapeHtml(PF_DYN_EXPLAIN_NO_CHANGE) + '</p>';
+    } else {
+      html += '<div class="pf-dyn-explain-cols">';
+      html += '<div class="pf-dyn-explain-col">';
+      html += '<h5 class="pf-dyn-explain-h">События на этом участке</h5>';
+      if (!ops.length) {
+        html += '<p class="pf-dyn-explain-note">' + escapeHtml(PF_DYN_EXPLAIN_NO_OPS) + '</p>';
+      } else {
+        html += '<ul class="pf-dyn-explain-ops">';
+        ops.slice(0, PF_DYN_EXPLAIN_OPS_LIMIT).forEach(function (op) {
+          html += pfDynExplainOpHtml(op);
+        });
+        html += '</ul>';
+        if (ops.length > PF_DYN_EXPLAIN_OPS_LIMIT) {
+          html += '<p class="pf-dyn-explain-more-ops">' +
+            escapeHtml('И ещё ' + (ops.length - PF_DYN_EXPLAIN_OPS_LIMIT) + ' операций') + '</p>';
+        }
+      }
+      html += '</div>';
+      if (hasVisibleContrib) {
+        html += '<div class="pf-dyn-explain-col">';
+        html += '<h5 class="pf-dyn-explain-h">Основной вклад</h5>';
+        if (explanation.isPartial) {
+          html += '<p class="pf-dyn-explain-note">' + escapeHtml(PF_DYN_EXPLAIN_PARTIAL_LEAD) + '</p>';
+        }
+        html += '<ul class="pf-dyn-explain-contrib">';
+        visibleTop.forEach(function (row) { html += pfDynExplainContribRowHtml(row); });
+        if (showOthers) {
+          html += pfDynExplainContribRowHtml({
+            ticker: 'Остальные',
+            effectRub: explanation.othersEffectRub
+          }, 'Остальные');
+        }
+        html += '</ul></div>';
+      }
+      html += '</div>';
+    }
+
+    if (explanation.isPartial) {
+      html += '<p class="pf-dyn-explain-warn" role="status">' + escapeHtml(PF_DYN_EXPLAIN_PARTIAL) + '</p>';
+    }
+    if (explanation.operationsPartial) {
+      html += '<p class="pf-dyn-explain-warn" role="status">' + escapeHtml(PF_DYN_EXPLAIN_OPS_PARTIAL) + '</p>';
+    }
+    if (explanation.hasBondNkdAdvisory) {
+      html += '<p class="pf-dyn-explain-note">' + escapeHtml(PF_DYN_EXPLAIN_NKD) + '</p>';
+    }
+    html += '</section>';
+    return html;
+  }
+
+  function pfDynBuildSelectedSegmentExplanation() {
+    if (typeof buildPortfolioResultSegmentExplanation !== 'function') return null;
+    if (!pfDynIsResultMode()) return null;
+    var resultSeries = pfDynState.resultSeries || [];
+    var valueSeries = pfDynState.series || [];
+    var idx = pfDynState.selectedIndex;
+    if (idx == null || idx < 0 || !resultSeries.length) return null;
+    if (idx >= resultSeries.length) idx = resultSeries.length - 1;
+    var selected = resultSeries[idx];
+    var pf = typeof getPortfolio === 'function' ? getPortfolio() : { positions: [], sales: [] };
+    var bondMetaMap = pfDynState.bondMetaMap || {};
+    if (idx === 0 || !resultSeries[idx - 1]) {
+      return buildPortfolioResultSegmentExplanation(pf, null, selected, {
+        toValuePoint: valueSeries[idx] || null,
+        selectedIndex: idx,
+        bondMetaMap: bondMetaMap
+      });
+    }
+    return buildPortfolioResultSegmentExplanation(pf, resultSeries[idx - 1], selected, {
+      fromValuePoint: valueSeries[idx - 1] || null,
+      toValuePoint: valueSeries[idx] || null,
+      previousIndex: idx - 1,
+      selectedIndex: idx,
+      bondMetaMap: bondMetaMap
+    });
+  }
+
+  function hidePortfolioDynamicsExplain() {
+    var el = typeof document !== 'undefined' && document && typeof document.getElementById === 'function'
+      ? document.getElementById('pfDynExplain')
+      : null;
+    if (!el) return;
+    el.hidden = true;
+    el.innerHTML = '';
+  }
+
+  function renderPortfolioDynamicsExplain() {
+    var el = typeof document !== 'undefined' && document && typeof document.getElementById === 'function'
+      ? document.getElementById('pfDynExplain')
+      : null;
+    if (!el) return;
+    if (!pfDynIsResultMode() || pfDynState.catalogBlocked || !pfDynHasSeries() ||
+        !(pfDynState.resultSeries && pfDynState.resultSeries.length)) {
+      hidePortfolioDynamicsExplain();
+      return;
+    }
+    var expl = pfDynBuildSelectedSegmentExplanation();
+    if (!expl) {
+      hidePortfolioDynamicsExplain();
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML = buildPortfolioDynamicsExplainHtml(expl);
+  }
+
   function pfDynSyncHorizonButtons(horizon) {
     var root = document.getElementById('pfDynPeriods');
     if (!root) return;
@@ -12721,26 +13388,33 @@
         cta.hidden = true;
         cta.innerHTML = '';
       }
+      hidePortfolioDynamicsExplain();
     }
   }
 
   function renderPortfolioDynamicsCard() {
     var card = document.getElementById('pfDynCard');
-    if (!card) return;
+    if (!card) {
+      renderPortfolioDynamicsExplain();
+      return;
+    }
     if (pfDynState.catalogBlocked || !pfDynState.series.length) {
       card.hidden = true;
       card.innerHTML = '';
+      hidePortfolioDynamicsExplain();
       return;
     }
     if (pfDynIsResultMode() && !(pfDynState.resultSeries && pfDynState.resultSeries.length)) {
       card.hidden = true;
       card.innerHTML = '';
+      hidePortfolioDynamicsExplain();
       return;
     }
     card.hidden = false;
     card.innerHTML = buildPortfolioDynamicsCardHtml(pfDynActiveChartSeries(), pfDynState.selectedIndex, {
       mode: pfDynState.mode
     });
+    renderPortfolioDynamicsExplain();
   }
 
   function pfDynIndexAtClientX(canvas, clientX) {
@@ -13117,6 +13791,7 @@
       includePositions: true,
       bondMetaMap: options.bondMetaMap || {}
     };
+    pfDynState.bondMetaMap = seriesOpts.bondMetaMap;
     pfDynBuildInFlight += 1;
     return Promise.resolve(buildPortfolioValueSeries(pf, range.fromDate, range.toDate, seriesOpts)).then(function (series) {
       pfDynBuildInFlight = Math.max(0, pfDynBuildInFlight - 1);
@@ -13531,6 +14206,11 @@
     if (splitCta && !splitCta._pfDynBound) {
       splitCta._pfDynBound = true;
       splitCta.addEventListener('click', handlePortfolioTableClick);
+    }
+    var explain = document.getElementById('pfDynExplain');
+    if (explain && !explain._pfDynBound) {
+      explain._pfDynBound = true;
+      explain.addEventListener('click', handlePortfolioTableClick);
     }
     bindPortfolioDynamicsPointer();
     pfDynSyncHorizonButtons(pfDynState.horizon);
