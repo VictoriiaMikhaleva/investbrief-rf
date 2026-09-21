@@ -452,6 +452,7 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__loadPayoutFeeds = loadPayoutFeedsForPortfolio;' +
       '\nthis.__normalizeCoupons = payoutsNormalizeCouponRows;' +
       '\nthis.__couponElig = payoutsCouponEligibility;' +
+      '\nthis.__upcomingCouponStatus = payoutsUpcomingCouponStatus;' +
       '\nthis.__payoutsDisplayDate = payoutsDisplayDate;' +
       '\nthis.__payoutsSortNewest = payoutsSortItemsNewestFirst;' +
       '\nthis.__payoutsCardsHtml = buildPortfolioPayoutsCardsHtml;' +
@@ -606,6 +607,7 @@ function loadPortfolioCalcHelpers() {
     loadPayoutFeedsForPortfolio: sandbox.__loadPayoutFeeds,
     payoutsNormalizeCouponRows: sandbox.__normalizeCoupons,
     payoutsCouponEligibility: sandbox.__couponElig,
+    payoutsUpcomingCouponStatus: sandbox.__upcomingCouponStatus,
     payoutsDisplayDate: sandbox.__payoutsDisplayDate,
     payoutsSortItemsNewestFirst: sandbox.__payoutsSortNewest,
     buildPortfolioPayoutsCardsHtml: sandbox.__payoutsCardsHtml,
@@ -3200,16 +3202,22 @@ function loadPriceAtDateHelpers() {
   assert(upBefore.items[0].date === '2026-07-15', 'wave2 upcoming: display couponDate');
   assert(upBefore.items[0].eligibilityDate === '2026-07-14', 'wave2 upcoming: eligibility recordDate');
   assert(upBefore.nextDate === '2026-07-15', 'wave2 upcoming: nextDate is display couponDate');
+  assert(upBefore.items[0].entitlementStatus === 'futureEligibility',
+    'wave3a upcoming: before record is STATE A');
 
   const upOnRecord = calc.buildUpcomingPortfolioPayouts(heldBoth, {
     now: '2026-07-14', horizonDays: 365, payoutsByTicker: ofzFeed([cpn])
   });
-  assert(upOnRecord.items.length === 0, 'wave2 upcoming: on/after record no longer future entitlement');
+  assert(upOnRecord.items.length === 1, 'wave3a upcoming: on recordDate stays as entitled coupon');
+  assert(upOnRecord.items[0].entitlementStatus === 'entitledAwaitingScheduledPayout',
+    'wave3a upcoming: on recordDate is STATE B');
+  assert(upOnRecord.items[0].qtyHeld === 10 && upOnRecord.items[0].date === '2026-07-15',
+    'wave3a upcoming: on recordDate uses record qty and couponDate');
 
   const upAfterRecord = calc.buildUpcomingPortfolioPayouts(heldBoth, {
     now: '2026-07-15', horizonDays: 365, payoutsByTicker: ofzFeed([cpn])
   });
-  assert(upAfterRecord.items.length === 0, 'wave2 upcoming: couponDate alone does not keep it upcoming');
+  assert(upAfterRecord.items.length === 0, 'wave3a upcoming: on couponDate is no longer upcoming');
 
   const upMissing = calc.buildUpcomingPortfolioPayouts(heldBoth, {
     now: '2026-07-13', horizonDays: 365,
@@ -3835,7 +3843,11 @@ function loadPriceAtDateHelpers() {
       couponDate: '2026-12-23', recordDate: '2026-12-22', value: 59.84
     }])
   });
-  assert(eligOn.items.length === 0, 'unknown-amt 8: recordDate eligibility unchanged');
+  assert(eligOn.items.length === 1, 'wave3a unknown-amt: on recordDate remains upcoming');
+  assert(eligOn.items[0].entitlementStatus === 'entitledAwaitingScheduledPayout',
+    'wave3a unknown-amt: on recordDate is STATE B');
+  assert(eligOn.items[0].qtyHeld === 10 && eligOn.items[0].amountRub === 598.4,
+    'wave3a unknown-amt: STATE B uses record qty');
 
   const src = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
   const ofzSrc = fs.readFileSync(path.join(__dirname, '..', 'ofz.js'), 'utf8');
@@ -3851,6 +3863,287 @@ function loadPriceAtDateHelpers() {
   assert(!/loadPayoutFeedsForPortfolio|buildPortfolioPayoutsForHoldingPeriod|buildUpcomingPortfolioPayouts/.test(
     drawSrc + ensureSrc
   ), 'unknown-amt 12: Result graph unaffected');
+}
+
+{
+  // Wave 3A: OFZ coupon entitlement lifecycle in upcoming.
+  const TICKER = 'OFZ_26238';
+  function ofzPos(buyDate, qty, lotId) {
+    return {
+      ticker: TICKER, lotId: lotId || 'O1', qty: qty, avgPrice: 95, buyDate: buyDate, faceValue: 1000
+    };
+  }
+  function ofzSale(saleDate, qty, buyDate, lotId) {
+    return {
+      saleId: 'S-' + saleDate + '-' + qty,
+      ticker: TICKER, qty: qty, buyPrice: 95, salePrice: 98, saleDate: saleDate, faceValue: 1000,
+      allocations: [{ lotId: lotId || 'O1', qty: qty, buyPrice: 95, buyDate: buyDate }]
+    };
+  }
+  function ofzFeed(coupons) {
+    const rec = {};
+    rec[TICKER] = { kind: 'bond', source: 'bondization', coupons: coupons, faceValue: 1000 };
+    return rec;
+  }
+  const cpn = {
+    couponDate: '2026-07-15', recordDate: '2026-07-14', date: '2026-07-15', value: 35
+  };
+  const wide = {
+    couponDate: '2026-07-15', recordDate: '2026-07-10', date: '2026-07-15', value: 35
+  };
+  function runUp(portfolio, now, extra) {
+    return calc.buildUpcomingPortfolioPayouts(portfolio, Object.assign({
+      now: now,
+      horizonDays: 365,
+      payoutsByTicker: ofzFeed([cpn])
+    }, extra || {}));
+  }
+  function runWide(portfolio, now) {
+    return calc.buildUpcomingPortfolioPayouts(portfolio, {
+      now: now,
+      horizonDays: 365,
+      payoutsByTicker: ofzFeed([wide])
+    });
+  }
+  const held10 = { positions: [ofzPos('2026-01-10', 10)], sales: [] };
+
+  const before = runUp(held10, '2026-07-13');
+  assert(before.items.length === 1, 'wave3a 1: before record listed');
+  assert(before.items[0].entitlementStatus === 'futureEligibility', 'wave3a 1: STATE A');
+  assert(before.items[0].qtyHeld === 10, 'wave3a 1: current qty');
+  assert(before.items[0].date === '2026-07-15' && before.nextDate === '2026-07-15', 'wave3a 1: display couponDate');
+  assert(before.items[0].payoutDate === '2026-07-15' && before.items[0].payoutDateSource === 'couponDate',
+    'wave3a 1: payoutDate from couponDate');
+  assert(before.totalCouponsRub === 350 && before.totalUpcomingRub === 350, 'wave3a 1: known totals');
+
+  const onRecord = runUp(held10, '2026-07-14');
+  assert(onRecord.items.length === 1, 'wave3a 2: on record listed');
+  assert(onRecord.items[0].entitlementStatus === 'entitledAwaitingScheduledPayout', 'wave3a 2: STATE B');
+  assert(onRecord.items[0].qtyHeld === 10, 'wave3a 2: qty at recordDate');
+  assert(onRecord.items[0].date === '2026-07-15', 'wave3a 2: display couponDate');
+  assert(onRecord.totalCouponsRub === 350, 'wave3a 2: entitlement amount');
+
+  const between = runWide(held10, '2026-07-12');
+  assert(between.items.length === 1, 'wave3a 3: between record and coupon listed');
+  assert(between.items[0].entitlementStatus === 'entitledAwaitingScheduledPayout', 'wave3a 3: STATE B');
+  assert(between.items[0].qtyHeld === 10 && between.items[0].date === '2026-07-15',
+    'wave3a 3: historical qty and couponDate');
+
+  const onCoupon = runUp(held10, '2026-07-15');
+  assert(onCoupon.items.length === 0 && onCoupon.totalUpcomingRub === 0, 'wave3a 4: on couponDate gone');
+  const afterCoupon = runUp(held10, '2026-07-16');
+  assert(afterCoupon.items.length === 0, 'wave3a 5: after couponDate gone');
+
+  const soldAfter = runWide({
+    positions: [],
+    sales: [ofzSale('2026-07-12', 10, '2026-01-10')]
+  }, '2026-07-12');
+  assert(soldAfter.items.length === 1, 'wave3a 6: sell after record still listed');
+  assert(soldAfter.items[0].entitlementStatus === 'entitledAwaitingScheduledPayout', 'wave3a 6: STATE B');
+  assert(soldAfter.items[0].qtyHeld === 10, 'wave3a 6: entitlement qty 10');
+  assert(soldAfter.totalCouponsRub === 350, 'wave3a 6: 10 × 35');
+
+  const partialAfter = runWide({
+    positions: [ofzPos('2026-01-10', 6)],
+    sales: [ofzSale('2026-07-12', 4, '2026-01-10')]
+  }, '2026-07-12');
+  assert(partialAfter.items[0].qtyHeld === 10, 'wave3a 7: partial sell after record does not reduce entitlement');
+  assert(partialAfter.totalCouponsRub === 350, 'wave3a 7: still 10 × 35');
+
+  const buyAfter = runWide({
+    positions: [
+      ofzPos('2026-01-10', 10, 'O1'),
+      ofzPos('2026-07-11', 5, 'O2')
+    ],
+    sales: []
+  }, '2026-07-12');
+  assert(buyAfter.items[0].qtyHeld === 10, 'wave3a 8: buy after record does not increase entitlement');
+  assert(buyAfter.totalCouponsRub === 350, 'wave3a 8: still 10 × 35');
+
+  const partialBefore = runWide({
+    positions: [ofzPos('2026-01-10', 6)],
+    sales: [ofzSale('2026-07-08', 4, '2026-01-10')]
+  }, '2026-07-12');
+  assert(partialBefore.items[0].qtyHeld === 6, 'wave3a 9: partial sell before record reduces entitlement');
+  assert(partialBefore.totalCouponsRub === 210, 'wave3a 9: 6 × 35');
+
+  const closed = runWide({
+    positions: [],
+    sales: [ofzSale('2026-07-12', 10, '2026-01-10')]
+  }, '2026-07-12');
+  assert(closed.items.length === 1 && closed.items[0].qtyHeld === 10, 'wave3a 10: closed after entitlement still visible');
+
+  const lots = runUp({
+    positions: [ofzPos('2026-01-10', 6, 'A'), ofzPos('2026-02-01', 4, 'B')],
+    sales: []
+  }, '2026-07-14');
+  assert(lots.items[0].qtyHeld === 10, 'wave3a 11: multiple lots aggregate to 10');
+
+  const fallbackMissing = calc.buildUpcomingPortfolioPayouts(held10, {
+    now: '2026-07-13',
+    horizonDays: 365,
+    payoutsByTicker: ofzFeed([{ couponDate: '2026-07-15', date: '2026-07-15', value: 35 }])
+  });
+  assert(fallbackMissing.items.length === 1, 'wave3a 13: missing record still upcoming');
+  assert(fallbackMissing.items[0].entitlementStatus === 'futureEligibility', 'wave3a 13: no artificial STATE B');
+  assert(fallbackMissing.items[0].payoutDate == null && fallbackMissing.items[0].payoutDateSource == null,
+    'wave3a 13: no payoutDateSource without real record');
+  assert(fallbackMissing.items[0].isEstimated === true, 'wave3a 13: estimated');
+  const fallbackOnCouponEve = calc.buildUpcomingPortfolioPayouts(held10, {
+    now: '2026-07-14',
+    horizonDays: 365,
+    payoutsByTicker: ofzFeed([{ couponDate: '2026-07-15', date: '2026-07-15', value: 35 }])
+  });
+  assert(fallbackOnCouponEve.items.length === 1 &&
+    fallbackOnCouponEve.items[0].entitlementStatus === 'futureEligibility',
+    'wave3a 13: fallback stays STATE A until couponDate');
+  const fallbackOnCoupon = calc.buildUpcomingPortfolioPayouts(held10, {
+    now: '2026-07-15',
+    horizonDays: 365,
+    payoutsByTicker: ofzFeed([{ couponDate: '2026-07-15', date: '2026-07-15', value: 35 }])
+  });
+  assert(fallbackOnCoupon.items.length === 0, 'wave3a 13: fallback gone on couponDate');
+  const invalidRecord = calc.buildUpcomingPortfolioPayouts(held10, {
+    now: '2026-07-14',
+    horizonDays: 365,
+    payoutsByTicker: ofzFeed([{
+      couponDate: '2026-07-15', recordDate: '2026-07-16', date: '2026-07-15', value: 35
+    }])
+  });
+  assert(invalidRecord.items.length === 1 &&
+    invalidRecord.items[0].entitlementStatus === 'futureEligibility',
+    'wave3a 13: invalid recordDate does not create STATE B');
+
+  const unknownA = calc.buildUpcomingPortfolioPayouts(held10, {
+    now: '2026-12-09',
+    horizonDays: 365,
+    payoutsByTicker: ofzFeed([{
+      couponDate: '2026-12-11', recordDate: '2026-12-10'
+    }])
+  });
+  assert(unknownA.items.length === 1, 'wave3a 14: unknown STATE A visible');
+  assert(unknownA.items[0].entitlementStatus === 'futureEligibility', 'wave3a 14: STATE A');
+  assert(unknownA.items[0].amountKnown === false && unknownA.items[0].amountRub == null, 'wave3a 14: null amount');
+  assert(unknownA.totalUpcomingRub === 0 && unknownA.hasUnknownAmounts === true, 'wave3a 14: totals exclude');
+  assert(unknownA.isPartial === false, 'wave3a 14: not missing-feed partial');
+  assert(!/зафиксировано/.test(unknownA.items[0].note), 'wave3a 14: note has no vested copy');
+
+  const unknownB = calc.buildUpcomingPortfolioPayouts(held10, {
+    now: '2026-12-10',
+    horizonDays: 365,
+    payoutsByTicker: ofzFeed([{
+      couponDate: '2026-12-11', recordDate: '2026-12-10'
+    }])
+  });
+  assert(unknownB.items.length === 1, 'wave3a 15: unknown STATE B visible');
+  assert(unknownB.items[0].entitlementStatus === 'entitledAwaitingScheduledPayout', 'wave3a 15: STATE B');
+  assert(unknownB.items[0].qtyHeld === 10, 'wave3a 15: historical entitlement qty');
+  assert(unknownB.items[0].amountKnown === false && unknownB.items[0].payoutPerUnit == null &&
+    unknownB.items[0].amountRub == null, 'wave3a 15: amount still null');
+  assert(unknownB.totalUpcomingRub === 0 && unknownB.totalCouponsRub === 0, 'wave3a 15: totals exclude');
+  assert(unknownB.hasUnknownAmounts === true && unknownB.isPartial === false, 'wave3a 15: not partial');
+
+  const mixedAB = calc.buildUpcomingPortfolioPayouts({
+    positions: [
+      ofzPos('2026-01-10', 10, 'O1'),
+      { ticker: 'OFZ_26250', lotId: 'P1', qty: 4, avgPrice: 95, buyDate: '2026-01-10', faceValue: 1000 }
+    ],
+    sales: []
+  }, {
+    now: '2026-07-14',
+    horizonDays: 365,
+    payoutsByTicker: Object.assign(ofzFeed([cpn]), {
+      OFZ_26250: {
+        kind: 'bond',
+        source: 'bondization',
+        faceValue: 1000,
+        coupons: [{ couponDate: '2026-12-23', recordDate: '2026-12-22', value: 59.84 }]
+      }
+    })
+  });
+  assert(mixedAB.items.length === 2, 'wave3a 16: mixed A+B listed');
+  const mixedB = mixedAB.items.find((x) => x.ticker === TICKER);
+  const mixedA = mixedAB.items.find((x) => x.ticker === 'OFZ_26250');
+  assert(mixedB && mixedB.entitlementStatus === 'entitledAwaitingScheduledPayout', 'wave3a 16: B status');
+  assert(mixedA && mixedA.entitlementStatus === 'futureEligibility', 'wave3a 16: A status');
+  assert(mixedAB.totalCouponsRub === 350 + 239.36, 'wave3a 16: known totals no double count');
+  assert(mixedAB.totalUpcomingRub === mixedAB.totalCouponsRub, 'wave3a 16: upcoming = coupons');
+
+  const twoCpns = calc.buildUpcomingPortfolioPayouts(held10, {
+    now: '2026-07-14',
+    horizonDays: 400,
+    payoutsByTicker: ofzFeed([
+      cpn,
+      { couponDate: '2027-01-13', recordDate: '2027-01-12', date: '2027-01-13', value: 35 }
+    ])
+  });
+  assert(twoCpns.items.length === 2, 'wave3a 17: two coupons same ticker');
+  const first = twoCpns.items.find((x) => x.couponDate === '2026-07-15');
+  const second = twoCpns.items.find((x) => x.couponDate === '2027-01-13');
+  assert(first && first.entitlementStatus === 'entitledAwaitingScheduledPayout', 'wave3a 17: first is B');
+  assert(second && second.entitlementStatus === 'futureEligibility', 'wave3a 17: second is A');
+  assert(twoCpns.totalCouponsRub === 700, 'wave3a 17: both known amounts');
+
+  const divPf = {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
+    sales: []
+  };
+  const divBefore = calc.buildUpcomingPortfolioPayouts(divPf, {
+    now: '2026-07-16',
+    horizonDays: 365,
+    payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-07-17', value: 33.3 }] } }
+  });
+  assert(divBefore.items.length === 1 && divBefore.items[0].type === 'dividend', 'wave3a 18: dividend before cutoff');
+  assert(divBefore.items[0].entitlementStatus == null, 'wave3a 18: no coupon status on dividend');
+  assert(divBefore.items[0].qtyHeld === 10 && divBefore.items[0].amountRub === 333, 'wave3a 18: current qty');
+  const divHtml = calc.buildUpcomingPayoutsTableHtml(divBefore.items) + calc.buildUpcomingPayoutsCardsHtml(divBefore.items);
+  assert(!/ожидается выплата/i.test(divHtml), 'wave3a 18: no awaiting-payout copy');
+  assert(!/Право зафиксировано/.test(divHtml), 'wave3a 18: no vested copy on dividend');
+
+  const divOn = calc.buildUpcomingPortfolioPayouts(divPf, {
+    now: '2026-07-17',
+    horizonDays: 365,
+    payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-07-17', value: 33.3 }] } }
+  });
+  assert(divOn.items.length === 0, 'wave3a 19: dividend disappears on registry date');
+  const divAfter = calc.buildUpcomingPortfolioPayouts(divPf, {
+    now: '2026-07-18',
+    horizonDays: 365,
+    payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2026-07-17', value: 33.3 }] } }
+  });
+  assert(divAfter.items.length === 0, 'wave3a 19: dividend stays gone after cutoff');
+
+  const missingFeed = runUp(held10, '2026-07-13', { payoutsByTicker: {} });
+  assert(missingFeed.items.length === 0 && missingFeed.isPartial === true, 'wave3a 20: missing feed partial');
+  assert(missingFeed.hasUnknownAmounts !== true, 'wave3a 20: missing feed is not unknown-amount');
+  assert(missingFeed.warnings.some((w) => /нет данных по выплатам для OFZ_26238/.test(w)),
+    'wave3a 20: missing-feed warning');
+
+  const bHtml = calc.buildUpcomingPayoutsTableHtml(onRecord.items) + calc.buildUpcomingPayoutsCardsHtml(onRecord.items);
+  assert(/Право зафиксировано/.test(bHtml), 'wave3a ui: vested status');
+  assert(/Выплата ожидается по расписанию/.test(bHtml), 'wave3a ui: scheduled payout line');
+  assert(/Дата купона/.test(bHtml), 'wave3a ui: coupon date line');
+  assert(!/ещё не зачисл/i.test(bHtml) && !/брокерск/i.test(bHtml), 'wave3a ui: no broker credit claim');
+  const aHtml = calc.buildUpcomingPayoutsTableHtml(before.items) + calc.buildUpcomingPayoutsCardsHtml(before.items);
+  assert(/Право ещё не зафиксировано/.test(aHtml), 'wave3a ui: future status');
+  assert(calc.upcomingPayoutsItemHint(unknownB.items[0]).indexOf('не определён') >= 0,
+    'wave3a ui: unknown STATE B keeps amount note');
+
+  const histUnchanged = calc.buildPortfolioPayoutsForHoldingPeriod(held10, '2026-01-01', '2026-12-31', {
+    now: '2026-07-16',
+    payoutsByTicker: ofzFeed([cpn])
+  });
+  assert(histUnchanged.items.length === 1 && histUnchanged.items[0].eligibilityDate === '2026-07-14',
+    'wave3a hist: holding-period still eligibility window');
+  assert(histUnchanged.totalCouponsRub === 350, 'wave3a hist: amount unchanged');
+
+  const resultDrawSrc = Function.prototype.toString.call(calc.drawPortfolioDynamicsChart);
+  const resultEnsureSrc = Function.prototype.toString.call(calc.pfDynEnsureResultSeries);
+  assert(!/loadPayoutFeedsForPortfolio|buildPortfolioPayoutsForHoldingPeriod|buildUpcomingPortfolioPayouts/.test(
+    resultDrawSrc + resultEnsureSrc
+  ), 'wave3a 21: Result graph untouched');
+  assert(!/iss\.only=amortizations/.test(fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8')),
+    'wave3a: no amortization endpoint');
 }
 
 {
