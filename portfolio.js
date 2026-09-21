@@ -4255,6 +4255,32 @@
     };
   }
 
+  var UPCOMING_STATUS_FUTURE = 'futureEligibility';
+  var UPCOMING_STATUS_ENTITLED = 'entitledAwaitingScheduledPayout';
+  var UPCOMING_STATUS_PAST = 'pastScheduledPayout';
+  var UPCOMING_PAYOUT_DATE_COUPON = 'couponDate';
+  var UPCOMING_STATUS_FUTURE_LABEL = 'Право ещё не зафиксировано';
+  var UPCOMING_STATUS_ENTITLED_LABEL = 'Право зафиксировано';
+  var UPCOMING_STATUS_ENTITLED_LINE = 'Выплата ожидается по расписанию';
+  var PAYOUT_ENTITLEMENT_QTY_UNKNOWN_SUFFIX = ': не удалось определить количество на дату фиксации';
+
+  function payoutsHasRealRecordDate(elig) {
+    return !!(elig &&
+      !elig.eligibilityEstimated &&
+      elig.eligibilitySource === PAYOUT_ELIGIBILITY_RECORD &&
+      elig.recordDate &&
+      elig.eligibilityDate === elig.recordDate);
+  }
+
+  function payoutsUpcomingCouponStatus(elig, nowIso) {
+    var today = payoutsIsoDateOrNull(nowIso);
+    if (!elig || !elig.couponDate || !elig.eligibilityDate || !today) return null;
+    if (elig.couponDate <= today) return UPCOMING_STATUS_PAST;
+    if (elig.eligibilityDate > today) return UPCOMING_STATUS_FUTURE;
+    if (payoutsHasRealRecordDate(elig) && elig.couponDate > today) return UPCOMING_STATUS_ENTITLED;
+    return UPCOMING_STATUS_FUTURE;
+  }
+
   function payoutsCouponFallbackNote(elig) {
     if (!elig || !elig.eligibilityEstimated) return PAYOUT_COUPON_NOTE;
     return elig.fallbackReason === 'invalid'
@@ -5537,9 +5563,10 @@
   }
 
   /**
-   * Read-only ближайшие известные дивиденды и купоны по текущему составу.
-   * qtyHeld — qtyAtDate на now; для акций со сплитом в каталоге —
-   * getSplitAwareCurrentQty × сырой DPS. Без fetch, НКД и даты зачисления.
+   * Read-only ближайшие известные дивиденды и купоны.
+   * Дивиденды и купоны STATE A — qty текущего состава.
+   * Купоны STATE B (право зафиксировано, дата купона ещё впереди) —
+   * qty на eligibilityDate. Без fetch, НКД и даты зачисления.
    */
   function buildUpcomingPortfolioPayouts(portfolio, options) {
     options = options || {};
@@ -5569,60 +5596,118 @@
       (composition.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
     }
 
+    var currentByTicker = {};
     var held = composition.items || [];
     var i;
     for (i = 0; i < held.length; i++) {
       var row = held[i];
       if (!row) continue;
-      var ticker = asOfNormTicker(row.ticker);
-      var currentQty = Number(row.qtyAtDate);
-      if (!ticker || !(currentQty > 0)) continue;
-      if (row.hasIncompleteHistory) {
-        isPartial = true;
-        (row.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
-      }
+      var heldTicker = asOfNormTicker(row.ticker);
+      if (heldTicker) currentByTicker[heldTicker] = row;
+    }
 
-      var feed = payoutsGetFeed(options.payoutsByTicker, ticker);
-      if (payoutsFeedMissing(feed)) {
+    var histCache = options._compositionCache || {};
+    options._compositionCache = histCache;
+    var splitQtyCache = options._splitQtyCache || {};
+    options._splitQtyCache = splitQtyCache;
+    var parts = payoutsPositionsSales(portfolio, options);
+    var tickers = payoutsCollectTickers(parts.positions, parts.sales);
+
+    function resolveCurrentQty(ticker, kind) {
+      var currentRow = currentByTicker[ticker];
+      var currentQty = currentRow ? Number(currentRow.qtyAtDate) : 0;
+      if (currentRow && currentRow.hasIncompleteHistory) {
         isPartial = true;
-        payoutsPushWarning(warnings, PAYOUT_NO_FEED_PREFIX + ticker);
+        (currentRow.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+      }
+      var useSplitQty = kind !== 'bond' && payoutsTickerHasSplitEvents(ticker, options);
+      if (!useSplitQty) {
+        return isFinite(currentQty) && currentQty > 0 ? currentQty : 0;
+      }
+      var splitNow = getSplitAwareCurrentQty(ticker, portfolio, {
+        splitEvents: options.splitEvents,
+        currentPrice: options.currentPrice,
+        currentDate: nowIso,
+        now: nowIso,
+        priceTolerancePct: options.priceTolerancePct,
+        instrumentType: options.instrumentType
+      });
+      (splitNow.warnings || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+      if (splitNow.confidence === 'unknown' && !(Number(splitNow.qty) > 0)) {
+        isPartial = true;
+        payoutsPushWarning(warnings, ticker + PAYOUT_SPLIT_CURRENT_QTY_UNKNOWN_SUFFIX);
+        return null;
+      }
+      if (splitNow.confidence !== 'high') isPartial = true;
+      currentQty = Number(splitNow.qty);
+      return isFinite(currentQty) && currentQty > 0 ? currentQty : 0;
+    }
+
+    function resolveEntitlementQty(ticker, eligibilityDate) {
+      var heldAt = payoutsQtyHeldAtDate(portfolio, ticker, eligibilityDate, options, histCache);
+      if (heldAt.incomplete) {
+        isPartial = true;
+        (heldAt.notes || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
+      }
+      var qty = Number(heldAt.qtyHeld);
+      if (!isFinite(qty) || !(qty > 0)) {
+        if (heldAt.incomplete) {
+          payoutsPushWarning(warnings, ticker + PAYOUT_ENTITLEMENT_QTY_UNKNOWN_SUFFIX);
+        }
+        return 0;
+      }
+      return qty;
+    }
+
+    for (i = 0; i < tickers.length; i++) {
+      var ticker = tickers[i];
+      var feed = payoutsGetFeed(options.payoutsByTicker, ticker);
+      var kind = payoutsFeedKind(feed, ticker);
+      var currentQty = resolveCurrentQty(ticker, kind);
+      if (currentQty == null) continue;
+
+      if (payoutsFeedMissing(feed)) {
+        if (currentQty > 0) {
+          isPartial = true;
+          payoutsPushWarning(warnings, PAYOUT_NO_FEED_PREFIX + ticker);
+        }
         continue;
       }
 
-      var kind = payoutsFeedKind(feed, ticker);
       var source = payoutsFeedSource(feed, kind);
       var faceValue = payoutsBondFaceValue(feed, ticker, options.bondMetaMap);
-      var useSplitQty = kind !== 'bond' && payoutsTickerHasSplitEvents(ticker, options);
-      if (useSplitQty) {
-        var splitNow = getSplitAwareCurrentQty(ticker, portfolio, {
-          splitEvents: options.splitEvents,
-          currentPrice: options.currentPrice,
-          currentDate: nowIso,
-          now: nowIso,
-          priceTolerancePct: options.priceTolerancePct,
-          instrumentType: options.instrumentType
-        });
-        (splitNow.warnings || []).forEach(function (n) { payoutsPushWarning(warnings, n); });
-        if (splitNow.confidence === 'unknown' && !(Number(splitNow.qty) > 0)) {
-          isPartial = true;
-          payoutsPushWarning(warnings, ticker + PAYOUT_SPLIT_CURRENT_QTY_UNKNOWN_SUFFIX);
-          continue;
-        }
-        if (splitNow.confidence !== 'high') isPartial = true;
-        currentQty = Number(splitNow.qty);
-        if (!isFinite(currentQty) || !(currentQty > 0)) continue;
-      }
-
       var events = kind === 'bond' ? (feed.coupons || []) : (feed.dividends || []);
       var e;
       for (e = 0; e < events.length; e++) {
         var ev = events[e] || {};
         var type = kind === 'bond' ? 'coupon' : 'dividend';
         var couponElig = type === 'coupon' ? payoutsCouponEligibility(ev) : null;
+        var status = type === 'coupon'
+          ? payoutsUpcomingCouponStatus(couponElig, nowIso)
+          : null;
         var eventIso = type === 'coupon'
           ? (couponElig && couponElig.eligibilityDate)
           : timelineIsoDate(ev.date);
-        if (!eventIso || eventIso <= nowIso || eventIso > endIso) continue;
+        var displayIso = type === 'coupon'
+          ? ((couponElig && couponElig.couponDate) || eventIso)
+          : eventIso;
+        var qtyHeld = 0;
+
+        if (type === 'dividend') {
+          if (!eventIso || eventIso <= nowIso || eventIso > endIso) continue;
+          if (!(currentQty > 0)) continue;
+          qtyHeld = currentQty;
+        } else if (status === UPCOMING_STATUS_FUTURE) {
+          if (!eventIso || eventIso <= nowIso || eventIso > endIso) continue;
+          if (!(currentQty > 0)) continue;
+          qtyHeld = currentQty;
+        } else if (status === UPCOMING_STATUS_ENTITLED) {
+          if (!displayIso || displayIso <= nowIso || displayIso > endIso) continue;
+          qtyHeld = resolveEntitlementQty(ticker, eventIso);
+          if (!(qtyHeld > 0)) continue;
+        } else {
+          continue;
+        }
 
         var perUnit = null;
         var amountKnown = true;
@@ -5643,11 +5728,8 @@
           }
         }
 
-        var amountRub = amountKnown ? asOfRoundRub(currentQty * perUnit) : null;
+        var amountRub = amountKnown ? asOfRoundRub(qtyHeld * perUnit) : null;
         if (amountKnown && amountRub == null) continue;
-        var displayIso = type === 'coupon'
-          ? ((couponElig && couponElig.couponDate) || eventIso)
-          : eventIso;
         var couponNote = UPCOMING_COUPON_NOTE;
         if (type === 'coupon' && !amountKnown) {
           couponNote = PAYOUT_UNKNOWN_FUTURE_COUPON_NOTE;
@@ -5658,7 +5740,7 @@
           ticker: ticker,
           type: type,
           date: displayIso,
-          qtyHeld: currentQty,
+          qtyHeld: qtyHeld,
           payoutPerUnit: amountKnown ? perUnit : null,
           amountRub: amountRub,
           amountKnown: amountKnown,
@@ -5671,6 +5753,14 @@
           upcoming.recordDate = couponElig ? couponElig.recordDate : null;
           upcoming.eligibilityDate = eventIso;
           upcoming.eligibilitySource = couponElig ? couponElig.eligibilitySource : PAYOUT_ELIGIBILITY_FALLBACK;
+          upcoming.entitlementStatus = status;
+          if (payoutsHasRealRecordDate(couponElig)) {
+            upcoming.payoutDate = displayIso;
+            upcoming.payoutDateSource = UPCOMING_PAYOUT_DATE_COUPON;
+          } else {
+            upcoming.payoutDate = null;
+            upcoming.payoutDateSource = null;
+          }
           if (couponElig && couponElig.eligibilityEstimated) {
             upcoming.isEstimated = true;
             isPartial = true;
@@ -12647,10 +12737,10 @@
   var PF_UP_PAY_BTN_BUSY = 'Считаем…';
   var PF_UP_PAY_BUSY_HINT = 'Подбираем ближайшие дивиденды и купоны…';
   var PF_UP_PAY_ERROR = 'Не удалось подобрать предстоящие выплаты. Попробуйте ещё раз.';
-  var PF_UP_PAY_EMPTY = 'На выбранном горизонте известных выплат по текущему составу портфеля не найдено.';
+  var PF_UP_PAY_EMPTY = 'На выбранном горизонте известных выплат не найдено.';
   var PF_UP_PAY_PARTIAL = 'Расчёт частичный: по части бумаг нет данных о выплатах или сумма на 1 шт. неизвестна.';
   var PF_UP_PAY_KNOWN_TOTALS_SUFFIX = ' · по известным суммам';
-  var PF_UP_PAY_FOOT = 'Расчёт справочный: акции считаются по отсечке. Для ОФЗ в таблице показана дата купона. Право на выплату оценивается по дате фиксации, если она доступна. Сумма рассчитана для текущего состава портфеля. Налоги, комиссии, НКД и дата зачисления не учитываются.';
+  var PF_UP_PAY_FOOT = 'Акции — по отсечке. Для ОФЗ показана дата купона. В блок входят будущие права и купоны ОФЗ с уже зафиксированным правом, если дата купона ещё впереди. Будущее право — по текущему составу; зафиксированное право ОФЗ — по количеству на дату фиксации. Налоги, комиссии, НКД и дата зачисления на брокерский счёт не учитываются.';
   var pfUpPayBusy = false;
   var pfUpPaySeq = 0;
 
@@ -12688,11 +12778,49 @@
     if (block) block.classList.add('pf-pay-block--open');
   }
 
-  function upcomingPayoutsItemHint(row) {
+  function upcomingQtyLabel(row) {
+    if (row && row.type === 'coupon' && row.entitlementStatus === UPCOMING_STATUS_ENTITLED) {
+      return 'Кол-во на дату фиксации';
+    }
+    return 'Кол-во сейчас';
+  }
+
+  function upcomingEntitlementStatusText(row) {
+    if (!row || row.type !== 'coupon') return '';
+    if (row.entitlementStatus === UPCOMING_STATUS_ENTITLED) {
+      var d = formatAsOfDateDisplay(row.couponDate || row.payoutDate || row.date);
+      var line = UPCOMING_STATUS_ENTITLED_LABEL + '. ' + UPCOMING_STATUS_ENTITLED_LINE;
+      if (d) line += '. Дата купона — ' + d;
+      return line;
+    }
+    if (row.entitlementStatus === UPCOMING_STATUS_FUTURE) {
+      return UPCOMING_STATUS_FUTURE_LABEL;
+    }
+    return '';
+  }
+
+  function upcomingEntitlementStatusHtml(row) {
+    var text = upcomingEntitlementStatusText(row);
+    if (!text) return '';
+    var mod = row && row.entitlementStatus === UPCOMING_STATUS_ENTITLED
+      ? 'pf-pay-entitlement--entitled'
+      : 'pf-pay-entitlement--future';
+    return '<p class="pf-pay-entitlement ' + mod + '">' + escapeHtml(text) + '</p>';
+  }
+
+  function upcomingPayoutsTechNote(row) {
     if (row && row.amountKnown === false) return PAYOUT_UNKNOWN_FUTURE_COUPON_NOTE;
     if (row && row.note) return String(row.note);
     if (row && row.type === 'coupon') return UPCOMING_COUPON_NOTE;
     return UPCOMING_DIV_NOTE;
+  }
+
+  function upcomingPayoutsItemHint(row) {
+    var parts = [];
+    var status = upcomingEntitlementStatusText(row);
+    if (status) parts.push(status);
+    parts.push(upcomingPayoutsTechNote(row));
+    return parts.join(' ');
   }
 
   function upcomingKnownTotalsLabel(label, result) {
@@ -12721,7 +12849,6 @@
   function buildUpcomingPayoutsCardsHtml(items) {
     return (items || []).map(function (row) {
       var type = payoutsItemTypeLabel(row.type);
-      var hint = upcomingPayoutsItemHint(row);
       var name = payoutsTickerName(row.ticker);
       return '<article class="pf-pay-card">' +
         '<div class="pf-pay-card-head">' +
@@ -12731,14 +12858,16 @@
             escapeHtml(type) +
           '</span>' +
         '</div>' +
+        upcomingEntitlementStatusHtml(row) +
         '<div class="pf-pay-card-kpis">' +
           '<span><span class="lbl">Дата</span> ' + escapeHtml(formatAsOfDateDisplay(row.date)) + '</span>' +
-          '<span><span class="lbl">Кол-во сейчас</span> ' + escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) + '</span>' +
+          '<span><span class="lbl">' + escapeHtml(upcomingQtyLabel(row)) + '</span> ' +
+            escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) + '</span>' +
           '<span><span class="lbl">Выплата за 1 шт.</span> ' + escapeHtml(formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</span>' +
           '<span class="pf-pay-card-sum"><span class="lbl">Оценка суммы</span> ' +
             escapeHtml(formatPortfolioRubAmount(row.amountRub)) + '</span>' +
         '</div>' +
-        '<p class="muted pf-pay-card-note">' + escapeHtml(hint) + '</p>' +
+        '<p class="muted pf-pay-card-note">' + escapeHtml(upcomingPayoutsTechNote(row)) + '</p>' +
       '</article>';
     }).join('');
   }
@@ -12761,8 +12890,11 @@
         '<td>' +
           '<span class="pf-pay-badge pf-pay-badge--' + (row.type === 'coupon' ? 'cpn' : 'div') + '" title="' +
             escapeHtml(hint) + '">' + escapeHtml(type) + '</span>' +
+          upcomingEntitlementStatusHtml(row) +
         '</td>' +
-        '<td>' + escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) + '</td>' +
+        '<td title="' + escapeHtml(upcomingQtyLabel(row)) + '">' +
+          escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) +
+        '</td>' +
         '<td>' + escapeHtml(formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</td>' +
         '<td class="pf-pay-td-sum">' + escapeHtml(formatPortfolioRubAmount(row.amountRub)) + '</td>' +
       '</tr>';
@@ -12771,7 +12903,7 @@
       '<table class="pf-pay-table">' +
         '<thead><tr>' +
           '<th>Дата</th><th>Бумага</th><th>Тип</th>' +
-          '<th>Кол-во сейчас</th><th>Выплата за 1 шт.</th><th>Оценка суммы</th>' +
+          '<th>Кол-во</th><th>Выплата за 1 шт.</th><th>Оценка суммы</th>' +
         '</tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
       '</table>' +

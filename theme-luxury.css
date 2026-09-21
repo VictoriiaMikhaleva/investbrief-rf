@@ -5567,10 +5567,25 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
   display: none;
 }
 
-#tab-portfolio .pf-pay-card-note {
-  margin: 0.35rem 0 0;
-  font-size: 0.7rem;
+#tab-portfolio .pf-pay-entitlement {
+  margin: 0.28rem 0 0;
+  font-size: 0.68rem;
   line-height: 1.35;
+  font-weight: 500;
+}
+
+#tab-portfolio .pf-pay-entitlement--future {
+  color: color-mix(in srgb, var(--accent) 36%, #5a6b62 64%);
+}
+
+#tab-portfolio .pf-pay-entitlement--entitled {
+  color: color-mix(in srgb, var(--bronze) 54%, #5c4636 46%);
+}
+
+#tab-portfolio .pf-pay-table .pf-pay-entitlement {
+  margin-top: 0.22rem;
+  white-space: normal;
+  max-width: 16rem;
 }
 
 #tab-portfolio .pf-up-pay-icon-cal {
