@@ -464,6 +464,8 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__upcomingTableHtml = buildUpcomingPayoutsTableHtml;' +
       '\nthis.__upcomingCardsHtml = buildUpcomingPayoutsCardsHtml;' +
       '\nthis.__upcomingHint = upcomingPayoutsItemHint;' +
+      '\nthis.__upcomingUnknownAmt = isUpcomingUnknownCouponAmount;' +
+      '\nthis.__upcomingUnknownAmtHtml = formatUpcomingUnknownAmountDisplay;' +
       '\nthis.__upcomingKnownLbl = upcomingKnownTotalsLabel;' +
       '\nthis.__splitWarn = portfolioTickerNeedsSplitWarning;' +
       '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;' +
@@ -619,6 +621,8 @@ function loadPortfolioCalcHelpers() {
     buildUpcomingPayoutsTableHtml: sandbox.__upcomingTableHtml,
     buildUpcomingPayoutsCardsHtml: sandbox.__upcomingCardsHtml,
     upcomingPayoutsItemHint: sandbox.__upcomingHint,
+    isUpcomingUnknownCouponAmount: sandbox.__upcomingUnknownAmt,
+    formatUpcomingUnknownAmountDisplay: sandbox.__upcomingUnknownAmtHtml,
     upcomingKnownTotalsLabel: sandbox.__upcomingKnownLbl,
     portfolioTickerNeedsSplitWarning: sandbox.__splitWarn,
     buildPortfolioSplitWarningHtml: sandbox.__splitWarnHtml,
@@ -3863,6 +3867,91 @@ function loadPriceAtDateHelpers() {
   assert(!/loadPayoutFeedsForPortfolio|buildPortfolioPayoutsForHoldingPeriod|buildUpcomingPortfolioPayouts/.test(
     drawSrc + ensureSrc
   ), 'unknown-amt 12: Result graph unaffected');
+
+  const knownAmtHtml = calc.buildUpcomingPayoutsTableHtml(knownValue.items) +
+    calc.buildUpcomingPayoutsCardsHtml(knownValue.items);
+  assert(!/pf-pay-unknown-tip/.test(knownAmtHtml), 'ux-tip 1: known coupon has no unknown tooltip');
+  assert((tableHtml.match(/class="pf-pay-unknown-tip"/g) || []).length >= 4,
+    'ux-tip 2: unknown amount tips on per-unit and sum');
+  assert(/aria-label="Размер купона пока не определён в доступных данных\."/.test(tableHtml),
+    'ux-tip 2: aria-label on marker');
+  assert(/title="Размер купона пока не определён в доступных данных\."/.test(tableHtml),
+    'ux-tip 2: title on marker');
+  assert(/data-tip="Размер купона пока не определён в доступных данных\."/.test(tableHtml),
+    'ux-tip 2: data-tip for focus tooltip');
+  assert(/pf-pay-unknown[\s\S]{0,80}—/.test(tableHtml), 'ux-tip 2: dash symbol kept');
+  const missingTipHtml = calc.buildUpcomingPayoutsTableHtml(missingFeed.items) +
+    calc.buildUpcomingPayoutsCardsHtml(missingFeed.items);
+  assert(!/pf-pay-unknown-tip/.test(missingTipHtml), 'ux-tip 5: missing feed has no tooltip');
+  assert(unknownFuture.items[0].amountRub == null && unknownFuture.items[0].payoutPerUnit == null,
+    'ux-tip 7: amount stays null, not 0');
+  assert(unknownFuture.totalUpcomingRub === 0 && mixedKnownUnknown.totalUpcomingRub === 324.1,
+    'ux-tip 8: totals unchanged');
+}
+
+{
+  // UX: unknown coupon amount tooltip — predicate, exclusion, CSS.
+  const TIP = 'Размер купона пока не определён в доступных данных.';
+  assert(calc.isUpcomingUnknownCouponAmount({ type: 'coupon', amountKnown: false }) === true,
+    'ux-tip pred: known event + unknown amount');
+  assert(calc.isUpcomingUnknownCouponAmount({ type: 'coupon', amountKnown: true }) === false,
+    'ux-tip pred: known coupon amount has no tooltip');
+  assert(calc.isUpcomingUnknownCouponAmount({ type: 'dividend', amountKnown: false }) === false,
+    'ux-tip pred: dividend excluded even if amountKnown false');
+  assert(calc.isUpcomingUnknownCouponAmount({ type: 'coupon' }) === false,
+    'ux-tip pred: missing amountKnown is not unknown-amount');
+  assert(calc.isUpcomingUnknownCouponAmount(null) === false, 'ux-tip pred: null row');
+
+  const fakeDivHtml = calc.buildUpcomingPayoutsTableHtml([{
+    ticker: 'SBER', type: 'dividend', date: '2026-07-17', qtyHeld: 10,
+    payoutPerUnit: 33.3, amountRub: 333, amountKnown: false
+  }]);
+  assert(!/pf-pay-unknown-tip/.test(fakeDivHtml),
+    'ux-tip 6: dividend row never gets coupon unknown tooltip');
+
+  const histTipHtml = calc.buildPortfolioPayoutsTableHtml([{
+    ticker: 'OFZ_26238', type: 'coupon', date: '2026-07-15', qtyHeld: 10,
+    payoutPerUnit: null, amountRub: null, amountKnown: false
+  }]);
+  assert(!/pf-pay-unknown-tip/.test(histTipHtml),
+    'ux-tip: historical payouts table has no upcoming unknown tooltip');
+
+  const emptyTipHtml = calc.buildUpcomingPayoutsTableHtml([]);
+  assert(!/pf-pay-unknown-tip/.test(emptyTipHtml || ''),
+    'ux-tip 5: empty/missing feed html has no tooltip');
+
+  const tipHtml = calc.formatUpcomingUnknownAmountDisplay(
+    { type: 'coupon', amountKnown: false },
+    '—'
+  );
+  assert(tipHtml.indexOf('—') >= 0, 'ux-tip 2: dash unchanged');
+  assert(/type="button"/.test(tipHtml), 'ux-tip a11y: button for keyboard and tap');
+  assert(tipHtml.indexOf('aria-label="' + TIP + '"') >= 0, 'ux-tip a11y: aria-label');
+  assert(tipHtml.indexOf('title="' + TIP + '"') >= 0, 'ux-tip a11y: title');
+  assert(tipHtml.indexOf('data-tip="' + TIP + '"') >= 0, 'ux-tip a11y: data-tip');
+  const knownCell = calc.formatUpcomingUnknownAmountDisplay(
+    { type: 'coupon', amountKnown: true },
+    '64,82 ₽'
+  );
+  assert(knownCell === '64,82 ₽' && !/pf-pay-unknown-tip/.test(knownCell),
+    'ux-tip 1: known amount cell is plain text');
+
+  const css = fs.readFileSync(path.join(__dirname, '..', 'theme-luxury.css'), 'utf8');
+  const tipAt = css.indexOf('#tab-portfolio .pf-pay-unknown-tip {');
+  assert(tipAt >= 0, 'ux-tip css: marker rule');
+  const tipCss = css.slice(tipAt, tipAt + 2600);
+  assert(/:focus/.test(tipCss) && /:focus-visible/.test(tipCss), 'ux-tip css: keyboard focus');
+  assert(/#tab-portfolio \.pf-pay-unknown-tip:active::after/.test(css),
+    'ux-tip css: tap/active tooltip');
+  assert(/var\(--bronze\)/.test(tipCss), 'ux-tip css: bronze/sage, not system blue');
+  assert(!/#00f\b|#0000ff|#007aff|#0a84ff|rgb\(\s*0\s*,\s*0\s*,\s*255/i.test(tipCss),
+    'ux-tip css: no bright system blue');
+  const srcTip = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const tipFn = srcTip.slice(
+    srcTip.indexOf('function isUpcomingUnknownCouponAmount'),
+    srcTip.indexOf('function upcomingPayoutsItemHint')
+  );
+  assert(!/OFZ_29027/.test(tipFn), 'ux-tip: no ticker hardcode');
 }
 
 {
@@ -4128,6 +4217,15 @@ function loadPriceAtDateHelpers() {
   assert(/Право ещё не зафиксировано/.test(aHtml), 'wave3a ui: future status');
   assert(calc.upcomingPayoutsItemHint(unknownB.items[0]).indexOf('не определён') >= 0,
     'wave3a ui: unknown STATE B keeps amount note');
+  const unknownAHtml = calc.buildUpcomingPayoutsTableHtml(unknownA.items) +
+    calc.buildUpcomingPayoutsCardsHtml(unknownA.items);
+  const unknownBHtml = calc.buildUpcomingPayoutsTableHtml(unknownB.items) +
+    calc.buildUpcomingPayoutsCardsHtml(unknownB.items);
+  assert(/pf-pay-unknown-tip/.test(unknownAHtml), 'ux-tip 3: STATE A unknown has tooltip');
+  assert(/Право ещё не зафиксировано/.test(unknownAHtml), 'ux-tip 3: STATE A copy kept');
+  assert(/pf-pay-unknown-tip/.test(unknownBHtml), 'ux-tip 4: STATE B unknown has tooltip');
+  assert(/Право зафиксировано/.test(unknownBHtml), 'ux-tip 4: STATE B copy kept');
+  assert(!/pf-pay-unknown-tip/.test(divHtml), 'ux-tip 6: dividend has no coupon unknown tooltip');
 
   const histUnchanged = calc.buildPortfolioPayoutsForHoldingPeriod(held10, '2026-01-01', '2026-12-31', {
     now: '2026-07-16',

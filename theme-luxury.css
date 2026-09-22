@@ -5482,7 +5482,7 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
 }
 
 #tab-portfolio .pf-pay-table-wrap {
-  overflow: hidden;
+  overflow: visible;
   max-width: 100%;
 }
 
@@ -5586,6 +5586,87 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
   margin-top: 0.22rem;
   white-space: normal;
   max-width: 16rem;
+}
+
+#tab-portfolio .pf-pay-unknown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  position: relative;
+  white-space: nowrap;
+}
+
+#tab-portfolio .pf-pay-unknown-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 0.9rem;
+  height: 0.9rem;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--bronze) 22%, #d8d2c8 78%);
+  background: color-mix(in srgb, var(--bronze-soft) 42%, #fff 58%);
+  color: color-mix(in srgb, var(--bronze) 46%, #5c4636 54%);
+  font-size: 0.56rem;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  letter-spacing: 0;
+  cursor: help;
+  vertical-align: middle;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#tab-portfolio .pf-pay-unknown-tip:hover,
+#tab-portfolio .pf-pay-unknown-tip:focus,
+#tab-portfolio .pf-pay-unknown-tip:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--bronze) 34%, transparent);
+  outline-offset: 1px;
+  border-color: color-mix(in srgb, var(--bronze) 34%, #d8d2c8 66%);
+  background: color-mix(in srgb, var(--bronze-soft) 56%, #fff 44%);
+}
+
+#tab-portfolio .pf-pay-unknown-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.32rem);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 13.2rem;
+  padding: 0.32rem 0.48rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--bronze) 16%, #d8d2c8 84%);
+  background: color-mix(in srgb, #fffdf8 94%, var(--bronze-soft) 6%);
+  color: color-mix(in srgb, var(--text-muted) 74%, #4d5a54 26%);
+  font-size: 0.64rem;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0;
+  white-space: normal;
+  text-align: left;
+  box-shadow: 0 6px 16px rgba(40, 36, 28, 0.08);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 6;
+}
+
+#tab-portfolio .pf-pay-unknown-tip:focus::after,
+#tab-portfolio .pf-pay-unknown-tip:focus-visible::after,
+#tab-portfolio .pf-pay-unknown-tip:active::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+#tab-portfolio .pf-pay-unknown--end .pf-pay-unknown-tip::after {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 #tab-portfolio .pf-up-pay-icon-cal {
