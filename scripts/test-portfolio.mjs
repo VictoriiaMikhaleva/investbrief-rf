@@ -467,6 +467,11 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__upcomingUnknownAmt = isUpcomingUnknownCouponAmount;' +
       '\nthis.__upcomingUnknownAmtHtml = formatUpcomingUnknownAmountDisplay;' +
       '\nthis.__upcomingKnownLbl = upcomingKnownTotalsLabel;' +
+      '\nthis.__unknownHistCpnWarn = formatUnknownHistoricalCouponWarning;' +
+      '\nthis.__unknownHistCpnTickers = collectUnknownHistoricalCouponTickersFromWarnings;' +
+      '\nthis.__historicalWarnText = formatHistoricalPayoutsWarningText;' +
+      '\nthis.__historicalKnownLbl = historicalKnownTotalsLabel;' +
+      '\nthis.__payoutsResultHtml = renderPortfolioPayoutsResult;' +
       '\nthis.__splitWarn = portfolioTickerNeedsSplitWarning;' +
       '\nthis.__splitWarnHtml = buildPortfolioSplitWarningHtml;' +
       '\nthis.__splitWarnMany = buildPortfolioSplitWarningsForTickersHtml;' +
@@ -624,6 +629,11 @@ function loadPortfolioCalcHelpers() {
     isUpcomingUnknownCouponAmount: sandbox.__upcomingUnknownAmt,
     formatUpcomingUnknownAmountDisplay: sandbox.__upcomingUnknownAmtHtml,
     upcomingKnownTotalsLabel: sandbox.__upcomingKnownLbl,
+    formatUnknownHistoricalCouponWarning: sandbox.__unknownHistCpnWarn,
+    collectUnknownHistoricalCouponTickersFromWarnings: sandbox.__unknownHistCpnTickers,
+    formatHistoricalPayoutsWarningText: sandbox.__historicalWarnText,
+    historicalKnownTotalsLabel: sandbox.__historicalKnownLbl,
+    renderPortfolioPayoutsResult: sandbox.__payoutsResultHtml,
     portfolioTickerNeedsSplitWarning: sandbox.__splitWarn,
     buildPortfolioSplitWarningHtml: sandbox.__splitWarnHtml,
     buildPortfolioSplitWarningsForTickersHtml: sandbox.__splitWarnMany,
@@ -2545,9 +2555,20 @@ function loadPriceAtDateHelpers() {
   }, '2024-01-01', '2024-12-31', {
     payoutsByTicker: ofzFeed([{ date: '2024-06-19' }], 1000)
   });
-  assert(ofzNoAmount.items.length === 0, 'payouts: coupon without value skipped');
+  assert(ofzNoAmount.items.length === 1, 'payouts: coupon without value kept');
+  assert(ofzNoAmount.items[0].amountKnown === false, 'payouts: missing coupon amountKnown false');
+  assert(ofzNoAmount.items[0].payoutPerUnit == null && ofzNoAmount.items[0].amountRub == null,
+    'payouts: missing coupon amount not zero');
+  assert(ofzNoAmount.totalPayoutsRub === 0 && ofzNoAmount.totalCouponsRub === 0,
+    'payouts: missing coupon totals known-only');
   assert(ofzNoAmount.isPartial === true, 'payouts: missing coupon amount → partial');
-  assert(ofzNoAmount.warnings.some((w) => /купон без суммы/i.test(w)), 'payouts: coupon amount warning');
+  assert(ofzNoAmount.hasUnknownAmounts === true, 'payouts: missing coupon hasUnknownAmounts');
+  assert(ofzNoAmount.warnings.some((w) => /сумма исторического купона отсутствует/i.test(w)),
+    'payouts: historical data-gap warning');
+  assert(!ofzNoAmount.warnings.some((w) => /купон без суммы/i.test(w)),
+    'payouts: no legacy coupon-without-amount skip warning');
+  assert(!ofzNoAmount.warnings.some((w) => /пока не определён/i.test(w)),
+    'payouts: historical does not use upcoming copy');
 
   const noFeed = runPayouts({
     positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
@@ -2643,6 +2664,236 @@ function loadPriceAtDateHelpers() {
   });
   assert(badDivValue.items.length === 0 && badDivValue.isPartial === true, 'payouts: dividend value <= 0 skipped');
   assert(badDivValue.warnings.some((w) => /дивиденд без суммы/i.test(w)), 'payouts: dividend value warning');
+}
+
+{
+  // Historical unknown coupon amount — OPTION A
+  const NOW = '2025-12-31';
+  function ofzPos(qty, buyDate, extra) {
+    return Object.assign({
+      ticker: 'OFZ_26238', lotId: 'O1', qty: qty, avgPrice: 95, buyDate: buyDate,
+      currentPrice: 98, faceValue: 1000
+    }, extra || {});
+  }
+  function ofzFeed(coupons, ticker) {
+    const t = ticker || 'OFZ_26238';
+    const out = {};
+    out[t] = { kind: 'bond', source: 'bondization', coupons: coupons, faceValue: 1000 };
+    return out;
+  }
+  function held(qty, buyDate, ticker) {
+    return {
+      positions: [Object.assign(ofzPos(qty, buyDate || '2024-02-01'), ticker ? { ticker: ticker, lotId: 'L-' + ticker } : {})],
+      sales: []
+    };
+  }
+  function runHist(portfolio, coupons, extra) {
+    const ticker = (portfolio.positions[0] && portfolio.positions[0].ticker) ||
+      (portfolio.sales[0] && portfolio.sales[0].ticker) || 'OFZ_26238';
+    return calc.buildPortfolioPayoutsForHoldingPeriod(
+      portfolio,
+      '2024-01-01',
+      '2024-12-31',
+      Object.assign({
+        now: NOW,
+        payoutsByTicker: ofzFeed(coupons, ticker)
+      }, extra || {})
+    );
+  }
+
+  const known = runHist(held(10), [{
+    couponDate: '2024-06-19', recordDate: '2024-06-18', value: 42.38
+  }]);
+  assert(known.items.length === 1 && known.items[0].amountKnown !== false, 'hist-unk 1: known coupon kept');
+  assert(known.items[0].payoutPerUnit === 42.38 && known.items[0].amountRub === 423.8, 'hist-unk 1: known amount');
+  assert(known.isPartial === false && known.hasUnknownAmounts !== true, 'hist-unk 1: complete');
+  assert(calc.historicalKnownTotalsLabel('Всего выплат', known) === 'Всего выплат',
+    'hist-unk 8: no known-only caption when all known');
+
+  const fromPct = runHist(held(4), [{
+    couponDate: '2024-06-19', recordDate: '2024-06-18', valuePct: 5.5
+  }]);
+  assert(fromPct.items.length === 1 && fromPct.items[0].amountKnown !== false, 'hist-unk 2: pct restored');
+  assert(fromPct.items[0].payoutPerUnit === 55 && fromPct.items[0].amountRub === 220, 'hist-unk 2: 5.5% × 1000');
+  assert(fromPct.hasUnknownAmounts !== true, 'hist-unk 2: not unknown');
+
+  const unknownCpn = {
+    couponDate: '2024-06-19', recordDate: '2024-06-18'
+  };
+  const unk = runHist(held(10), [unknownCpn]);
+  assert(unk.items.length === 1, 'hist-unk 3: unknown historical event remains');
+  assert(unk.items[0].type === 'coupon', 'hist-unk 3: coupon type');
+  assert(unk.items[0].amountKnown === false, 'hist-unk 4: amountKnown false');
+  assert(unk.items[0].payoutPerUnit == null && unk.items[0].amountRub == null, 'hist-unk 4: null amounts');
+  assert(unk.items[0].payoutPerUnit !== 0 && unk.items[0].amountRub !== 0, 'hist-unk 5: unknown != 0');
+  assert(unk.totalPayoutsRub === 0 && unk.totalCouponsRub === 0, 'hist-unk 7: totals known-only zero');
+  assert(unk.isPartial === true, 'hist-unk 9: isPartial true');
+  assert(unk.hasUnknownAmounts === true, 'hist-unk 9: hasUnknownAmounts');
+  assert(unk.warnings.some((w) => /сумма исторического купона отсутствует в доступных данных/i.test(w)),
+    'hist-unk 10: data-gap warning');
+  assert(!/пока не определён/.test(unk.items[0].note || ''), 'hist-unk 10: not upcoming copy');
+  assert(unk.items[0].note === 'Сумма исторического купона отсутствует в доступных данных.',
+    'hist-unk 10: row note');
+  assert(unk.items[0].qtyHeld === 10, 'hist-unk 11: eligibility qty');
+  assert(unk.items[0].couponDate === '2024-06-19', 'hist-unk 11: couponDate');
+  assert(unk.items[0].recordDate === '2024-06-18' && unk.items[0].eligibilityDate === '2024-06-18',
+    'hist-unk 11: recordDate eligibility');
+  assert(calc.historicalKnownTotalsLabel('Всего выплат', unk) === 'Всего выплат · по известным суммам',
+    'hist-unk 8: total caption');
+  assert(calc.historicalKnownTotalsLabel('Купоны', unk) === 'Купоны · по известным суммам',
+    'hist-unk 8: coupons caption');
+
+  const tableUnk = calc.buildPortfolioPayoutsTableHtml(unk.items);
+  const cardsUnk = calc.buildPortfolioPayoutsCardsHtml(unk.items);
+  assert(/OFZ_26238/.test(tableUnk) && /OFZ_26238/.test(cardsUnk), 'hist-unk ui: ticker visible');
+  assert(/купон/.test(tableUnk), 'hist-unk ui: coupon type');
+  assert((tableUnk.match(/—/g) || []).length >= 2, 'hist-unk ui: dashes');
+  assert(!/0,00\s*₽/.test(tableUnk), 'hist-unk ui: no 0 ₽ for unknown amount');
+  assert(!/pf-pay-unknown-tip/.test(tableUnk + cardsUnk), 'hist-unk ui: no upcoming tooltip');
+  assert(/Сумма исторического купона отсутствует в доступных данных/.test(tableUnk + cardsUnk),
+    'hist-unk ui: data-gap copy in row');
+
+  const payNodes = {
+    pfPayResult: { innerHTML: '' },
+    pfPayWarn: { hidden: true, textContent: '' },
+    pfPayPanel: { hidden: true },
+    portfolioPayoutsBlock: { className: '', classList: { add() {}, remove() {} } }
+  };
+  const prevPayEl = calc.sandbox.document.getElementById;
+  calc.sandbox.document.getElementById = (id) => (
+    Object.prototype.hasOwnProperty.call(payNodes, id) ? payNodes[id] : (typeof prevPayEl === 'function' ? prevPayEl(id) : null)
+  );
+  calc.renderPortfolioPayoutsResult(unk);
+  assert(/pf-pay-table/.test(payNodes.pfPayResult.innerHTML), 'hist-unk 6: table visible when known total = 0');
+  assert(!/не найдено/.test(payNodes.pfPayResult.innerHTML), 'hist-unk 6: empty state not shown');
+  assert(/Всего выплат · по известным суммам/.test(payNodes.pfPayResult.innerHTML), 'hist-unk 8: kpi total');
+  assert(/Купоны · по известным суммам/.test(payNodes.pfPayResult.innerHTML), 'hist-unk 8: kpi coupons');
+  assert(payNodes.pfPayWarn.hidden === false, 'hist-unk smoke: partial warning visible');
+  assert(/сумма исторического купона отсутствует/i.test(payNodes.pfPayWarn.textContent),
+    'hist-unk smoke: warning copy');
+  calc.renderPortfolioPayoutsResult(known);
+  assert(/pf-pay-table/.test(payNodes.pfPayResult.innerHTML), 'hist-unk 1: known table still shown');
+  assert(!/по известным суммам/.test(payNodes.pfPayResult.innerHTML), 'hist-unk 8: known kpi has no suffix');
+  calc.renderPortfolioPayoutsResult({
+    fromDate: '2024-01-01', toDate: '2024-12-31', invalidDate: false,
+    items: [], totalPayoutsRub: 0, totalDividendsRub: 0, totalCouponsRub: 0,
+    warnings: [], isPartial: false, hasUnknownAmounts: false
+  });
+  assert(/не найдено/.test(payNodes.pfPayResult.innerHTML), 'hist-unk 6: empty only when no items');
+  calc.sandbox.document.getElementById = prevPayEl;
+
+  const soldAfter = runHist({
+    positions: [],
+    sales: [{
+      saleId: 'S1', ticker: 'OFZ_26238', qty: 10, buyPrice: 95, salePrice: 98,
+      saleDate: '2024-07-01', faceValue: 1000,
+      allocations: [{ lotId: 'O1', qty: 10, buyPrice: 95, buyDate: '2024-02-01' }]
+    }]
+  }, [unknownCpn]);
+  assert(soldAfter.items.length === 1, 'hist-unk 12: sell after record keeps event');
+  assert(soldAfter.items[0].qtyHeld === 10, 'hist-unk 12: entitlement preserved');
+  assert(soldAfter.items[0].amountKnown === false, 'hist-unk 13: closed position still unknown amount');
+  assert(soldAfter.isPartial === true, 'hist-unk 13: closed unknown is partial');
+
+  const twoCpns = runHist(held(10), [
+    { couponDate: '2024-06-19', recordDate: '2024-06-18', value: 42.38 },
+    { couponDate: '2024-12-18', recordDate: '2024-12-17' }
+  ]);
+  assert(twoCpns.items.length === 2, 'hist-unk 14: known + unknown both visible');
+  const knownRow = twoCpns.items.find((x) => x.couponDate === '2024-06-19');
+  const unkRow = twoCpns.items.find((x) => x.couponDate === '2024-12-18');
+  assert(knownRow && knownRow.amountRub === 423.8 && knownRow.amountKnown !== false, 'hist-unk 14: known row');
+  assert(unkRow && unkRow.amountKnown === false && unkRow.amountRub == null, 'hist-unk 14: unknown row');
+  assert(twoCpns.totalCouponsRub === 423.8 && twoCpns.totalPayoutsRub === 423.8, 'hist-unk 7: mixed totals known-only');
+  assert(twoCpns.isPartial === true && twoCpns.hasUnknownAmounts === true, 'hist-unk 14: mixed partial');
+
+  const futureUnknown = calc.buildUpcomingPortfolioPayouts(held(10), {
+    now: '2025-12-31',
+    horizonDays: 365,
+    payoutsByTicker: ofzFeed([{ couponDate: '2026-12-11', recordDate: '2026-12-10' }])
+  });
+  assert(futureUnknown.items.length === 1, 'hist-unk 15: future unknown still listed');
+  assert(futureUnknown.hasUnknownAmounts === true && futureUnknown.isPartial === false,
+    'hist-unk 15: future unknown remains non-partial');
+  assert(futureUnknown.warnings.some((w) => /размер будущего купона пока неизвестен/i.test(w)),
+    'hist-unk 15: upcoming warning unchanged');
+  assert(!futureUnknown.warnings.some((w) => /исторического купона отсутствует/i.test(w)),
+    'hist-unk 15: upcoming does not use historical copy');
+
+  const noFeed = calc.buildPortfolioPayoutsForHoldingPeriod(held(10), '2024-01-01', '2024-12-31', {
+    now: NOW, payoutsByTicker: {}
+  });
+  assert(noFeed.items.length === 0 && noFeed.isPartial === true, 'hist-unk 16: missing feed empty');
+  assert(noFeed.hasUnknownAmounts !== true, 'hist-unk 16: missing feed is not unknown-amount');
+  assert(noFeed.warnings.some((w) => /нет данных по выплатам для OFZ_26238/.test(w)),
+    'hist-unk 16: missing-feed warning');
+  assert(calc.collectUnknownHistoricalCouponTickersFromWarnings(noFeed.warnings).length === 0,
+    'hist-unk 16: missing feed not collected as historical unknown');
+  assert(calc.collectUnknownHistoricalCouponTickersFromWarnings(unk.warnings).join(',') === 'OFZ_26238',
+    'hist-unk 10: historical unknown collector');
+  assert(calc.collectPayoutPartialTickersFromWarnings(unk.warnings).join(',') === 'OFZ_26238',
+    'hist-unk 10: partial collector includes historical unknown');
+
+  const manyWarn = calc.formatUnknownHistoricalCouponWarning([
+    'OFZ_A', 'OFZ_B', 'OFZ_C', 'OFZ_D', 'OFZ_E', 'OFZ_F'
+  ]);
+  assert(/и ещё 1/.test(manyWarn), 'hist-unk 10: aggregated list collapses extras');
+  assert(/итог рассчитан по выплатам с известной суммой/.test(manyWarn), 'hist-unk 10: known-only clause');
+
+  const stillDiv = calc.buildPortfolioPayoutsForHoldingPeriod({
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15' }],
+    sales: []
+  }, '2024-01-01', '2024-12-31', {
+    now: NOW,
+    payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2024-07-17', value: 0 }] } }
+  });
+  assert(stillDiv.items.length === 0 && stillDiv.isPartial === true, 'hist-unk 17: dividend still skipped');
+  assert(stillDiv.warnings.some((w) => /дивиденд без суммы/i.test(w)), 'hist-unk 17: dividend warning unchanged');
+
+  const drawSrc = Function.prototype.toString.call(calc.drawPortfolioDynamicsChart);
+  const explainSrc = Function.prototype.toString.call(calc.buildPortfolioResultSegmentExplanation);
+  assert(!/PAYOUT_UNKNOWN_HISTORICAL_COUPON|hasUnknownAmounts/.test(drawSrc + explainSrc),
+    'hist-unk 18: Result graph / explainer unchanged');
+
+  const twpUnk = calc.buildTickerReturnWithPayouts('OFZ_26238', held(10), {
+    now: NOW,
+    payoutsByTicker: ofzFeed([unknownCpn]),
+    bondMetaMap: { OFZ_26238: { faceValue: 1000 } }
+  });
+  assert(twpUnk.payoutsRub === 0 && twpUnk.couponsRub === 0, 'hist-unk 19: ticker known payouts only');
+  assert(twpUnk.isPartial === true && twpUnk.hasUnknownAmounts === true, 'hist-unk 19: ticker partial');
+  assert(twpUnk.resultWithPayoutsRub === twpUnk.resultWithoutPayoutsRub, 'hist-unk 19: unknown not added as 0 extra beyond known');
+
+  const twpMix = calc.buildTickerReturnWithPayouts('OFZ_26238', held(10), {
+    now: NOW,
+    payoutsByTicker: ofzFeed([
+      { couponDate: '2024-06-19', recordDate: '2024-06-18', value: 42.38 },
+      { couponDate: '2024-12-18', recordDate: '2024-12-17' }
+    ]),
+    bondMetaMap: { OFZ_26238: { faceValue: 1000 } }
+  });
+  assert(twpMix.payoutsRub === 423.8, 'hist-unk 19: ticker uses known coupon only');
+  assert(twpMix.isPartial === true && twpMix.hasUnknownAmounts === true, 'hist-unk 19: mixed ticker partial');
+
+  const pfRet = calc.buildPortfolioReturnWithPayouts(held(10), {
+    now: NOW,
+    payoutsByTicker: ofzFeed([unknownCpn]),
+    bondMetaMap: { OFZ_26238: { faceValue: 1000 } }
+  });
+  assert(pfRet.payoutsRub === 0, 'hist-unk 20: portfolio known payouts only');
+  assert(pfRet.isPartial === true && pfRet.hasUnknownAmounts === true, 'hist-unk 20: portfolio partial');
+
+  const prsUnk = calc.buildPortfolioResultSummary(held(10), {
+    now: NOW,
+    payoutsByTicker: ofzFeed([unknownCpn]),
+    bondMetaMap: { OFZ_26238: { faceValue: 1000 } },
+    payoutsReady: true
+  });
+  assert(prsUnk.payoutsRub === 0, 'hist-unk 20: result summary known-only');
+  assert(prsUnk.isPartial === true && prsUnk.hasUnknownAmounts === true, 'hist-unk 20: result summary partial');
+  assert(prsUnk.missingPayoutFeed !== true, 'hist-unk 20: unknown amount is not missing feed');
+  const prsHtml = calc.buildPortfolioResultSummaryHtml(prsUnk);
+  assert(/Найденные выплаты · по известным суммам/.test(prsHtml), 'hist-unk 20: summary caption');
 }
 
 {

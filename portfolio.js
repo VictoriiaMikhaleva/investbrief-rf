@@ -1808,6 +1808,7 @@
       var m = s.match(/нет данных по (?:выплатам|дивидендам|купонам) для\s+([A-Za-z0-9._-]+)/i);
       if (!m) m = s.match(/выплаты для\s+([A-Za-z0-9._-]+)\s+пока не поддерживаются/i);
       if (!m) m = s.match(/^([A-Za-z0-9._-]+):\s+(?:дивиденд|купон) без суммы/i);
+      if (!m) m = s.match(/^([A-Za-z0-9._-]+):\s+сумма исторического купона отсутствует/i);
       if (!m) continue;
       out.push(m[1]);
     }
@@ -1826,11 +1827,30 @@
     return uniqueWarningTickers(out);
   }
 
+  function collectUnknownHistoricalCouponTickersFromWarnings(warnings) {
+    var out = [];
+    var i;
+    for (i = 0; i < (warnings || []).length; i++) {
+      var s = String(warnings[i] || '');
+      var m = s.match(/^([A-Za-z0-9._-]+):\s+сумма исторического купона отсутствует/i);
+      if (!m) continue;
+      out.push(m[1]);
+    }
+    return uniqueWarningTickers(out);
+  }
+
   function formatUnknownFutureCouponWarning(tickers) {
     var unique = uniqueWarningTickers(tickers);
     if (!unique.length) return '';
     var who = unique.length === 1 ? unique[0] : formatTickerListForWarning(unique);
     return 'Для ' + who + ' размер будущего купона пока неизвестен; итог рассчитан по выплатам с известной суммой.';
+  }
+
+  function formatUnknownHistoricalCouponWarning(tickers) {
+    var unique = uniqueWarningTickers(tickers);
+    if (!unique.length) return '';
+    var who = unique.length === 1 ? unique[0] : formatTickerListForWarning(unique);
+    return 'Для ' + who + ' сумма исторического купона отсутствует в доступных данных; итог рассчитан по выплатам с известной суммой.';
   }
 
   function collectUnavailablePayoutTickers(payoutsByTicker) {
@@ -4065,6 +4085,9 @@
   var PAYOUT_BAD_COUPON_SUFFIX = ': купон без суммы на 1 облигацию';
   var PAYOUT_UNKNOWN_FUTURE_COUPON_NOTE = 'Размер купона пока не определён в доступных данных.';
   var PAYOUT_UNKNOWN_FUTURE_COUPON_SUFFIX = ': размер будущего купона пока неизвестен';
+  var PAYOUT_UNKNOWN_HISTORICAL_COUPON_NOTE = 'Сумма исторического купона отсутствует в доступных данных.';
+  var PAYOUT_UNKNOWN_HISTORICAL_COUPON_SUFFIX = ': сумма исторического купона отсутствует в доступных данных';
+  var PAYOUT_KNOWN_TOTALS_SUFFIX = ' · по известным суммам';
   var PAYOUT_SPLIT_QTY_UNKNOWN_SUFFIX = ': не удалось определить количество на дату отсечки из-за сплита.';
   var PAYOUT_SPLIT_CURRENT_QTY_UNKNOWN_SUFFIX = ': не удалось определить текущее количество для предстоящих выплат из-за сплита.';
 
@@ -4078,7 +4101,8 @@
       totalPayoutsRub: invalid ? null : 0,
       items: [],
       warnings: [],
-      isPartial: false
+      isPartial: false,
+      hasUnknownAmounts: false
     };
   }
 
@@ -4102,6 +4126,32 @@
     }
     var endIso = nowIso && nowIso < toIso ? nowIso : toIso;
     return { invalidDate: false, fromIso: fromIso, toIso: toIso, endIso: endIso };
+  }
+
+  function payoutsKnownAmountRub(row) {
+    if (!row || row.amountKnown === false) return null;
+    var amt = Number(row.amountRub);
+    return isFinite(amt) ? amt : null;
+  }
+
+  function payoutsSumKnownTotals(items) {
+    var totalDiv = 0;
+    var totalCpn = 0;
+    var hasUnknownAmounts = false;
+    (items || []).forEach(function (row) {
+      if (!row) return;
+      if (row.amountKnown === false) hasUnknownAmounts = true;
+      var amt = payoutsKnownAmountRub(row);
+      if (amt == null) return;
+      if (row.type === 'dividend') totalDiv += amt;
+      else totalCpn += amt;
+    });
+    return {
+      totalDividendsRub: asOfRoundRub(totalDiv) || 0,
+      totalCouponsRub: asOfRoundRub(totalCpn) || 0,
+      totalPayoutsRub: asOfRoundRub(totalDiv + totalCpn) || 0,
+      hasUnknownAmounts: hasUnknownAmounts
+    };
   }
 
   function payoutsPositionsSales(portfolio, options) {
@@ -4392,7 +4442,8 @@
         totalPayoutsRub: 0,
         items: items,
         warnings: warnings,
-        isPartial: true
+        isPartial: true,
+        hasUnknownAmounts: false
       };
     }
 
@@ -4441,6 +4492,7 @@
       }
 
       var perUnit = null;
+      var amountKnown = true;
       if (type === 'dividend') {
         var divVal = Number(ev.value);
         perUnit = isFinite(divVal) && divVal > 0 ? divVal : null;
@@ -4451,27 +4503,34 @@
         }
       } else {
         perUnit = payoutsCouponPerUnit(ev, faceValue);
-        if (perUnit == null) {
+        amountKnown = perUnit != null;
+        if (!amountKnown) {
           isPartial = true;
-          payoutsPushWarning(warnings, ticker + PAYOUT_BAD_COUPON_SUFFIX);
-          continue;
+          payoutsPushWarning(warnings, ticker + PAYOUT_UNKNOWN_HISTORICAL_COUPON_SUFFIX);
         }
       }
 
-      var amountRub = asOfRoundRub(qtyHeld * perUnit);
-      if (amountRub == null) continue;
+      var amountRub = amountKnown ? asOfRoundRub(qtyHeld * perUnit) : null;
+      if (amountKnown && amountRub == null) continue;
       var currency = ev.currency ? String(ev.currency) : 'RUB';
+      var itemNote = PAYOUT_DIV_NOTE;
+      if (type === 'coupon' && !amountKnown) {
+        itemNote = PAYOUT_UNKNOWN_HISTORICAL_COUPON_NOTE;
+      } else if (type === 'coupon') {
+        itemNote = payoutsCouponFallbackNote(couponElig);
+      }
       var item = {
         ticker: ticker,
         type: type,
         payoutDate: null,
         recordDate: type === 'dividend' ? eventIso : (couponElig ? couponElig.recordDate : payoutsPickRecordDate(ev)),
         qtyHeld: qtyHeld,
-        payoutPerUnit: perUnit,
+        payoutPerUnit: amountKnown ? perUnit : null,
         amountRub: amountRub,
+        amountKnown: amountKnown,
         currency: currency,
         source: source,
-        note: type === 'dividend' ? PAYOUT_DIV_NOTE : payoutsCouponFallbackNote(couponElig)
+        note: itemNote
       };
       if (type === 'coupon') {
         item.couponDate = (couponElig && couponElig.couponDate) || payoutsPickCouponDate(ev) || eventIso;
@@ -4486,22 +4545,18 @@
       items.push(item);
     }
 
-    var totalDiv = 0;
-    var totalCpn = 0;
-    items.forEach(function (row) {
-      if (row.type === 'dividend') totalDiv += Number(row.amountRub) || 0;
-      else totalCpn += Number(row.amountRub) || 0;
-    });
+    var totals = payoutsSumKnownTotals(items);
     return {
       fromDate: window.fromIso,
       toDate: window.toIso,
       invalidDate: false,
-      totalDividendsRub: asOfRoundRub(totalDiv) || 0,
-      totalCouponsRub: asOfRoundRub(totalCpn) || 0,
-      totalPayoutsRub: asOfRoundRub(totalDiv + totalCpn) || 0,
+      totalDividendsRub: totals.totalDividendsRub,
+      totalCouponsRub: totals.totalCouponsRub,
+      totalPayoutsRub: totals.totalPayoutsRub,
       items: items,
       warnings: warnings,
-      isPartial: isPartial
+      isPartial: isPartial,
+      hasUnknownAmounts: totals.hasUnknownAmounts
     };
   }
 
@@ -4536,7 +4591,8 @@
       isClosed: true,
       isPartial: false,
       warnings: [],
-      notes: TWP_NOTES.slice()
+      notes: TWP_NOTES.slice(),
+      hasUnknownAmounts: false
     };
   }
 
@@ -4715,6 +4771,7 @@
     var payoutsRub = 0;
     var dividendsRub = 0;
     var couponsRub = 0;
+    var hasUnknownAmounts = false;
     var sample = payoutsSampleEntity(ticker, positions, sales);
     var kind = payoutsClassifyTicker(ticker, sample);
     var feed = payoutsGetFeed(options.payoutsByTicker, ticker);
@@ -4757,6 +4814,7 @@
           ? Number(payoutPart.totalCouponsRub) : 0;
         (payoutPart.warnings || []).forEach(function (w) { payoutsPushWarning(warnings, w); });
         if (payoutPart.isPartial) isPartial = true;
+        if (payoutPart.hasUnknownAmounts) hasUnknownAmounts = true;
       } else {
         isPartial = true;
       }
@@ -4788,7 +4846,8 @@
       isClosed: !(openQty > 1e-9),
       isPartial: isPartial,
       warnings: warnings,
-      notes: TWP_NOTES.slice()
+      notes: TWP_NOTES.slice(),
+      hasUnknownAmounts: hasUnknownAmounts
     };
   }
 
@@ -4810,7 +4869,8 @@
       items: [],
       isPartial: false,
       warnings: [],
-      notes: TWP_NOTES.slice()
+      notes: TWP_NOTES.slice(),
+      hasUnknownAmounts: false
     };
   }
 
@@ -4851,12 +4911,14 @@
     var items = [];
     var warnings = [];
     var isPartial = false;
+    var hasUnknownAmounts = false;
     var fromIso = '';
     var i;
     for (i = 0; i < tickers.length; i++) {
       var row = buildTickerReturnWithPayouts(tickers[i], portfolio, childOpts);
       items.push(row);
       if (row && row.isPartial) isPartial = true;
+      if (row && row.hasUnknownAmounts) hasUnknownAmounts = true;
       (row && row.warnings ? row.warnings : []).forEach(function (w) {
         payoutsPushWarning(warnings, w);
       });
@@ -4895,7 +4957,8 @@
       items: items,
       isPartial: isPartial,
       warnings: warnings,
-      notes: TWP_NOTES.slice()
+      notes: TWP_NOTES.slice(),
+      hasUnknownAmounts: hasUnknownAmounts
     };
   }
 
@@ -4924,7 +4987,8 @@
       payoutsPending: false,
       isPartial: false,
       warnings: [],
-      notes: PRS_NOTES.slice()
+      notes: PRS_NOTES.slice(),
+      hasUnknownAmounts: false
     };
   }
 
@@ -4989,6 +5053,7 @@
     var warnings = [];
     var isPartial = !!(totals.isPartial || totals.skippedUnknown || realizedMissing);
     var missingPayoutFeed = false;
+    var hasUnknownAmounts = false;
 
     if (payoutsPending) {
       payoutsRub = null;
@@ -5005,8 +5070,11 @@
         payoutsPushWarning(warnings, w);
       });
       if (twp && twp.isPartial) isPartial = true;
+      if (twp && twp.hasUnknownAmounts) hasUnknownAmounts = true;
       missingPayoutFeed = prsHasMissingPayoutFeed(warnings) ||
-        !!(twp && collectPayoutPartialTickersFromWarnings(twp.warnings).length);
+        !!(twp && collectPayoutPartialTickersFromWarnings((twp.warnings || []).filter(function (w) {
+          return collectUnknownHistoricalCouponTickersFromWarnings([w]).length === 0;
+        })).length);
     }
 
     if (totals.skippedUnknown || hideTotals) {
@@ -5045,7 +5113,8 @@
       payoutsPending: payoutsPending,
       isPartial: isPartial,
       warnings: warnings,
-      notes: PRS_NOTES.slice()
+      notes: PRS_NOTES.slice(),
+      hasUnknownAmounts: hasUnknownAmounts
     };
   }
 
@@ -5168,7 +5237,9 @@
         'pf-prs-card--break'
       ) +
       buildPortfolioResultSummaryCardHtml(
-        'Найденные выплаты',
+        summary.hasUnknownAmounts
+          ? 'Найденные выплаты' + PAYOUT_KNOWN_TOTALS_SUFFIX
+          : 'Найденные выплаты',
         payoutVal,
         'по найденным данным за период владения · справочно',
         'pf-prs-card--break'
@@ -5267,22 +5338,18 @@
       return 0;
     });
 
-    var totalDiv = 0;
-    var totalCpn = 0;
-    items.forEach(function (row) {
-      if (row.type === 'dividend') totalDiv += Number(row.amountRub) || 0;
-      else totalCpn += Number(row.amountRub) || 0;
-    });
+    var totals = payoutsSumKnownTotals(items);
     return {
       fromDate: window.fromIso,
       toDate: window.toIso,
       invalidDate: false,
-      totalDividendsRub: asOfRoundRub(totalDiv) || 0,
-      totalCouponsRub: asOfRoundRub(totalCpn) || 0,
-      totalPayoutsRub: asOfRoundRub(totalDiv + totalCpn) || 0,
+      totalDividendsRub: totals.totalDividendsRub,
+      totalCouponsRub: totals.totalCouponsRub,
+      totalPayoutsRub: totals.totalPayoutsRub,
       items: items,
       warnings: warnings,
-      isPartial: isPartial
+      isPartial: isPartial,
+      hasUnknownAmounts: totals.hasUnknownAmounts
     };
   }
 
@@ -10788,7 +10855,10 @@
         'Текущая стоимость остатка',
         mustHide ? splitKpi : (escapeHtml(formatPortfolioRubAmount(marketValue)) + splitBadge)
       ) +
-      buildTwpKpiHtml('Найденные выплаты', escapeHtml(formatPortfolioRubAmount(row.payoutsRub))) +
+      buildTwpKpiHtml(
+        row.hasUnknownAmounts ? 'Найденные выплаты' + PAYOUT_KNOWN_TOTALS_SUFFIX : 'Найденные выплаты',
+        escapeHtml(formatPortfolioRubAmount(row.payoutsRub))
+      ) +
       buildTwpKpiHtml(
         'Результат без выплат',
         mustHide ? splitKpi : (escapeHtml(formatSignedRubAmount(resultWithout)) + splitBadge)
@@ -12556,6 +12626,9 @@
   }
 
   function payoutsItemHint(row) {
+    if (row && row.type === 'coupon' && row.amountKnown === false) {
+      return PAYOUT_UNKNOWN_HISTORICAL_COUPON_NOTE;
+    }
     if (row && row.type === 'coupon') return 'дата купона, без НКД';
     return 'по дате закрытия реестра';
   }
@@ -12638,6 +12711,34 @@
     '<div class="pf-pay-cards">' + buildPortfolioPayoutsCardsHtml(items) + '</div>';
   }
 
+  function historicalKnownTotalsLabel(label, result) {
+    if (result && result.hasUnknownAmounts) return String(label || '') + PAYOUT_KNOWN_TOTALS_SUFFIX;
+    return String(label || '');
+  }
+
+  function formatHistoricalPayoutsWarningText(result, portfolio) {
+    result = result || {};
+    var unknown = orderWarningTickersByPortfolio(
+      collectUnknownHistoricalCouponTickersFromWarnings(
+        [].concat(result.warnings || [], result.feedWarnings || [])
+      ),
+      portfolio
+    );
+    var parts = [];
+    if (unknown.length) parts.push(formatUnknownHistoricalCouponWarning(unknown));
+    if (result.isPartial || result.feedPartial) {
+      var partialTickers = collectPayoutPartialTickers(result, portfolio).filter(function (t) {
+        return unknown.indexOf(t) < 0;
+      });
+      var partialText = formatPayoutPartialWarningText(
+        partialTickers,
+        unknown.length ? '' : PF_PAY_PARTIAL
+      );
+      if (partialText) parts.push(partialText);
+    }
+    return parts.join(' ');
+  }
+
   function renderPortfolioPayoutsResult(result, errorText) {
     var out = document.getElementById('pfPayResult');
     var warn = document.getElementById('pfPayWarn');
@@ -12657,9 +12758,9 @@
     if (warn) {
       if (partial) {
         warn.hidden = false;
-        warn.textContent = formatPayoutPartialWarningText(
-          collectPayoutPartialTickers(result, typeof getPortfolio === 'function' ? getPortfolio() : null),
-          PF_PAY_PARTIAL
+        warn.textContent = formatHistoricalPayoutsWarningText(
+          result,
+          typeof getPortfolio === 'function' ? getPortfolio() : null
         );
       } else {
         warn.hidden = true;
@@ -12670,13 +12771,13 @@
     var divs = formatPortfolioRubAmount(result.totalDividendsRub);
     var cpns = formatPortfolioRubAmount(result.totalCouponsRub);
     var board = '<div class="pf-pay-board">' +
-      buildPortfolioPayoutsKpiHtml('Всего выплат', total) +
+      buildPortfolioPayoutsKpiHtml(historicalKnownTotalsLabel('Всего выплат', result), total) +
       buildPortfolioPayoutsKpiHtml('Дивиденды', divs) +
-      buildPortfolioPayoutsKpiHtml('Купоны', cpns) +
+      buildPortfolioPayoutsKpiHtml(historicalKnownTotalsLabel('Купоны', result), cpns) +
     '</div>';
     var body = '';
     var items = result.items || [];
-    if (!items.length || !(Number(result.totalPayoutsRub) > 0)) {
+    if (!items.length) {
       body = '<p class="muted pf-pay-empty">' + escapeHtml(PF_PAY_EMPTY) + '</p>';
     } else {
       body = buildPortfolioPayoutsTableHtml(items);
