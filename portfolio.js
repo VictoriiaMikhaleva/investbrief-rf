@@ -12815,6 +12815,28 @@
     return UPCOMING_DIV_NOTE;
   }
 
+  function isUpcomingUnknownCouponAmount(row) {
+    return !!(row && row.type === 'coupon' && row.amountKnown === false);
+  }
+
+  function upcomingUnknownCouponAmountTipHtml() {
+    var text = PAYOUT_UNKNOWN_FUTURE_COUPON_NOTE;
+    var safe = escapeHtml(text);
+    return '<button type="button" class="pf-pay-unknown-tip" title="' + safe +
+      '" aria-label="' + safe + '" data-tip="' + safe + '">' +
+      '<span aria-hidden="true">i</span></button>';
+  }
+
+  function formatUpcomingUnknownAmountDisplay(row, displayText, endAlign) {
+    var value = escapeHtml(displayText);
+    if (!isUpcomingUnknownCouponAmount(row)) return value;
+    var safe = escapeHtml(PAYOUT_UNKNOWN_FUTURE_COUPON_NOTE);
+    return '<span class="pf-pay-unknown' + (endAlign ? ' pf-pay-unknown--end' : '') +
+      '" title="' + safe + '">' +
+      value + upcomingUnknownCouponAmountTipHtml() +
+      '</span>';
+  }
+
   function upcomingPayoutsItemHint(row) {
     var parts = [];
     var status = upcomingEntitlementStatusText(row);
@@ -12863,9 +12885,10 @@
           '<span><span class="lbl">Дата</span> ' + escapeHtml(formatAsOfDateDisplay(row.date)) + '</span>' +
           '<span><span class="lbl">' + escapeHtml(upcomingQtyLabel(row)) + '</span> ' +
             escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) + '</span>' +
-          '<span><span class="lbl">Выплата за 1 шт.</span> ' + escapeHtml(formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</span>' +
+          '<span><span class="lbl">Выплата за 1 шт.</span> ' +
+            formatUpcomingUnknownAmountDisplay(row, formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</span>' +
           '<span class="pf-pay-card-sum"><span class="lbl">Оценка суммы</span> ' +
-            escapeHtml(formatPortfolioRubAmount(row.amountRub)) + '</span>' +
+            formatUpcomingUnknownAmountDisplay(row, formatPortfolioRubAmount(row.amountRub), true) + '</span>' +
         '</div>' +
         '<p class="muted pf-pay-card-note">' + escapeHtml(upcomingPayoutsTechNote(row)) + '</p>' +
       '</article>';
@@ -12895,8 +12918,9 @@
         '<td title="' + escapeHtml(upcomingQtyLabel(row)) + '">' +
           escapeHtml(formatAsOfQtyDisplay(row.qtyHeld)) +
         '</td>' +
-        '<td>' + escapeHtml(formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</td>' +
-        '<td class="pf-pay-td-sum">' + escapeHtml(formatPortfolioRubAmount(row.amountRub)) + '</td>' +
+        '<td>' + formatUpcomingUnknownAmountDisplay(row, formatPayoutPerUnitDisplay(row.payoutPerUnit)) + '</td>' +
+        '<td class="pf-pay-td-sum">' +
+          formatUpcomingUnknownAmountDisplay(row, formatPortfolioRubAmount(row.amountRub), true) + '</td>' +
       '</tr>';
     }).join('');
     return '<div class="pf-pay-table-wrap">' +
