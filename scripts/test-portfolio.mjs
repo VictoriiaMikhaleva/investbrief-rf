@@ -359,6 +359,7 @@ function loadPortfolioCalcHelpers() {
     normalizeSale: h.normalizeSale,
     state: {},
     Promise,
+    BOND_SECID_MAP: {},
     setTimeout: () => {},
     clearTimeout: () => {},
     localStorage: {
@@ -388,6 +389,15 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__today = localPortfolioTodayYmd;' +
       '\nthis.__prefill = computePortfolioNewLotPrefill;' +
       '\nthis.__ofzWarn = shouldWarnOfzAvgLooksLikeRubles;' +
+      '\nthis.__txAnomalyThr = TX_PRICE_ANOMALY_THRESHOLD;' +
+      '\nthis.__txAnomalyNearby = TX_PRICE_ANOMALY_NEARBY_MAX_DAYS;' +
+      '\nthis.__txAnomalyLookback = TX_PRICE_ANOMALY_LOOKBACK_DAYS;' +
+      '\nthis.__evalTxAnomaly = evaluateTransactionPriceAnomaly;' +
+      '\nthis.__buildTxAnomaly = buildTransactionPriceAnomalyCheck;' +
+      '\nthis.__txAnomalyLine = formatTxPriceAnomalyCompareLine;' +
+      '\nthis.__txAnomalyView = buildTxPriceAnomalyWarningView;' +
+      '\nthis.__txAnomalySecid = resolveTxPriceAnomalyBondSecid;' +
+      '\nthis.__salePriceLabel = salePriceLabelForTicker;' +
       '\nthis.__isFormBond = isPortfolioFormBondTicker;' +
       '\nthis.__summarize = summarizeTickerHistory;' +
       '\nthis.__allocPnl = getSaleAllocationPnlRub;' +
@@ -550,6 +560,15 @@ function loadPortfolioCalcHelpers() {
     localPortfolioTodayYmd: sandbox.__today,
     computePortfolioNewLotPrefill: sandbox.__prefill,
     shouldWarnOfzAvgLooksLikeRubles: sandbox.__ofzWarn,
+    TX_PRICE_ANOMALY_THRESHOLD: sandbox.__txAnomalyThr,
+    TX_PRICE_ANOMALY_NEARBY_MAX_DAYS: sandbox.__txAnomalyNearby,
+    TX_PRICE_ANOMALY_LOOKBACK_DAYS: sandbox.__txAnomalyLookback,
+    evaluateTransactionPriceAnomaly: sandbox.__evalTxAnomaly,
+    buildTransactionPriceAnomalyCheck: sandbox.__buildTxAnomaly,
+    formatTxPriceAnomalyCompareLine: sandbox.__txAnomalyLine,
+    buildTxPriceAnomalyWarningView: sandbox.__txAnomalyView,
+    resolveTxPriceAnomalyBondSecid: sandbox.__txAnomalySecid,
+    salePriceLabelForTicker: sandbox.__salePriceLabel,
     isPortfolioFormBondTicker: sandbox.__isFormBond,
     summarizeTickerHistory: sandbox.__summarize,
     getSaleAllocationPnlRub: sandbox.__allocPnl,
@@ -11576,6 +11595,291 @@ function loadPortfolioWriterSandbox() {
   );
   assert(/function buildPortfolioResultSegmentExplanation/.test(helperKeep), 'explain ui: wave-1 helper still present');
   assert(!/pfDynExplain/.test(helperKeep), 'explain ui: wave-1 helper body not used for DOM');
+}
+
+{
+  // Цена сделки vs рынок: anomaly detector v1
+  assert(calc.TX_PRICE_ANOMALY_THRESHOLD === 0.2, 'anomaly: threshold is 0.2');
+  assert(calc.TX_PRICE_ANOMALY_NEARBY_MAX_DAYS === 10, 'anomaly: nearby max 10 days');
+  assert(calc.TX_PRICE_ANOMALY_LOOKBACK_DAYS === 30, 'anomaly: lookback 30 days');
+  const pfAnomalySrc = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  assert((pfAnomalySrc.match(/var TX_PRICE_ANOMALY_THRESHOLD = 0\.2;/) || []).length === 1,
+    'anomaly: one threshold constant');
+  assert(!/deviation\s*>=\s*0\.2\b/.test(pfAnomalySrc.replace('var TX_PRICE_ANOMALY_THRESHOLD = 0.2;', '')),
+    'anomaly: no duplicated 0.2 compare magic');
+
+  function evalAnomaly(extra) {
+    return calc.evaluateTransactionPriceAnomaly(extra);
+  }
+
+  const edgeLow = evalAnomaly({
+    enteredPrice: 119.99,
+    isBond: false,
+    transactionDate: '2024-06-10',
+    priceRes: { status: 'ok', price: 100, priceDate: '2024-06-10', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(edgeLow.shouldWarn === false, 'anomaly threshold: 19.99% no warning');
+  assert(Math.abs(edgeLow.deviation - 0.1999) < 1e-10, 'anomaly threshold: 19.99% deviation');
+
+  const edgeEq = evalAnomaly({
+    enteredPrice: 120,
+    isBond: false,
+    transactionDate: '2024-06-10',
+    priceRes: { status: 'ok', price: 100, priceDate: '2024-06-10', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(edgeEq.shouldWarn === true, 'anomaly threshold: 20.00% warning');
+  assert(Math.abs(edgeEq.deviation - 0.2) < 1e-12, 'anomaly threshold: 20.00% deviation');
+
+  const edgeHigh = evalAnomaly({
+    enteredPrice: 121,
+    isBond: false,
+    transactionDate: '2024-06-10',
+    priceRes: { status: 'ok', price: 100, priceDate: '2024-06-10', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(edgeHigh.shouldWarn === true, 'anomaly threshold: >20% warning');
+
+  const stockClose = evalAnomaly({
+    enteredPrice: 100,
+    isBond: false,
+    transactionDate: '2024-06-10',
+    priceRes: { status: 'ok', price: 102, priceDate: '2024-06-10', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(stockClose.shouldWarn === false, 'stock A: 100 vs 102 no warning');
+
+  const stockHigh = evalAnomaly({
+    enteredPrice: 125,
+    isBond: false,
+    transactionDate: '2024-06-10',
+    priceRes: { status: 'ok', price: 100, priceDate: '2024-06-10', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(stockHigh.shouldWarn === true && stockHigh.deviation === 0.25, 'stock B: 125 vs 100 warning');
+
+  const stockLow = evalAnomaly({
+    enteredPrice: 75,
+    isBond: false,
+    transactionDate: '2024-06-10',
+    priceRes: { status: 'ok', price: 100, priceDate: '2024-06-10', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(stockLow.shouldWarn === true && stockLow.deviation === 0.25, 'stock C: 75 vs 100 warning');
+
+  assert(calc.formatTxPriceAnomalyCompareLine(320, 286, false) ===
+    'Введено: 320 ₽ · рынок около даты: 286 ₽', 'stock compare line');
+  assert(calc.formatTxPriceAnomalyCompareLine(111.2, 85.054, true) ===
+    'Введено: 111,20% · рынок около даты: 85,05%', 'ofz compare line');
+
+  assert(calc.salePriceLabelForTicker('SBER') === 'Цена продажи за акцию, ₽', 'sale label stock');
+  assert(calc.salePriceLabelForTicker('OFZ_26254') === 'Цена продажи, % от номинала', 'sale label ofz');
+
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, 111.2) === false, 'ofz 111.20: no ruble warning');
+  assert(calc.shouldWarnOfzAvgLooksLikeRubles(true, 1112) === true, 'ofz 1112: ruble warning still on');
+
+  const unitMismatch = evalAnomaly({
+    enteredPrice: 111.2,
+    isBond: true,
+    expectedUnit: 'pct-of-face-value',
+    transactionDate: '2026-07-02',
+    priceRes: { status: 'ok', price: 1112, priceDate: '2026-07-02', unit: 'rub', source: 'moex-iss-history-bonds' }
+  });
+  assert(unitMismatch.shouldWarn === false, 'unit mismatch: no warning');
+
+  const futureClose = evalAnomaly({
+    enteredPrice: 125,
+    isBond: false,
+    transactionDate: '2024-06-08',
+    priceRes: { status: 'ok', price: 100, priceDate: '2024-06-10', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(futureClose.shouldWarn === false, 'never use CLOSE after transaction date');
+  assert(futureClose.referenceQuality === 'missing', 'future CLOSE treated as missing');
+
+  const nearbySat = evalAnomaly({
+    enteredPrice: 125,
+    isBond: false,
+    transactionDate: '2024-06-08',
+    priceRes: { status: 'ok', price: 100, priceDate: '2024-06-07', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(nearbySat.referenceQuality === 'nearby', 'weekend: nearby Friday');
+  assert(nearbySat.shouldWarn === true, 'weekend nearby can warn');
+  const nearbyView = calc.buildTxPriceAnomalyWarningView(nearbySat, false);
+  assert(nearbyView.marketDateLine === 'Рыночная дата: 07.06.2024', 'nearby shows reference date');
+
+  const stale = evalAnomaly({
+    enteredPrice: 125,
+    isBond: false,
+    transactionDate: '2024-06-25',
+    priceRes: { status: 'ok', price: 100, priceDate: '2024-06-07', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(stale.referenceQuality === 'stale', 'gap >10: stale');
+  assert(stale.shouldWarn === false, 'stale: no warning');
+
+  const missing = evalAnomaly({
+    enteredPrice: 125,
+    isBond: false,
+    transactionDate: '2024-01-01',
+    priceRes: { status: 'missing', price: null, priceDate: null, unit: 'rub' }
+  });
+  assert(missing.shouldWarn === false && missing.referenceQuality === 'missing', 'missing: no warning');
+
+  const unsupportedUs = evalAnomaly({
+    enteredPrice: 125,
+    isBond: false,
+    transactionDate: '2024-06-10',
+    priceRes: { status: 'unsupported' }
+  });
+  assert(unsupportedUs.shouldWarn === false && unsupportedUs.referenceQuality === 'unsupported',
+    'unsupported: no warning');
+
+  const gmknHist = evalAnomaly({
+    enteredPrice: 15200,
+    isBond: false,
+    transactionDate: '2024-03-20',
+    priceRes: { status: 'ok', price: 15100, priceDate: '2024-03-20', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(gmknHist.shouldWarn === false, 'split pre: raw 15200 vs 15100 no ×100 warning');
+
+  const gmknPost = evalAnomaly({
+    enteredPrice: 151,
+    isBond: false,
+    transactionDate: '2024-05-01',
+    priceRes: { status: 'ok', price: 150, priceDate: '2024-05-01', unit: 'rub', source: 'moex-iss-history-shares' }
+  });
+  assert(gmknPost.shouldWarn === false, 'split post: raw 151 vs 150 no warning');
+
+  assert(calc.resolveTxPriceAnomalyBondSecid('OFZ_26254') === '',
+    'ofz secid: no hardcoded OFZ_26254 map');
+  calc.sandbox.BOND_SECID_MAP.OFZ_26254 = 'SU26254RMFS1';
+  assert(calc.resolveTxPriceAnomalyBondSecid('OFZ_26254') === 'SU26254RMFS1',
+    'ofz secid: uses existing map');
+  delete calc.sandbox.BOND_SECID_MAP.OFZ_26254;
+
+  await (async () => {
+    const ofz26254 = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'OFZ_26254',
+      date: '2026-07-02',
+      enteredPrice: 111.2,
+      isBond: true,
+      history: [{ date: '2026-07-02', close: 85.054 }]
+    });
+    assert(ofz26254.shouldWarn === true, 'OFZ_26254: shouldWarn');
+    assert(ofz26254.referenceDate === '2026-07-02', 'OFZ_26254: exact referenceDate');
+    assert(ofz26254.referenceQuality === 'exact', 'OFZ_26254: exact quality');
+    assert(ofz26254.unit === 'pct-of-face-value', 'OFZ_26254: pct unit');
+    assert(ofz26254.referencePrice === 85.054, 'OFZ_26254: CLOSE 85.054');
+    assert(Math.abs(ofz26254.deviation - ((111.2 - 85.054) / 85.054)) < 1e-12, 'OFZ_26254: ~30.74%');
+    const ofzView = calc.buildTxPriceAnomalyWarningView(ofz26254, true);
+    assert(ofzView.compareLine === 'Введено: 111,20% · рынок около даты: 85,05%',
+      'OFZ_26254 warning line');
+    assert(ofzView.nkdLine === 'Сравнение цены не учитывает НКД.', 'OFZ_26254 NKD line');
+
+    const ofzClose = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'OFZ_26254',
+      date: '2026-07-02',
+      enteredPrice: 85.2,
+      isBond: true,
+      history: [{ date: '2026-07-02', close: 85.054 }]
+    });
+    assert(ofzClose.shouldWarn === false, 'OFZ close to market: no warning');
+
+    const ofzWeekend = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'OFZ_26238',
+      date: '2024-06-09',
+      enteredPrice: 120,
+      isBond: true,
+      history: [
+        { date: '2024-06-07', close: 95.4 },
+        { date: '2024-06-10', close: 96.1 }
+      ]
+    });
+    assert(ofzWeekend.referenceDate === '2024-06-07', 'ofz weekend: previous CLOSE not future');
+    assert(ofzWeekend.referenceQuality === 'nearby', 'ofz weekend: nearby');
+    assert(ofzWeekend.shouldWarn === true, 'ofz weekend: 120 vs 95.4 warns');
+
+    let fetchCalls = 0;
+    const noSecid = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'OFZ_26254',
+      date: '2026-07-02',
+      enteredPrice: 111.2,
+      isBond: true,
+      options: {
+        fetchHistory: () => { fetchCalls += 1; return []; },
+        fetchJson: () => { fetchCalls += 1; throw new Error('no fetch'); }
+      }
+    });
+    assert(fetchCalls === 0, 'unresolved OFZ secid: no network');
+    assert(noSecid.shouldWarn === false, 'unresolved OFZ secid: no warning');
+
+    let span = null;
+    const lookback = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'SBER',
+      date: '2024-06-10',
+      enteredPrice: 100,
+      isBond: false,
+      options: {
+        fetchHistory: (q) => {
+          span = q;
+          return [{ date: '2024-06-10', close: 100 }];
+        }
+      }
+    });
+    assert(lookback.shouldWarn === false, 'lookback exact market: no warning');
+    assert(span && span.from === '2024-05-11', 'lookback from = date - 30 days');
+    assert(span && span.till === '2024-06-10', 'lookback till = transaction date');
+
+    const stockBuy = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'SBER',
+      date: '2024-06-10',
+      enteredPrice: 125,
+      isBond: false,
+      history: [{ date: '2024-06-10', close: 100 }]
+    });
+    const stockSell = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'SBER',
+      date: '2024-06-10',
+      enteredPrice: 75,
+      isBond: false,
+      history: [{ date: '2024-06-10', close: 100 }]
+    });
+    assert(stockBuy.shouldWarn === true, 'BUY high: warning');
+    assert(stockSell.shouldWarn === true, 'SELL low: warning');
+
+    const usRes = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'AAPL',
+      date: '2024-06-10',
+      enteredPrice: 200,
+      isUs: true,
+      history: [{ date: '2024-06-10', close: 100 }]
+    });
+    assert(usRes.shouldWarn === false && usRes.referenceQuality === 'unsupported', 'US: no warning');
+
+    const pifRes = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'FUNDX',
+      date: '2024-06-10',
+      enteredPrice: 200,
+      kind: 'pif',
+      history: [{ date: '2024-06-10', close: 100 }]
+    });
+    assert(pifRes.shouldWarn === false && pifRes.referenceQuality === 'unsupported', 'PIF: no warning');
+
+    const origGet = calc.sandbox.getInstrumentPriceAtDate;
+    calc.sandbox.getInstrumentPriceAtDate = () => Promise.reject(new Error('iss down'));
+    const netFail = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'SBER',
+      date: '2024-06-10',
+      enteredPrice: 125,
+      isBond: false,
+      history: [{ date: '2024-06-10', close: 100 }]
+    });
+    calc.sandbox.getInstrumentPriceAtDate = origGet;
+    assert(netFail.shouldWarn === false, 'network failure: no false-ok, no warning');
+
+    const gmknBuild = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'GMKN',
+      date: '2024-03-20',
+      enteredPrice: 15200,
+      isBond: false,
+      history: [{ date: '2024-03-20', close: 15100 }]
+    });
+    assert(gmknBuild.shouldWarn === false, 'GMKN pre-split injected: no warning');
+  })();
 }
 
 if (errors.length) {

@@ -1945,6 +1945,29 @@ button.primary.brief-read-btn:active {
   display: none !important;
 }
 
+.pf-tx-anomaly-warn .pf-tx-anomaly-title,
+.pf-tx-anomaly-warn .pf-tx-anomaly-line,
+.pf-tx-anomaly-warn .pf-tx-anomaly-meta,
+.pf-tx-anomaly-warn .pf-tx-anomaly-nkd {
+  margin: 0.12rem 0;
+}
+
+.pf-tx-anomaly-warn .pf-tx-anomaly-nkd {
+  font-weight: 500;
+}
+
+.pf-tx-anomaly-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.pf-tx-anomaly-actions .pf-btn {
+  min-height: 2rem;
+  padding: 0.28rem 0.7rem;
+}
+
 /* ╨Т╨╛╨╗╨╜╨░ 2.2.x: ╨╕╨╡╤А╨░╤А╤Е╨╕╤П action-╨║╨╜╨╛╨┐╨╛╨║ ╨┐╨╛╤А╤В╤Д╨╡╨╗╤П */
 #tab-portfolio .pf-btn,
 #tab-portfolio .pf-history-toggle {
