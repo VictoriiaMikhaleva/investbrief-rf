@@ -8697,6 +8697,381 @@
     return /^[A-Z0-9._-]{1,12}$/.test(t) && !/[А-Яа-яЁё]/.test(String(raw || ''));
   }
 
+  var TX_PRICE_ANOMALY_THRESHOLD = 0.2;
+  var TX_PRICE_ANOMALY_LOOKBACK_DAYS = 30;
+  var TX_PRICE_ANOMALY_NEARBY_MAX_DAYS = 10;
+  var pfTxAnomalyState = { key: '', ackKey: '', inFlightKey: '', result: null };
+
+  function txPriceAnomalyShiftIso(iso, days) {
+    var d = new Date(String(iso || '') + 'T12:00:00');
+    if (isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + Number(days) || 0);
+    var y = d.getFullYear();
+    var mo = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + mo + '-' + day;
+  }
+
+  function txPriceAnomalyCalendarGapDays(fromIso, toIso) {
+    var a = new Date(String(fromIso || '') + 'T12:00:00');
+    var b = new Date(String(toIso || '') + 'T12:00:00');
+    if (isNaN(a.getTime()) || isNaN(b.getTime())) return null;
+    return Math.round((b.getTime() - a.getTime()) / 86400000);
+  }
+
+  function txPriceAnomalyCandidateKey(candidate) {
+    candidate = candidate || {};
+    return [
+      candidate.op || '',
+      candidate.ticker || '',
+      candidate.date || '',
+      String(candidate.enteredPrice),
+      candidate.isBond ? 'bond' : 'stock'
+    ].join('|');
+  }
+
+  function txPriceAnomalyLookupAvailable() {
+    return typeof getInstrumentPriceAtDate === 'function' &&
+      typeof loadInstrumentHistoryForDateRange === 'function' &&
+      typeof moexFetchJson === 'function';
+  }
+
+  function resolveTxPriceAnomalyBondSecid(ticker) {
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (!ticker) return '';
+    if (typeof BOND_SECID_MAP !== 'undefined' && BOND_SECID_MAP[ticker]) {
+      return String(BOND_SECID_MAP[ticker]);
+    }
+    if (/^SU\d{5}/.test(ticker)) return ticker;
+    if (typeof searchOfzCatalog === 'function') {
+      var hits = searchOfzCatalog(ticker) || [];
+      var exact = '';
+      hits.forEach(function (it) {
+        if (!it || !it.secid) return;
+        var tt = typeof normalizeTicker === 'function'
+          ? normalizeTicker(it.ticker)
+          : String(it.ticker || '').trim().toUpperCase();
+        if (tt === ticker) exact = String(it.secid);
+      });
+      if (exact) return exact;
+    }
+    return '';
+  }
+
+  function salePriceLabelForTicker(ticker) {
+    var isBond = typeof isRuBondTicker === 'function' && isRuBondTicker(ticker);
+    return isBond ? 'Цена продажи, % от номинала' : 'Цена продажи за акцию, ₽';
+  }
+
+  function updatePortfolioSalePriceLabel(ticker) {
+    var el = document.getElementById('pfSalePriceLabel');
+    if (!el) return;
+    el.textContent = salePriceLabelForTicker(ticker);
+  }
+
+  function formatTxPriceAnomalyNumber(n, isBond) {
+    var v = Number(n);
+    if (!isFinite(v)) return '—';
+    var s = v.toFixed(2);
+    if (!isBond && /\.00$/.test(s)) s = s.slice(0, -3);
+    s = s.replace('.', ',');
+    return isBond ? (s + '%') : (s + ' ₽');
+  }
+
+  function formatTxPriceAnomalyCompareLine(entered, market, isBond) {
+    return 'Введено: ' + formatTxPriceAnomalyNumber(entered, isBond) +
+      ' · рынок около даты: ' + formatTxPriceAnomalyNumber(market, isBond);
+  }
+
+  function formatTxPriceAnomalyRuDate(iso) {
+    var p = String(iso || '').slice(0, 10).split('-');
+    if (p.length !== 3 || !p[0] || !p[1] || !p[2]) return '';
+    return p[2] + '.' + p[1] + '.' + p[0];
+  }
+
+  function buildTxPriceAnomalyWarningView(result, isBond) {
+    result = result || {};
+    var view = {
+      title: 'Цена сделки заметно отличается от рыночной оценки на эту дату.',
+      compareLine: formatTxPriceAnomalyCompareLine(result.enteredPrice, result.referencePrice, isBond),
+      marketDateLine: '',
+      nkdLine: isBond ? 'Сравнение цены не учитывает НКД.' : ''
+    };
+    if (result.referenceQuality === 'nearby' && result.referenceDate &&
+        result.referenceDate !== result.transactionDate) {
+      var ru = formatTxPriceAnomalyRuDate(result.referenceDate);
+      if (ru) view.marketDateLine = 'Рыночная дата: ' + ru;
+    }
+    return view;
+  }
+
+  function classifyTxPriceReferenceQuality(priceRes, transactionDate) {
+    var status = priceRes && priceRes.status ? String(priceRes.status) : '';
+    if (status === 'unsupported') return 'unsupported';
+    if (status === 'invalid-date') return 'missing';
+    if (status !== 'ok') return 'missing';
+    var refDate = priceRes && priceRes.priceDate ? String(priceRes.priceDate).slice(0, 10) : '';
+    var txDate = String(transactionDate || '').slice(0, 10);
+    if (!refDate || !txDate || refDate > txDate) return 'missing';
+    if (refDate === txDate) return 'exact';
+    var gap = txPriceAnomalyCalendarGapDays(refDate, txDate);
+    if (gap != null && gap >= 0 && gap <= TX_PRICE_ANOMALY_NEARBY_MAX_DAYS) return 'nearby';
+    return 'stale';
+  }
+
+  function evaluateTransactionPriceAnomaly(input) {
+    input = input || {};
+    var entered = Number(input.enteredPrice);
+    var isBond = !!input.isBond;
+    var expectedUnit = input.expectedUnit || (isBond ? 'pct-of-face-value' : 'rub');
+    var txDate = input.transactionDate || input.date || '';
+    if (typeof normalizePortfolioDate === 'function') txDate = normalizePortfolioDate(txDate) || txDate;
+    var priceRes = input.priceRes || {};
+    var quality = classifyTxPriceReferenceQuality(priceRes, txDate);
+    var unit = priceRes.unit != null ? String(priceRes.unit) : '';
+    var ref = Number(priceRes.price);
+    var out = {
+      shouldWarn: false,
+      enteredPrice: isFinite(entered) ? entered : null,
+      referencePrice: isFinite(ref) && ref > 0 ? ref : null,
+      referenceDate: priceRes.priceDate || null,
+      referenceQuality: quality,
+      deviation: null,
+      unit: unit || expectedUnit,
+      source: priceRes.source || null,
+      transactionDate: txDate || ''
+    };
+    if (!isFinite(entered) || entered <= 0) return out;
+    if (!txDate) {
+      out.referenceQuality = 'missing';
+      return out;
+    }
+    if (quality !== 'exact' && quality !== 'nearby') return out;
+    if (unit !== expectedUnit) {
+      out.shouldWarn = false;
+      out.referenceQuality = 'missing';
+      return out;
+    }
+    if (!isFinite(ref) || ref <= 0) {
+      out.referenceQuality = 'missing';
+      return out;
+    }
+    out.deviation = Math.abs(entered - ref) / ref;
+    out.shouldWarn = out.deviation >= TX_PRICE_ANOMALY_THRESHOLD;
+    return out;
+  }
+
+  function buildTransactionPriceAnomalyCheck(input) {
+    input = input || {};
+    var ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(input.ticker)
+      : String(input.ticker || '').trim().toUpperCase();
+    var txDate = typeof normalizePortfolioDate === 'function'
+      ? normalizePortfolioDate(input.date)
+      : String(input.date || '').slice(0, 10);
+    var entered = Number(input.enteredPrice);
+    var isBond = !!input.isBond;
+    var kind = String(input.kind || '').toLowerCase();
+    var isUs = !!(input.isUs || kind === 'us' ||
+      (typeof Markets !== 'undefined' && Markets.isUsTicker && Markets.isUsTicker(ticker)));
+    var expectedUnit = isBond ? 'pct-of-face-value' : 'rub';
+
+    function done(priceRes) {
+      return evaluateTransactionPriceAnomaly({
+        enteredPrice: entered,
+        isBond: isBond,
+        expectedUnit: expectedUnit,
+        transactionDate: txDate,
+        priceRes: priceRes || {}
+      });
+    }
+
+    if (isUs || kind === 'pif' || kind === 'index' || input.unsupported) {
+      return Promise.resolve(done({ status: 'unsupported' }));
+    }
+    if (!ticker || !txDate || !isFinite(entered) || entered <= 0) {
+      return Promise.resolve(done({ status: 'missing' }));
+    }
+
+    var meta = { type: isBond ? 'ofz' : 'stock' };
+    if (isBond) {
+      var secid = resolveTxPriceAnomalyBondSecid(ticker);
+      if (secid) meta.secid = secid;
+      else if (!input.history) {
+        return Promise.resolve(done({ status: 'missing' }));
+      }
+    }
+
+    var loadHistory = typeof loadInstrumentHistoryForDateRange === 'function'
+      ? loadInstrumentHistoryForDateRange
+      : null;
+    var getPrice = typeof getInstrumentPriceAtDate === 'function'
+      ? getInstrumentPriceAtDate
+      : null;
+    var options = input.options || {};
+    var historyPromise;
+    if (Array.isArray(input.history)) {
+      historyPromise = Promise.resolve(input.history);
+    } else if (loadHistory) {
+      var fromDate = txPriceAnomalyShiftIso(txDate, -TX_PRICE_ANOMALY_LOOKBACK_DAYS) || txDate;
+      historyPromise = loadHistory(ticker, fromDate, txDate, meta, options);
+    } else {
+      return Promise.resolve(done({ status: 'missing' }));
+    }
+
+    return Promise.resolve(historyPromise).then(function (rows) {
+      if (!getPrice) return done({ status: 'missing' });
+      var priceOpts = { history: rows || [] };
+      if (options.fetchJson) priceOpts.fetchJson = options.fetchJson;
+      return Promise.resolve(getPrice(ticker, txDate, meta, priceOpts)).then(done);
+    }).catch(function () {
+      return done({ status: 'missing' });
+    });
+  }
+
+  function txPriceAnomalyFormIds(formKind) {
+    if (formKind === 'sale') {
+      return {
+        box: 'pfSalePriceAnomalyWarn',
+        line: 'pfSalePriceAnomalyLine',
+        meta: 'pfSalePriceAnomalyMeta',
+        nkd: 'pfSalePriceAnomalyNkd',
+        price: 'pfSalePrice',
+        submit: 'pfSaleBtn'
+      };
+    }
+    return {
+      box: 'pfAddPriceAnomalyWarn',
+      line: 'pfAddPriceAnomalyLine',
+      meta: 'pfAddPriceAnomalyMeta',
+      nkd: 'pfAddPriceAnomalyNkd',
+      price: 'pfAddAvg',
+      submit: 'pfAddBtn'
+    };
+  }
+
+  function hideTxPriceAnomalyWarn(formKind) {
+    var ids = txPriceAnomalyFormIds(formKind);
+    var box = document.getElementById(ids.box);
+    if (box) box.hidden = true;
+    var submit = document.getElementById(ids.submit);
+    if (submit) submit.disabled = false;
+  }
+
+  function resetTxPriceAnomalyUi() {
+    hideTxPriceAnomalyWarn('buy');
+    hideTxPriceAnomalyWarn('sale');
+  }
+
+  function resetTxPriceAnomalyState() {
+    pfTxAnomalyState.key = '';
+    pfTxAnomalyState.ackKey = '';
+    pfTxAnomalyState.inFlightKey = '';
+    pfTxAnomalyState.result = null;
+    resetTxPriceAnomalyUi();
+  }
+
+  function showTxPriceAnomalyWarn(formKind, candidate, result) {
+    var ids = txPriceAnomalyFormIds(formKind);
+    var box = document.getElementById(ids.box);
+    if (!box) return;
+    var view = buildTxPriceAnomalyWarningView(result, !!(candidate && candidate.isBond));
+    var line = document.getElementById(ids.line);
+    var meta = document.getElementById(ids.meta);
+    var nkd = document.getElementById(ids.nkd);
+    if (line) line.textContent = view.compareLine;
+    if (meta) {
+      meta.textContent = view.marketDateLine || '';
+      meta.hidden = !view.marketDateLine;
+    }
+    if (nkd) {
+      nkd.textContent = view.nkdLine || '';
+      nkd.hidden = !view.nkdLine;
+    }
+    box.hidden = false;
+    hideTxPriceAnomalyWarn(formKind === 'sale' ? 'buy' : 'sale');
+  }
+
+  function confirmTxPriceAnomalyAnyway(formKind) {
+    if (pfTxAnomalyState.key) pfTxAnomalyState.ackKey = pfTxAnomalyState.key;
+    hideTxPriceAnomalyWarn(formKind);
+    if (formKind === 'sale') {
+      commitPortfolioSale(state.pfSaleTicker);
+      return;
+    }
+    addPortfolioPosition(null, { prefix: state.pfEditPrefix || '' });
+  }
+
+  function dismissTxPriceAnomaly(formKind) {
+    pfTxAnomalyState.ackKey = '';
+    hideTxPriceAnomalyWarn(formKind);
+    var ids = txPriceAnomalyFormIds(formKind);
+    var el = document.getElementById(ids.price);
+    if (el && typeof el.focus === 'function') {
+      try { el.focus({ preventScroll: true }); } catch (e) {
+        try { el.focus(); } catch (e2) { /* noop */ }
+      }
+    }
+  }
+
+  function bindTxPriceAnomalyUi() {
+    if (bindTxPriceAnomalyUi._done) return;
+    bindTxPriceAnomalyUi._done = true;
+    var saveBuy = document.getElementById('pfAddPriceAnomalySaveBtn');
+    var fixBuy = document.getElementById('pfAddPriceAnomalyFixBtn');
+    var saveSale = document.getElementById('pfSalePriceAnomalySaveBtn');
+    var fixSale = document.getElementById('pfSalePriceAnomalyFixBtn');
+    if (saveBuy) saveBuy.addEventListener('click', function () { confirmTxPriceAnomalyAnyway('buy'); });
+    if (fixBuy) fixBuy.addEventListener('click', function () { dismissTxPriceAnomaly('buy'); });
+    if (saveSale) saveSale.addEventListener('click', function () { confirmTxPriceAnomalyAnyway('sale'); });
+    if (fixSale) fixSale.addEventListener('click', function () { dismissTxPriceAnomaly('sale'); });
+  }
+
+  function gateTxPriceAnomaly(candidate, formKind, proceed) {
+    bindTxPriceAnomalyUi();
+    var key = txPriceAnomalyCandidateKey(candidate);
+    if (pfTxAnomalyState.ackKey === key) {
+      hideTxPriceAnomalyWarn(formKind);
+      return proceed();
+    }
+    if (pfTxAnomalyState.key === key && pfTxAnomalyState.result) {
+      if (pfTxAnomalyState.result.shouldWarn) {
+        showTxPriceAnomalyWarn(formKind, candidate, pfTxAnomalyState.result);
+        return;
+      }
+      pfTxAnomalyState.ackKey = key;
+      hideTxPriceAnomalyWarn(formKind);
+      return proceed();
+    }
+    if (pfTxAnomalyState.inFlightKey === key) return;
+    pfTxAnomalyState.inFlightKey = key;
+    var ids = txPriceAnomalyFormIds(formKind);
+    var submit = document.getElementById(ids.submit);
+    if (submit) submit.disabled = true;
+    return buildTransactionPriceAnomalyCheck(candidate).then(function (res) {
+      if (pfTxAnomalyState.inFlightKey !== key) return;
+      pfTxAnomalyState.inFlightKey = '';
+      if (submit) submit.disabled = false;
+      pfTxAnomalyState.key = key;
+      pfTxAnomalyState.result = res;
+      if (!res || !res.shouldWarn) {
+        pfTxAnomalyState.ackKey = key;
+        hideTxPriceAnomalyWarn(formKind);
+        return proceed();
+      }
+      showTxPriceAnomalyWarn(formKind, candidate, res);
+    }).catch(function () {
+      if (pfTxAnomalyState.inFlightKey !== key) return;
+      pfTxAnomalyState.inFlightKey = '';
+      if (submit) submit.disabled = false;
+      pfTxAnomalyState.ackKey = key;
+      hideTxPriceAnomalyWarn(formKind);
+      return proceed();
+    });
+  }
+
   function commitPortfolioPosition(sec, captured, prefix) {
     if (!sec || !sec.ticker) {
       showToast('Укажите тикер');
@@ -8728,6 +9103,13 @@
       return;
     }
 
+    var isUs = typeof Markets !== 'undefined' && sec.market === 'US';
+    var isBond = !isUs && (
+      sec.type === 'bond' || sec.kind === 'bond' ||
+      (typeof isRuBondTicker === 'function' && isRuBondTicker(t))
+    );
+
+    function persistPositionNow() {
     if (editing) {
       if (!editingLot) {
         cancelPortfolioEdit();
@@ -8738,17 +9120,12 @@
       editingLot.buyDate = buyDate;
       editingLot.comment = comment;
       persistPortfolioLot(portfolio, editingLot.lotId);
+      resetTxPriceAnomalyState();
       cancelPortfolioEdit();
       showToast('Покупка обновлена: ' + t);
       try { renderPortfolio(); } catch (e) { /* noop */ }
       return;
     }
-
-    var isUs = typeof Markets !== 'undefined' && sec.market === 'US';
-    var isBond = !isUs && (
-      sec.type === 'bond' || sec.kind === 'bond' ||
-      (typeof isRuBondTicker === 'function' && isRuBondTicker(t))
-    );
 
     function finishRuAdd(cur) {
       var refLot = existingLots.length ? existingLots[existingLots.length - 1] : null;
@@ -8770,6 +9147,7 @@
         if (!newLot) throw new Error('invalid_position');
         portfolio.positions.push(newLot);
         persistPortfolioLot(portfolio, newLot.lotId);
+        resetTxPriceAnomalyState();
         safeClearPortfolioForms(prefix);
         showToast('Докупка добавлена: ' + t);
       } else {
@@ -8786,6 +9164,7 @@
         if (!pos) throw new Error('invalid_position');
         portfolio.positions.push(pos);
         persistPortfolioLot(portfolio, pos.lotId);
+        resetTxPriceAnomalyState();
         safeClearPortfolioForms(prefix);
         showToast('Добавлено в портфель: ' + t);
       }
@@ -8827,6 +9206,7 @@
         portfolio.positions.push(usPos);
       }
       persistPortfolioLot(portfolio, (existingLots.length ? usLot : usPos).lotId);
+      resetTxPriceAnomalyState();
       safeClearPortfolioForms(prefix);
       showToast(existingLots.length ? 'Докупка добавлена: ' + t : 'Добавлено в портфель: ' + t);
       state.chartTicker = t;
@@ -8868,6 +9248,34 @@
       try { renderPortfolio(); } catch (e2) { /* noop */ }
     });
     return Promise.resolve();
+    }
+
+    function runPersistPosition() {
+      try {
+        return persistPositionNow();
+      } catch (err) {
+        handlePortfolioAddError(err);
+      }
+    }
+
+    var enteredForCheck = hasAvg ? avg : null;
+    var dateForCheck = buyDate;
+    if (!dateForCheck && !editing && typeof localPortfolioTodayYmd === 'function') {
+      dateForCheck = localPortfolioTodayYmd();
+    }
+    var skipAnomaly = isUs || !enteredForCheck || !dateForCheck ||
+      !txPriceAnomalyLookupAvailable() ||
+      (isBond && shouldWarnOfzAvgLooksLikeRubles(true, enteredForCheck));
+    if (skipAnomaly) return runPersistPosition();
+
+    return gateTxPriceAnomaly({
+      op: editing ? 'edit-buy' : 'buy',
+      ticker: t,
+      date: dateForCheck,
+      enteredPrice: enteredForCheck,
+      isBond: isBond,
+      kind: isBond ? 'bond' : 'stock'
+    }, 'buy', runPersistPosition);
   }
 
 
@@ -9110,6 +9518,7 @@
     var ofzWarn = document.getElementById('pfAddOfzPriceWarn');
     if (ofzHint) ofzHint.hidden = true;
     if (ofzWarn) ofzWarn.hidden = true;
+    hideTxPriceAnomalyWarn('buy');
     prefillPortfolioNewLotDefaults('', {});
   }
 
@@ -9449,6 +9858,8 @@
     if (priceEl) {
       priceEl.value = agg && isFinite(Number(agg.currentPrice)) ? String(Number(agg.currentPrice)) : '';
     }
+    updatePortfolioSalePriceLabel(ticker);
+    hideTxPriceAnomalyWarn('sale');
     if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
     if (commentEl) commentEl.value = '';
     updatePortfolioSplitSaleBlockUi(ticker);
@@ -9731,6 +10142,7 @@
     }
     updatePortfolioSplitCatalogWarnUi();
     updatePortfolioSellAllBtn(0);
+    resetTxPriceAnomalyState();
   }
 
 
@@ -9798,6 +10210,27 @@
       showToast('Нельзя продать больше остатка по ' + ticker + ': ' + formatPortfolioQty({ qty: totalQty }) + ' шт.');
       return;
     }
+
+    var isBondSale = typeof isRuBondTicker === 'function' && isRuBondTicker(ticker);
+    var skipSaleAnomaly = !txPriceAnomalyLookupAvailable() ||
+      (isBondSale && shouldWarnOfzAvgLooksLikeRubles(true, salePrice));
+    if (!skipSaleAnomaly) {
+      var saleCandidate = {
+        op: 'sell',
+        ticker: ticker,
+        date: saleDate,
+        enteredPrice: salePrice,
+        isBond: isBondSale,
+        kind: isBondSale ? 'bond' : 'stock'
+      };
+      var saleKey = txPriceAnomalyCandidateKey(saleCandidate);
+      if (pfTxAnomalyState.ackKey !== saleKey) {
+        return gateTxPriceAnomaly(saleCandidate, 'sale', function () {
+          commitPortfolioSale(ticker, captured);
+        });
+      }
+    }
+
     var allocResult = splitMode
       ? allocateSplitAwareSaleAcrossLots(portfolio, ticker, qty, salePrice, saleDate)
       : allocateSaleAcrossLots(portfolio, ticker, qty, salePrice);
@@ -9830,6 +10263,7 @@
     if (!portfolio.sales) portfolio.sales = [];
     portfolio.sales.push(sale);
     setPortfolio(portfolio);
+    resetTxPriceAnomalyState();
     var pnl = splitMode
       ? { amount: (getSplitAwareSaleRealizedPnl(sale, portfolio) || {}).realizedPnlRub }
       : getSaleRealizedPnl(sale, null);

@@ -429,6 +429,7 @@
     if (pfSaleBtn) pfSaleBtn.addEventListener('click', function () {
       commitPortfolioSale(state.pfSaleTicker);
     });
+    if (typeof bindTxPriceAnomalyUi === 'function') bindTxPriceAnomalyUi();
     var pfCancelSaleBtn = document.getElementById('pfCancelSaleBtn');
     if (pfCancelSaleBtn) pfCancelSaleBtn.addEventListener('click', cancelPortfolioSale);
     var pfAsOfBtn = document.getElementById('pfAsOfBtn');
