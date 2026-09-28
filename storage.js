@@ -226,6 +226,37 @@
     return s ? s.slice(0, 64) : '';
   }
 
+  var NKD_SNAPSHOT_SOURCE = 'moex-history-accint';
+
+  /** Снимок НКД сделки. 0 — найденное значение. Отсутствие полей — unknown, не ноль. */
+  function normalizeNkdSnapshot(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (!Object.prototype.hasOwnProperty.call(raw, 'nkdPerUnit')) return null;
+    if (raw.nkdPerUnit == null || raw.nkdPerUnit === '') return null;
+    var per = parseFloat(raw.nkdPerUnit);
+    if (!isFinite(per) || per < 0) return null;
+    var date = normalizePortfolioDate(raw.nkdDate);
+    if (!date) return null;
+    var source = String(raw.nkdSource == null ? '' : raw.nkdSource).trim();
+    if (source !== NKD_SNAPSHOT_SOURCE) return null;
+    return { nkdPerUnit: per, nkdDate: date, nkdSource: source };
+  }
+
+  function isStoredNkdBondTicker(ticker) {
+    if (typeof isRuBondTicker === 'function') return !!isRuBondTicker(ticker);
+    var t = String(ticker || '').trim().toUpperCase();
+    return t.indexOf('OFZ') >= 0 || (t.indexOf('SU') === 0 && t.length > 8);
+  }
+
+  function assignNkdSnapshot(out, raw) {
+    if (!out || !isStoredNkdBondTicker(out.ticker)) return;
+    var snap = normalizeNkdSnapshot(raw);
+    if (!snap) return;
+    out.nkdPerUnit = snap.nkdPerUnit;
+    out.nkdDate = snap.nkdDate;
+    out.nkdSource = snap.nkdSource;
+  }
+
   function normalizeCashFlow(raw) {
     if (!raw || typeof raw !== 'object') return null;
     var type = String(raw.type || '').trim().toLowerCase();
@@ -375,6 +406,7 @@
     if (fee != null) out.fee = fee;
     var source = optionalSource(raw.source);
     if (source) out.source = source;
+    assignNkdSnapshot(out, raw);
     return out;
   }
 
@@ -416,6 +448,7 @@
     if (source) out.source = source;
     var splitLotScale = normalizeSplitLotScale(raw.splitLotScale);
     if (splitLotScale) out.splitLotScale = splitLotScale;
+    assignNkdSnapshot(out, raw);
     return out;
   }
 

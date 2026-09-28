@@ -170,23 +170,50 @@
     return Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
   }
 
+  function historyFiniteOrNull(raw) {
+    if (raw == null || raw === '') return null;
+    var n = Number(raw);
+    return isFinite(n) ? n : null;
+  }
+
   function parseHistoryBlock(json) {
     var hist = json && json.history;
     if (!hist || !hist.columns || !hist.data || !hist.data.length) return { rows: [], cursor: null };
     var iDate = hist.columns.indexOf('TRADEDATE');
     var iClose = hist.columns.indexOf('CLOSE');
     var iVal = hist.columns.indexOf('VALUE');
+    var iAcc = hist.columns.indexOf('ACCINT');
+    var iFace = hist.columns.indexOf('FACEVALUE');
+    var iCcy = hist.columns.indexOf('CURRENCYID');
+    var iFaceUnit = hist.columns.indexOf('FACEUNIT');
+    var iBondType = hist.columns.indexOf('BONDTYPE');
+    var iFaceType = hist.columns.indexOf('FACEVALUE_TYPE');
     var rows = [];
     hist.data.forEach(function (row) {
       var d = String(row[iDate] || '').slice(0, 10);
       var close = Number(row[iClose]);
       var val = iVal >= 0 ? Number(row[iVal]) : NaN;
       if (!d) return;
-      rows.push({
+      var parsed = {
         date: d,
         close: isFinite(close) ? close : null,
         value: isFinite(val) ? val : null
-      });
+      };
+      if (iAcc >= 0) parsed.accruedInterestPerUnit = historyFiniteOrNull(row[iAcc]);
+      if (iFace >= 0) parsed.faceValue = historyFiniteOrNull(row[iFace]);
+      if (iCcy >= 0 && row[iCcy] != null && String(row[iCcy]).trim()) {
+        parsed.currency = String(row[iCcy]).trim();
+      }
+      if (iFaceUnit >= 0 && row[iFaceUnit] != null && String(row[iFaceUnit]).trim()) {
+        parsed.faceUnit = String(row[iFaceUnit]).trim();
+      }
+      if (iBondType >= 0 && row[iBondType] != null && String(row[iBondType]).trim()) {
+        parsed.bondType = String(row[iBondType]).trim();
+      }
+      if (iFaceType >= 0 && row[iFaceType] != null && String(row[iFaceType]).trim()) {
+        parsed.faceValueType = String(row[iFaceType]).trim();
+      }
+      rows.push(parsed);
     });
     var cur = json['history.cursor'] && json['history.cursor'].data && json['history.cursor'].data[0];
     return { rows: rows, cursor: cur };
@@ -213,7 +240,7 @@
     var baseUrl = issBase() + '/history/engines/stock/markets/' + market + '/boards/' + board +
       '/securities/' + encodeURIComponent(secid) +
       '.json?from=' + fromStr + '&till=' + tillStr +
-      '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE';
+      '&iss.meta=off&history.columns=TRADEDATE,CLOSE,VALUE,ACCINT,FACEVALUE,CURRENCYID,FACEUNIT,BONDTYPE,FACEVALUE_TYPE';
     var all = [];
     var start = 0;
 
@@ -390,6 +417,7 @@
   }
 
   root.pickCloseOnOrBefore = pickCloseOnOrBefore;
+  root.parseHistoryBlock = parseHistoryBlock;
   root.getInstrumentPriceAtDate = getInstrumentPriceAtDate;
-  root.loadInstrumentHistoryForDateRange = loadInstrumentHistoryForDateRange;
+  root.loadInstrumentHistoryForDateRange = loadInstrumentHistoryForDateRange
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));
