@@ -4565,14 +4565,31 @@
   var TWP_MISSING_BUY_AMOUNT_WARNING = 'нет суммы покупки';
   var TWP_MISSING_SALE_AMOUNT_WARNING = 'нет суммы продажи';
   var TWP_MISSING_MARKET_PRICE_WARNING = 'нет текущей цены остатка';
+  var TWP_NKD_PARTIAL_NOTE = 'Расчёт частичный: НКД или купонная механика доступны не для всех операций.';
   var TWP_NOTES = [
     'справочный результат по данным портфеля',
     'с учётом найденных выплат',
-    'дивиденды по дате отсечки, купоны по дате фиксации; без налогов, комиссий и НКД'
+    'дивиденды по дате отсечки, купоны по дате фиксации; без налогов и комиссий'
   ];
 
-  function twpEmptyResult(ticker, fromIso, toIso) {
+  function twpEmptyNkdFields() {
     return {
+      purchaseNkdRub: 0,
+      saleNkdRub: 0,
+      currentNkdRub: 0,
+      nkdEffectRub: 0,
+      purchaseCashRub: 0,
+      saleCashRub: 0,
+      dirtyCurrentValueRub: 0,
+      nkdIsPartial: false,
+      nkdPartialReasons: [],
+      realizedWithNkdRub: 0,
+      nkdRealizedPartial: false
+    };
+  }
+
+  function twpEmptyResult(ticker, fromIso, toIso) {
+    var row = {
       ticker: ticker || '',
       fromDate: fromIso || '',
       toDate: toIso || '',
@@ -4594,6 +4611,12 @@
       notes: TWP_NOTES.slice(),
       hasUnknownAmounts: false
     };
+    var nkd = twpEmptyNkdFields();
+    var key;
+    for (key in nkd) {
+      if (Object.prototype.hasOwnProperty.call(nkd, key)) row[key] = nkd[key];
+    }
+    return row;
   }
 
   function twpSumOpAmounts(ops, type) {
@@ -4702,15 +4725,465 @@
   }
 
   /**
+   * Снимок НКД покупки на allocation.
+   * Не читает sale settlement и не подставляет trade-date ACCINT.
+   */
+  function twpKnownPurchaseSettlement(entity) {
+    if (!entity) return null;
+    if (Object.prototype.hasOwnProperty.call(entity, 'purchaseSettlementNkdPerUnit')) {
+      return twpKnownSettlement({
+        settlementNkdPerUnit: entity.purchaseSettlementNkdPerUnit,
+        settlementDate: entity.purchaseSettlementDate,
+        settlementNkdSource: entity.purchaseSettlementNkdSource
+      });
+    }
+    return twpKnownSettlement(entity);
+  }
+
+  /**
+   * Денежный НКД — только settlement snapshot.
+   * nkdPerUnit (trade-date ACCINT) здесь не читается и не подставляется вместо расчётов.
+   */
+  function twpKnownSettlement(entity) {
+    if (!entity) return null;
+    if (entity.settlementNkdPerUnit == null || entity.settlementNkdPerUnit === '') return null;
+    var per = Number(entity.settlementNkdPerUnit);
+    if (!isFinite(per) || per < 0) return null;
+    var date = timelineIsoDate(entity.settlementDate);
+    if (!date) return null;
+    var source = entity.settlementNkdSource;
+    if (source !== NKD_SETTLEMENT_HISTORY_SOURCE && source !== NKD_SETTLEMENT_CURRENT_SOURCE) return null;
+    return { perUnit: per, settlementDate: date, source: source };
+  }
+
+  function twpPushReason(reasons, reason) {
+    if (!reason || reasons.indexOf(reason) !== -1) return;
+    reasons.push(reason);
+  }
+
+  function twpExplicitFace(entity, faces) {
+    if (!entity || entity.faceValue == null || entity.faceValue === '') return;
+    var face = Number(entity.faceValue);
+    if (isFinite(face) && face > 0) faces.push(face);
+  }
+
+  function twpBondEconomicsSupport(ticker, positions, sales, bondMeta, feed) {
+    if (!isPortfolioBondPosition({ ticker: ticker })) return 'stock';
+    var faces = [];
+    (positions || []).forEach(function (lot) {
+      if (lot && asOfNormTicker(lot.ticker) === ticker) twpExplicitFace(lot, faces);
+    });
+    (sales || []).forEach(function (sale) {
+      if (sale && asOfNormTicker(sale.ticker) === ticker) twpExplicitFace(sale, faces);
+    });
+    twpExplicitFace(bondMeta, faces);
+    twpExplicitFace(feed, faces);
+    if (!faces.length || faces.some(function (face) { return face !== NKD_V1_FACE; })) return 'unsupported';
+    if (bondNkdTypeUnsupported(bondMeta && bondMeta.bondType, bondMeta && bondMeta.faceValueType)) {
+      return 'unsupported';
+    }
+    if (bondNkdTypeUnsupported(feed && feed.bondType, feed && feed.faceValueType)) return 'unsupported';
+    function badCurrency(entity) {
+      return !!(entity && entity.currency && !bondNkdCurrencyIsRub(entity.currency));
+    }
+    if (badCurrency(bondMeta) || badCurrency(feed)) return 'unsupported';
+    var i;
+    for (i = 0; i < (positions || []).length; i++) {
+      if (positions[i] && asOfNormTicker(positions[i].ticker) === ticker && badCurrency(positions[i])) {
+        return 'unsupported';
+      }
+    }
+    for (i = 0; i < (sales || []).length; i++) {
+      if (sales[i] && asOfNormTicker(sales[i].ticker) === ticker && badCurrency(sales[i])) {
+        return 'unsupported';
+      }
+    }
+    if (ticker.indexOf('OFZ') < 0 && ticker.indexOf('SU') !== 0) return 'unsupported';
+    return 'supported';
+  }
+
+  function twpEconomicsCoupons(feed) {
+    if (payoutsFeedMissing(feed)) return null;
+    var raw = Array.isArray(feed.coupons) ? feed.coupons : [];
+    var out = [];
+    raw.forEach(function (coupon) {
+      if (!coupon) return;
+      var row = {
+        couponDate: coupon.couponDate || coupon.coupondate || coupon.date || '',
+        date: coupon.date || coupon.couponDate || ''
+      };
+      if (Object.prototype.hasOwnProperty.call(coupon, 'recordDate')) row.recordDate = coupon.recordDate;
+      else if (Object.prototype.hasOwnProperty.call(coupon, 'recorddate')) row.recordDate = coupon.recorddate;
+      out.push(row);
+    });
+    return out;
+  }
+
+  function twpEconomicsStatus(tradeDate, settlementDate, coupons, support) {
+    if (support !== 'supported') return 'unsupported';
+    if (coupons == null) return 'unclassified';
+    return classifyBondSettlementEconomics({
+      tradeDate: tradeDate,
+      settlementDate: settlementDate,
+      coupons: coupons,
+      supported: true
+    });
+  }
+
+  function twpLookupCurrentAccrued(ticker, options) {
+    options = options || {};
+    var map = options.currentAccruedByTicker || options.accruedInterestByTicker;
+    var row = map && (map[ticker] || map[asOfNormTicker(ticker)]);
+    if (!row && typeof getBondQuoteAccruedRuntime === 'function') {
+      row = getBondQuoteAccruedRuntime(ticker);
+    }
+    if (!row) return null;
+    if (row.accruedInterestPerUnit == null || row.accruedInterestPerUnit === '') return null;
+    var per = Number(row.accruedInterestPerUnit);
+    if (!isFinite(per) || per < 0) return null;
+    if (row.faceValue != null && row.faceValue !== '' && isFinite(Number(row.faceValue)) &&
+        Number(row.faceValue) !== NKD_V1_FACE) {
+      return { unsupported: true };
+    }
+    if (bondNkdTypeUnsupported(row.bondType, row.faceValueType)) return { unsupported: true };
+    if (row.currency && !bondNkdCurrencyIsRub(row.currency)) return { unsupported: true };
+    return {
+      perUnit: per,
+      settleDate: row.accruedInterestSettleDate ? String(row.accruedInterestSettleDate).slice(0, 10) : ''
+    };
+  }
+
+  function twpFindBuySettlement(op, positions, sales) {
+    var lotId = op && op.lotId ? String(op.lotId) : '';
+    var found = null;
+    var conflict = false;
+    function consider(entity) {
+      var snap = twpKnownSettlement(entity);
+      if (!snap) return;
+      if (!found) found = snap;
+      else if (found.perUnit !== snap.perUnit || found.settlementDate !== snap.settlementDate) conflict = true;
+    }
+    function considerPurchase(entity) {
+      var snap = twpKnownPurchaseSettlement(entity);
+      if (!snap) return;
+      if (!found) found = snap;
+      else if (found.perUnit !== snap.perUnit || found.settlementDate !== snap.settlementDate) conflict = true;
+    }
+    (positions || []).forEach(function (lot) {
+      if (!lot || asOfNormTicker(lot.ticker) !== op.ticker) return;
+      if (lotId) {
+        if (String(lot.lotId || '') !== lotId) return;
+      } else if (timelineIsoDate(lot.buyDate) !== op.date) return;
+      consider(lot);
+    });
+    (sales || []).forEach(function (sale) {
+      if (!sale || asOfNormTicker(sale.ticker) !== op.ticker) return;
+      (sale.allocations || []).forEach(function (alloc) {
+        if (!alloc) return;
+        if (lotId) {
+          if (String(alloc.lotId || '') !== lotId) return;
+        } else if (timelineIsoDate(alloc.buyDate) !== op.date) return;
+        considerPurchase(alloc);
+      });
+    });
+    if (conflict) return { conflict: true };
+    return found;
+  }
+
+  function twpFindSaleEntity(op, sales) {
+    var id = op && op.saleId ? String(op.saleId) : '';
+    var i;
+    var fallback = null;
+    for (i = 0; i < (sales || []).length; i++) {
+      var sale = sales[i];
+      if (!sale || asOfNormTicker(sale.ticker) !== op.ticker) continue;
+      if (id && String(sale.saleId || '') === id) return sale;
+      if (!fallback && timelineIsoDate(sale.saleDate) === op.date &&
+          Number(sale.qty) === Number(op.qty)) fallback = sale;
+    }
+    return fallback;
+  }
+
+  function twpMoneyOrNull(value) {
+    if (value == null || !isFinite(Number(value))) return null;
+    return Number(value);
+  }
+
+  /**
+   * Экономический слой НКД поверх чистых сумм.
+   * Не ходит в сеть и не меняет JSON.
+   * Полная формула применяется только к поддержанной ОФЗ без пропусков и без coupon-transition.
+   */
+  function twpComposeBondEconomics(input) {
+    input = input || {};
+    var ticker = input.ticker;
+    var support = twpBondEconomicsSupport(ticker, input.positions, input.sales, input.bondMeta, input.feed);
+    var purchaseCost = twpMoneyOrNull(input.purchaseCostRub);
+    var saleProceeds = twpMoneyOrNull(input.saleProceedsRub);
+    var marketValue = twpMoneyOrNull(input.currentMarketValueRub);
+    var openQty = Number(input.openQty);
+    if (!isFinite(openQty) || openQty < 0) openQty = 0;
+    var reasons = [];
+    var coupons = twpEconomicsCoupons(input.feed);
+    var buySnapsByLot = {};
+
+    if (support === 'stock') {
+      return {
+        support: 'stock',
+        applyToResult: false,
+        purchaseNkdRub: 0,
+        saleNkdRub: 0,
+        currentNkdRub: 0,
+        nkdEffectRub: 0,
+        purchaseCashRub: purchaseCost,
+        saleCashRub: saleProceeds,
+        dirtyCurrentValueRub: marketValue,
+        nkdIsPartial: false,
+        nkdPartialReasons: [],
+        realizedWithNkdRub: input.realizedPnlRub == null ? null : input.realizedPnlRub,
+        nkdRealizedPartial: false,
+        resultWithoutPayoutsRub: null,
+        resultWithPayoutsRub: null
+      };
+    }
+
+    if (support !== 'supported') twpPushReason(reasons, 'unsupported');
+
+    var purchaseNkdRaw = 0;
+    var purchaseKnown = support === 'supported';
+    var sawKnownBuySnapshot = false;
+    (input.ops || []).forEach(function (op) {
+      if (!op || op.type !== 'buy') return;
+      var qty = Number(op.qty);
+      if (!isFinite(qty) || qty <= 0) {
+        purchaseKnown = false;
+        twpPushReason(reasons, 'missing-buy-settlement');
+        return;
+      }
+      var snap = twpFindBuySettlement(op, input.positions, input.sales);
+      if (!snap || snap.conflict) {
+        purchaseKnown = false;
+        twpPushReason(reasons, 'missing-buy-settlement');
+        return;
+      }
+      sawKnownBuySnapshot = true;
+      var status = twpEconomicsStatus(op.date, snap.settlementDate, coupons, support);
+      if (status === 'coupon-transition') {
+        purchaseKnown = false;
+        twpPushReason(reasons, 'coupon-transition');
+        return;
+      }
+      if (status === 'unclassified') {
+        purchaseKnown = false;
+        twpPushReason(reasons, 'unclassified');
+        return;
+      }
+      if (status === 'unknown') {
+        purchaseKnown = false;
+        twpPushReason(reasons, 'unknown-economics');
+        return;
+      }
+      if (status !== 'normal') {
+        purchaseKnown = false;
+        twpPushReason(reasons, 'unsupported');
+        return;
+      }
+      if (op.lotId) buySnapsByLot[String(op.lotId)] = snap;
+      purchaseNkdRaw += snap.perUnit * qty;
+    });
+
+    var saleNkdRaw = 0;
+    var saleKnown = support === 'supported';
+    var sawSale = false;
+    (input.ops || []).forEach(function (op) {
+      if (!op || op.type !== 'sell') return;
+      sawSale = true;
+      var sale = twpFindSaleEntity(op, input.sales);
+      var qty = Number(op.qty);
+      var snap = twpKnownSettlement(sale);
+      if (!sale || !snap || !isFinite(qty) || qty <= 0) {
+        saleKnown = false;
+        twpPushReason(reasons, 'missing-sale-settlement');
+        return;
+      }
+      var status = twpEconomicsStatus(op.date, snap.settlementDate, coupons, support);
+      if (status === 'coupon-transition') {
+        saleKnown = false;
+        twpPushReason(reasons, 'coupon-transition');
+        return;
+      }
+      if (status === 'unclassified') {
+        saleKnown = false;
+        twpPushReason(reasons, 'unclassified');
+        return;
+      }
+      if (status === 'unknown') {
+        saleKnown = false;
+        twpPushReason(reasons, 'unknown-economics');
+        return;
+      }
+      if (status !== 'normal') {
+        saleKnown = false;
+        twpPushReason(reasons, 'unsupported');
+        return;
+      }
+      saleNkdRaw += snap.perUnit * qty;
+    });
+
+    var current = null;
+    var currentKnown = false;
+    if (!(openQty > 1e-9)) {
+      currentKnown = true;
+      current = { perUnit: 0 };
+    } else if (support === 'supported') {
+      current = twpLookupCurrentAccrued(ticker, input.options);
+      if (current && current.unsupported) {
+        currentKnown = false;
+        twpPushReason(reasons, 'unsupported');
+      } else if (!current) {
+        currentKnown = false;
+        twpPushReason(reasons, 'missing-current-accrued');
+      } else currentKnown = true;
+    }
+
+    if (support === 'supported' && sawKnownBuySnapshot && coupons == null) {
+      twpPushReason(reasons, 'unclassified');
+    }
+
+    var purchaseNkdRub = purchaseKnown ? (asOfRoundRub(purchaseNkdRaw) || 0) : null;
+    var saleNkdRub = saleKnown ? (asOfRoundRub(saleNkdRaw) || 0) : null;
+    var currentNkdRub = null;
+    if (support === 'supported' && currentKnown && current && !current.unsupported) {
+      currentNkdRub = openQty > 1e-9 ? (asOfRoundRub(current.perUnit * openQty) || 0) : 0;
+    }
+    var nkdIsPartial = reasons.length > 0;
+    var purchaseCashRub = purchaseCost;
+    var saleCashRub = saleProceeds;
+    var dirtyCurrentValueRub = marketValue;
+    var nkdEffectRub = null;
+    var applyToResult = false;
+    var resultWithout = null;
+    var resultWith = null;
+    if (!nkdIsPartial && purchaseKnown && saleKnown && currentKnown &&
+        purchaseNkdRub != null && saleNkdRub != null && currentNkdRub != null &&
+        purchaseCost != null && saleProceeds != null && marketValue != null) {
+      purchaseCashRub = asOfRoundRub(purchaseCost + purchaseNkdRub);
+      saleCashRub = asOfRoundRub(saleProceeds + saleNkdRub);
+      dirtyCurrentValueRub = asOfRoundRub(marketValue + currentNkdRub);
+      nkdEffectRub = asOfRoundRub(saleNkdRub + currentNkdRub - purchaseNkdRub);
+      applyToResult = true;
+      resultWithout = twpResultRub(saleCashRub, dirtyCurrentValueRub, purchaseCashRub, 0);
+      resultWith = twpResultRub(saleCashRub, dirtyCurrentValueRub, purchaseCashRub, input.payoutsRub || 0);
+    }
+
+    var realized = twpRealizedWithNkd({
+      ticker: ticker,
+      sales: input.sales,
+      support: support,
+      coupons: coupons,
+      buySnapsByLot: buySnapsByLot,
+      realizedPnlRub: input.realizedPnlRub,
+      sawSale: sawSale
+    });
+
+    return {
+      support: support,
+      applyToResult: applyToResult,
+      purchaseNkdRub: purchaseNkdRub,
+      saleNkdRub: saleNkdRub,
+      currentNkdRub: currentNkdRub,
+      nkdEffectRub: nkdEffectRub,
+      purchaseCashRub: purchaseCashRub,
+      saleCashRub: saleCashRub,
+      dirtyCurrentValueRub: dirtyCurrentValueRub,
+      nkdIsPartial: nkdIsPartial,
+      nkdPartialReasons: reasons,
+      realizedWithNkdRub: realized.value,
+      nkdRealizedPartial: realized.partial,
+      resultWithoutPayoutsRub: resultWithout,
+      resultWithPayoutsRub: resultWith
+    };
+  }
+
+  function twpRealizedWithNkd(input) {
+    input = input || {};
+    if (input.support === 'stock') {
+      return {
+        value: input.realizedPnlRub == null ? null : input.realizedPnlRub,
+        partial: false
+      };
+    }
+    if (input.support !== 'supported') return { value: null, partial: true };
+    if (!input.sawSale) return { value: 0, partial: false };
+    if (input.realizedPnlRub == null || !isFinite(Number(input.realizedPnlRub))) {
+      return { value: null, partial: true };
+    }
+    if (input.coupons == null) return { value: null, partial: true };
+    var saleNkd = 0;
+    var buyNkd = 0;
+    var partial = false;
+    (input.sales || []).forEach(function (sale) {
+      if (!sale || asOfNormTicker(sale.ticker) !== input.ticker) return;
+      var snap = twpKnownSettlement(sale);
+      var qty = Number(sale.qty);
+      if (!snap || !isFinite(qty) || qty <= 0) {
+        partial = true;
+        return;
+      }
+      var saleStatus = twpEconomicsStatus(timelineIsoDate(sale.saleDate), snap.settlementDate, input.coupons, 'supported');
+      if (saleStatus !== 'normal') {
+        partial = true;
+        return;
+      }
+      saleNkd += snap.perUnit * qty;
+      var allocs = (sale.allocations && sale.allocations.length) ? sale.allocations : [{
+        lotId: sale.lotId,
+        qty: sale.qty,
+        buyDate: sale.buyDate
+      }];
+      var allocQty = 0;
+      allocs.forEach(function (alloc) {
+        if (!alloc) return;
+        var aq = Number(alloc.qty);
+        if (!isFinite(aq) || aq <= 0) {
+          partial = true;
+          return;
+        }
+        allocQty += aq;
+        var buySnap = twpKnownPurchaseSettlement(alloc);
+        if (!buySnap && alloc.lotId && input.buySnapsByLot[String(alloc.lotId)]) {
+          buySnap = input.buySnapsByLot[String(alloc.lotId)];
+        }
+        if (!buySnap) {
+          partial = true;
+          return;
+        }
+        var buyStatus = twpEconomicsStatus(
+          timelineIsoDate(alloc.buyDate || sale.buyDate),
+          buySnap.settlementDate,
+          input.coupons,
+          'supported'
+        );
+        if (buyStatus !== 'normal') {
+          partial = true;
+          return;
+        }
+        buyNkd += buySnap.perUnit * aq;
+      });
+      if (Math.abs(allocQty - qty) > 1e-6) partial = true;
+    });
+    if (partial) return { value: null, partial: true };
+    return {
+      value: asOfRoundRub(Number(input.realizedPnlRub) + saleNkd - buyNkd),
+      partial: false
+    };
+  }
+
+  /**
    * Read-only справочный результат по тикеру с учётом найденных выплат.
-   * Не мутирует JSON, не считает XIRR/TWR/MWR, налоги, комиссии, НКД, прогноз и cashFlows.
-   *
-   * Будущая подсказка UI «Как считается»:
-   * Акции: текущая стоимость остатка + сумма продаж + дивиденды за период владения − сумма покупок.
-   * ОФЗ: текущая стоимость остатка + сумма продаж + купоны за период владения − сумма покупок.
-   * Дивиденды — по дате отсечки, ОФЗ — по дате фиксации (recordDate), иначе оценка по дате купона. Налоги, комиссии, НКД и дата зачисления не учитываются.
-   * Формулировки: «справочный результат», «с учётом найденных выплат», «по данным портфеля».
-   * Не писать: гарантированная/чистая доходность, получено на счёт, инвестиционная рекомендация.
+   * Чистые purchase/sale/market value не включают НКД.
+   * Для полной поддержанной ОФЗ result и процент считают денежный НКД расчётов и текущий НКД остатка.
+   * Не мутирует JSON, не ходит в сеть, не считает налоги, комиссии и компенсацию купона.
    */
   function buildTickerReturnWithPayouts(ticker, portfolio, options) {
     options = options || {};
@@ -4824,8 +5297,34 @@
       isPartial = true;
     }
 
+    var realizedPnlRub = twpSumRealizedPnl(ops);
     var resultWithoutPayoutsRub = twpResultRub(saleProceedsRub, currentMarketValueRub, purchaseCostRub, 0);
     var resultWithPayoutsRub = twpResultRub(saleProceedsRub, currentMarketValueRub, purchaseCostRub, payoutsRub);
+    var econ = twpComposeBondEconomics({
+      ticker: ticker,
+      positions: positions,
+      sales: sales,
+      ops: ops,
+      bondMeta: bondMeta,
+      feed: feed,
+      options: options,
+      purchaseCostRub: purchaseCostRub,
+      saleProceedsRub: saleProceedsRub,
+      currentMarketValueRub: currentMarketValueRub,
+      openQty: openQty,
+      payoutsRub: payoutsRub,
+      realizedPnlRub: realizedPnlRub
+    });
+    if (econ.nkdIsPartial) {
+      isPartial = true;
+      payoutsPushWarning(warnings, TWP_NKD_PARTIAL_NOTE);
+    }
+    var pctBase = purchaseCostRub;
+    if (econ.applyToResult) {
+      resultWithoutPayoutsRub = econ.resultWithoutPayoutsRub;
+      resultWithPayoutsRub = econ.resultWithPayoutsRub;
+      pctBase = econ.purchaseCashRub;
+    }
 
     return {
       ticker: ticker,
@@ -4833,15 +5332,26 @@
       toDate: toIso,
       purchaseCostRub: purchaseCostRub,
       saleProceedsRub: saleProceedsRub,
-      realizedPnlRub: twpSumRealizedPnl(ops),
+      realizedPnlRub: realizedPnlRub,
       currentMarketValueRub: currentMarketValueRub,
       payoutsRub: asOfRoundRub(payoutsRub) || 0,
       dividendsRub: asOfRoundRub(dividendsRub) || 0,
       couponsRub: asOfRoundRub(couponsRub) || 0,
+      purchaseNkdRub: econ.purchaseNkdRub,
+      saleNkdRub: econ.saleNkdRub,
+      currentNkdRub: econ.currentNkdRub,
+      nkdEffectRub: econ.nkdEffectRub,
+      purchaseCashRub: econ.purchaseCashRub,
+      saleCashRub: econ.saleCashRub,
+      dirtyCurrentValueRub: econ.dirtyCurrentValueRub,
+      nkdIsPartial: econ.nkdIsPartial,
+      nkdPartialReasons: econ.nkdPartialReasons,
+      realizedWithNkdRub: econ.realizedWithNkdRub,
+      nkdRealizedPartial: econ.nkdRealizedPartial,
       resultWithoutPayoutsRub: resultWithoutPayoutsRub,
       resultWithPayoutsRub: resultWithPayoutsRub,
-      returnWithoutPayoutsPct: twpReturnPct(resultWithoutPayoutsRub, purchaseCostRub),
-      returnWithPayoutsPct: twpReturnPct(resultWithPayoutsRub, purchaseCostRub),
+      returnWithoutPayoutsPct: twpReturnPct(resultWithoutPayoutsRub, pctBase),
+      returnWithPayoutsPct: twpReturnPct(resultWithPayoutsRub, pctBase),
       openQty: openQty,
       isClosed: !(openQty > 1e-9),
       isPartial: isPartial,
@@ -4852,7 +5362,7 @@
   }
 
   function twpEmptyPortfolioResult(fromIso, toIso) {
-    return {
+    var row = {
       fromDate: fromIso || '',
       toDate: toIso || '',
       purchaseCostRub: 0,
@@ -4872,6 +5382,12 @@
       notes: TWP_NOTES.slice(),
       hasUnknownAmounts: false
     };
+    var nkd = twpEmptyNkdFields();
+    var key;
+    for (key in nkd) {
+      if (Object.prototype.hasOwnProperty.call(nkd, key)) row[key] = nkd[key];
+    }
+    return row;
   }
 
   function twpSumKnownOrNull(values) {
@@ -4888,7 +5404,8 @@
   /**
    * Read-only справочный результат по портфелю с учётом найденных выплат.
    * Агрегирует buildTickerReturnWithPayouts. Не мутирует JSON.
-   * Процент — к общей сумме покупок, не среднее по тикерам.
+   * Процент — к экономической базе покупок: акции по чистой сумме,
+   * полные ОФЗ по покупке с НКД расчётов. Не среднее по тикерам.
    */
   function buildPortfolioReturnWithPayouts(portfolio, options) {
     options = options || {};
@@ -4932,13 +5449,32 @@
     var payoutsRub = twpSumKnownOrNull(items.map(function (row) { return row.payoutsRub; })) || 0;
     var dividendsRub = twpSumKnownOrNull(items.map(function (row) { return row.dividendsRub; })) || 0;
     var couponsRub = twpSumKnownOrNull(items.map(function (row) { return row.couponsRub; })) || 0;
+    var purchaseNkdRub = twpSumKnownOrNull(items.map(function (row) { return row.purchaseNkdRub; }));
+    var saleNkdRub = twpSumKnownOrNull(items.map(function (row) { return row.saleNkdRub; }));
+    var currentNkdRub = twpSumKnownOrNull(items.map(function (row) { return row.currentNkdRub; }));
+    var nkdEffectRub = twpSumKnownOrNull(items.map(function (row) { return row.nkdEffectRub; }));
+    var purchaseCashRub = twpSumKnownOrNull(items.map(function (row) { return row.purchaseCashRub; }));
+    var saleCashRub = twpSumKnownOrNull(items.map(function (row) { return row.saleCashRub; }));
+    var dirtyCurrentValueRub = twpSumKnownOrNull(items.map(function (row) { return row.dirtyCurrentValueRub; }));
+    var realizedWithNkdRub = twpSumKnownOrNull(items.map(function (row) { return row.realizedWithNkdRub; }));
+    var nkdIsPartial = false;
+    var nkdRealizedPartial = false;
+    items.forEach(function (row) {
+      if (row && row.nkdIsPartial) nkdIsPartial = true;
+      if (row && row.nkdRealizedPartial) nkdRealizedPartial = true;
+    });
 
     if (purchaseCostRub == null || saleProceedsRub == null || currentMarketValueRub == null) {
       isPartial = true;
     }
+    if (nkdIsPartial) isPartial = true;
 
-    var resultWithoutPayoutsRub = twpResultRub(saleProceedsRub, currentMarketValueRub, purchaseCostRub, 0);
-    var resultWithPayoutsRub = twpResultRub(saleProceedsRub, currentMarketValueRub, purchaseCostRub, payoutsRub);
+    var resultWithoutPayoutsRub = twpSumKnownOrNull(items.map(function (row) {
+      return row.resultWithoutPayoutsRub;
+    }));
+    var resultWithPayoutsRub = twpSumKnownOrNull(items.map(function (row) {
+      return row.resultWithPayoutsRub;
+    }));
 
     return {
       fromDate: fromIso,
@@ -4950,10 +5486,20 @@
       payoutsRub: payoutsRub,
       dividendsRub: dividendsRub,
       couponsRub: couponsRub,
+      purchaseNkdRub: purchaseNkdRub,
+      saleNkdRub: saleNkdRub,
+      currentNkdRub: currentNkdRub,
+      nkdEffectRub: nkdEffectRub,
+      purchaseCashRub: purchaseCashRub,
+      saleCashRub: saleCashRub,
+      dirtyCurrentValueRub: dirtyCurrentValueRub,
+      nkdIsPartial: nkdIsPartial,
+      nkdRealizedPartial: nkdRealizedPartial,
+      realizedWithNkdRub: realizedWithNkdRub,
       resultWithoutPayoutsRub: resultWithoutPayoutsRub,
       resultWithPayoutsRub: resultWithPayoutsRub,
-      returnWithoutPayoutsPct: twpReturnPct(resultWithoutPayoutsRub, purchaseCostRub),
-      returnWithPayoutsPct: twpReturnPct(resultWithPayoutsRub, purchaseCostRub),
+      returnWithoutPayoutsPct: twpReturnPct(resultWithoutPayoutsRub, purchaseCashRub),
+      returnWithPayoutsPct: twpReturnPct(resultWithPayoutsRub, purchaseCashRub),
       items: items,
       isPartial: isPartial,
       warnings: warnings,
@@ -5120,7 +5666,8 @@
 
   var PF_PRS_TITLE = 'Результат портфеля';
   var PF_PRS_LEAD = 'Справочная оценка по данным портфеля и найденным выплатам. Это не факт зачисления на счёт и не индивидуальная рекомендация.';
-  var PF_PRS_HOW = 'Текущая стоимость — открытые позиции по текущим ценам. Нереализованный результат — текущая стоимость минус вложено в остаток. Зафиксировано продажами — результат закрытых и частичных продаж. Найденные выплаты — дивиденды и купоны по найденным данным за период владения. Прогноз выплат и выплаты за 12 месяцев в этот итог не входят. Налоги, комиссии, НКД и факт зачисления на счёт не учитываются.';
+  var PF_PRS_HOW = 'Текущая стоимость — открытые позиции по текущим ценам. Нереализованный результат — текущая стоимость минус вложено в остаток. Зафиксировано продажами — результат закрытых и частичных продаж. Найденные выплаты — дивиденды и купоны по найденным данным за период владения. Прогноз выплат и выплаты за 12 месяцев в этот итог не входят. Налоги, комиссии и факт зачисления на счёт не учитываются. Стоимость портфеля и график динамики показываются без НКД.';
+  var PF_PRS_NKD_NOTE = 'Результат портфеля показан без НКД. Справочный результат по ОФЗ может учитывать НКД по расчётам сделок и текущий НКД.';
   var PF_PRS_MISSING_FEED = 'По части бумаг нет данных о выплатах. Найденные выплаты показаны по доступным данным.';
   var PF_PRS_PARTIAL = 'Часть расчётов может быть неполной.';
   var PF_PRS_LOADING = 'Считаем найденные выплаты…';
@@ -5197,6 +5744,7 @@
         'pf-prs-card--hero pf-prs-card--pct'
       ) +
     '</div>';
+    html += '<p class="pf-prs-how-note pf-prs-nkd-note">' + escapeHtml(PF_PRS_NKD_NOTE) + '</p>';
 
     if (summary.hideTotals || summary.skippedUnknown) {
       html += '<p class="muted pf-prs-status pf-prs-status--note">' + escapeHtml(PF_SUMMARY_SPLIT_PARTIAL_WARNING) + '</p>';
@@ -8920,8 +9468,12 @@
   }
 
   /**
-   * Риск пересечения купонной границы. Не считается выплата и не меняется право на купон.
-   * Надёжен только явный recordDate. Окно (recordDate, couponDate] — compensation window.
+   * Риск пересечения купонной границы для пары tradeDate → settlementDate.
+   * Не считается выплата и не подменяет recordDate датой купона.
+   * normal — только когда загруженных купонов достаточно, чтобы исключить переход.
+   * unknown — пустой загруженный график или у купона с датой выплаты внутри (trade, settle] нет надёжного recordDate.
+   * Купон вне этого окна без recordDate эту пару не делает неизвестной.
+   * Известный recordDate проверяется прежними условиями перехода.
    */
   function classifyBondSettlementEconomics(input) {
     input = input || {};
@@ -8932,20 +9484,28 @@
     var settle = typeof normalizePortfolioDate === 'function'
       ? (normalizePortfolioDate(input.settlementDate) || '')
       : String(input.settlementDate || '').slice(0, 10);
-    if (!trade || !settle) return 'normal';
+    if (!trade || !settle) return 'unknown';
+    if (Array.isArray(input.coupons) && input.coupons.length === 0) return 'unknown';
     var coupons = input.coupons || [];
     var i;
+    var boundaryUnproven = false;
     for (i = 0; i < coupons.length; i++) {
-      var record = bondCouponRecordDateReliable(coupons[i]);
-      if (!record) continue;
+      var coupon = coupons[i];
+      if (!coupon) continue;
       var couponDate = typeof normalizePortfolioDate === 'function'
-        ? (normalizePortfolioDate(coupons[i].couponDate || coupons[i].date) || '')
+        ? (normalizePortfolioDate(coupon.couponDate || coupon.date) || '')
         : '';
-      if (trade < record && settle > record) return 'coupon-transition';
-      if (couponDate && couponDate > record && settle > record && settle <= couponDate) {
-        return 'coupon-transition';
+      var record = bondCouponRecordDateReliable(coupon);
+      if (record) {
+        if (trade < record && settle > record) return 'coupon-transition';
+        if (couponDate && couponDate > record && settle > record && settle <= couponDate) {
+          return 'coupon-transition';
+        }
+        continue;
       }
+      if (couponDate && couponDate > trade && couponDate <= settle) boundaryUnproven = true;
     }
+    if (boundaryUnproven) return 'unknown';
     return 'normal';
   }
 
@@ -10128,6 +10688,56 @@
 
 
 
+  function bondPurchaseMetadataFields(source) {
+    var out = {};
+    if (!source) return out;
+    if (source.nkdPerUnit != null && source.nkdPerUnit !== '' && source.nkdDate && source.nkdSource) {
+      out.nkdPerUnit = source.nkdPerUnit;
+      out.nkdDate = source.nkdDate;
+      out.nkdSource = source.nkdSource;
+    }
+    if (source.settlementNkdPerUnit != null && source.settlementNkdPerUnit !== '' &&
+        source.settlementDate && source.settlementNkdSource) {
+      out.settlementNkdPerUnit = source.settlementNkdPerUnit;
+      out.settlementDate = source.settlementDate;
+      out.settlementNkdSource = source.settlementNkdSource;
+    }
+    return out;
+  }
+
+  function withBondPurchaseMetadata(base, source) {
+    var extra = bondPurchaseMetadataFields(source);
+    var key;
+    for (key in extra) {
+      if (Object.prototype.hasOwnProperty.call(extra, key)) base[key] = extra[key];
+    }
+    return base;
+  }
+
+  function stampAllocationPurchaseSettlement(alloc, lot) {
+    var fields = bondPurchaseMetadataFields(lot);
+    if (fields.settlementNkdPerUnit == null || fields.settlementNkdPerUnit === '') return alloc;
+    alloc.purchaseSettlementNkdPerUnit = fields.settlementNkdPerUnit;
+    alloc.purchaseSettlementDate = fields.settlementDate;
+    alloc.purchaseSettlementNkdSource = fields.settlementNkdSource;
+    return alloc;
+  }
+
+  function lotRemainderRaw(lot, qty, avgPrice) {
+    return withBondPurchaseMetadata({
+      lotId: lot.lotId,
+      ticker: lot.ticker,
+      qty: qty,
+      avgPrice: avgPrice != null ? avgPrice : lot.avgPrice,
+      currentPrice: lot.currentPrice,
+      buyDate: lot.buyDate,
+      comment: lot.comment,
+      market: lot.market,
+      currency: lot.currency,
+      dayChangePct: lot.dayChangePct
+    }, lot);
+  }
+
   function allocateSaleAcrossLots(portfolio, ticker, sellQty, salePricePerShare) {
     ticker = normalizeTicker(ticker);
     var lots = findPortfolioLots(ticker, portfolio.positions).filter(function (l) {
@@ -10155,42 +10765,20 @@
       var lotQtyOnly = Number(lot.qty);
       if (take <= 1e-9) {
         if (isFinite(lotQtyOnly) && lotQtyOnly > 1e-9) {
-          remaining.push(normalizePosition({
-            lotId: lot.lotId,
-            ticker: lot.ticker,
-            qty: lotQtyOnly,
-            avgPrice: lot.avgPrice,
-            currentPrice: lot.currentPrice,
-            buyDate: lot.buyDate,
-            comment: lot.comment,
-            market: lot.market,
-            currency: lot.currency,
-            dayChangePct: lot.dayChangePct
-          }));
+          remaining.push(normalizePosition(lotRemainderRaw(lot, lotQtyOnly, lot.avgPrice)));
         }
         return;
       }
-      allocations.push({
+      allocations.push(stampAllocationPurchaseSettlement({
         lotId: lot.lotId,
         qty: take,
         buyPrice: isFinite(Number(lot.avgPrice)) ? Number(lot.avgPrice) : null,
         salePrice: salePx,
         buyDate: lot.buyDate || ''
-      });
+      }, lot));
       var remainQty = lotQtyOnly - take;
       if (isFinite(remainQty) && remainQty > 1e-9) {
-        remaining.push(normalizePosition({
-          lotId: lot.lotId,
-          ticker: lot.ticker,
-          qty: remainQty,
-          avgPrice: lot.avgPrice,
-          currentPrice: lot.currentPrice,
-          buyDate: lot.buyDate,
-          comment: lot.comment,
-          market: lot.market,
-          currency: lot.currency,
-          dayChangePct: lot.dayChangePct
-        }));
+        remaining.push(normalizePosition(lotRemainderRaw(lot, remainQty, lot.avgPrice)));
       }
     });
 
@@ -10201,23 +10789,18 @@
       return s + (isFinite(q) && q > 0 && isFinite(a) && a > 0 ? q * a : 0);
     }, 0);
     var remainQtyTotal = totalQty - sellQty;
-    if (remainQtyTotal > 1e-9 && rawRemainCost > 1e-9 && salePx != null) {
+    var bondRemainder = typeof isPortfolioBondPosition === 'function' &&
+      isPortfolioBondPosition({ ticker: ticker });
+    if (!bondRemainder && remainQtyTotal > 1e-9 && rawRemainCost > 1e-9 && salePx != null) {
       var targetRemainCost = Math.max(0, totalCostBefore - salePx * sellQty);
       var factor = targetRemainCost / rawRemainCost;
       remaining = remaining.map(function (l) {
         var ap = Number(l.avgPrice);
-        return normalizePosition({
-          lotId: l.lotId,
-          ticker: l.ticker,
-          qty: l.qty,
-          avgPrice: isFinite(ap) && ap > 0 ? ap * factor : l.avgPrice,
-          currentPrice: l.currentPrice,
-          buyDate: l.buyDate,
-          comment: l.comment,
-          market: l.market,
-          currency: l.currency,
-          dayChangePct: l.dayChangePct
-        });
+        return normalizePosition(lotRemainderRaw(
+          l,
+          l.qty,
+          isFinite(ap) && ap > 0 ? ap * factor : l.avgPrice
+        ));
       }).filter(Boolean);
     }
 
@@ -10296,7 +10879,7 @@
         var buy = isFinite(Number(lot.avgPrice)) ? Number(lot.avgPrice) : null;
         var adjBuy = buy;
         if (cap.scale === 'historical' && cap.factor > 1 && buy != null) adjBuy = buy / cap.factor;
-        allocations.push({
+        allocations.push(stampAllocationPurchaseSettlement({
           lotId: lot.lotId,
           qty: take,
           qtyScale: 'sale-date',
@@ -10307,7 +10890,7 @@
           buyPrice: buy,
           salePrice: salePx,
           buyDate: lot.buyDate || ''
-        });
+        }, lot));
         if (adjBuy != null && isFinite(adjBuy)) adjCost += adjBuy * take;
         saleQtyDone += take;
         left -= take;
@@ -10315,18 +10898,7 @@
       var remainQty = lotQtyOnly - lotDelta;
       if (remainQty > lotQtyOnly) remainQty = lotQtyOnly;
       if (isFinite(remainQty) && remainQty > 1e-9) {
-        remaining.push(normalizePosition({
-          lotId: lot.lotId,
-          ticker: lot.ticker,
-          qty: remainQty,
-          avgPrice: lot.avgPrice,
-          currentPrice: lot.currentPrice,
-          buyDate: lot.buyDate,
-          comment: lot.comment,
-          market: lot.market,
-          currency: lot.currency,
-          dayChangePct: lot.dayChangePct
-        }));
+        remaining.push(normalizePosition(lotRemainderRaw(lot, remainQty, lot.avgPrice)));
       }
     });
     if (left > 1e-6) return { error: 'qty' };
@@ -10842,7 +11414,7 @@
         var q = Number(lot.qty);
         lot.qty = (isFinite(q) && q > 0 ? q : 0) + restoreQty;
       } else {
-        portfolio.positions.push(normalizePosition({
+        var restored = {
           lotId: alloc.lotId,
           ticker: sale.ticker,
           qty: restoreQty,
@@ -10852,7 +11424,14 @@
           comment: '',
           market: sale.market,
           currency: sale.currency
-        }));
+        };
+        if (alloc.purchaseSettlementNkdPerUnit != null && alloc.purchaseSettlementNkdPerUnit !== '' &&
+            alloc.purchaseSettlementDate && alloc.purchaseSettlementNkdSource) {
+          restored.settlementNkdPerUnit = alloc.purchaseSettlementNkdPerUnit;
+          restored.settlementDate = alloc.purchaseSettlementDate;
+          restored.settlementNkdSource = alloc.purchaseSettlementNkdSource;
+        }
+        portfolio.positions.push(normalizePosition(restored));
       }
     }
 
@@ -11720,8 +12299,10 @@
           '+ найденные дивиденды за период владения<br>' +
           '− сумма покупок.</p>';
     var notes = isBond
-      ? '<p class="pf-twp-how-note">Процент — к сумме покупок. Если покупок на 0 ₽, процент не считается.</p>' +
-        '<p class="pf-twp-how-note">Цены ОФЗ — в % от номинала, суммы — в ₽. Для ОФЗ показана дата купона. Право на выплату оценивается по дате фиксации, если она доступна, без НКД. Налоги, комиссии и будущие выплаты не учитываются.</p>'
+      ? '<p class="pf-twp-how-note">Процент — к сумме покупок с НКД расчётов, когда расчёт НКД полный. Если покупок на 0 ₽, процент не считается.</p>' +
+        '<p class="pf-twp-how-note">Цены ОФЗ — в % от номинала, суммы — в ₽. Для ОФЗ показана дата купона. Право на выплату оценивается по дате фиксации, если она доступна, без НКД. Налоги, комиссии и будущие выплаты не учитываются.</p>' +
+        '<p class="pf-twp-how-note">Доходность облигаций учитывает НКД по расчётам сделок и текущий НКД открытых ОФЗ.</p>' +
+        '<p class="pf-twp-how-note">Стоимость портфеля и график динамики показываются без НКД.</p>'
       : '<p class="pf-twp-how-note">Процент — к сумме покупок. Если покупок на 0 ₽, процент не считается.</p>' +
         '<p class="pf-twp-how-note">Дивиденды — по дате отсечки, не по дате зачисления. Налоги, комиссии и будущие выплаты не учитываются.</p>';
     if (splitAffected) {
@@ -11848,14 +12429,31 @@
       buildTwpKpiHtml('К сумме покупок, %', pctHtml, '', pctHint) +
     '</div>';
 
+    if (!mustHide && isBond && !row.nkdIsPartial && row.nkdEffectRub != null &&
+        isFinite(Number(row.nkdEffectRub))) {
+      html += '<p class="muted pf-twp-nkd-effect">Эффект НКД: ' +
+        escapeHtml(formatSignedRubAmount(row.nkdEffectRub)) + '</p>';
+    }
+
     if (resultNull) {
       html += '<p class="muted pf-twp-status">' + escapeHtml(PF_TWP_NULL) + '</p>';
     } else if (isPartial) {
-      var partialTickers = collectPayoutPartialTickersFromWarnings(row.warnings);
+      var otherNkdWarnings = (row.warnings || []).filter(function (w) {
+        return w !== TWP_NKD_PARTIAL_NOTE;
+      });
+      var partialTickers = collectPayoutPartialTickersFromWarnings(otherNkdWarnings);
       var twpFeed = payoutsGetFeed(cache.data && cache.data.payoutsByTicker, ticker);
       if (payoutsFeedMissing(twpFeed) && ticker) partialTickers = uniqueWarningTickers(partialTickers.concat([ticker]));
-      html += '<p class="muted pf-twp-status pf-twp-status--partial">' +
-        escapeHtml(formatPayoutPartialWarningText(partialTickers, PF_TWP_PARTIAL)) + '</p>';
+      var showGenericPartial = partialTickers.length > 0 || otherNkdWarnings.length > 0 ||
+        !!(cache.data && cache.data.isPartial) || !!(splitMetrics && splitMetrics.confidence === 'partial') || mustHide;
+      if (showGenericPartial) {
+        html += '<p class="muted pf-twp-status pf-twp-status--partial">' +
+          escapeHtml(formatPayoutPartialWarningText(partialTickers, PF_TWP_PARTIAL)) + '</p>';
+      }
+      if (row.nkdIsPartial) {
+        html += '<p class="muted pf-twp-status pf-twp-status--partial">' +
+          escapeHtml(TWP_NKD_PARTIAL_NOTE) + '</p>';
+      }
     }
 
     html += buildTwpHowHtml(isBond, splitHit);

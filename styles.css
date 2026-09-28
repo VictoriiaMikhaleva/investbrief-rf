@@ -2290,6 +2290,11 @@
       color: var(--text-muted);
       max-width: 100%;
     }
+    .pf-prs-nkd-note {
+      margin: 0 0 0.55rem;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
     @media (max-width: 699px) {
       .pf-prs-hero { grid-template-columns: 1fr; }
       .pf-prs-breakdown { grid-template-columns: 1fr 1fr; }

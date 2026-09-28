@@ -286,6 +286,21 @@
     out.settlementNkdSource = snap.settlementNkdSource;
   }
 
+  function assignPurchaseSettlementOnAllocation(row, raw) {
+    if (!row || !raw || typeof raw !== 'object') return;
+    if (!Object.prototype.hasOwnProperty.call(raw, 'purchaseSettlementNkdPerUnit')) return;
+    if (raw.purchaseSettlementNkdPerUnit == null || raw.purchaseSettlementNkdPerUnit === '') return;
+    var per = parseFloat(raw.purchaseSettlementNkdPerUnit);
+    if (!isFinite(per) || per < 0) return;
+    var date = normalizePortfolioDate(raw.purchaseSettlementDate);
+    if (!date) return;
+    var source = String(raw.purchaseSettlementNkdSource == null ? '' : raw.purchaseSettlementNkdSource).trim();
+    if (source !== NKD_SETTLEMENT_HISTORY_SOURCE && source !== NKD_SETTLEMENT_CURRENT_SOURCE) return;
+    row.purchaseSettlementNkdPerUnit = per;
+    row.purchaseSettlementDate = date;
+    row.purchaseSettlementNkdSource = source;
+  }
+
   function normalizeCashFlow(raw) {
     if (!raw || typeof raw !== 'object') return null;
     var type = String(raw.type || '').trim().toLowerCase();
@@ -412,6 +427,7 @@
         if (isFinite(adjBuy) && adjBuy > 0) row.adjustedBuyPrice = adjBuy;
         var lotScale = a.scale != null ? String(a.scale).trim() : '';
         if (lotScale) row.scale = lotScale;
+        assignPurchaseSettlementOnAllocation(row, a);
         allocations.push(row);
       });
     }

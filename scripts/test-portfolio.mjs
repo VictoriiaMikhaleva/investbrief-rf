@@ -8971,6 +8971,7 @@ await (async () => {
   assert(/Найденные выплаты/.test(html), 'prs ui: found payouts label');
   assert(/к сумме покупок, справочно/.test(html), 'prs ui: pct base copy');
   assert(/Как считается/.test(html), 'prs ui: how details');
+  assert(/Результат портфеля показан без НКД/.test(html), 'prs ui: result card says it is without NKD');
   assert(/Прогноз выплат и выплаты за 12 месяцев в этот итог не входят/.test(html), 'prs ui: 12m excluded copy');
   assert(/pf-prs-hero/.test(html) && /pf-prs-breakdown/.test(html), 'prs ui: hero then breakdown');
   assert(html.indexOf('pf-prs-hero') < html.indexOf('pf-prs-breakdown'), 'prs ui: hero before breakdown');
@@ -12357,7 +12358,7 @@ await (async () => {
     tradeDate: '2026-04-21',
     settlementDate: '2026-04-22',
     coupons: [{ couponDate: '2026-04-22', recordDate: null }]
-  }) === 'normal', 'missing recordDate does not invent a coupon transition');
+  }) === 'unknown', 'missing recordDate on the coupon inside the settlement window is unknown, not a transition and not normal');
 
   const nullNext = calc.resolveSettlementBondNkdFromHistory([
     ofzRow('2026-07-02', 25.29),
@@ -12632,6 +12633,563 @@ await (async () => {
   assert(!/markets\/bonds\/trades/.test(src), 'NKD-1.5 does not add a market-wide trades endpoint');
   assert(calc.TX_PRICE_ANOMALY_THRESHOLD === 0.2, 'anomaly threshold stays 20%');
 })();
+
+{
+  // NKD-2: экономический результат ОФЗ по settlement НКД, не по trade-date ACCINT.
+  const HIST = 'moex-history-next-session-accint';
+  const rub = (n) => Math.round(Number(n) * 100) / 100;
+  function settle(per, date) {
+    return {
+      settlementNkdPerUnit: per,
+      settlementDate: date,
+      settlementNkdSource: HIST
+    };
+  }
+  function ofzFeed(coupons) {
+    return {
+      OFZ_26254: {
+        kind: 'bond',
+        source: 'bondization',
+        faceValue: 1000,
+        coupons: coupons
+      }
+    };
+  }
+  const laterCoupon = [{ couponDate: '2026-10-21', recordDate: '2026-10-20', value: 64.82 }];
+  const aprilCoupon = [{ couponDate: '2026-04-22', recordDate: '2026-04-21', value: 64.82 }];
+  function runOfz(portfolio, extra) {
+    return calc.buildTickerReturnWithPayouts('OFZ_26254', portfolio, Object.assign({
+      now: '2026-09-25',
+      bondMeta: { faceValue: 1000 },
+      payoutsByTicker: ofzFeed(laterCoupon),
+      currentAccruedByTicker: {
+        OFZ_26254: { accruedInterestPerUnit: 55.56, accruedInterestSettleDate: '2026-09-28' }
+      }
+    }, extra || {}));
+  }
+  const buyFields = Object.assign({
+    nkdPerUnit: 25.29,
+    nkdDate: '2026-07-02',
+    nkdSource: 'moex-history-accint'
+  }, settle(25.64, '2026-07-03'));
+  const open233 = {
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 233, avgPrice: 85.054, currentPrice: 84,
+      buyDate: '2026-07-02', faceValue: 1000
+    }, buyFields)],
+    sales: []
+  };
+  const snapOpen = JSON.stringify(open233);
+  const openRow = runOfz(open233);
+  assert(openRow.purchaseNkdRub === rub(25.64 * 233), 'nkd2: purchase settlement NKD, not trade ACCINT');
+  assert(openRow.purchaseNkdRub !== rub(25.29 * 233), 'nkd2: trade nkdPerUnit is not purchase cash');
+  assert(openRow.currentNkdRub === rub(55.56 * 233), 'nkd2: current NKD is runtime accrued × open qty');
+  assert(openRow.saleNkdRub === 0, 'nkd2: open position has no sale NKD');
+  assert(openRow.nkdEffectRub === rub(openRow.currentNkdRub - openRow.purchaseNkdRub), 'nkd2: NKD effect');
+  assert(openRow.purchaseCashRub === rub(openRow.purchaseCostRub + openRow.purchaseNkdRub), 'nkd2: dirty purchase cash');
+  assert(openRow.saleCashRub === 0, 'nkd2: open sale cash');
+  assert(openRow.dirtyCurrentValueRub === rub(openRow.currentMarketValueRub + openRow.currentNkdRub), 'nkd2: dirty current value');
+  assert(openRow.purchaseCostRub === rub(233 * 85.054 / 100 * 1000), 'nkd2: clean purchase unchanged');
+  assert(openRow.currentMarketValueRub === rub(233 * 84 / 100 * 1000), 'nkd2: clean market value unchanged');
+  assert(openRow.resultWithoutPayoutsRub === 4515.54, 'nkd2: 233 open economic result 4515.54');
+  assert(openRow.resultWithPayoutsRub === 4515.54, 'nkd2: no coupon inside this window');
+  assert(openRow.resultWithPayoutsRub !== 4597.09, 'nkd2: old trade-date golden 4597.09 is not the result');
+  const hybrid = rub(openRow.dirtyCurrentValueRub - openRow.purchaseCashRub - openRow.currentNkdRub);
+  assert(openRow.resultWithoutPayoutsRub !== hybrid, 'nkd2: dirty purchase + clean current is not the result');
+  assert(Math.abs(openRow.returnWithPayoutsPct - (openRow.resultWithPayoutsRub / openRow.purchaseCashRub * 100)) < 1e-9,
+    'nkd2: percent uses purchase cash');
+  assert(Math.abs(openRow.returnWithPayoutsPct - (openRow.resultWithPayoutsRub / openRow.purchaseCostRub * 100)) > 1e-4,
+    'nkd2: percent is not dirty result over clean purchases');
+  assert(openRow.nkdIsPartial === false && openRow.isPartial === false, 'nkd2: complete open OFZ');
+  assert(openRow.payoutsRub === 0, 'nkd2: NKD is not added to payouts');
+  assert(JSON.stringify(open233) === snapOpen, 'nkd2: calculation does not change portfolio JSON');
+  assert(calc.getPositionMarketValue(open233.positions[0], { faceValue: 1000 }) ===
+    calc.getPositionMarketValue({
+      ticker: 'OFZ_26254', qty: 233, avgPrice: 85.054, currentPrice: 84, faceValue: 1000
+    }, { faceValue: 1000 }), 'nkd2: portfolio value helper ignores NKD');
+
+  const partialSalePf = {
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 133, avgPrice: 85.054, currentPrice: 84,
+      buyDate: '2026-07-02', faceValue: 1000
+    }, buyFields)],
+    sales: [Object.assign({
+      saleId: 'S1', ticker: 'OFZ_26254', qty: 100, buyPrice: 85.054, salePrice: 84,
+      saleDate: '2026-09-25', buyDate: '2026-07-02', faceValue: 1000, lotId: 'L',
+      allocations: [{ lotId: 'L', qty: 100, buyPrice: 85.054, buyDate: '2026-07-02' }]
+    }, settle(55.56, '2026-09-28'))]
+  };
+  const partialRow = runOfz(partialSalePf);
+  assert(partialRow.resultWithPayoutsRub === openRow.resultWithPayoutsRub, 'nkd2: 100 sold + 133 open matches 233 open');
+  assert(partialRow.currentNkdRub === rub(55.56 * 133), 'nkd2: current NKD only on the open remainder');
+  assert(partialRow.saleNkdRub === rub(55.56 * 100), 'nkd2: sale NKD on sold qty');
+  assert(partialRow.purchaseNkdRub === openRow.purchaseNkdRub, 'nkd2: purchase NKD stays on the original qty');
+  assert(partialRow.saleProceedsRub === rub(100 * 84 / 100 * 1000), 'nkd2: clean sale proceeds unchanged');
+  assert(partialRow.realizedWithNkdRub != null && partialRow.nkdRealizedPartial === false, 'nkd2: partial sale realized uses lot snapshot');
+  assert(Math.abs(partialRow.resultWithoutPayoutsRub - (partialRow.saleCashRub + partialRow.dirtyCurrentValueRub - partialRow.purchaseCashRub)) < 0.001,
+    'nkd2: result uses sale cash, not realized on top');
+  assert(partialRow.resultWithoutPayoutsRub !== partialRow.realizedWithNkdRub, 'nkd2: open remainder is not double-counted via realized');
+  const cleanRealized = calc.getSaleRealizedPnl(partialSalePf.sales[0], { faceValue: 1000 }).amount;
+  const cleanRealizedBare = calc.getSaleRealizedPnl({
+    ticker: 'OFZ_26254', qty: 100, buyPrice: 85.054, salePrice: 84, faceValue: 1000,
+    allocations: [{ qty: 100, buyPrice: 85.054 }]
+  }, { faceValue: 1000 }).amount;
+  assert(cleanRealized === cleanRealizedBare, 'nkd2: clean realized helper ignores settlement NKD');
+
+  const closedPf = {
+    positions: [],
+    sales: [Object.assign({
+      saleId: 'S2', ticker: 'OFZ_26254', qty: 233, buyPrice: 85.054, salePrice: 84,
+      saleDate: '2026-09-25', buyDate: '2026-07-02', faceValue: 1000, lotId: 'L',
+      allocations: [Object.assign({
+        lotId: 'L', qty: 233, buyPrice: 85.054, buyDate: '2026-07-02'
+      }, buyFields)]
+    }, settle(55.56, '2026-09-28'))]
+  };
+  const closedRow = runOfz(closedPf);
+  assert(closedRow.resultWithPayoutsRub === openRow.resultWithPayoutsRub, 'nkd2: fully closed matches open economic result');
+  assert(closedRow.currentNkdRub === 0, 'nkd2: closed current NKD is zero');
+  assert(closedRow.isClosed === true, 'nkd2: closed flag');
+  assert(closedRow.realizedWithNkdRub === closedRow.resultWithoutPayoutsRub, 'nkd2: closed realized-with-NKD equals cash result');
+  assert(closedRow.nkdRealizedPartial === false, 'nkd2: closed realized is complete when buy snapshot is on the allocation');
+
+  const closedNoBuySnap = {
+    positions: [],
+    sales: [Object.assign({
+      saleId: 'S3', ticker: 'OFZ_26254', qty: 233, buyPrice: 85.054, salePrice: 84,
+      saleDate: '2026-09-25', buyDate: '2026-07-02', faceValue: 1000,
+      allocations: [{ lotId: 'L', qty: 233, buyPrice: 85.054, buyDate: '2026-07-02' }]
+    }, settle(55.56, '2026-09-28'))]
+  };
+  const blocked = runOfz(closedNoBuySnap);
+  assert(blocked.nkdIsPartial === true && blocked.nkdRealizedPartial === true, 'nkd2: closed without buy snapshot is partial');
+  assert(blocked.realizedWithNkdRub == null, 'nkd2: realizedWithNkd stays empty when the lot snapshot is gone');
+  assert(blocked.purchaseNkdRub == null, 'nkd2: missing buy settlement is not zero');
+  assert(blocked.resultWithPayoutsRub === blocked.resultWithoutPayoutsRub, 'nkd2: blocked closed result stays on clean cash');
+
+  const legacy = runOfz({
+    positions: [{
+      ticker: 'OFZ_26254', lotId: 'L', qty: 233, avgPrice: 85.054, currentPrice: 84,
+      buyDate: '2026-07-02', faceValue: 1000,
+      nkdPerUnit: 25.29, nkdDate: '2026-07-02', nkdSource: 'moex-history-accint'
+    }],
+    sales: []
+  });
+  const legacyClean = rub(233 * 84 / 100 * 1000) - rub(233 * 85.054 / 100 * 1000);
+  assert(legacy.nkdIsPartial === true && legacy.isPartial === true, 'nkd2: legacy trade NKD only is partial');
+  assert(legacy.purchaseNkdRub == null && legacy.nkdEffectRub == null, 'nkd2: legacy does not invent dirty NKD');
+  assert(legacy.purchaseCashRub === legacy.purchaseCostRub, 'nkd2: legacy purchase cash stays clean');
+  assert(legacy.resultWithoutPayoutsRub === rub(legacyClean), 'nkd2: legacy result stays clean');
+  assert((legacy.nkdPartialReasons || []).indexOf('missing-buy-settlement') >= 0, 'nkd2: legacy reason is missing settlement');
+
+  const missingSale = runOfz({
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 133, avgPrice: 85.054, currentPrice: 84,
+      buyDate: '2026-07-02', faceValue: 1000
+    }, buyFields)],
+    sales: [{
+      saleId: 'S4', ticker: 'OFZ_26254', qty: 100, buyPrice: 85.054, salePrice: 84,
+      saleDate: '2026-09-25', faceValue: 1000,
+      allocations: [{ lotId: 'L', qty: 100, buyPrice: 85.054, buyDate: '2026-07-02' }]
+    }]
+  });
+  assert(missingSale.nkdIsPartial === true && (missingSale.nkdPartialReasons || []).indexOf('missing-sale-settlement') >= 0,
+    'nkd2: missing sale settlement is partial');
+  assert(missingSale.saleNkdRub == null, 'nkd2: missing sale NKD is not zero');
+
+  const missingCurrent = runOfz({
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 233, avgPrice: 85.054, currentPrice: 84,
+      buyDate: '2026-07-02', faceValue: 1000
+    }, buyFields)],
+    sales: []
+  }, { currentAccruedByTicker: {} });
+  assert(missingCurrent.nkdIsPartial === true && (missingCurrent.nkdPartialReasons || []).indexOf('missing-current-accrued') >= 0,
+    'nkd2: missing current accrued is partial');
+  assert(missingCurrent.currentNkdRub == null, 'nkd2: missing current accrued is not zero');
+  assert(missingCurrent.resultWithoutPayoutsRub === rub(legacyClean), 'nkd2: missing current keeps the clean result');
+
+  const zeroBuy = runOfz({
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 2, avgPrice: 90, currentPrice: 90,
+      buyDate: '2026-07-02', faceValue: 1000
+    }, settle(0, '2026-07-03'))],
+    sales: []
+  }, {
+    currentAccruedByTicker: { OFZ_26254: { accruedInterestPerUnit: 1, accruedInterestSettleDate: '2026-09-28' } }
+  });
+  assert(zeroBuy.purchaseNkdRub === 0 && zeroBuy.nkdIsPartial === false, 'nkd2: known zero buy NKD is not missing');
+
+  const zeroSale = runOfz({
+    positions: [],
+    sales: [Object.assign({
+      saleId: 'SZ', ticker: 'OFZ_26254', qty: 2, buyPrice: 90, salePrice: 90,
+      saleDate: '2026-09-25', buyDate: '2026-07-02', faceValue: 1000,
+      allocations: [Object.assign({ lotId: 'L', qty: 2, buyPrice: 90, buyDate: '2026-07-02' }, settle(1, '2026-07-03'))]
+    }, settle(0, '2026-09-28'))]
+  });
+  assert(zeroSale.saleNkdRub === 0 && (zeroSale.nkdPartialReasons || []).indexOf('missing-sale-settlement') < 0,
+    'nkd2: known zero sale NKD is not missing');
+
+  const zeroCurrent = runOfz({
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 2, avgPrice: 90, currentPrice: 90,
+      buyDate: '2026-07-02', faceValue: 1000
+    }, settle(1, '2026-07-03'))],
+    sales: []
+  }, {
+    currentAccruedByTicker: { OFZ_26254: { accruedInterestPerUnit: 0, accruedInterestSettleDate: '2026-04-22' } }
+  });
+  assert(zeroCurrent.currentNkdRub === 0 && zeroCurrent.nkdIsPartial === false, 'nkd2: known zero current accrued is not missing');
+
+  const transition = runOfz({
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 1, avgPrice: 94, currentPrice: 94,
+      buyDate: '2026-04-21', faceValue: 1000
+    }, settle(0, '2026-04-22'))],
+    sales: []
+  }, {
+    now: '2026-09-25',
+    payoutsByTicker: ofzFeed(aprilCoupon),
+    currentAccruedByTicker: { OFZ_26254: { accruedInterestPerUnit: 5, accruedInterestSettleDate: '2026-09-28' } }
+  });
+  assert(transition.nkdIsPartial === true && (transition.nkdPartialReasons || []).indexOf('coupon-transition') >= 0,
+    'nkd2: 21.04 → 22.04 coupon-transition is partial');
+  assert(transition.purchaseNkdRub == null, 'nkd2: known zero settlement on a transition is not complete NKD');
+  assert(transition.couponCompensationRub == null, 'nkd2: no coupon compensation field');
+  assert(transition.resultWithoutPayoutsRub === 0, 'nkd2: transition result stays clean');
+
+  const beforeCoupon = runOfz({
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 1, avgPrice: 90, currentPrice: 90,
+      buyDate: '2026-04-20', faceValue: 1000,
+      nkdPerUnit: 64.11, nkdDate: '2026-04-20', nkdSource: 'moex-history-accint'
+    }, settle(64.46, '2026-04-21'))],
+    sales: []
+  }, {
+    now: '2026-09-25',
+    payoutsByTicker: ofzFeed(aprilCoupon),
+    currentAccruedByTicker: { OFZ_26254: { accruedInterestPerUnit: 0, accruedInterestSettleDate: '2026-04-23' } }
+  });
+  assert(beforeCoupon.purchaseNkdRub === 64.46, 'nkd2: 20.04 uses settlement NKD 64.46, not 64.11');
+  assert(beforeCoupon.payoutsRub === 64.82 && beforeCoupon.couponsRub === 64.82, 'nkd2: coupon stays the full 64.82');
+  assert(beforeCoupon.resultWithPayoutsRub === rub(64.82 - 64.46), 'nkd2: coupon minus settlement NKD is 0.36 before price move');
+  assert(beforeCoupon.nkdIsPartial === false, 'nkd2: normal buy before coupon is complete');
+
+  const amort = runOfz({
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 1, avgPrice: 90, currentPrice: 91,
+      buyDate: '2026-07-02', faceValue: 1000
+    }, settle(1, '2026-07-03'))],
+    sales: []
+  }, { bondMeta: { faceValue: 1000, bondType: 'Амортизируемая облигация' } });
+  assert(amort.nkdIsPartial === true && (amort.nkdPartialReasons || []).indexOf('unsupported') >= 0,
+    'nkd2: amortizing bond is partial');
+  assert(amort.purchaseNkdRub == null && amort.currentNkdRub == null, 'nkd2: unsupported bond has no fake NKD');
+
+  const stock = calc.buildTickerReturnWithPayouts('SBER', {
+    positions: [{ ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 }],
+    sales: []
+  }, {
+    now: '2025-12-31',
+    payoutsByTicker: { SBER: { kind: 'stock', source: 'moex', dividends: [{ date: '2024-07-17', value: 33.3 }] } }
+  });
+  assert(stock.purchaseNkdRub === 0 && stock.saleNkdRub === 0 && stock.currentNkdRub === 0 && stock.nkdEffectRub === 0,
+    'nkd2: stock NKD is zero');
+  assert(stock.purchaseCashRub === stock.purchaseCostRub && stock.dirtyCurrentValueRub === stock.currentMarketValueRub,
+    'nkd2: stock cash equals clean cash');
+  assert(stock.resultWithPayoutsRub === 633 && stock.nkdIsPartial === false, 'nkd2: stock result unchanged');
+  assert(Math.abs(stock.returnWithPayoutsPct - 25.32) < 1e-9, 'nkd2: stock percent unchanged');
+
+  const mixed = calc.buildPortfolioReturnWithPayouts({
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      open233.positions[0]
+    ],
+    sales: []
+  }, {
+    now: '2026-09-25',
+    bondMetaMap: { OFZ_26254: { faceValue: 1000 } },
+    payoutsByTicker: Object.assign({
+      SBER: { kind: 'stock', source: 'moex', dividends: [] }
+    }, ofzFeed(laterCoupon)),
+    currentAccruedByTicker: {
+      OFZ_26254: { accruedInterestPerUnit: 55.56, accruedInterestSettleDate: '2026-09-28' }
+    }
+  });
+  const mixedStock = mixed.items.filter((row) => row.ticker === 'SBER')[0];
+  const mixedBond = mixed.items.filter((row) => row.ticker === 'OFZ_26254')[0];
+  assert(mixedStock && mixedStock.resultWithoutPayoutsRub === 300 && mixedStock.nkdIsPartial === false, 'nkd2: stock inside a mix is unchanged');
+  assert(mixedBond && mixedBond.resultWithPayoutsRub === 4515.54, 'nkd2: bond inside a mix keeps economic result');
+  assert(mixed.purchaseCashRub === rub(mixedStock.purchaseCashRub + mixedBond.purchaseCashRub), 'nkd2: mixed purchase cash base');
+  assert(mixed.resultWithPayoutsRub === rub(mixedStock.resultWithPayoutsRub + mixedBond.resultWithPayoutsRub),
+    'nkd2: portfolio result is the sum of ticker results');
+  assert(Math.abs(mixed.returnWithPayoutsPct - (mixed.resultWithPayoutsRub / mixed.purchaseCashRub * 100)) < 1e-9,
+    'nkd2: mixed percent uses economic purchase cash');
+  assert(mixed.nkdIsPartial === false, 'nkd2: complete mix is not NKD-partial');
+
+  const partialMix = calc.buildPortfolioReturnWithPayouts({
+    positions: [
+      { ticker: 'SBER', lotId: 'S1', qty: 10, avgPrice: 250, buyDate: '2024-01-15', currentPrice: 280 },
+      {
+        ticker: 'OFZ_26254', lotId: 'L', qty: 1, avgPrice: 90, currentPrice: 90,
+        buyDate: '2026-07-02', faceValue: 1000,
+        nkdPerUnit: 25.29, nkdDate: '2026-07-02', nkdSource: 'moex-history-accint'
+      }
+    ],
+    sales: []
+  }, {
+    now: '2026-09-25',
+    bondMetaMap: { OFZ_26254: { faceValue: 1000 } },
+    payoutsByTicker: Object.assign({
+      SBER: { kind: 'stock', source: 'moex', dividends: [] }
+    }, ofzFeed(laterCoupon)),
+    currentAccruedByTicker: { OFZ_26254: { accruedInterestPerUnit: 1 } }
+  });
+  assert(partialMix.nkdIsPartial === true && partialMix.isPartial === true, 'nkd2: one partial bond makes the portfolio partial');
+  assert(partialMix.items.filter((row) => row.ticker === 'SBER')[0].nkdIsPartial === false, 'nkd2: stock does not create NKD partial');
+  const partialBond = partialMix.items.filter((row) => row.ticker === 'OFZ_26254')[0];
+  assert(partialBond.returnWithPayoutsPct === partialBond.resultWithPayoutsRub / partialBond.purchaseCostRub * 100,
+    'nkd2: partial percent stays on the clean base and is marked partial');
+
+  calc.sandbox.getBondQuoteAccruedRuntime = function (ticker) {
+    if (ticker !== 'OFZ_26254') return null;
+    return { accruedInterestPerUnit: 55.56, accruedInterestSettleDate: '2026-09-28', faceValue: 1000, currency: 'RUB' };
+  };
+  const fromRuntime = calc.buildTickerReturnWithPayouts('OFZ_26254', open233, {
+    now: '2026-09-25',
+    bondMeta: { faceValue: 1000 },
+    payoutsByTicker: ofzFeed(laterCoupon)
+  });
+  assert(fromRuntime.currentNkdRub === rub(55.56 * 233) && fromRuntime.nkdIsPartial === false,
+    'nkd2: current accrued is read from the runtime map, not from storage');
+  const prevPortfolio = calc.sandbox.getPortfolio;
+  calc.sandbox.getPortfolio = function () { return open233; };
+  const uiCache = calc.sandbox.getPfPayoutFeedsCache();
+  const prevCache = {
+    status: uiCache.status,
+    data: uiCache.data,
+    tickersKey: uiCache.tickersKey
+  };
+  uiCache.status = 'ready';
+  uiCache.data = { payoutsByTicker: ofzFeed(laterCoupon), warnings: [], isPartial: false };
+  uiCache.tickersKey = 'OFZ_26254';
+  const nkdHtml = calc.buildTickerReturnWithPayoutsBlockHtml('OFZ_26254', true);
+  assert(/Доходность облигаций учитывает НКД/.test(nkdHtml), 'nkd2 ui: bond return copy');
+  assert(/Стоимость портфеля и график динамики показываются без НКД/.test(nkdHtml), 'nkd2 ui: clean value copy');
+  assert(/Эффект НКД:/.test(nkdHtml), 'nkd2 ui: NKD effect line');
+  assert(/без НКД/.test(nkdHtml), 'nkd2 ui: coupon entitlement still says without NKD');
+  uiCache.status = prevCache.status;
+  uiCache.data = prevCache.data;
+  uiCache.tickersKey = prevCache.tickersKey;
+  calc.sandbox.getPortfolio = prevPortfolio;
+  delete calc.sandbox.getBondQuoteAccruedRuntime;
+
+  assert(calc.classifyBondSettlementEconomics({
+    tradeDate: '2026-07-02',
+    settlementDate: '2026-07-03',
+    coupons: laterCoupon
+  }) === 'normal', 'nkd2 class: reliable record far from the pair is normal');
+  assert(calc.classifyBondSettlementEconomics({
+    tradeDate: '2026-04-21',
+    settlementDate: '2026-04-22',
+    coupons: aprilCoupon
+  }) === 'coupon-transition', 'nkd2 class: 21.04 → 22.04 stays coupon-transition');
+  const missingRelevant = calc.classifyBondSettlementEconomics({
+    tradeDate: '2026-04-21',
+    settlementDate: '2026-04-22',
+    coupons: [{ couponDate: '2026-04-22', recordDate: null }]
+  });
+  assert(missingRelevant === 'unknown', 'nkd2 class: relevant missing recordDate is unknown');
+  assert(missingRelevant !== 'coupon-transition', 'nkd2 class: missing recordDate does not invent a transition');
+  assert(calc.classifyBondSettlementEconomics({
+    tradeDate: '2026-04-21',
+    settlementDate: '2026-04-22',
+    coupons: [{ couponDate: '2026-04-22', recordDate: '2026-04-23' }]
+  }) === 'unknown', 'nkd2 class: invalid recordDate inside the window is unknown');
+  assert(calc.classifyBondSettlementEconomics({
+    tradeDate: '2026-07-02',
+    settlementDate: '2026-07-03',
+    coupons: laterCoupon.concat([
+      { couponDate: '2024-10-22', recordDate: null },
+      { couponDate: '2027-04-21', recordDate: null }
+    ])
+  }) === 'normal', 'nkd2 class: old and future coupons without recordDate stay outside this pair');
+  const unknownEcon = runOfz({
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 1, avgPrice: 94, currentPrice: 94,
+      buyDate: '2026-04-21', faceValue: 1000
+    }, settle(0, '2026-04-22'))],
+    sales: []
+  }, {
+    payoutsByTicker: ofzFeed([{ couponDate: '2026-04-22', recordDate: null, value: 64.82 }]),
+    currentAccruedByTicker: { OFZ_26254: { accruedInterestPerUnit: 5, accruedInterestSettleDate: '2026-09-28' } }
+  });
+  assert(unknownEcon.nkdIsPartial === true && (unknownEcon.nkdPartialReasons || []).indexOf('unknown-economics') >= 0,
+    'nkd2 class: unknown boundary is partial');
+  assert((unknownEcon.nkdPartialReasons || []).indexOf('unsupported') < 0,
+    'nkd2 class: missing recordDate is not unsupported');
+  const irrelevant = runOfz(open233, {
+    payoutsByTicker: ofzFeed(laterCoupon.concat([
+      { couponDate: '2024-10-22', recordDate: null, value: 1 },
+      { couponDate: '2027-04-21', recordDate: null, value: 1 }
+    ]))
+  });
+  assert(irrelevant.nkdIsPartial === false && irrelevant.resultWithPayoutsRub === 4515.54,
+    'nkd2 class: irrelevant missing recordDate keeps the open golden result');
+  const noFeed = runOfz(open233, { payoutsByTicker: {} });
+  assert(noFeed.nkdIsPartial === true && (noFeed.nkdPartialReasons || []).indexOf('unclassified') >= 0,
+    'nkd2 class: coupon feed not loaded stays unclassified');
+  assert(calc.classifyBondSettlementEconomics({
+    tradeDate: '2026-07-02',
+    settlementDate: '2026-07-03',
+    coupons: [],
+    supported: true
+  }) === 'unknown', 'nkd2 class: loaded empty coupon list is unknown');
+  const emptyCoupons = runOfz(open233, { payoutsByTicker: ofzFeed([]) });
+  assert(emptyCoupons.nkdIsPartial === true && emptyCoupons.isPartial === true,
+    'nkd2 class: loaded empty coupons make the OFZ partial');
+  assert((emptyCoupons.nkdPartialReasons || []).indexOf('unknown-economics') >= 0,
+    'nkd2 class: empty schedule is unknown-economics');
+  assert((emptyCoupons.nkdPartialReasons || []).indexOf('unclassified') < 0,
+    'nkd2 class: empty loaded schedule is not a missing feed');
+  assert(emptyCoupons.resultWithoutPayoutsRub !== 4515.54, 'nkd2 class: empty schedule does not complete the golden');
+  const prsCard = calc.buildPortfolioResultSummary({
+    positions: open233.positions,
+    sales: []
+  }, {
+    now: '2026-09-25',
+    bondMetaMap: { OFZ_26254: { faceValue: 1000 } },
+    payoutsByTicker: ofzFeed(laterCoupon),
+    currentAccruedByTicker: {
+      OFZ_26254: { accruedInterestPerUnit: 55.56, accruedInterestSettleDate: '2026-09-28' }
+    }
+  });
+  const prsCardHtml = calc.buildPortfolioResultSummaryHtml(prsCard);
+  const cleanOpen = rub(233 * 84 / 100 * 1000) - rub(233 * 85.054 / 100 * 1000);
+  assert(prsCard.resultWithPayoutsRub === rub(cleanOpen), 'nkd2 ui: portfolio result card stays on the clean result');
+  assert(prsCard.resultWithPayoutsRub !== 4515.54, 'nkd2 ui: portfolio result card is not the economic golden');
+  assert(/Результат портфеля показан без НКД/.test(prsCardHtml), 'nkd2 ui: portfolio card names the clean result');
+  assert(/Справочный результат по ОФЗ может учитывать НКД по расчётам сделок и текущий НКД/.test(prsCardHtml),
+    'nkd2 ui: portfolio card points to the OFZ reference result');
+  assert(openRow.resultWithPayoutsRub === 4515.54, 'nkd2: golden 4515.54 still stands after the card copy');
+
+  const zeroStored = h.normalizePortfolio({
+    positions: [],
+    sales: [{
+      ticker: 'OFZ_26254', qty: 1, buyPrice: 90, salePrice: 90, saleDate: '2026-09-25',
+      allocations: [{
+        lotId: 'Z', qty: 1, buyPrice: 90, buyDate: '2026-07-02',
+        purchaseSettlementNkdPerUnit: 0,
+        purchaseSettlementDate: '2026-07-03',
+        purchaseSettlementNkdSource: HIST
+      }]
+    }]
+  });
+  assert(zeroStored.sales[0].allocations[0].purchaseSettlementNkdPerUnit === 0,
+    'nkd2 storage: known zero purchase settlement is kept');
+  const absentStored = h.normalizePortfolio({
+    positions: [],
+    sales: [{
+      ticker: 'OFZ_26254', qty: 1, buyPrice: 90, salePrice: 90, saleDate: '2026-09-25',
+      allocations: [{ lotId: 'Z', qty: 1, buyPrice: 90, buyDate: '2026-07-02' }]
+    }]
+  });
+  assert(!Object.prototype.hasOwnProperty.call(absentStored.sales[0].allocations[0], 'purchaseSettlementNkdPerUnit'),
+    'nkd2 storage: missing purchase settlement is not zero');
+
+  const sbSale = calc.sandbox;
+  const prevSaleGet = sbSale.getPortfolio;
+  const prevSaleSet = sbSale.setPortfolio;
+  let writerPf = {
+    positions: [Object.assign({
+      ticker: 'OFZ_26254', lotId: 'L', qty: 233, avgPrice: 85.054, currentPrice: 84,
+      buyDate: '2026-07-02', faceValue: 1000, comment: 'buy'
+    }, buyFields)],
+    sales: []
+  };
+  sbSale.getPortfolio = () => writerPf;
+  sbSale.setPortfolio = (p) => { writerPf = p; };
+  function primeSaleNkd(date) {
+    sbSale.rememberBondTxMarketPending('OFZ_26254', date, {
+      settlement: {
+        status: 'known',
+        settlementNkdPerUnit: 55.56,
+        settlementDate: '2026-09-28',
+        settlementNkdSource: HIST
+      }
+    });
+  }
+  primeSaleNkd('2026-09-25');
+  const wrotePartial = calc.commitPortfolioSale('OFZ_26254', {
+    qty: 100, price: 84, date: '2026-09-25', comment: ''
+  });
+  assert(wrotePartial && wrotePartial.ok === true, 'nkd2 writer: partial sale commits');
+  const remainLot = (writerPf.positions || []).filter((p) => p && p.ticker === 'OFZ_26254')[0];
+  assert(remainLot && remainLot.qty === 133, 'nkd2 writer: residual qty 133');
+  assert(remainLot.avgPrice === 85.054, 'nkd2 writer: residual bond avgPrice stays the purchase percent');
+  assert(remainLot.settlementNkdPerUnit === 25.64 && remainLot.settlementDate === '2026-07-03' &&
+    remainLot.settlementNkdSource === HIST, 'nkd2 writer: residual lot keeps purchase settlement');
+  assert(remainLot.nkdPerUnit === 25.29 && remainLot.nkdDate === '2026-07-02' &&
+    remainLot.nkdSource === 'moex-history-accint', 'nkd2 writer: residual lot keeps trade NKD metadata');
+  const wroteAlloc = writerPf.sales[0].allocations[0];
+  assert(wroteAlloc.qty === 100 && wroteAlloc.purchaseSettlementNkdPerUnit === 25.64 &&
+    wroteAlloc.purchaseSettlementDate === '2026-07-03' &&
+    wroteAlloc.purchaseSettlementNkdSource === HIST, 'nkd2 writer: allocation keeps purchase settlement');
+  assert(writerPf.sales[0].settlementNkdPerUnit === 55.56, 'nkd2 writer: sale keeps its own settlement NKD');
+  assert(wroteAlloc.purchaseSettlementNkdPerUnit !== writerPf.sales[0].settlementNkdPerUnit,
+    'nkd2 writer: purchase settlement is not replaced by sale settlement');
+  const roundPartial = h.normalizePortfolio(JSON.parse(JSON.stringify(writerPf)));
+  assert(roundPartial.positions[0].qty === 133 && roundPartial.positions[0].settlementNkdPerUnit === 25.64 &&
+    roundPartial.positions[0].settlementDate === '2026-07-03' &&
+    roundPartial.positions[0].settlementNkdSource === HIST &&
+    roundPartial.positions[0].nkdPerUnit === 25.29, 'nkd2 writer: residual snapshot survives normalize');
+  assert(roundPartial.sales[0].allocations[0].purchaseSettlementNkdPerUnit === 25.64 &&
+    roundPartial.sales[0].allocations[0].purchaseSettlementDate === '2026-07-03' &&
+    roundPartial.sales[0].allocations[0].purchaseSettlementNkdSource === HIST,
+    'nkd2 writer: allocation snapshot survives normalize');
+  const writerPartialRow = runOfz(roundPartial);
+  assert(writerPartialRow.nkdIsPartial === false, 'nkd2 writer: partial sale alone does not make NKD partial');
+  assert(writerPartialRow.resultWithPayoutsRub === 4515.54, 'nkd2 writer: 100 sold + 133 open is 4515.54');
+  assert(writerPartialRow.realizedWithNkdRub != null && writerPartialRow.nkdRealizedPartial === false,
+    'nkd2 writer: realizedWithNkd for the sold 100');
+  assert(writerPartialRow.purchaseCostRub === openRow.purchaseCostRub, 'nkd2 writer: clean purchase unchanged');
+  assert(writerPartialRow.saleProceedsRub === rub(100 * 84 / 100 * 1000), 'nkd2 writer: clean sale proceeds unchanged');
+  const cleanAfterWriter = calc.getSaleRealizedPnl(roundPartial.sales[0], { faceValue: 1000 }).amount;
+  assert(cleanAfterWriter === cleanRealizedBare, 'nkd2 writer: clean realized helper unchanged');
+
+  primeSaleNkd('2026-09-25');
+  const wroteClose = calc.commitPortfolioSale('OFZ_26254', {
+    qty: 133, price: 84, date: '2026-09-25', comment: ''
+  });
+  assert(wroteClose && wroteClose.ok === true, 'nkd2 writer: closing sale commits');
+  assert(!(writerPf.positions || []).some((p) => p && p.ticker === 'OFZ_26254' && Number(p.qty) > 0),
+    'nkd2 writer: purchase lot is gone after full close');
+  writerPf.sales.forEach((sale) => {
+    assert(sale.allocations && sale.allocations[0].purchaseSettlementNkdPerUnit === 25.64 &&
+      sale.allocations[0].purchaseSettlementDate === '2026-07-03' &&
+      sale.allocations[0].purchaseSettlementNkdSource === HIST,
+      'nkd2 writer: full close keeps purchase settlement on the allocation');
+  });
+  const roundClosed = h.normalizePortfolio(JSON.parse(JSON.stringify(writerPf)));
+  assert(!roundClosed.positions.some((p) => p && p.ticker === 'OFZ_26254'),
+    'nkd2 writer: reload does not restore the closed lot');
+  const writerClosedRow = runOfz(roundClosed);
+  assert(writerClosedRow.nkdIsPartial === false && writerClosedRow.realizedWithNkdRub != null,
+    'nkd2 writer: realizedWithNkd after reload does not need the open lot');
+  assert(writerClosedRow.resultWithPayoutsRub === 4515.54, 'nkd2 writer: 233 closed after writer is 4515.54');
+
+  sbSale.getPortfolio = prevSaleGet;
+  sbSale.setPortfolio = prevSaleSet;
+
+  const econSrc = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const econStart = econSrc.indexOf('function twpKnownSettlement');
+  const econEnd = econSrc.indexOf('function buildTickerReturnWithPayouts');
+  const econSlice = econSrc.slice(econStart, econEnd);
+  assert(econStart > 0 && !/nkdPerUnit/.test(econSlice), 'nkd2: economic helper does not read trade-date nkdPerUnit');
+  assert(!/fetch\s*\(/.test(econSlice) && !/XMLHttpRequest/.test(econSlice) && !/\/api\//.test(econSlice),
+    'nkd2: pure helper does not fetch and adds no endpoint');
+}
 
 if (errors.length) {
   console.error('FAIL');
