@@ -8701,6 +8701,9 @@
   var TX_PRICE_ANOMALY_LOOKBACK_DAYS = 30;
   var TX_PRICE_ANOMALY_NEARBY_MAX_DAYS = 10;
   var NKD_TX_SOURCE = 'moex-history-accint';
+  var NKD_SETTLEMENT_HISTORY_SOURCE = 'moex-history-next-session-accint';
+  var NKD_SETTLEMENT_CURRENT_SOURCE = 'moex-current-accruedint';
+  var NKD_SETTLEMENT_FORWARD_DAYS = 10;
   var NKD_V1_FACE = 1000;
   var pfTxAnomalyState = { key: '', ackKey: '', inFlightKey: '', result: null };
   var pfTxNkdPending = null;
@@ -8774,6 +8777,297 @@
     delete target.nkdDate;
     delete target.nkdSource;
     return target;
+  }
+
+  /**
+   * Строка history годится для v1-НКД, только если номинал 1000 и это обычная рублёвая ОФЗ.
+   * unknown — метаданных недостаточно, не подменяем их догадкой.
+   */
+  function bondHistoryRowNkdV1Support(row) {
+    if (!row) return 'unknown';
+    var face = row.faceValue;
+    var faceKnown = face != null && face !== '' && isFinite(Number(face));
+    if (faceKnown && Number(face) !== NKD_V1_FACE) return 'unsupported';
+    if (!faceKnown) return 'unknown';
+    if (row.currency && !bondNkdCurrencyIsRub(row.currency)) return 'unsupported';
+    if (row.faceUnit && !bondNkdCurrencyIsRub(row.faceUnit)) return 'unsupported';
+    if (bondNkdTypeUnsupported(row.bondType, row.faceValueType)) return 'unsupported';
+    return 'supported';
+  }
+
+  function emptySettlementNkdResult(status) {
+    return {
+      status: status || 'missing',
+      settlementNkdPerUnit: null,
+      settlementDate: '',
+      settlementNkdSource: null,
+      economicsStatus: status === 'unsupported' ? 'unsupported' : 'normal'
+    };
+  }
+
+  function settlementHistorySupport(tradeRow, nextRow) {
+    var tradeSupport = bondHistoryRowNkdV1Support(tradeRow);
+    var nextSupport = bondHistoryRowNkdV1Support(nextRow);
+    if (tradeSupport === 'unsupported' || nextSupport === 'unsupported') return 'unsupported';
+    if (tradeSupport === 'supported' || nextSupport === 'supported') return 'supported';
+    return 'unsupported';
+  }
+
+  /**
+   * Settlement НКД — ACCINT первой следующей строки TQOB history после даты сделки.
+   * Это inferred Y1 session, не официальный historical SETTLEDATE.
+   * Дата не считается как tradeDate + 1 календарный день: праздник без строки пропускается сам.
+   * CLOSE и NUMTRADES не требуются. 0 — известный ACCINT.
+   */
+  function resolveSettlementBondNkdFromHistory(rows, transactionDate) {
+    var date = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(transactionDate) || '')
+      : String(transactionDate || '').slice(0, 10);
+    if (!date) return emptySettlementNkdResult('missing');
+    var list = [];
+    (rows || []).forEach(function (item) {
+      if (!item) return;
+      var d = String(item.date || '').slice(0, 10);
+      if (d.length < 10) return;
+      list.push(item);
+    });
+    list.sort(function (a, b) {
+      var da = String(a.date).slice(0, 10);
+      var db = String(b.date).slice(0, 10);
+      if (da < db) return -1;
+      if (da > db) return 1;
+      return 0;
+    });
+    var tradeRow = null;
+    var nextRow = null;
+    list.forEach(function (item) {
+      var d = String(item.date || '').slice(0, 10);
+      if (d === date) tradeRow = item;
+      else if (d > date && !nextRow) nextRow = item;
+    });
+    var support = settlementHistorySupport(tradeRow, nextRow);
+    if (support === 'unsupported') return emptySettlementNkdResult('unsupported');
+    if (!nextRow) return emptySettlementNkdResult('missing');
+    var acc = nextRow.accruedInterestPerUnit;
+    if (acc == null || acc === '' || !isFinite(Number(acc)) || Number(acc) < 0) {
+      return emptySettlementNkdResult('missing');
+    }
+    if (support !== 'supported') return emptySettlementNkdResult('unsupported');
+    return {
+      status: 'known',
+      settlementNkdPerUnit: Number(acc),
+      settlementDate: String(nextRow.date).slice(0, 10),
+      settlementNkdSource: NKD_SETTLEMENT_HISTORY_SOURCE,
+      economicsStatus: 'normal'
+    };
+  }
+
+  function settlementLiveSecidMatches(quote, ticker) {
+    if (!quote || !quote.secid) return false;
+    var expected = resolveTxPriceAnomalyBondSecid(ticker);
+    if (!expected) return false;
+    return String(quote.secid).trim().toUpperCase() === String(expected).trim().toUpperCase();
+  }
+
+  function liveQuoteBondV1Support(quote) {
+    if (!quote) return 'unknown';
+    return bondHistoryRowNkdV1Support({
+      faceValue: quote.faceValue,
+      currency: quote.currency,
+      faceUnit: quote.faceUnit,
+      bondType: quote.bondType,
+      faceValueType: quote.faceValueType
+    });
+  }
+
+  /**
+   * Live ACCRUEDINT уже относится к текущей SETTLEDATE.
+   * Только для сделки в сегодняшней сессии и только если SECID, номинал и дата однозначны.
+   */
+  function resolveSettlementBondNkdFromLiveQuote(quote, transactionDate, ticker) {
+    var date = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(transactionDate) || '')
+      : String(transactionDate || '').slice(0, 10);
+    if (!date || !quote) return emptySettlementNkdResult('missing');
+    if (!settlementLiveSecidMatches(quote, ticker)) return emptySettlementNkdResult('missing');
+    var acc = quote.accruedInterestPerUnit;
+    if (acc == null || acc === '' || !isFinite(Number(acc)) || Number(acc) < 0) {
+      return emptySettlementNkdResult('missing');
+    }
+    var settle = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(quote.accruedInterestSettleDate) || '')
+      : String(quote.accruedInterestSettleDate || '').slice(0, 10);
+    if (!settle || settle <= date) return emptySettlementNkdResult('missing');
+    var support = liveQuoteBondV1Support(quote);
+    if (support === 'unsupported') return emptySettlementNkdResult('unsupported');
+    if (support !== 'supported') return emptySettlementNkdResult('missing');
+    return {
+      status: 'known',
+      settlementNkdPerUnit: Number(acc),
+      settlementDate: settle,
+      settlementNkdSource: NKD_SETTLEMENT_CURRENT_SOURCE,
+      economicsStatus: 'normal'
+    };
+  }
+
+  function bondCouponRecordDateReliable(coupon) {
+    if (!coupon || typeof normalizePortfolioDate !== 'function') return '';
+    var record = normalizePortfolioDate(coupon.recordDate);
+    if (!record) return '';
+    var couponDate = normalizePortfolioDate(coupon.couponDate || coupon.date);
+    if (couponDate && record > couponDate) return '';
+    return record;
+  }
+
+  /**
+   * Риск пересечения купонной границы. Не считается выплата и не меняется право на купон.
+   * Надёжен только явный recordDate. Окно (recordDate, couponDate] — compensation window.
+   */
+  function classifyBondSettlementEconomics(input) {
+    input = input || {};
+    if (input.supported === false || input.status === 'unsupported') return 'unsupported';
+    var trade = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(input.tradeDate || input.transactionDate) || '')
+      : String(input.tradeDate || input.transactionDate || '').slice(0, 10);
+    var settle = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(input.settlementDate) || '')
+      : String(input.settlementDate || '').slice(0, 10);
+    if (!trade || !settle) return 'normal';
+    var coupons = input.coupons || [];
+    var i;
+    for (i = 0; i < coupons.length; i++) {
+      var record = bondCouponRecordDateReliable(coupons[i]);
+      if (!record) continue;
+      var couponDate = typeof normalizePortfolioDate === 'function'
+        ? (normalizePortfolioDate(coupons[i].couponDate || coupons[i].date) || '')
+        : '';
+      if (trade < record && settle > record) return 'coupon-transition';
+      if (couponDate && couponDate > record && settle > record && settle <= couponDate) {
+        return 'coupon-transition';
+      }
+    }
+    return 'normal';
+  }
+
+  function bondCouponsAlreadyLoaded(ticker) {
+    if (typeof getPfPayoutFeedsCache !== 'function') return null;
+    var cache = getPfPayoutFeedsCache();
+    if (!cache || cache.status !== 'ready' || !cache.data) return null;
+    var t = typeof normalizeTicker === 'function' ? normalizeTicker(ticker) : String(ticker || '');
+    var feed = cache.data[t];
+    if (!feed || !Array.isArray(feed.coupons)) return null;
+    return feed.coupons;
+  }
+
+  function attachSettlementEconomics(settlement, tradeDate, coupons) {
+    if (!settlement) return settlement;
+    if (settlement.status === 'unsupported') {
+      settlement.economicsStatus = 'unsupported';
+      return settlement;
+    }
+    settlement.economicsStatus = classifyBondSettlementEconomics({
+      tradeDate: tradeDate,
+      settlementDate: settlement.settlementDate,
+      coupons: coupons,
+      supported: true
+    });
+    return settlement;
+  }
+
+  /**
+   * Прошлая сделка — только next-session ACCINT.
+   * Сегодняшняя — live ACCRUEDINT, если следующей history-строки ещё нет.
+   */
+  function resolveBondSettlementSnapshot(input) {
+    input = input || {};
+    var date = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(input.transactionDate) || '')
+      : String(input.transactionDate || '').slice(0, 10);
+    var today = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(input.today) || '')
+      : String(input.today || '').slice(0, 10);
+    var hist = resolveSettlementBondNkdFromHistory(input.rows, date);
+    var chosen = hist;
+    var currentDay = !!(date && today && date === today);
+    if (currentDay && hist.status !== 'known' && hist.status !== 'unsupported') {
+      var live = resolveSettlementBondNkdFromLiveQuote(input.liveQuote, date, input.ticker);
+      if (live.status === 'known' || live.status === 'unsupported') chosen = live;
+    }
+    var coupons = input.coupons;
+    if (!coupons) coupons = bondCouponsAlreadyLoaded(input.ticker);
+    return attachSettlementEconomics(chosen, date, coupons || []);
+  }
+
+  function settlementSnapshotIsKnown(settlement) {
+    if (!settlement || settlement.status !== 'known') return false;
+    if (settlement.settlementNkdPerUnit == null || settlement.settlementNkdPerUnit === '') return false;
+    if (!isFinite(Number(settlement.settlementNkdPerUnit)) || Number(settlement.settlementNkdPerUnit) < 0) return false;
+    if (!settlement.settlementDate) return false;
+    return settlement.settlementNkdSource === NKD_SETTLEMENT_HISTORY_SOURCE ||
+      settlement.settlementNkdSource === NKD_SETTLEMENT_CURRENT_SOURCE;
+  }
+
+  function applyBondSettlementSnapshot(target, settlement) {
+    if (!target) return target;
+    if (settlementSnapshotIsKnown(settlement)) {
+      target.settlementNkdPerUnit = Number(settlement.settlementNkdPerUnit);
+      target.settlementDate = settlement.settlementDate;
+      target.settlementNkdSource = settlement.settlementNkdSource;
+      return target;
+    }
+    delete target.settlementNkdPerUnit;
+    delete target.settlementDate;
+    delete target.settlementNkdSource;
+    return target;
+  }
+
+  function resolveBondSettlementPersistChoice(lookup, previous, nextDate, nextTicker) {
+    var date = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(nextDate) || '')
+      : String(nextDate || '').slice(0, 10);
+    if (lookup && lookup.status) return lookup;
+    var prevTx = previous && previous.buyDate ? String(previous.buyDate) : '';
+    if (!prevTx && previous && previous.transactionDate) prevTx = String(previous.transactionDate);
+    var prevTicker = previous && previous.ticker ? String(previous.ticker) : '';
+    var tickerOk = !nextTicker || !prevTicker || String(nextTicker) === prevTicker;
+    if (previous && previous.settlementNkdPerUnit != null &&
+        isFinite(Number(previous.settlementNkdPerUnit)) &&
+        Number(previous.settlementNkdPerUnit) >= 0 &&
+        previous.settlementDate &&
+        (previous.settlementNkdSource === NKD_SETTLEMENT_HISTORY_SOURCE ||
+          previous.settlementNkdSource === NKD_SETTLEMENT_CURRENT_SOURCE) &&
+        prevTx && prevTx === date && tickerOk) {
+      return {
+        status: 'known',
+        settlementNkdPerUnit: Number(previous.settlementNkdPerUnit),
+        settlementDate: previous.settlementDate,
+        settlementNkdSource: previous.settlementNkdSource,
+        economicsStatus: 'normal'
+      };
+    }
+    return emptySettlementNkdResult('missing');
+  }
+
+  function bondSettlementLookupFor(ticker, date) {
+    var pending = pfTxNkdPending;
+    if (pending && pending.ticker === ticker && pending.date === date && pending.attempted) {
+      return pending.settlement || null;
+    }
+    var res = pfTxAnomalyState && pfTxAnomalyState.result;
+    if (res && res.ticker === ticker && res.transactionDate === date && res.settlement) {
+      return res.settlement;
+    }
+    return null;
+  }
+
+  function rememberBondTxMarketPending(ticker, date, res) {
+    pfTxNkdPending = {
+      ticker: ticker,
+      date: date,
+      nkd: res && res.nkd ? res.nkd : null,
+      settlement: res && res.settlement ? res.settlement : null,
+      attempted: true
+    };
   }
 
   function resolveBondNkdPersistChoice(lookup, previous, nextDate) {
@@ -8998,8 +9292,26 @@
       });
       out.ticker = ticker;
       out.nkd = null;
+      out.settlement = null;
       if (isBond && historyRows) {
         out.nkd = resolveExactBondNkdFromHistory(historyRows, txDate);
+        var today = input.today ||
+          (typeof localPortfolioTodayYmd === 'function' ? localPortfolioTodayYmd() : '');
+        var liveQuote = null;
+        if (txDate && today && txDate === today) {
+          liveQuote = input.liveQuote || null;
+          if (!liveQuote && typeof getBondQuoteAccruedRuntime === 'function') {
+            liveQuote = getBondQuoteAccruedRuntime(ticker);
+          }
+        }
+        out.settlement = resolveBondSettlementSnapshot({
+          rows: historyRows,
+          transactionDate: txDate,
+          ticker: ticker,
+          liveQuote: liveQuote,
+          today: today,
+          coupons: input.coupons
+        });
       }
       return out;
     }
@@ -9032,7 +9344,11 @@
       historyPromise = Promise.resolve(input.history);
     } else if (loadHistory) {
       var fromDate = txPriceAnomalyShiftIso(txDate, -TX_PRICE_ANOMALY_LOOKBACK_DAYS) || txDate;
-      historyPromise = loadHistory(ticker, fromDate, txDate, meta, options);
+      var tillDate = txDate;
+      if (isBond) {
+        tillDate = txPriceAnomalyShiftIso(txDate, NKD_SETTLEMENT_FORWARD_DAYS) || txDate;
+      }
+      historyPromise = loadHistory(ticker, fromDate, tillDate, meta, options);
     } else {
       return Promise.resolve(done({ status: 'missing' }));
     }
@@ -9059,9 +9375,12 @@
       isBond: true,
       kind: 'bond',
       history: input.history,
-      options: input.options
+      options: input.options,
+      liveQuote: input.liveQuote,
+      today: input.today,
+      coupons: input.coupons
     }).then(function (res) {
-      return res && res.nkd ? res.nkd : null;
+      return res || null;
     }).catch(function () {
       return null;
     });
@@ -9256,7 +9575,11 @@
         nkdPerUnit: editingLot.nkdPerUnit,
         nkdDate: editingLot.nkdDate,
         nkdSource: editingLot.nkdSource,
-        buyDate: editingLot.buyDate
+        buyDate: editingLot.buyDate,
+        ticker: editingLot.ticker,
+        settlementNkdPerUnit: editingLot.settlementNkdPerUnit,
+        settlementDate: editingLot.settlementDate,
+        settlementNkdSource: editingLot.settlementNkdSource
       };
       if (qty != null) editingLot.qty = qty;
       if (avg != null) editingLot.avgPrice = avg;
@@ -9266,6 +9589,15 @@
         applyBondNkdSnapshot(
           editingLot,
           resolveBondNkdPersistChoice(bondNkdLookupFor(t, buyDate), previousNkd, buyDate)
+        );
+        applyBondSettlementSnapshot(
+          editingLot,
+          resolveBondSettlementPersistChoice(
+            bondSettlementLookupFor(t, buyDate),
+            previousNkd,
+            buyDate,
+            t
+          )
         );
       }
       persistPortfolioLot(portfolio, editingLot.lotId);
@@ -9298,6 +9630,10 @@
             newLotRaw,
             resolveBondNkdPersistChoice(bondNkdLookupFor(t, lotDate), null, lotDate)
           );
+          applyBondSettlementSnapshot(
+            newLotRaw,
+            resolveBondSettlementPersistChoice(bondSettlementLookupFor(t, lotDate), null, lotDate, t)
+          );
         }
         var newLot = normalizePosition(newLotRaw);
         if (!newLot) throw new Error('invalid_position');
@@ -9321,6 +9657,10 @@
           applyBondNkdSnapshot(
             posRaw,
             resolveBondNkdPersistChoice(bondNkdLookupFor(t, lotDate), null, lotDate)
+          );
+          applyBondSettlementSnapshot(
+            posRaw,
+            resolveBondSettlementPersistChoice(bondSettlementLookupFor(t, lotDate), null, lotDate, t)
           );
         }
         var pos = normalizePosition(posRaw);
@@ -9435,8 +9775,8 @@
           ticker: t,
           date: dateForCheck,
           enteredPrice: enteredForCheck
-        }).then(function (nkd) {
-          pfTxNkdPending = { ticker: t, date: dateForCheck, nkd: nkd, attempted: true };
+        }).then(function (res) {
+          rememberBondTxMarketPending(t, dateForCheck, res);
           return runPersistPosition();
         }).catch(function () {
           return runPersistPosition();
@@ -10411,8 +10751,8 @@
         ticker: ticker,
         date: saleDate,
         enteredPrice: salePrice
-      }).then(function (nkd) {
-        pfTxNkdPending = { ticker: ticker, date: saleDate, nkd: nkd, attempted: true };
+      }).then(function (res) {
+        rememberBondTxMarketPending(ticker, saleDate, res);
         return commitPortfolioSale(ticker, captured);
       }).catch(function () {
         return commitPortfolioSale(ticker, captured);
@@ -10447,6 +10787,15 @@
       applyBondNkdSnapshot(
         saleRaw,
         resolveBondNkdPersistChoice(bondNkdLookupFor(ticker, saleDate), null, saleDate)
+      );
+      applyBondSettlementSnapshot(
+        saleRaw,
+        resolveBondSettlementPersistChoice(
+          bondSettlementLookupFor(ticker, saleDate),
+          null,
+          saleDate,
+          ticker
+        )
       );
     }
     var sale = normalizeSale(saleRaw);

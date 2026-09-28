@@ -148,6 +148,7 @@
     return { className: 'unsupported', kind: kind };
   }
 
+  /** CLOSE не позже target. Будущие строки расширенного history-окна не становятся price reference. */
   function pickCloseOnOrBefore(rows, targetIso) {
     if (typeof AnalyticsCore !== 'undefined' && AnalyticsCore.nearestCloseOnOrBefore) {
       return AnalyticsCore.nearestCloseOnOrBefore(rows, targetIso);
