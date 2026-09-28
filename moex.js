@@ -563,6 +563,56 @@
     return q ? q.price : null;
   }
 
+  var bondQuoteAccruedRuntime = {};
+
+  /**
+   * Runtime-only снимок текущих ACCRUEDINT/SETTLEDATE.
+   * Не пишется в portfolio JSON. 0 — известное значение.
+   */
+  function rememberBondQuoteAccruedRuntime(ticker, inst, quote) {
+    if (!quote || !inst || inst.type !== 'bond') return;
+    var t = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (!t) return;
+    var hasAcc = quote.accruedInterestPerUnit != null && quote.accruedInterestPerUnit !== '' &&
+      isFinite(Number(quote.accruedInterestPerUnit));
+    var sd = quote.accruedInterestSettleDate
+      ? String(quote.accruedInterestSettleDate).slice(0, 10)
+      : '';
+    if (!hasAcc && !sd) return;
+    bondQuoteAccruedRuntime[t] = {
+      ticker: t,
+      secid: inst.secid ? String(inst.secid) : (quote.secid ? String(quote.secid) : ''),
+      accruedInterestPerUnit: hasAcc ? Number(quote.accruedInterestPerUnit) : null,
+      accruedInterestSettleDate: sd,
+      faceValue: quote.faceValue != null && isFinite(Number(quote.faceValue)) ? Number(quote.faceValue) : null,
+      currency: quote.currency || '',
+      faceUnit: quote.faceUnit || '',
+      bondType: quote.bondType || '',
+      faceValueType: quote.faceValueType || ''
+    };
+  }
+
+  function getBondQuoteAccruedRuntime(ticker) {
+    var t = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    var row = t ? bondQuoteAccruedRuntime[t] : null;
+    if (!row) return null;
+    return {
+      ticker: row.ticker,
+      secid: row.secid,
+      accruedInterestPerUnit: row.accruedInterestPerUnit,
+      accruedInterestSettleDate: row.accruedInterestSettleDate,
+      faceValue: row.faceValue,
+      currency: row.currency,
+      faceUnit: row.faceUnit,
+      bondType: row.bondType,
+      faceValueType: row.faceValueType
+    };
+  }
+
   /** Runtime-поля НКД из блока securities уже загруженной котировки. Не пишутся в портфель. */
   function extractBondQuoteAccruedFields(sec) {
     sec = sec || {};
@@ -721,6 +771,10 @@
       return moexFetchJson(moexMarketdataUrl(inst)).then(function (json) {
         var quote = parseMoexQuoteFromMd(json, inst.type === 'bond');
         if (!quote) return null;
+        if (inst.type === 'bond') {
+          if (inst.secid) quote.secid = inst.secid;
+          rememberBondQuoteAccruedRuntime(ticker, inst, quote);
+        }
         if (quote.changePct != null) return quote;
         return fetchDayChangePctFromCandles(ticker, quote.price).then(function (pct) {
           if (pct != null) quote.changePct = pct;

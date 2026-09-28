@@ -227,6 +227,8 @@
   }
 
   var NKD_SNAPSHOT_SOURCE = 'moex-history-accint';
+  var NKD_SETTLEMENT_HISTORY_SOURCE = 'moex-history-next-session-accint';
+  var NKD_SETTLEMENT_CURRENT_SOURCE = 'moex-current-accruedint';
 
   /** Снимок НКД сделки. 0 — найденное значение. Отсутствие полей — unknown, не ноль. */
   function normalizeNkdSnapshot(raw) {
@@ -255,6 +257,33 @@
     out.nkdPerUnit = snap.nkdPerUnit;
     out.nkdDate = snap.nkdDate;
     out.nkdSource = snap.nkdSource;
+  }
+
+  /** Settlement ACCINT следующей сессии или текущей котировки. 0 — найденное значение. */
+  function normalizeSettlementNkdSnapshot(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (!Object.prototype.hasOwnProperty.call(raw, 'settlementNkdPerUnit')) return null;
+    if (raw.settlementNkdPerUnit == null || raw.settlementNkdPerUnit === '') return null;
+    var per = parseFloat(raw.settlementNkdPerUnit);
+    if (!isFinite(per) || per < 0) return null;
+    var date = normalizePortfolioDate(raw.settlementDate);
+    if (!date) return null;
+    var source = String(raw.settlementNkdSource == null ? '' : raw.settlementNkdSource).trim();
+    if (source !== NKD_SETTLEMENT_HISTORY_SOURCE && source !== NKD_SETTLEMENT_CURRENT_SOURCE) return null;
+    return {
+      settlementNkdPerUnit: per,
+      settlementDate: date,
+      settlementNkdSource: source
+    };
+  }
+
+  function assignSettlementNkdSnapshot(out, raw) {
+    if (!out || !isStoredNkdBondTicker(out.ticker)) return;
+    var snap = normalizeSettlementNkdSnapshot(raw);
+    if (!snap) return;
+    out.settlementNkdPerUnit = snap.settlementNkdPerUnit;
+    out.settlementDate = snap.settlementDate;
+    out.settlementNkdSource = snap.settlementNkdSource;
   }
 
   function normalizeCashFlow(raw) {
@@ -407,6 +436,7 @@
     var source = optionalSource(raw.source);
     if (source) out.source = source;
     assignNkdSnapshot(out, raw);
+    assignSettlementNkdSnapshot(out, raw);
     return out;
   }
 
@@ -449,6 +479,7 @@
     var splitLotScale = normalizeSplitLotScale(raw.splitLotScale);
     if (splitLotScale) out.splitLotScale = splitLotScale;
     assignNkdSnapshot(out, raw);
+    assignSettlementNkdSnapshot(out, raw);
     return out;
   }
 
