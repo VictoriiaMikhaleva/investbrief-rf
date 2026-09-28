@@ -394,6 +394,15 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__txAnomalyLookback = TX_PRICE_ANOMALY_LOOKBACK_DAYS;' +
       '\nthis.__evalTxAnomaly = evaluateTransactionPriceAnomaly;' +
       '\nthis.__buildTxAnomaly = buildTransactionPriceAnomalyCheck;' +
+      '\nthis.__nkdExact = resolveExactBondNkdFromHistory;' +
+      '\nthis.__nkdChoice = resolveBondNkdPersistChoice;' +
+      '\nthis.__nkdApply = applyBondNkdSnapshot;' +
+      '\nthis.__nkdLookup = bondNkdLookupFor;' +
+      '\nthis.__nkdSource = NKD_TX_SOURCE;' +
+      '\nthis.__txState = pfTxAnomalyState;' +
+      '\nthis.__bondMap = BOND_SECID_MAP;' +
+      '\nthis.__setHistLoad = function (fn) { loadInstrumentHistoryForDateRange = fn; };' +
+      '\nthis.__getHistLoad = function () { return loadInstrumentHistoryForDateRange; };' +
       '\nthis.__txAnomalyLine = formatTxPriceAnomalyCompareLine;' +
       '\nthis.__txAnomalyView = buildTxPriceAnomalyWarningView;' +
       '\nthis.__txAnomalySecid = resolveTxPriceAnomalyBondSecid;' +
@@ -565,6 +574,15 @@ function loadPortfolioCalcHelpers() {
     TX_PRICE_ANOMALY_LOOKBACK_DAYS: sandbox.__txAnomalyLookback,
     evaluateTransactionPriceAnomaly: sandbox.__evalTxAnomaly,
     buildTransactionPriceAnomalyCheck: sandbox.__buildTxAnomaly,
+    resolveExactBondNkdFromHistory: sandbox.__nkdExact,
+    resolveBondNkdPersistChoice: sandbox.__nkdChoice,
+    applyBondNkdSnapshot: sandbox.__nkdApply,
+    bondNkdLookupFor: sandbox.__nkdLookup,
+    NKD_TX_SOURCE: sandbox.__nkdSource,
+    txAnomalyState: sandbox.__txState,
+    bondSecidMap: sandbox.__bondMap,
+    setHistLoad: sandbox.__setHistLoad,
+    getHistLoad: sandbox.__getHistLoad,
     formatTxPriceAnomalyCompareLine: sandbox.__txAnomalyLine,
     buildTxPriceAnomalyWarningView: sandbox.__txAnomalyView,
     resolveTxPriceAnomalyBondSecid: sandbox.__txAnomalySecid,
@@ -11881,6 +11899,319 @@ function loadPortfolioWriterSandbox() {
     assert(gmknBuild.shouldWarn === false, 'GMKN pre-split injected: no warning');
   })();
 }
+
+{
+  const row26254 = {
+    date: '2026-07-02',
+    close: 85.054,
+    accruedInterestPerUnit: 25.29,
+    faceValue: 1000,
+    currency: 'SUR',
+    faceUnit: 'RUB',
+    bondType: 'Облигация с фиксированным (известным) купоном',
+    faceValueType: 'Фиксированный'
+  };
+  const exact = calc.resolveExactBondNkdFromHistory([row26254], '2026-07-02');
+  assert(exact.status === 'known' && exact.nkdPerUnit === 25.29, '26254 exact ACCINT 25.29');
+  assert(exact.nkdDate === '2026-07-02' && exact.nkdSource === calc.NKD_TX_SOURCE, '26254 snapshot contract');
+
+  const previousOnly = calc.resolveExactBondNkdFromHistory([row26254], '2026-07-03');
+  assert(previousOnly.status === 'missing' && previousOnly.nkdPerUnit == null, 'previous session is not exact NKD');
+
+  const weekend = calc.resolveExactBondNkdFromHistory([{
+    date: '2026-07-03',
+    close: 84.484,
+    accruedInterestPerUnit: 25.64,
+    faceValue: 1000,
+    currency: 'SUR',
+    faceUnit: 'RUB'
+  }], '2026-07-04');
+  assert(weekend.status === 'missing' && weekend.nkdPerUnit == null, 'weekend does not use Friday ACCINT');
+
+  const zero = calc.resolveExactBondNkdFromHistory([{
+    date: '2026-04-22',
+    close: 94.06,
+    accruedInterestPerUnit: 0,
+    faceValue: 1000,
+    currency: 'SUR',
+    faceUnit: 'RUB'
+  }], '2026-04-22');
+  assert(zero.status === 'known' && zero.nkdPerUnit === 0, 'coupon-date ACCINT 0 is known');
+
+  const floating = calc.resolveExactBondNkdFromHistory([{
+    date: '2026-09-14',
+    close: 95.005,
+    accruedInterestPerUnit: 1.16,
+    faceValue: 1000,
+    currency: 'SUR',
+    faceUnit: 'RUB',
+    bondType: 'Облигация с плавающим купоном',
+    couponValue: 0
+  }], '2026-09-14');
+  assert(floating.status === 'known' && floating.nkdPerUnit === 1.16, 'floating ACCINT kept when coupon is 0');
+
+  const amort = calc.resolveExactBondNkdFromHistory([{
+    date: '2026-09-25',
+    close: 100,
+    accruedInterestPerUnit: 9.08,
+    faceValue: 1000,
+    currency: 'SUR',
+    faceUnit: 'RUB',
+    bondType: 'Амортизируемая облигация'
+  }], '2026-09-25');
+  assert(amort.status === 'unsupported' && amort.nkdPerUnit == null, 'amortizing bond is unsupported');
+
+  const buy = h.normalizePosition({
+    ticker: 'OFZ_26254',
+    qty: 233,
+    avgPrice: 85.054,
+    buyDate: '2026-07-02',
+    lotId: 'B1',
+    nkdPerUnit: exact.nkdPerUnit,
+    nkdDate: exact.nkdDate,
+    nkdSource: exact.nkdSource
+  });
+  assert(buy.nkdPerUnit === 25.29 && buy.qty === 233, 'BUY stores nkdPerUnit, qty does not scale it');
+
+  const sale = h.normalizeSale({
+    ticker: 'OFZ_26254',
+    qty: 233,
+    buyPrice: 85.054,
+    salePrice: 84,
+    saleDate: '2026-09-25',
+    saleId: 'S1',
+    nkdPerUnit: 55.56,
+    nkdDate: '2026-09-25',
+    nkdSource: 'moex-history-accint'
+  });
+  assert(sale.nkdPerUnit === 55.56 && sale.nkdDate === '2026-09-25', 'SELL stores optional NKD');
+
+  const legacyLot = h.normalizePosition({ ticker: 'OFZ_26254', qty: 1, avgPrice: 80, lotId: 'OLD' });
+  assert(legacyLot.nkdPerUnit == null && !Object.prototype.hasOwnProperty.call(legacyLot, 'nkdPerUnit'),
+    'old lot loads without invented NKD');
+  const legacySale = h.normalizeSale({
+    ticker: 'OFZ_26254', qty: 1, buyPrice: 80, salePrice: 81, saleDate: '2026-01-01', saleId: 'OLD'
+  });
+  assert(legacySale.nkdPerUnit == null, 'old sale loads without invented NKD');
+
+  const zeroStored = h.normalizePosition({
+    ticker: 'OFZ_26254', qty: 1, avgPrice: 94.06, buyDate: '2026-04-22', lotId: 'Z',
+    nkdPerUnit: 0, nkdDate: '2026-04-22', nkdSource: 'moex-history-accint'
+  });
+  assert(zeroStored.nkdPerUnit === 0, 'stored NKD 0 survives normalize');
+
+  const stock = h.normalizePosition({
+    ticker: 'SBER', qty: 1, avgPrice: 100, lotId: 'ST',
+    nkdPerUnit: 25.29, nkdDate: '2026-07-02', nkdSource: 'moex-history-accint'
+  });
+  assert(stock.nkdPerUnit == null, 'stock transaction has no NKD fields');
+
+  const round = h.normalizePortfolio(JSON.parse(JSON.stringify(h.normalizePortfolio({
+    positions: [buy],
+    sales: [sale]
+  }))));
+  assert(round.positions[0].nkdPerUnit === 25.29 && round.sales[0].nkdPerUnit === 55.56,
+    'portfolio roundtrip keeps NKD and does not migrate on load');
+
+  const refreshed = calc.resolveBondNkdPersistChoice(
+    { status: 'known', nkdPerUnit: 0, nkdDate: '2026-04-22', nkdSource: 'moex-history-accint' },
+    { nkdPerUnit: 25.29, nkdDate: '2026-07-02', nkdSource: 'moex-history-accint', buyDate: '2026-07-02' },
+    '2026-04-22'
+  );
+  assert(refreshed.nkdPerUnit === 0, 'edit buy date replaces NKD, including known 0');
+
+  const staleLot = { ticker: 'OFZ_26254', qty: 1, avgPrice: 85.054 };
+  calc.applyBondNkdSnapshot(staleLot, calc.resolveBondNkdPersistChoice(
+    { status: 'missing', nkdPerUnit: null, nkdDate: '2026-07-04', nkdSource: null },
+    { nkdPerUnit: 25.29, nkdDate: '2026-07-02', nkdSource: 'moex-history-accint', buyDate: '2026-07-02' },
+    '2026-07-04'
+  ));
+  assert(staleLot.nkdPerUnit == null, 'edit onto a missing date drops stale NKD');
+
+  const kept = calc.resolveBondNkdPersistChoice(
+    null,
+    { nkdPerUnit: 25.29, nkdDate: '2026-07-02', nkdSource: 'moex-history-accint' },
+    '2026-07-02'
+  );
+  assert(kept.status === 'known' && kept.nkdPerUnit === 25.29, 'unchanged date keeps snapshot when lookup did not run');
+
+  const unsupportedLot = { ticker: 'OFZ_46012', qty: 1, avgPrice: 96.32 };
+  calc.applyBondNkdSnapshot(unsupportedLot, amort);
+  assert(h.normalizePosition(unsupportedLot).nkdPerUnit == null, 'unsupported bond save has no fake NKD');
+
+  const meta = { faceValue: 1000 };
+  const cleanLot = { ticker: 'OFZ_26254', qty: 233, avgPrice: 85.054 };
+  const withNkd = Object.assign({}, cleanLot, {
+    nkdPerUnit: 25.29, nkdDate: '2026-07-02', nkdSource: 'moex-history-accint'
+  });
+  assert(calc.getPositionCostRub(cleanLot, meta) === calc.getPositionCostRub(withNkd, meta),
+    'cost is unchanged by NKD metadata');
+  const saleClean = { ticker: 'OFZ_26254', qty: 233, buyPrice: 85.054, salePrice: 84 };
+  const saleNkd = Object.assign({}, saleClean, {
+    nkdPerUnit: 55.56, nkdDate: '2026-09-25', nkdSource: 'moex-history-accint'
+  });
+  assert(calc.getSaleRealizedPnl(saleClean, meta).amount === calc.getSaleRealizedPnl(saleNkd, meta).amount,
+    'realized PnL is unchanged by NKD metadata');
+
+  const basePf = {
+    positions: [{
+      ticker: 'OFZ_26254', qty: 1, avgPrice: 85.054, currentPrice: 84,
+      buyDate: '2026-07-02', faceValue: 1000, lotId: 'L'
+    }],
+    sales: []
+  };
+  const nkdPf = JSON.parse(JSON.stringify(basePf));
+  nkdPf.positions[0].nkdPerUnit = 25.29;
+  nkdPf.positions[0].nkdDate = '2026-07-02';
+  nkdPf.positions[0].nkdSource = 'moex-history-accint';
+  const twpOpts = {
+    now: '2026-09-25',
+    bondMeta: { faceValue: 1000 },
+    payoutsByTicker: {
+      OFZ_26254: {
+        kind: 'bond',
+        source: 'bondization',
+        faceValue: 1000,
+        coupons: [{ couponDate: '2026-10-21', recordDate: '2026-10-20', value: 64.82 }]
+      }
+    }
+  };
+  const twp1 = calc.buildTickerReturnWithPayouts('OFZ_26254', basePf, twpOpts);
+  const twp2 = calc.buildTickerReturnWithPayouts('OFZ_26254', nkdPf, twpOpts);
+  assert(twp1.purchaseCostRub === twp2.purchaseCostRub &&
+    twp1.resultWithPayoutsRub === twp2.resultWithPayoutsRub &&
+    twp1.currentMarketValueRub === twp2.currentMarketValueRub,
+    'return with payouts ignores NKD metadata');
+  assert(calc.buildPortfolioReturnWithPayouts(basePf, twpOpts).resultWithPayoutsRub ===
+    calc.buildPortfolioReturnWithPayouts(nkdPf, twpOpts).resultWithPayoutsRub,
+    'portfolio return ignores NKD metadata');
+  assert(calc.buildTickerPayoutsForHoldingPeriod('OFZ_26254', basePf, '2026-07-02', '2026-09-25', twpOpts).totalCouponsRub ===
+    calc.buildTickerPayoutsForHoldingPeriod('OFZ_26254', nkdPf, '2026-07-02', '2026-09-25', twpOpts).totalCouponsRub,
+    'payouts ignore NKD metadata');
+
+  await (async () => {
+    const seriesOpts = {
+      valueSeries: [
+        { date: '2026-07-02', totalValueRub: 850.54, stocksValueRub: 0, bondsValueRub: 850.54 },
+        { date: '2026-09-25', totalValueRub: 840, stocksValueRub: 0, bondsValueRub: 840 }
+      ]
+    };
+    const g1 = await calc.buildPortfolioResultSeries(basePf, '2026-07-02', '2026-09-25', seriesOpts);
+    const g2 = await calc.buildPortfolioResultSeries(nkdPf, '2026-07-02', '2026-09-25', seriesOpts);
+    const rubs = (series) => (series.points || []).map((p) => p.resultRub).join(',');
+    assert(rubs(g1) === rubs(g2), 'result graph ignores NKD metadata');
+  })();
+}
+
+await (async () => {
+  const sb = loadPriceAtDateHelpers();
+  const parsed = sb.parseHistoryBlock({
+    history: {
+      columns: ['TRADEDATE', 'CLOSE', 'VALUE', 'ACCINT', 'FACEVALUE', 'CURRENCYID', 'FACEUNIT'],
+      data: [
+        ['2026-07-02', 85.054, 1, 25.29, 1000, 'SUR', 'RUB'],
+        ['2026-04-22', 94.06, 1, 0, 1000, 'SUR', 'RUB']
+      ]
+    }
+  });
+  assert(parsed.rows[0].close === 85.054 && parsed.rows[0].accruedInterestPerUnit === 25.29,
+    'history row parses ACCINT 25.29 beside CLOSE');
+  assert(parsed.rows[0].faceValue === 1000, 'history row parses FACEVALUE');
+  assert(parsed.rows[1].accruedInterestPerUnit === 0, 'parser keeps ACCINT 0');
+  const nullAcc = sb.parseHistoryBlock({
+    history: { columns: ['TRADEDATE', 'CLOSE', 'ACCINT'], data: [['2026-07-02', 85.054, null]] }
+  });
+  assert(nullAcc.rows[0].close === 85.054 && nullAcc.rows[0].accruedInterestPerUnit == null,
+    'null ACCINT is not coerced to 0');
+  const price = await sb.getInstrumentPriceAtDate('OFZ_26254', '2026-07-04', { type: 'ofz', secid: 'SU26254RMFS1' }, {
+    history: [{ date: '2026-07-03', close: 84.484, accruedInterestPerUnit: 25.64, faceValue: 1000 }]
+  });
+  assert(price.status === 'ok' && price.price === 84.484 && price.priceDate === '2026-07-03',
+    'CLOSE semantics still use the previous session');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'price-at-date.js'), 'utf8');
+  assert(/history.columns=TRADEDATE,CLOSE,VALUE,ACCINT,FACEVALUE/.test(src),
+    'existing history request now asks for ACCINT');
+})();
+
+await (async () => {
+  const moexCode = fs.readFileSync(path.join(__dirname, '..', 'moex.js'), 'utf8');
+  const sandbox = {
+    console, Date, Math, Number, String, Array, Object, JSON, isFinite, parseInt, parseFloat, Promise, Intl,
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+    document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] },
+    localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(moexCode, sandbox, { timeout: 5000 });
+  const fields = sandbox.extractBondQuoteAccruedFields({
+    ACCRUEDINT: 56.98,
+    SETTLEDATE: '2026-09-29',
+    FACEVALUE: 1000,
+    CURRENCYID: 'SUR',
+    FACEUNIT: 'SUR'
+  });
+  assert(fields.accruedInterestPerUnit === 56.98, 'current quote reads ACCRUEDINT');
+  assert(fields.accruedInterestSettleDate === '2026-09-29', 'current quote reads SETTLEDATE');
+  assert(fields.faceValue === 1000 && fields.currency === 'RUB', 'current quote face and ruble currency');
+  const zeroQ = sandbox.extractBondQuoteAccruedFields({
+    ACCRUEDINT: 0, SETTLEDATE: '2026-04-22', FACEVALUE: 1000, CURRENCYID: 'SUR'
+  });
+  assert(zeroQ.accruedInterestPerUnit === 0, 'current ACCRUEDINT 0 is kept');
+  const quote = sandbox.parseMoexQuoteFromMd({
+    securities: {
+      columns: ['SECID', 'ACCRUEDINT', 'SETTLEDATE', 'FACEVALUE', 'CURRENCYID'],
+      data: [['SU26254RMFS1', 56.98, '2026-09-29', 1000, 'SUR']]
+    },
+    marketdata: { columns: ['LAST', 'SYSTIME'], data: [[83.85, '2026-09-28 10:53:22']] }
+  }, true);
+  assert(quote.price === 83.85 && quote.accruedInterestPerUnit === 56.98 &&
+    quote.accruedInterestSettleDate === '2026-09-29', 'bond quote exposes runtime NKD next to LAST');
+  const refresh = moexCode.slice(
+    moexCode.indexOf('function refreshPortfolioQuotes'),
+    moexCode.indexOf('function getTickerSubtitle')
+  );
+  assert(!/nkdPerUnit|accruedInterestPerUnit/.test(refresh), 'current ACCRUEDINT is not stored on a lot');
+})();
+
+await (async () => {
+  const orig = calc.getHistLoad();
+  let calls = 0;
+  calc.setHistLoad(() => {
+    calls += 1;
+    return Promise.resolve([{
+      date: '2026-07-02',
+      close: 85.054,
+      accruedInterestPerUnit: 25.29,
+      faceValue: 1000,
+      currency: 'SUR',
+      faceUnit: 'RUB',
+      bondType: 'Облигация с фиксированным (известным) купоном'
+    }]);
+  });
+  calc.bondSecidMap.OFZ_26254 = 'SU26254RMFS1';
+  try {
+    const res = await calc.buildTransactionPriceAnomalyCheck({
+      ticker: 'OFZ_26254',
+      date: '2026-07-02',
+      enteredPrice: 111.2,
+      isBond: true
+    });
+    assert(calls === 1, 'anomaly detector and NKD share one history load');
+    assert(res.shouldWarn === true, 'same history still feeds the price warning');
+    assert(res.nkd && res.nkd.nkdPerUnit === 25.29 && res.nkd.nkdDate === '2026-07-02',
+      'same history stores the exact-date snapshot candidate');
+    calc.txAnomalyState.result = res;
+    const cached = calc.bondNkdLookupFor('OFZ_26254', '2026-07-02');
+    assert(cached && cached.nkdPerUnit === 25.29 && calls === 1,
+      'save anyway keeps the NKD snapshot without a second fetch');
+  } finally {
+    calc.setHistLoad(orig);
+    delete calc.bondSecidMap.OFZ_26254;
+    calc.txAnomalyState.result = null;
+  }
+})();
 
 if (errors.length) {
   console.error('FAIL');

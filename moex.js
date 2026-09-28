@@ -563,6 +563,25 @@
     return q ? q.price : null;
   }
 
+  /** Runtime-поля НКД из блока securities уже загруженной котировки. Не пишутся в портфель. */
+  function extractBondQuoteAccruedFields(sec) {
+    sec = sec || {};
+    var out = {};
+    var ai = sec.ACCRUEDINT;
+    if (ai != null && ai !== '' && isFinite(Number(ai))) out.accruedInterestPerUnit = Number(ai);
+    var sd = sec.SETTLEDATE != null ? String(sec.SETTLEDATE).slice(0, 10) : '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(sd) && sd.indexOf('0000') !== 0) out.accruedInterestSettleDate = sd;
+    var fv = sec.FACEVALUE;
+    if (fv != null && fv !== '' && isFinite(Number(fv)) && Number(fv) > 0) out.faceValue = Number(fv);
+    var ccy = sec.CURRENCYID || sec.FACEUNIT;
+    if (ccy != null && String(ccy).trim()) {
+      var cu = String(ccy).trim().toUpperCase();
+      if (cu === 'SUR' || cu === 'RUR') cu = 'RUB';
+      out.currency = cu;
+    }
+    return out;
+  }
+
 
 
   function parseMoexQuoteFromMd(json, isBond) {
@@ -604,7 +623,7 @@
       if (m) tradeDate = m[1];
     }
 
-    return {
+    var quote = {
       price: price,
       changePct: chg != null && isFinite(Number(chg)) ? Number(chg) : null,
       yieldPct: yld != null && isFinite(Number(yld)) ? Number(yld) : null,
@@ -616,6 +635,20 @@
       })(),
       tradeDate: tradeDate || undefined
     };
+    if (isBond) {
+      var accrued = extractBondQuoteAccruedFields({
+        ACCRUEDINT: secCol('ACCRUEDINT'),
+        SETTLEDATE: secCol('SETTLEDATE'),
+        FACEVALUE: secCol('FACEVALUE'),
+        CURRENCYID: secCol('CURRENCYID'),
+        FACEUNIT: secCol('FACEUNIT')
+      });
+      if (accrued.accruedInterestPerUnit != null) quote.accruedInterestPerUnit = accrued.accruedInterestPerUnit;
+      if (accrued.accruedInterestSettleDate) quote.accruedInterestSettleDate = accrued.accruedInterestSettleDate;
+      if (accrued.faceValue != null) quote.faceValue = accrued.faceValue;
+      if (accrued.currency) quote.currency = accrued.currency;
+    }
+    return quote;
   }
 
 
@@ -3017,6 +3050,8 @@
     });
   }
 
+  window.extractBondQuoteAccruedFields = extractBondQuoteAccruedFields;
+  window.parseMoexQuoteFromMd = parseMoexQuoteFromMd;
   window.scheduleMarketMacroRefresh = scheduleMarketMacroRefresh;
   window.refreshBriefingMarketData = refreshBriefingMarketData;
   window.fetchTopMoexSharesByVolume = fetchTopMoexSharesByVolume;

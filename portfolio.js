@@ -8700,7 +8700,117 @@
   var TX_PRICE_ANOMALY_THRESHOLD = 0.2;
   var TX_PRICE_ANOMALY_LOOKBACK_DAYS = 30;
   var TX_PRICE_ANOMALY_NEARBY_MAX_DAYS = 10;
+  var NKD_TX_SOURCE = 'moex-history-accint';
+  var NKD_V1_FACE = 1000;
   var pfTxAnomalyState = { key: '', ackKey: '', inFlightKey: '', result: null };
+  var pfTxNkdPending = null;
+
+  function bondNkdCurrencyIsRub(raw) {
+    var c = String(raw == null ? '' : raw).trim().toUpperCase();
+    return c === 'SUR' || c === 'RUB' || c === 'RUR';
+  }
+
+  function bondNkdTypeUnsupported(bondType, faceValueType) {
+    var blob = (String(bondType || '') + ' ' + String(faceValueType || '')).toLowerCase();
+    if (!blob.trim()) return false;
+    if (blob.indexOf('амортиз') >= 0) return true;
+    if (blob.indexOf('индексир') >= 0) return true;
+    if (blob.indexOf('линкер') >= 0) return true;
+    if (blob.indexOf('валют') >= 0) return true;
+    return false;
+  }
+
+  function emptyBondNkdResult(status, date) {
+    return {
+      status: status || 'missing',
+      nkdPerUnit: null,
+      nkdDate: date || '',
+      nkdSource: null
+    };
+  }
+
+  /**
+   * НКД сделки только из строки history с TRADEDATE === дате операции.
+   * 0 — известное значение. Ближайшая прошлая сессия не подставляется.
+   */
+  function resolveExactBondNkdFromHistory(rows, transactionDate) {
+    var date = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(transactionDate) || '')
+      : String(transactionDate || '').slice(0, 10);
+    if (!date) return emptyBondNkdResult('missing', '');
+    var row = null;
+    (rows || []).forEach(function (item) {
+      if (!item) return;
+      if (String(item.date || '').slice(0, 10) === date) row = item;
+    });
+    if (!row) return emptyBondNkdResult('missing', date);
+    var acc = row.accruedInterestPerUnit;
+    if (acc == null || acc === '' || !isFinite(Number(acc))) return emptyBondNkdResult('missing', date);
+    var face = row.faceValue;
+    if (face == null || face === '' || !isFinite(Number(face)) || Number(face) !== NKD_V1_FACE) {
+      return emptyBondNkdResult('unsupported', date);
+    }
+    if (row.currency && !bondNkdCurrencyIsRub(row.currency)) return emptyBondNkdResult('unsupported', date);
+    if (row.faceUnit && !bondNkdCurrencyIsRub(row.faceUnit)) return emptyBondNkdResult('unsupported', date);
+    if (bondNkdTypeUnsupported(row.bondType, row.faceValueType)) return emptyBondNkdResult('unsupported', date);
+    return {
+      status: 'known',
+      nkdPerUnit: Number(acc),
+      nkdDate: date,
+      nkdSource: NKD_TX_SOURCE
+    };
+  }
+
+  function applyBondNkdSnapshot(target, nkd) {
+    if (!target) return target;
+    if (nkd && nkd.status === 'known' && nkd.nkdPerUnit != null && isFinite(Number(nkd.nkdPerUnit)) &&
+        Number(nkd.nkdPerUnit) >= 0 && nkd.nkdDate && nkd.nkdSource === NKD_TX_SOURCE) {
+      target.nkdPerUnit = Number(nkd.nkdPerUnit);
+      target.nkdDate = nkd.nkdDate;
+      target.nkdSource = NKD_TX_SOURCE;
+      return target;
+    }
+    delete target.nkdPerUnit;
+    delete target.nkdDate;
+    delete target.nkdSource;
+    return target;
+  }
+
+  function resolveBondNkdPersistChoice(lookup, previous, nextDate) {
+    var date = typeof normalizePortfolioDate === 'function'
+      ? (normalizePortfolioDate(nextDate) || '')
+      : String(nextDate || '').slice(0, 10);
+    if (lookup && lookup.status) return lookup;
+    var prevDate = previous && previous.nkdDate ? String(previous.nkdDate) : '';
+    if (!prevDate && previous && previous.buyDate) prevDate = String(previous.buyDate);
+    if (previous && previous.nkdPerUnit != null && isFinite(Number(previous.nkdPerUnit)) &&
+        previous.nkdSource === NKD_TX_SOURCE && prevDate && prevDate === date) {
+      return {
+        status: 'known',
+        nkdPerUnit: Number(previous.nkdPerUnit),
+        nkdDate: date,
+        nkdSource: NKD_TX_SOURCE
+      };
+    }
+    return emptyBondNkdResult('missing', date);
+  }
+
+  function bondNkdLookupFor(ticker, date) {
+    var pending = pfTxNkdPending;
+    if (pending && pending.ticker === ticker && pending.date === date && pending.attempted) {
+      return pending.nkd || null;
+    }
+    var res = pfTxAnomalyState && pfTxAnomalyState.result;
+    if (res && res.ticker === ticker && res.transactionDate === date && res.nkd) return res.nkd;
+    return null;
+  }
+
+  function bondNkdAttemptCovers(ticker, date) {
+    var pending = pfTxNkdPending;
+    if (pending && pending.ticker === ticker && pending.date === date && pending.attempted) return true;
+    var res = pfTxAnomalyState && pfTxAnomalyState.result;
+    return !!(res && res.ticker === ticker && res.transactionDate === date && res.nkd);
+  }
 
   function txPriceAnomalyShiftIso(iso, days) {
     var d = new Date(String(iso || '') + 'T12:00:00');
@@ -8878,14 +8988,20 @@
       (typeof Markets !== 'undefined' && Markets.isUsTicker && Markets.isUsTicker(ticker)));
     var expectedUnit = isBond ? 'pct-of-face-value' : 'rub';
 
-    function done(priceRes) {
-      return evaluateTransactionPriceAnomaly({
+    function done(priceRes, historyRows) {
+      var out = evaluateTransactionPriceAnomaly({
         enteredPrice: entered,
         isBond: isBond,
         expectedUnit: expectedUnit,
         transactionDate: txDate,
         priceRes: priceRes || {}
       });
+      out.ticker = ticker;
+      out.nkd = null;
+      if (isBond && historyRows) {
+        out.nkd = resolveExactBondNkdFromHistory(historyRows, txDate);
+      }
+      return out;
     }
 
     if (isUs || kind === 'pif' || kind === 'index' || input.unsupported) {
@@ -8922,12 +9038,32 @@
     }
 
     return Promise.resolve(historyPromise).then(function (rows) {
-      if (!getPrice) return done({ status: 'missing' });
-      var priceOpts = { history: rows || [] };
+      var historyRows = rows || [];
+      if (!getPrice) return done({ status: 'missing' }, historyRows);
+      var priceOpts = { history: historyRows };
       if (options.fetchJson) priceOpts.fetchJson = options.fetchJson;
-      return Promise.resolve(getPrice(ticker, txDate, meta, priceOpts)).then(done);
+      return Promise.resolve(getPrice(ticker, txDate, meta, priceOpts)).then(function (priceRes) {
+        return done(priceRes, historyRows);
+      });
     }).catch(function () {
-      return done({ status: 'missing' });
+      return done({ status: 'missing' }, null);
+    });
+  }
+
+  function lookupBondTransactionNkd(input) {
+    input = input || {};
+    return buildTransactionPriceAnomalyCheck({
+      ticker: input.ticker,
+      date: input.date,
+      enteredPrice: input.enteredPrice != null ? input.enteredPrice : 1,
+      isBond: true,
+      kind: 'bond',
+      history: input.history,
+      options: input.options
+    }).then(function (res) {
+      return res && res.nkd ? res.nkd : null;
+    }).catch(function () {
+      return null;
     });
   }
 
@@ -8970,6 +9106,7 @@
     pfTxAnomalyState.ackKey = '';
     pfTxAnomalyState.inFlightKey = '';
     pfTxAnomalyState.result = null;
+    pfTxNkdPending = null;
     resetTxPriceAnomalyUi();
   }
 
@@ -9115,10 +9252,22 @@
         cancelPortfolioEdit();
         return;
       }
+      var previousNkd = {
+        nkdPerUnit: editingLot.nkdPerUnit,
+        nkdDate: editingLot.nkdDate,
+        nkdSource: editingLot.nkdSource,
+        buyDate: editingLot.buyDate
+      };
       if (qty != null) editingLot.qty = qty;
       if (avg != null) editingLot.avgPrice = avg;
       editingLot.buyDate = buyDate;
       editingLot.comment = comment;
+      if (isBond) {
+        applyBondNkdSnapshot(
+          editingLot,
+          resolveBondNkdPersistChoice(bondNkdLookupFor(t, buyDate), previousNkd, buyDate)
+        );
+      }
       persistPortfolioLot(portfolio, editingLot.lotId);
       resetTxPriceAnomalyState();
       cancelPortfolioEdit();
@@ -9131,10 +9280,10 @@
       var refLot = existingLots.length ? existingLots[existingLots.length - 1] : null;
       var finalCur = cur != null && isFinite(cur) ? cur : (hasAvg ? avg : (refLot && isFinite(Number(refLot.currentPrice)) ? Number(refLot.currentPrice) : 100));
       var avgPrice = hasAvg ? avg : finalCur;
-      var lotDate = buyDate || new Date().toISOString().slice(0, 10);
+      var lotDate = buyDate || dateForCheck || new Date().toISOString().slice(0, 10);
 
       if (existingLots.length) {
-        var newLot = normalizePosition({
+        var newLotRaw = {
           ticker: t,
           qty: qty,
           avgPrice: avgPrice,
@@ -9143,7 +9292,14 @@
           comment: comment,
           market: 'RU',
           currency: 'RUB'
-        });
+        };
+        if (isBond) {
+          applyBondNkdSnapshot(
+            newLotRaw,
+            resolveBondNkdPersistChoice(bondNkdLookupFor(t, lotDate), null, lotDate)
+          );
+        }
+        var newLot = normalizePosition(newLotRaw);
         if (!newLot) throw new Error('invalid_position');
         portfolio.positions.push(newLot);
         persistPortfolioLot(portfolio, newLot.lotId);
@@ -9151,7 +9307,7 @@
         safeClearPortfolioForms(prefix);
         showToast('Докупка добавлена: ' + t);
       } else {
-        var pos = normalizePosition({
+        var posRaw = {
           ticker: t,
           qty: qty,
           avgPrice: avgPrice,
@@ -9160,7 +9316,14 @@
           comment: comment,
           market: 'RU',
           currency: 'RUB'
-        });
+        };
+        if (isBond) {
+          applyBondNkdSnapshot(
+            posRaw,
+            resolveBondNkdPersistChoice(bondNkdLookupFor(t, lotDate), null, lotDate)
+          );
+        }
+        var pos = normalizePosition(posRaw);
         if (!pos) throw new Error('invalid_position');
         portfolio.positions.push(pos);
         persistPortfolioLot(portfolio, pos.lotId);
@@ -9266,7 +9429,21 @@
     var skipAnomaly = isUs || !enteredForCheck || !dateForCheck ||
       !txPriceAnomalyLookupAvailable() ||
       (isBond && shouldWarnOfzAvgLooksLikeRubles(true, enteredForCheck));
-    if (skipAnomaly) return runPersistPosition();
+    if (skipAnomaly) {
+      if (isBond && dateForCheck && txPriceAnomalyLookupAvailable()) {
+        return lookupBondTransactionNkd({
+          ticker: t,
+          date: dateForCheck,
+          enteredPrice: enteredForCheck
+        }).then(function (nkd) {
+          pfTxNkdPending = { ticker: t, date: dateForCheck, nkd: nkd, attempted: true };
+          return runPersistPosition();
+        }).catch(function () {
+          return runPersistPosition();
+        });
+      }
+      return runPersistPosition();
+    }
 
     return gateTxPriceAnomaly({
       op: editing ? 'edit-buy' : 'buy',
@@ -10229,6 +10406,17 @@
           commitPortfolioSale(ticker, captured);
         });
       }
+    } else if (isBondSale && txPriceAnomalyLookupAvailable() && !bondNkdAttemptCovers(ticker, saleDate)) {
+      return lookupBondTransactionNkd({
+        ticker: ticker,
+        date: saleDate,
+        enteredPrice: salePrice
+      }).then(function (nkd) {
+        pfTxNkdPending = { ticker: ticker, date: saleDate, nkd: nkd, attempted: true };
+        return commitPortfolioSale(ticker, captured);
+      }).catch(function () {
+        return commitPortfolioSale(ticker, captured);
+      });
     }
 
     var allocResult = splitMode
@@ -10255,6 +10443,12 @@
       allocations: allocResult.allocations
     };
     if (splitMode) saleRaw.qtyScale = 'sale-date';
+    if (isBondSale) {
+      applyBondNkdSnapshot(
+        saleRaw,
+        resolveBondNkdPersistChoice(bondNkdLookupFor(ticker, saleDate), null, saleDate)
+      );
+    }
     var sale = normalizeSale(saleRaw);
     if (!sale) {
       showToast('Не удалось зафиксировать продажу');
