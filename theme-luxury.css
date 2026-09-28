@@ -6194,6 +6194,10 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
   white-space: normal;
 }
 
+#tab-portfolio .pf-prs-nkd-note {
+  margin: 0 0 0.55rem;
+}
+
 @media (max-width: 1099px) {
   #tab-portfolio .pf-prs-breakdown {
     grid-template-columns: repeat(3, minmax(0, 1fr));
