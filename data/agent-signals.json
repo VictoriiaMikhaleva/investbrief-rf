@@ -1,8 +1,8 @@
 {
-  "status": "ok",
+  "status": "stale",
   "updatedAt": "2026-10-08T16:51:29.459Z",
   "source": "MOEX ISS",
-  "message": "Данные обновлены",
+  "message": "HTTP 502 for https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&securities.columns=SECID,SHORTNAME&marketdata.columns=SECID,LAST,VALTODAY,LASTTOPREVPRICE&sort_column=VALTODAY&sort_order=desc&limit=80",
   "data": {
     "tickers": [
       "YDEX",
@@ -311,5 +311,6 @@
         "status": "Зона внимания"
       }
     ]
-  }
+  },
+  "lastErrorAt": "2026-10-08T21:35:12.777Z"
 }
