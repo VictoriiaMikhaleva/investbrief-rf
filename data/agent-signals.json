@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-10-12T17:46:25.261Z",
+  "updatedAt": "2026-10-12T23:48:07.972Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -11,9 +11,9 @@
       "ROSN",
       "SBER",
       "OZON",
+      "AKMM",
       "VTBR",
       "T",
-      "AKMM",
       "PLZL",
       "NVTK",
       "SIBN",
@@ -37,8 +37,8 @@
         "ticker": "LKOH",
         "name": "ЛУКОЙЛ",
         "insufficient": false,
-        "currentPrice": 5998.5,
-        "dayChangePct": -1.78,
+        "currentPrice": 5983,
+        "dayChangePct": -2.04,
         "signals": [
           {
             "id": "month-high",
@@ -53,24 +53,17 @@
         "ticker": "GAZP",
         "name": "ГАЗПРОМ ао",
         "insufficient": false,
-        "currentPrice": 102.28,
-        "dayChangePct": 0.45,
-        "signals": [
-          {
-            "id": "month-high",
-            "title": "Близко к верхней границе месяца",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Зона внимания"
+        "currentPrice": 101.7,
+        "dayChangePct": -0.12,
+        "signals": [],
+        "status": "Спокойно"
       },
       {
         "ticker": "YDEX",
         "name": "ЯНДЕКС",
         "insufficient": false,
-        "currentPrice": 3388,
-        "dayChangePct": -1.94,
+        "currentPrice": 3369.5,
+        "dayChangePct": -2.47,
         "signals": [
           {
             "id": "week-down",
@@ -91,8 +84,8 @@
         "ticker": "ROSN",
         "name": "Роснефть",
         "insufficient": false,
-        "currentPrice": 379.7,
-        "dayChangePct": -0.69,
+        "currentPrice": 377.95,
+        "dayChangePct": -1.15,
         "signals": [
           {
             "id": "week-up",
@@ -113,8 +106,8 @@
         "ticker": "SBER",
         "name": "Сбербанк",
         "insufficient": false,
-        "currentPrice": 285.47,
-        "dayChangePct": 0.16,
+        "currentPrice": 285.29,
+        "dayChangePct": 0.09,
         "signals": [
           {
             "id": "month-high",
@@ -129,8 +122,24 @@
         "ticker": "OZON",
         "name": "Озон",
         "insufficient": false,
-        "currentPrice": 3323.5,
-        "dayChangePct": 2.39,
+        "currentPrice": 3316,
+        "dayChangePct": 2.16,
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
+      },
+      {
+        "ticker": "AKMM",
+        "name": "AKMM ETF",
+        "insufficient": false,
+        "currentPrice": 179.28,
+        "dayChangePct": 0.03,
         "signals": [
           {
             "id": "month-high",
@@ -145,8 +154,8 @@
         "ticker": "VTBR",
         "name": "ВТБ ао",
         "insufficient": false,
-        "currentPrice": 54.83,
-        "dayChangePct": -0.31,
+        "currentPrice": 54.835,
+        "dayChangePct": -0.3,
         "signals": [
           {
             "id": "month-high",
@@ -161,33 +170,17 @@
         "ticker": "T",
         "name": "Т-Техно ао",
         "insufficient": false,
-        "currentPrice": 266.76,
-        "dayChangePct": -1.81,
+        "currentPrice": 266.74,
+        "dayChangePct": -1.82,
         "signals": [],
         "status": "Спокойно"
-      },
-      {
-        "ticker": "AKMM",
-        "name": "AKMM ETF",
-        "insufficient": false,
-        "currentPrice": 179.29,
-        "dayChangePct": 0.03,
-        "signals": [
-          {
-            "id": "month-high",
-            "title": "Близко к верхней границе месяца",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Зона внимания"
       },
       {
         "ticker": "PLZL",
         "name": "Полюс",
         "insufficient": false,
-        "currentPrice": 1056.4,
-        "dayChangePct": 4.43,
+        "currentPrice": 1058.8,
+        "dayChangePct": 4.67,
         "signals": [
           {
             "id": "day-up",
@@ -214,8 +207,8 @@
         "ticker": "NVTK",
         "name": "Новатэк ао",
         "insufficient": false,
-        "currentPrice": 1072.2,
-        "dayChangePct": -3.23,
+        "currentPrice": 1069,
+        "dayChangePct": -3.52,
         "signals": [
           {
             "id": "day-down",
@@ -230,8 +223,8 @@
         "ticker": "SIBN",
         "name": "Газпрнефть",
         "insufficient": false,
-        "currentPrice": 630.8,
-        "dayChangePct": 2.2,
+        "currentPrice": 633.9,
+        "dayChangePct": 2.71,
         "signals": [
           {
             "id": "week-up",
@@ -252,8 +245,8 @@
         "ticker": "LQDT",
         "name": "LQDT ETF",
         "insufficient": false,
-        "currentPrice": 2.1071,
-        "dayChangePct": 0.04,
+        "currentPrice": 2.107,
+        "dayChangePct": 0.03,
         "signals": [
           {
             "id": "month-high",
@@ -268,8 +261,8 @@
         "ticker": "TATN",
         "name": "Татнфт 3ао",
         "insufficient": false,
-        "currentPrice": 678.4,
-        "dayChangePct": 0.37,
+        "currentPrice": 678.5,
+        "dayChangePct": 0.38,
         "signals": [
           {
             "id": "month-high",
@@ -300,8 +293,8 @@
         "ticker": "VKCO",
         "name": "МКПАО \"ВК\"",
         "insufficient": false,
-        "currentPrice": 133,
-        "dayChangePct": 6.66,
+        "currentPrice": 134.25,
+        "dayChangePct": 7.66,
         "signals": [
           {
             "id": "day-up",
@@ -366,8 +359,8 @@
         "ticker": "MGNT",
         "name": "Магнит ао",
         "insufficient": false,
-        "currentPrice": 1742,
-        "dayChangePct": 6.54,
+        "currentPrice": 1736,
+        "dayChangePct": 6.18,
         "signals": [
           {
             "id": "day-up",
@@ -388,8 +381,8 @@
         "ticker": "GMKN",
         "name": "ГМКНорНик",
         "insufficient": false,
-        "currentPrice": 117.32,
-        "dayChangePct": 0.31,
+        "currentPrice": 117.16,
+        "dayChangePct": 0.17,
         "signals": [
           {
             "id": "month-low",
