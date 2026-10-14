@@ -2318,6 +2318,10 @@
     .analytics-detail { margin-top: 1rem; padding: 1rem; }
     .analytics-detail-title { margin: 0 0 0.35rem; font-size: 1rem; }
     .analytics-detail-meta { margin: 0 0 0.75rem; font-size: 0.9rem; line-height: 1.45; }
+    .company-about { max-width: 100%; }
+    .company-about-name,
+    .company-about-desc,
+    .company-about-history { overflow-wrap: anywhere; }
     .analytics-charts-grid {
       display: grid;
       grid-template-columns: 1fr;

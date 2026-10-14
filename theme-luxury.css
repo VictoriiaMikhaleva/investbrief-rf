@@ -1528,6 +1528,45 @@ button.primary.brief-read-btn:active {
 .security-overview-grid > .analytics-chart-panel { display: none; }
 .security-overview-grid > .analytics-chart-panel.active { display: block; }
 
+.company-about {
+  margin: 0 0 0.8rem;
+  min-width: 0;
+  max-width: 46rem;
+}
+.company-about-kicker {
+  margin: 0 0 0.15rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.company-about-name {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.company-about-meta {
+  margin: 0.18rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+.company-about-desc {
+  margin: 0.38rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+.company-about-history {
+  margin: 0.28rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
 .security-profile-card {
   margin-top: 0.85rem;
   border-top: 1px solid var(--border);

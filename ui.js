@@ -2016,6 +2016,62 @@
     return Promise.resolve();
   }
 
+  function hideCompanyAboutBlock() {
+    var el = document.getElementById('analyticsCompanyAbout');
+    if (!el) return;
+    el.hidden = true;
+    el.innerHTML = '';
+  }
+
+  function shouldHideCompanyAbout(ticker) {
+    ticker = normalizeTicker(ticker);
+    if (!ticker) return true;
+    if (typeof isIndexQuoteTicker === 'function' && isIndexQuoteTicker(ticker)) return true;
+    if (typeof Markets !== 'undefined' && Markets.isUsTicker(ticker)) return true;
+    if (typeof isRuBondTicker === 'function' && isRuBondTicker(ticker)) return true;
+    if (typeof isNonCompanyInstrument === 'function' && isNonCompanyInstrument(ticker)) return true;
+    return false;
+  }
+
+  function renderCompanyAbout(ticker) {
+    var el = document.getElementById('analyticsCompanyAbout');
+    if (!el) return;
+    ticker = normalizeTicker(ticker);
+    el.setAttribute('data-ticker', ticker || '');
+    if (shouldHideCompanyAbout(ticker)) {
+      hideCompanyAboutBlock();
+      el.setAttribute('data-ticker', ticker || '');
+      return;
+    }
+    var profile = typeof getCompanyProfile === 'function' ? getCompanyProfile(ticker) : null;
+    if (!profile || !profile.fullName || !profile.sector || !profile.industry || !profile.description) {
+      hideCompanyAboutBlock();
+      el.setAttribute('data-ticker', ticker || '');
+      return;
+    }
+    var esc = typeof escapeHtml === 'function' ? escapeHtml : function (s) { return String(s || ''); };
+    var html =
+      '<p class="company-about-kicker">О компании</p>' +
+      '<p class="company-about-name">' + esc(profile.fullName) + '</p>' +
+      '<p class="company-about-meta">' + esc(profile.sector) + ' · ' + esc(profile.industry) + '</p>' +
+      '<p class="company-about-desc">' + esc(profile.description) + '</p>';
+    if (profile.historyNote) {
+      html += '<p class="company-about-history">' + esc(profile.historyNote) + '</p>';
+    }
+    el.innerHTML = html;
+    el.hidden = false;
+  }
+
+  function ensureCompanyAbout(ticker) {
+    renderCompanyAbout(ticker);
+    if (typeof loadCompanyProfiles !== 'function') return;
+    loadCompanyProfiles().then(function () {
+      var el = document.getElementById('analyticsCompanyAbout');
+      if (!el || el.getAttribute('data-ticker') !== normalizeTicker(ticker)) return;
+      renderCompanyAbout(ticker);
+    });
+  }
+
   function renderAnalyticsDetail(ticker) {
     ticker = normalizeTicker(ticker);
     var sec = document.getElementById('analyticsDetailSection');
@@ -2031,6 +2087,7 @@
     if (titleEl) titleEl.textContent = ticker;
     if (metaEl) metaEl.textContent = 'Загрузка…';
     sec.hidden = false;
+    ensureCompanyAbout(ticker);
     syncSecurityChartTabsForTicker(ticker);
     setSecurityChartTab('price');
 
@@ -2628,6 +2685,7 @@
   window.closeAnalyticsModal = closeAnalyticsModal;
   window.drawMiniBarChart = drawMiniBarChart;
   window.drawFullBarChart = drawFullBarChart;
+  window.renderCompanyAbout = renderCompanyAbout;
   window.renderAnalyticsDetail = renderAnalyticsDetail;
   window.paintAnalyticsPriceChart = paintAnalyticsPriceChart;
   window.setAnalyticsPriceScaleMode = setAnalyticsPriceScaleMode;

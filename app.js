@@ -791,6 +791,7 @@
       renderMarketTiles();
       renderMarketMacro();
       if (typeof scheduleMarketMacroRefresh === 'function') scheduleMarketMacroRefresh();
+      if (typeof loadCompanyProfiles === 'function') loadCompanyProfiles();
       if (typeof initWatchdog === 'function') initWatchdog();
       if (typeof Markets !== 'undefined' && Markets.renderBriefingMarketTabs) {
         ['briefingMarketTabs', 'analyticsMarketTabs', 'portfolioMarketTabs'].forEach(function (id) {
