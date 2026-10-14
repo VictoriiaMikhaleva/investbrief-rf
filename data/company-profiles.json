@@ -1,0 +1,510 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-14",
+  "notes": "Справочник компаний для блока «О компании» в аналитике. Поля sources — для внутренней проверки, в UI не показываются. sectors — канонический whitelist верхнего уровня. Дефолтный Agent берёт живой топ-20 TQBR по обороту; репозиторные снимки data/agent-signals.json и data/top-turnover.json — guard coverage при refresh.",
+  "sectors": [
+    "Финансы",
+    "Энергетика",
+    "Материалы",
+    "Потребительский сектор",
+    "Информационные технологии",
+    "Коммуникационные услуги",
+    "Промышленность",
+    "Недвижимость",
+    "Здравоохранение"
+  ],
+  "industries": [
+    "Банки",
+    "Биржи и рыночная инфраструктура",
+    "Газ",
+    "Нефть и газ",
+    "Цветные металлы",
+    "Чёрная металлургия",
+    "Добыча золота",
+    "Добыча алмазов",
+    "Розничная торговля",
+    "Интернет-торговля",
+    "Интернет-сервисы",
+    "Интернет и медиа",
+    "Сотовая связь",
+    "Авиаперевозки",
+    "Девелопмент",
+    "Фармацевтика"
+  ],
+  "nonCompanyInstruments": [
+    {
+      "ticker": "AKMM",
+      "kind": "bpif",
+      "name": "БПИФ денежного рынка",
+      "sources": [
+        {
+          "label": "Мосбиржа — фонды денежного рынка",
+          "url": "https://www.moex.com/ru/moneyfunds"
+        }
+      ]
+    },
+    {
+      "ticker": "LQDT",
+      "kind": "bpif",
+      "name": "БПИФ Ликвидность",
+      "sources": [
+        {
+          "label": "Мосбиржа — фонды денежного рынка",
+          "url": "https://www.moex.com/ru/moneyfunds"
+        }
+      ]
+    },
+    {
+      "ticker": "SBFR",
+      "kind": "bpif",
+      "name": "БПИФ облигаций с переменным купоном",
+      "sources": [
+        {
+          "label": "УК Первая — Фонд Облигации с переменным купоном",
+          "url": "https://first-am.ru/individuals/etf/etf-sbfr"
+        }
+      ]
+    },
+    {
+      "ticker": "SBMM",
+      "kind": "bpif",
+      "name": "БПИФ Сберегательный",
+      "sources": [
+        {
+          "label": "УК Первая — Фонд Сберегательный",
+          "url": "https://first-am.ru/individuals/etf/etf-sbmm"
+        }
+      ]
+    }
+  ],
+  "companies": [
+    {
+      "companyId": "sber",
+      "tickers": ["SBER", "SBERP"],
+      "fullName": "Публичное акционерное общество «Сбербанк России»",
+      "shortName": "Сбербанк",
+      "sector": "Финансы",
+      "industry": "Банки",
+      "description": "Российский банк с лицензией Банка России. Оказывает розничные и корпоративные банковские услуги и развивает цифровые сервисы группы.",
+      "historyNote": "История ведётся с 12 ноября 1841 года, когда был подписан указ об учреждении сберегательных касс.",
+      "sources": [
+        {
+          "label": "СберБанк — о компании",
+          "url": "https://www.sberbank.com/ru/about"
+        },
+        {
+          "label": "СберБанк — реквизиты",
+          "url": "https://www.sberbank.ru/ru/about/today/requisites"
+        }
+      ]
+    },
+    {
+      "companyId": "vtb",
+      "tickers": ["VTBR"],
+      "fullName": "Банк ВТБ (публичное акционерное общество)",
+      "shortName": "ВТБ",
+      "sector": "Финансы",
+      "industry": "Банки",
+      "description": "Российский банк. Оказывает корпоративные, инвестиционные и розничные банковские услуги.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Банк России — Банк ВТБ (ПАО)",
+          "url": "https://www.cbr.ru/finorg/foinfo/?ogrn=1027739609391"
+        },
+        {
+          "label": "Мосбиржа — VTBR",
+          "url": "https://www.moex.com/ru/stocks/VTBR"
+        }
+      ]
+    },
+    {
+      "companyId": "t-technologies",
+      "tickers": ["T", "TCSG"],
+      "fullName": "Международная компания публичное акционерное общество «Т-Технологии»",
+      "shortName": "Т-Технологии",
+      "sector": "Финансы",
+      "industry": "Банки",
+      "description": "Листинговый холдинг цифровой финансовой экосистемы. Основной операционный банк группы — АО «ТБанк», который оказывает финансовые услуги через интернет и мобильные приложения.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Т-Технологии — годовой отчёт",
+          "url": "https://t-technologies.ru/ar2025t-technologies/index.html"
+        },
+        {
+          "label": "Банк России — АО «ТБанк»",
+          "url": "https://www.cbr.ru/finorg/foinfo/?ogrn=1027739642281"
+        }
+      ]
+    },
+    {
+      "companyId": "sovcombank",
+      "tickers": ["SVCB"],
+      "fullName": "Публичное акционерное общество «Совкомбанк»",
+      "shortName": "Совкомбанк",
+      "sector": "Финансы",
+      "industry": "Банки",
+      "description": "Российский банк. Оказывает розничные и корпоративные банковские услуги.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — карточка эмитента SVCB",
+          "url": "https://www.moex.com/ru/issue.aspx?code=SVCB"
+        }
+      ]
+    },
+    {
+      "companyId": "moex",
+      "tickers": ["MOEX"],
+      "fullName": "Публичное акционерное общество «Московская Биржа ММВБ-РТС»",
+      "shortName": "Московская биржа",
+      "sector": "Финансы",
+      "industry": "Биржи и рыночная инфраструктура",
+      "description": "Организатор торгов. Управляет биржевой инфраструктурой для акций, облигаций, валюты, срочного рынка и других финансовых инструментов.",
+      "historyNote": "Образована в 2011 году в результате объединения ММВБ и РТС.",
+      "sources": [
+        {
+          "label": "Банк России — ПАО Московская Биржа",
+          "url": "https://www.cbr.ru/finorg/foinfo/?ogrn=1027739387411"
+        },
+        {
+          "label": "Устав ПАО Московская Биржа",
+          "url": "https://www.moex.com/s1356"
+        }
+      ]
+    },
+    {
+      "companyId": "gazprom",
+      "tickers": ["GAZP"],
+      "fullName": "Публичное акционерное общество «Газпром»",
+      "shortName": "Газпром",
+      "sector": "Энергетика",
+      "industry": "Газ",
+      "description": "Энергетическая компания. Занимается добычей, транспортировкой и продажей природного газа, а также связанными проектами в энергетике.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — GAZP",
+          "url": "https://www.moex.com/ru/stocks/gazp"
+        }
+      ]
+    },
+    {
+      "companyId": "novatek",
+      "tickers": ["NVTK"],
+      "fullName": "Публичное акционерное общество «НОВАТЭК»",
+      "shortName": "Новатэк",
+      "sector": "Энергетика",
+      "industry": "Газ",
+      "description": "Газовая компания. Занимается разведкой, добычей и реализацией природного газа и жидких углеводородов.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — NVTK",
+          "url": "https://www.moex.com/ru/issue.aspx?code=NVTK"
+        }
+      ]
+    },
+    {
+      "companyId": "lukoil",
+      "tickers": ["LKOH"],
+      "fullName": "Публичное акционерное общество «ЛУКОЙЛ»",
+      "shortName": "ЛУКОЙЛ",
+      "sector": "Энергетика",
+      "industry": "Нефть и газ",
+      "description": "Нефтяная компания. Занимается разведкой, добычей и переработкой нефти и газа, а также продажей нефтепродуктов.",
+      "historyNote": "Компания учреждена в 1993 году в соответствии с постановлением Правительства РФ.",
+      "sources": [
+        {
+          "label": "ЛУКОЙЛ — акционерный капитал",
+          "url": "https://lukoil.ru/InvestorAndShareholderCenter/Securities/sharecapital"
+        }
+      ]
+    },
+    {
+      "companyId": "rosneft",
+      "tickers": ["ROSN"],
+      "fullName": "Публичное акционерное общество «Нефтяная компания «Роснефть»»",
+      "shortName": "Роснефть",
+      "sector": "Энергетика",
+      "industry": "Нефть и газ",
+      "description": "Нефтяная компания. Занимается разведкой, добычей и переработкой нефти и газа, а также продажей нефтепродуктов.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — ROSN",
+          "url": "https://www.moex.com/ru/issue.aspx?code=ROSN"
+        }
+      ]
+    },
+    {
+      "companyId": "tatneft",
+      "tickers": ["TATN", "TATNP"],
+      "fullName": "Публичное акционерное общество «Татнефть» имени В.Д. Шашина",
+      "shortName": "Татнефть",
+      "sector": "Энергетика",
+      "industry": "Нефть и газ",
+      "description": "Нефтяная компания. Занимается добычей нефти и газа, нефтепереработкой и продажей нефтепродуктов.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — TATN",
+          "url": "https://www.moex.com/ru/issue.aspx?code=TATN"
+        }
+      ]
+    },
+    {
+      "companyId": "surgutneftegas",
+      "tickers": ["SNGS", "SNGSP"],
+      "fullName": "Публичное акционерное общество «Сургутнефтегаз»",
+      "shortName": "Сургутнефтегаз",
+      "sector": "Энергетика",
+      "industry": "Нефть и газ",
+      "description": "Нефтяная компания. Занимается добычей нефти и газа, нефтепереработкой и реализацией нефтепродуктов.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — SNGS",
+          "url": "https://www.moex.com/ru/issue.aspx?code=SNGS"
+        }
+      ]
+    },
+    {
+      "companyId": "gazprom-neft",
+      "tickers": ["SIBN"],
+      "fullName": "Публичное акционерное общество «Газпром нефть»",
+      "shortName": "Газпром нефть",
+      "sector": "Энергетика",
+      "industry": "Нефть и газ",
+      "description": "Нефтяная компания. Занимается добычей нефти и газа, нефтепереработкой и продажей нефтепродуктов.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — карточка эмитента",
+          "url": "https://www.moex.com/ru/listing/securities-cards.aspx?code=RU0009062467"
+        }
+      ]
+    },
+    {
+      "companyId": "nornickel",
+      "tickers": ["GMKN"],
+      "fullName": "Публичное акционерное общество «Горно-металлургическая компания «Норильский никель»»",
+      "shortName": "Норникель",
+      "sector": "Материалы",
+      "industry": "Цветные металлы",
+      "description": "Горно-металлургическая компания. Добывает и производит никель, медь, металлы платиновой группы и сопутствующую продукцию.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Норникель — устав",
+          "url": "https://www.nornickel.ru/investors/disclosure/charter/"
+        },
+        {
+          "label": "Норникель — акционерный капитал",
+          "url": "https://ar2025.nornickel.ru/shareholders/share-capital/"
+        }
+      ]
+    },
+    {
+      "companyId": "nlmk",
+      "tickers": ["NLMK"],
+      "fullName": "Публичное акционерное общество «Новолипецкий металлургический комбинат»",
+      "shortName": "НЛМК",
+      "sector": "Материалы",
+      "industry": "Чёрная металлургия",
+      "description": "Металлургическая компания. Производит сталь и стальную продукцию для строительства, машиностроения и других отраслей.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — NLMK",
+          "url": "https://www.moex.com/ru/issue.aspx?code=NLMK"
+        }
+      ]
+    },
+    {
+      "companyId": "severstal",
+      "tickers": ["CHMF"],
+      "fullName": "Публичное акционерное общество «Северсталь»",
+      "shortName": "Северсталь",
+      "sector": "Материалы",
+      "industry": "Чёрная металлургия",
+      "description": "Металлургическая компания. Производит сталь и стальную продукцию, а также добывает сырьё для металлургии.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — CHMF",
+          "url": "https://www.moex.com/ru/issue.aspx?code=CHMF"
+        }
+      ]
+    },
+    {
+      "companyId": "polyus",
+      "tickers": ["PLZL"],
+      "fullName": "Публичное акционерное общество «Полюс»",
+      "shortName": "Полюс",
+      "sector": "Материалы",
+      "industry": "Добыча золота",
+      "description": "Золотодобывающая компания. Ведёт разведку и добычу золота на месторождениях в России.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — PLZL",
+          "url": "https://www.moex.com/ru/issue.aspx?code=PLZL"
+        }
+      ]
+    },
+    {
+      "companyId": "alrosa",
+      "tickers": ["ALRS"],
+      "fullName": "Акционерная компания «АЛРОСА» (публичное акционерное общество)",
+      "shortName": "АЛРОСА",
+      "sector": "Материалы",
+      "industry": "Добыча алмазов",
+      "description": "Алмазодобывающая компания. Занимается разведкой, добычей и продажей природных алмазов.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — ALRS",
+          "url": "https://www.moex.com/ru/issue.aspx?code=ALRS"
+        }
+      ]
+    },
+    {
+      "companyId": "magnit",
+      "tickers": ["MGNT"],
+      "fullName": "Публичное акционерное общество «Магнит»",
+      "shortName": "Магнит",
+      "sector": "Потребительский сектор",
+      "industry": "Розничная торговля",
+      "description": "Розничная сеть. Управляет магазинами продуктов питания и сопутствующих товаров.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Магнит — акции",
+          "url": "https://www.magnit.com/ru/shareholders-and-investors/shares-and-gdrs/"
+        }
+      ]
+    },
+    {
+      "companyId": "ozon",
+      "tickers": ["OZON"],
+      "fullName": "Международная компания публичное акционерное общество «Озон»",
+      "shortName": "Озон",
+      "sector": "Потребительский сектор",
+      "industry": "Интернет-торговля",
+      "description": "Компания электронной коммерции. Управляет маркетплейсом и связанными сервисами онлайн-торговли.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — OZON",
+          "url": "https://www.moex.com/ru/stocks/ozon"
+        }
+      ]
+    },
+    {
+      "companyId": "yandex",
+      "tickers": ["YDEX"],
+      "fullName": "Международная компания публичное акционерное общество «ЯНДЕКС»",
+      "shortName": "Яндекс",
+      "sector": "Информационные технологии",
+      "industry": "Интернет-сервисы",
+      "description": "Технологическая компания. Разрабатывает интернет-сервисы и цифровые продукты, включая поиск, транспорт, доставку и электронную коммерцию.",
+      "historyNote": "Компания «Яндекс» появилась в 2000 году, через три года после запуска портала yandex.ru.",
+      "sources": [
+        {
+          "label": "Яндекс — IR",
+          "url": "https://ir.yandex.ru/"
+        },
+        {
+          "label": "Банк России — МКПАО «ЯНДЕКС»",
+          "url": "https://www.cbr.ru/registries/rcb/ecb/orginfo/?id=52913474"
+        }
+      ]
+    },
+    {
+      "companyId": "mts",
+      "tickers": ["MTSS"],
+      "fullName": "Публичное акционерное общество «Мобильные ТелеСистемы»",
+      "shortName": "МТС",
+      "sector": "Коммуникационные услуги",
+      "industry": "Сотовая связь",
+      "description": "Телекоммуникационная компания. Оказывает услуги мобильной и фиксированной связи, а также цифровые сервисы для частных и корпоративных клиентов.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "МТС — капитал и ценные бумаги",
+          "url": "https://ar2025.mts.ru/korporativnoe-upravlenie/kapital-i-czennye-bumagi/"
+        }
+      ]
+    },
+    {
+      "companyId": "vk",
+      "tickers": ["VKCO"],
+      "fullName": "Международная компания публичное акционерное общество «ВК»",
+      "shortName": "ВК",
+      "sector": "Коммуникационные услуги",
+      "industry": "Интернет и медиа",
+      "description": "Интернет-компания. Развивает социальные сети, медиасервисы и цифровые платформы.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — VKCO",
+          "url": "https://www.moex.com/ru/issue.aspx?code=VKCO"
+        }
+      ]
+    },
+    {
+      "companyId": "aeroflot",
+      "tickers": ["AFLT"],
+      "fullName": "Публичное акционерное общество «Аэрофлот – российские авиалинии»",
+      "shortName": "Аэрофлот",
+      "sector": "Промышленность",
+      "industry": "Авиаперевозки",
+      "description": "Авиакомпания. Выполняет пассажирские и грузовые авиаперевозки в России и за рубежом.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — AFLT",
+          "url": "https://www.moex.com/ru/issue.aspx?code=AFLT"
+        }
+      ]
+    },
+    {
+      "companyId": "samolet",
+      "tickers": ["SMLT"],
+      "fullName": "Публичное акционерное общество «Группа компаний «Самолёт»»",
+      "shortName": "Самолёт",
+      "sector": "Недвижимость",
+      "industry": "Девелопмент",
+      "description": "Девелоперская компания. Занимается жилищным строительством и комплексным развитием территорий.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Мосбиржа — SMLT",
+          "url": "https://www.moex.com/ru/issue.aspx?code=SMLT"
+        }
+      ]
+    },
+    {
+      "companyId": "ozon-pharm",
+      "tickers": ["OZPH"],
+      "fullName": "Публичное акционерное общество «Озон Фармацевтика»",
+      "shortName": "Озон Фармацевтика",
+      "sector": "Здравоохранение",
+      "industry": "Фармацевтика",
+      "description": "Фармацевтическая компания. Разрабатывает и производит лекарственные препараты, включая онкологические и биотехнологические средства.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Озон Фармацевтика — акционерный капитал",
+          "url": "https://ozonpharm.ru/investors/shareholders/share-capital/"
+        },
+        {
+          "label": "Озон Фармацевтика — о компании",
+          "url": "https://ozonpharm.ru/"
+        }
+      ]
+    }
+  ]
+}
