@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-14",
+  "updatedAt": "2026-10-15",
   "notes": "Справочник компаний для блока «О компании» в аналитике. Поля sources — для внутренней проверки, в UI не показываются. sectors — канонический whitelist верхнего уровня. Дефолтный Agent берёт живой топ-20 TQBR по обороту; репозиторные снимки data/agent-signals.json и data/top-turnover.json — guard coverage при refresh.",
   "sectors": [
     "Финансы",
@@ -28,6 +28,7 @@
     "Интернет и медиа",
     "Сотовая связь",
     "Авиаперевозки",
+    "Морские перевозки",
     "Девелопмент",
     "Фармацевтика"
   ],
@@ -73,6 +74,21 @@
         {
           "label": "УК Первая — Фонд Сберегательный",
           "url": "https://first-am.ru/individuals/etf/etf-sbmm"
+        }
+      ]
+    },
+    {
+      "ticker": "SAFE",
+      "kind": "bpif",
+      "name": "БПИФ Первая — Фонд Консервативный",
+      "sources": [
+        {
+          "label": "УК Первая — Фонд Консервативный",
+          "url": "https://first-am.ru/individuals/etf/fond-konservativnyi-smart"
+        },
+        {
+          "label": "Мосбиржа ISS — SAFE",
+          "url": "https://iss.moex.com/iss/securities/SAFE.json"
         }
       ]
     }
@@ -339,6 +355,26 @@
       ]
     },
     {
+      "companyId": "mmk",
+      "tickers": ["MAGN"],
+      "fullName": "Публичное акционерное общество «Магнитогорский металлургический комбинат»",
+      "shortName": "ММК",
+      "sector": "Материалы",
+      "industry": "Чёрная металлургия",
+      "description": "Металлургическая компания. Производит сталь и стальную продукцию и ведёт полный цикл от подготовки железорудного сырья до глубокой переработки.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "ММК — о компании",
+          "url": "https://mmk.ru/ru/about/"
+        },
+        {
+          "label": "ММК — частным инвесторам",
+          "url": "https://mmk.ru/ru/investor/for-private-investors/"
+        }
+      ]
+    },
+    {
       "companyId": "polyus",
       "tickers": ["PLZL"],
       "fullName": "Публичное акционерное общество «Полюс»",
@@ -467,6 +503,26 @@
         {
           "label": "Мосбиржа — AFLT",
           "url": "https://www.moex.com/ru/issue.aspx?code=AFLT"
+        }
+      ]
+    },
+    {
+      "companyId": "sovcomflot",
+      "tickers": ["FLOT"],
+      "fullName": "Публичное акционерное общество «Современный коммерческий флот»",
+      "shortName": "Совкомфлот",
+      "sector": "Промышленность",
+      "industry": "Морские перевозки",
+      "description": "Судоходная компания. Занимается морскими перевозками нефти, нефтепродуктов, сжиженного газа и других грузов.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "Совкомфлот — о компании",
+          "url": "https://scf-group.ru/about/profile/"
+        },
+        {
+          "label": "Мосбиржа — FLOT",
+          "url": "https://www.moex.com/ru/issue.aspx?code=FLOT"
         }
       ]
     },
