@@ -1,0 +1,168 @@
+{
+  "analysisDate": "2026-10-13",
+  "denominators": {
+    "marketCapSharePct": "classifiedMarketCapRub",
+    "turnoverSharePct": "classifiedTurnoverRub",
+    "concentrationSharePct": "totalUniverseMarketCapRub",
+    "averageDailyTurnoverRub": "tradingDayCount (254 TQBR days, not calendar days)",
+    "classifiedMarketCapRub": "сумма marketCapRub компаний со статусом classified и ненулевым (non-null) cap",
+    "classifiedTurnoverRub": "сумма totalTurnoverRub компаний classified; null не заменяется на 0, наблюдаемый 0 остаётся 0",
+    "totalUniverseTurnoverRub": "сумма оборота всех 217 компаний universe, включая unclassified",
+    "totalUniverseMarketCapRub": "сумма non-null marketCapRub всех компаний universe, включая unclassified"
+  },
+  "turnoverIntensity": {
+    "formula": "turnoverSharePct / marketCapSharePct",
+    "label": "интенсивность торгов относительно текущего размера сектора",
+    "meaning": "отношение доли 12-месячного денежного оборота к доле капитализации на analysisDate",
+    "not": [
+      "liquidity score",
+      "ликвидность",
+      "инвестиционная привлекательность",
+      "чистая метрика оборачиваемости free-float"
+    ]
+  },
+  "classifiedCompanyCount": 216,
+  "classifiedMarketCapRub": 46626481401218.484,
+  "classifiedTurnoverRub": 23771544144799.816,
+  "unclassified": [
+    {
+      "companyId": "sistema",
+      "tickers": [
+        "AFKS"
+      ],
+      "classificationStatus": "unclassified-diversified-holding",
+      "sector": null,
+      "marketCapRub": 75463000000,
+      "totalTurnoverRub": 350057710740.4001,
+      "note": "Диверсифицированный холдинг (телеком, ритейл, лес, агро, медицина, недвижимость). Одной канонической отрасли нет."
+    }
+  ],
+  "sectors": [
+    {
+      "sector": "Энергетика",
+      "companyCount": 63,
+      "marketCapRub": 21488041469965.98,
+      "marketCapSharePct": 46.0855,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 7708924390029.89,
+      "turnoverSharePct": 32.4292,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 30350096023.739723,
+      "turnoverIntensity": 0.7037,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 0
+    },
+    {
+      "sector": "Финансы",
+      "companyCount": 26,
+      "marketCapRub": 9738121478632.096,
+      "marketCapSharePct": 20.8854,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 6411028383651.379,
+      "turnoverSharePct": 26.9693,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 25240269226.973934,
+      "turnoverIntensity": 1.2913,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 3
+    },
+    {
+      "sector": "Материалы",
+      "companyCount": 34,
+      "marketCapRub": 7921964295636.138,
+      "marketCapSharePct": 16.9903,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 3939629343632.61,
+      "turnoverSharePct": 16.5729,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 15510351746.585077,
+      "turnoverIntensity": 0.9754,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 1
+    },
+    {
+      "sector": "Потребительский сектор",
+      "companyCount": 23,
+      "marketCapRub": 2143198917778.0195,
+      "marketCapSharePct": 4.5965,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 2130701321559.87,
+      "turnoverSharePct": 8.9632,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 8388587880.156969,
+      "turnoverIntensity": 1.95,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 0
+    },
+    {
+      "sector": "Информационные технологии",
+      "companyCount": 12,
+      "marketCapRub": 1838480503740.852,
+      "marketCapSharePct": 3.943,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 1300743344256.14,
+      "turnoverSharePct": 5.4719,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 5121036788.41,
+      "turnoverIntensity": 1.3878,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 0
+    },
+    {
+      "sector": "Промышленность",
+      "companyCount": 31,
+      "marketCapRub": 1723900178955.2131,
+      "marketCapSharePct": 3.6973,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 618314780672.65,
+      "turnoverSharePct": 2.6011,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 2434310160.1285434,
+      "turnoverIntensity": 0.7035,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 0
+    },
+    {
+      "sector": "Коммуникационные услуги",
+      "companyCount": 10,
+      "marketCapRub": 861428063066.1001,
+      "marketCapSharePct": 1.8475,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 576620276363.05,
+      "turnoverSharePct": 2.4257,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 2270158568.3584647,
+      "turnoverIntensity": 1.313,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 0
+    },
+    {
+      "sector": "Недвижимость",
+      "companyCount": 8,
+      "marketCapRub": 559522990485.8899,
+      "marketCapSharePct": 1.2,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 992039229170.3203,
+      "turnoverSharePct": 4.1732,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 3905666256.576064,
+      "turnoverIntensity": 3.4777,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 0
+    },
+    {
+      "sector": "Здравоохранение",
+      "companyCount": 9,
+      "marketCapRub": 351823502958.17194,
+      "marketCapSharePct": 0.7546,
+      "marketCapSharePctDenominator": "classifiedMarketCapRub",
+      "totalTurnoverRub": 93543075463.88998,
+      "turnoverSharePct": 0.3935,
+      "turnoverSharePctDenominator": "classifiedTurnoverRub",
+      "averageDailyTurnoverRub": 368279824.6609842,
+      "turnoverIntensity": 0.5215,
+      "turnoverIntensityLabel": "интенсивность торгов относительно текущего размера сектора",
+      "capMissingCompanies": 0
+    }
+  ]
+}
