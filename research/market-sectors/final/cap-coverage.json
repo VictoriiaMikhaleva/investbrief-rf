@@ -1,0 +1,164 @@
+{
+  "analysisDate": "2026-10-13",
+  "counts": {
+    "full": 205,
+    "partial": 11,
+    "unknown": 1
+  },
+  "terminology": {
+    "term": "капитализация включённых в выборку торгуемых выпусков",
+    "doNotSayWithoutCaveat": [
+      "стоимость всей компании",
+      "полная капитализация эмитента"
+    ],
+    "note": "Для marketCapCoverage=full сумма included TQBR issues совпадает с известным MOEX набором классов акций эмитента. Для partial/unknown это только listed issue cap, не полный акционерный капитал."
+  },
+  "partial": [
+    {
+      "companyId": "transneft",
+      "tickers": [
+        "TRNFP"
+      ],
+      "companyName": "Транснф ап",
+      "listedClasses": [
+        "preferred"
+      ],
+      "marketCapRub": 170258812500,
+      "reason": "в выборке только привилегированный выпуск; обыкновенные акции эмитента не входят в TQBR-universe, поэтому сумма included issues — не полный акционерный капитал"
+    },
+    {
+      "companyId": "seligdar",
+      "tickers": [
+        "SELG"
+      ],
+      "companyName": "Селигдар",
+      "listedClasses": [
+        "ordinary"
+      ],
+      "marketCapRub": 42848000000,
+      "reason": "в справочнике MOEX ISS есть привилегированный выпуск, не входящий в активную TQBR-выборку (SELGP:preferred_share:board=TQBR:traded=0)"
+    },
+    {
+      "companyId": "omz",
+      "tickers": [
+        "OMZZP"
+      ],
+      "companyName": "ОМЗ-ап",
+      "listedClasses": [
+        "preferred"
+      ],
+      "marketCapRub": 26235000000,
+      "reason": "в выборке только привилегированный выпуск; обыкновенные акции эмитента не входят в TQBR-universe, поэтому сумма included issues — не полный акционерный капитал"
+    },
+    {
+      "companyId": "zil",
+      "tickers": [
+        "ZILL"
+      ],
+      "companyName": "ЗИЛ ао",
+      "listedClasses": [
+        "ordinary"
+      ],
+      "marketCapRub": 12422022540,
+      "reason": "у эмитента есть другие торгуемые акции вне TQBR-выборки (ZILLP:preferred_share:board=MTQR:traded=1)"
+    },
+    {
+      "companyId": "chkpz",
+      "tickers": [
+        "CHKZ"
+      ],
+      "companyName": "ЧКПЗ ао",
+      "listedClasses": [
+        "ordinary"
+      ],
+      "marketCapRub": 9033250800,
+      "reason": "в справочнике MOEX ISS есть привилегированный выпуск, не входящий в активную TQBR-выборку (chkzp:preferred_share:board=SOTC:traded=0)"
+    },
+    {
+      "companyId": "buryatzoloto",
+      "tickers": [
+        "BRZL"
+      ],
+      "companyName": "БурЗолото",
+      "listedClasses": [
+        "ordinary"
+      ],
+      "marketCapRub": 8390560380,
+      "reason": "у эмитента есть другие торгуемые акции вне TQBR-выборки (BRZLP:preferred_share:board=MTQR:traded=1)"
+    },
+    {
+      "companyId": "gazprom-gazoraspredelenie-rostov",
+      "tickers": [
+        "RTGZ"
+      ],
+      "companyName": "ГР Ростов",
+      "listedClasses": [
+        "ordinary"
+      ],
+      "marketCapRub": 4184386800,
+      "reason": "у эмитента есть другие торгуемые акции вне TQBR-выборки (RTBGP:preferred_share:board=MTQR:traded=1)"
+    },
+    {
+      "companyId": "khimprom",
+      "tickers": [
+        "HIMCP"
+      ],
+      "companyName": "Химпром ап",
+      "listedClasses": [
+        "preferred"
+      ],
+      "marketCapRub": 3155135463.48,
+      "reason": "в выборке только привилегированный выпуск; обыкновенные акции эмитента не входят в TQBR-universe, поэтому сумма included issues — не полный акционерный капитал"
+    },
+    {
+      "companyId": "nizhnekamskshina",
+      "tickers": [
+        "NKSH"
+      ],
+      "companyName": "Нижкамшина",
+      "listedClasses": [
+        "ordinary"
+      ],
+      "marketCapRub": 2033024354.8999999,
+      "reason": "в справочнике MOEX ISS есть привилегированный выпуск, не входящий в активную TQBR-выборку (nkshp:preferred_share:board=SOTC:traded=0)"
+    },
+    {
+      "companyId": "krasny-kotelshchik",
+      "tickers": [
+        "KRKOP"
+      ],
+      "companyName": "ТКЗКК ап",
+      "listedClasses": [
+        "preferred"
+      ],
+      "marketCapRub": 931226600,
+      "reason": "в выборке только привилегированный выпуск; обыкновенные акции эмитента не входят в TQBR-universe, поэтому сумма included issues — не полный акционерный капитал"
+    },
+    {
+      "companyId": "bashinformsvyaz",
+      "tickers": [
+        "BISVP"
+      ],
+      "companyName": "БашИнСв ап",
+      "listedClasses": [
+        "preferred"
+      ],
+      "marketCapRub": 364907574.3,
+      "reason": "в выборке только привилегированный выпуск; обыкновенные акции эмитента не входят в TQBR-universe, поэтому сумма included issues — не полный акционерный капитал"
+    }
+  ],
+  "unknown": [
+    {
+      "companyId": "veon",
+      "tickers": [
+        "VEON-RX"
+      ],
+      "companyName": "VEON",
+      "listedClasses": [
+        "ordinary"
+      ],
+      "marketCapRub": 132758769963.6,
+      "reason": "иностранный эмитент: справочник MOEX ISS может не содержать все классы акционерного капитала"
+    }
+  ]
+}
