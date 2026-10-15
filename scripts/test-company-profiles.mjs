@@ -121,8 +121,19 @@ assert(CompanyProfiles.isNonCompanyInstrument('AKMM'), 'AKMM is non-company');
 assert(CompanyProfiles.isNonCompanyInstrument('LQDT'), 'LQDT is non-company');
 assert(CompanyProfiles.isNonCompanyInstrument('SBFR'), 'SBFR is non-company');
 assert(CompanyProfiles.isNonCompanyInstrument('SBMM'), 'SBMM is non-company');
+assert(CompanyProfiles.isNonCompanyInstrument('SAFE'), 'SAFE is non-company BPIF');
 assert(!CompanyProfiles.isNonCompanyInstrument('SBER'), 'SBER is a company');
 assert(CompanyProfiles.getCompanyProfile('AKMM') == null, 'ETF has no company profile');
+assert(CompanyProfiles.getCompanyProfile('SAFE') == null, 'SAFE has no company profile');
+assert(CompanyProfiles.getCompanyIdForTicker('FLOT') === 'sovcomflot', 'FLOT → sovcomflot');
+assert(CompanyProfiles.getCompanyIdForTicker('MAGN') === 'mmk', 'MAGN → mmk');
+assert(CompanyProfiles.getCompanyIdForTicker('MGNT') === 'magnit', 'MGNT → magnit');
+assert(
+  CompanyProfiles.getCompanyIdForTicker('MAGN') !== CompanyProfiles.getCompanyIdForTicker('MGNT'),
+  'MAGN (MMK) is not MGNT (Magnit)'
+);
+assert(!CompanyProfiles.isNonCompanyInstrument('FLOT'), 'FLOT is a company');
+assert(!CompanyProfiles.isNonCompanyInstrument('MAGN'), 'MAGN is a company');
 
 {
   const agentSrc = fs.readFileSync(path.join(ROOT, 'agent.js'), 'utf8');
@@ -206,6 +217,16 @@ assert(CompanyProfiles.getCompanyProfile('AKMM') == null, 'ETF has no company pr
   assert(fakeEl.hidden === true && fakeEl.innerHTML === '', 'missing profile hides block');
   sandbox.renderCompanyAbout('AKMM');
   assert(fakeEl.hidden === true, 'ETF hides company block');
+  sandbox.renderCompanyAbout('SAFE');
+  assert(fakeEl.hidden === true, 'SAFE BPIF hides company block');
+  sandbox.renderCompanyAbout('FLOT');
+  assert(fakeEl.hidden === false, 'FLOT shows company block');
+  assert(/Современный коммерческий флот/.test(fakeEl.innerHTML), 'FLOT shows official name');
+  assert(/Промышленность · Морские перевозки/.test(fakeEl.innerHTML), 'FLOT shows sector · industry');
+  sandbox.renderCompanyAbout('MAGN');
+  assert(fakeEl.hidden === false, 'MAGN shows company block');
+  assert(/Магнитогорский металлургический комбинат/.test(fakeEl.innerHTML), 'MAGN shows MMK name');
+  assert(/Материалы · Чёрная металлургия/.test(fakeEl.innerHTML), 'MAGN shows sector · industry');
   sandbox.renderCompanyAbout('OFZ_26241');
   assert(fakeEl.hidden === true, 'OFZ hides company block');
   sandbox.renderCompanyAbout('SBER');
