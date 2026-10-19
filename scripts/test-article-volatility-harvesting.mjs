@@ -96,7 +96,7 @@ assert(!/<h3>[^<]*Volatility harvesting/i.test(html), 'no English heading Volati
 assert(!/<h3>[^<]*Rebalancing premium/i.test(html), 'no English heading Rebalancing premium');
 
 const TITLE = '«Сливки волатильности»: как работает премия за ребалансировку';
-const SUMMARY = 'Почему колебания цен могут создавать эффект при систематическом восстановлении долей портфеля — и почему он не является гарантированной дополнительной доходностью.';
+const SUMMARY = 'Почему колебания цен могут создавать эффект при систематическом восстановлении долей портфеля и почему он не является гарантированной дополнительной доходностью.';
 const entryMatch = manual.match(/id:\s*'volatility-harvesting-rebalancing-premium'[\s\S]{0,900}?bodyHtml:/);
 assert(/id:\s*'volatility-harvesting-rebalancing-premium'/.test(manual), 'article id in manual-data.js');
 assert(
@@ -104,11 +104,11 @@ assert(
   'title exact'
 );
 assert(
-  /id:\s*'volatility-harvesting-rebalancing-premium'[\s\S]{0,500}?subtitle:\s*'Почему колебания цен могут создавать эффект при систематическом восстановлении долей портфеля — и почему он не является гарантированной дополнительной доходностью.'/.test(manual),
+  /id:\s*'volatility-harvesting-rebalancing-premium'[\s\S]{0,500}?subtitle:\s*'Почему колебания цен могут создавать эффект при систематическом восстановлении долей портфеля и почему он не является гарантированной дополнительной доходностью.'/.test(manual),
   'subtitle exact'
 );
 assert(
-  /id:\s*'volatility-harvesting-rebalancing-premium'[\s\S]{0,700}?summary:\s*'Почему колебания цен могут создавать эффект при систематическом восстановлении долей портфеля — и почему он не является гарантированной дополнительной доходностью.'/.test(manual),
+  /id:\s*'volatility-harvesting-rebalancing-premium'[\s\S]{0,700}?summary:\s*'Почему колебания цен могут создавать эффект при систематическом восстановлении долей портфеля и почему он не является гарантированной дополнительной доходностью.'/.test(manual),
   'summary exact'
 );
 assert(
