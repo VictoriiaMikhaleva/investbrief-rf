@@ -72,6 +72,15 @@
       bodyHtml: buildMarketSectorProportionsArticleBodyHtml()
     },
     {
+      id: 'volatility-harvesting-rebalancing-premium',
+      title: '«Сливки волатильности»: как работает премия за ребалансировку',
+      subtitle: 'Почему колебания цен могут создавать эффект при систематическом восстановлении долей портфеля — и почему он не является гарантированной дополнительной доходностью.',
+      summary: 'Почему колебания цен могут создавать эффект при систематическом восстановлении долей портфеля — и почему он не является гарантированной дополнительной доходностью.',
+      badges: ['Портфель', 'Ребалансировка', 'Средний уровень'],
+      readMinutesLabel: estimateArticleReadMinutesLabel(buildVolatilityHarvestingArticleBodyHtml()),
+      bodyHtml: buildVolatilityHarvestingArticleBodyHtml()
+    },
+    {
       id: 'long-term-strategies-6040-8020-5050',
       title: 'Сравнение стратегий: 50/50, 60/40 и 80/20',
       summary: 'Чем отличаются популярные пропорции акций и облигаций, какие риски они несут и кому могут подойти.',

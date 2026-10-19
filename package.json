@@ -13,6 +13,7 @@
     "test:splits": "node scripts/test-split-events.mjs",
     "test:company-profiles": "node scripts/test-company-profiles.mjs",
     "test:article-market-sectors": "node scripts/test-article-market-sectors.mjs",
+    "test:article-volatility-harvesting": "node scripts/test-article-volatility-harvesting.mjs",
     "smoke": "node scripts/smoke-health.mjs",
     "update:market-data": "node scripts/update-market-data.js",
     "update:dividends": "node scripts/update-dividend-patches.js",
