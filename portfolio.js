@@ -3339,6 +3339,44 @@
     return q * p;
   }
 
+  function timelineTakeBuySettlement(group, snap) {
+    if (!group || !snap) return;
+    if (group.settlementSnap) {
+      if (group.settlementSnap.perUnit !== snap.perUnit ||
+          group.settlementSnap.settlementDate !== snap.settlementDate) {
+        group.settlementConflict = true;
+      }
+      return;
+    }
+    group.settlementSnap = snap;
+  }
+
+  /**
+   * Display-only денежный слой покупки ОФЗ.
+   * amountRub остаётся чистой суммой.
+   */
+  function timelineBondBuyDisplayEconomics(group, qty, price, faceHint, bondMeta) {
+    if (!group || group.settlementConflict || !group.settlementSnap) return null;
+    var face = faceHint;
+    if (face == null || !isFinite(Number(face)) || Number(face) <= 0) {
+      face = resolveBondFaceValue({ ticker: group.lotId, faceValue: group.faceValue }, bondMeta);
+    }
+    var preview = buildBondPurchaseCashPreview({
+      cleanPricePct: price,
+      faceValue: face,
+      qty: qty,
+      settlementNkdPerUnit: group.settlementSnap.perUnit,
+      settlementDate: group.settlementSnap.settlementDate,
+      nkdStatus: 'known'
+    });
+    if (!preview || preview.status !== 'known' || preview.dirtyTotalRub == null) return null;
+    return {
+      settlementNkdPerUnit: preview.settlementNkdPerUnit,
+      settlementNkdRub: preview.settlementNkdTotalRub,
+      cashAmountRub: preview.dirtyTotalRub
+    };
+  }
+
   /**
    * Read-only хронология покупок/продаж по тикеру.
    * Восстанавливает представление из positions + sales (включая allocations).
@@ -3378,6 +3416,8 @@
         soldQty: 0,
         remainingPrice: null,
         allocParts: [],
+        settlementSnap: null,
+        settlementConflict: false,
         quality: 'ok',
         note: '',
         _seq: seq++
@@ -3416,6 +3456,7 @@
       if (g.fee == null && lot.fee != null && isFinite(Number(lot.fee))) g.fee = Number(lot.fee);
       if (g.faceValue == null && face != null) g.faceValue = face;
       if (isFinite(price)) g.remainingPrice = price;
+      timelineTakeBuySettlement(g, twpKnownSettlement(lot));
     });
 
     (sales || []).forEach(function (sale) {
@@ -3446,6 +3487,7 @@
             qty: aq,
             price: isFinite(price) ? price : null
           });
+          timelineTakeBuySettlement(g, twpKnownPurchaseSettlement(alloc));
         });
         return;
       }
@@ -3533,13 +3575,17 @@
       }
 
       var faceHint = g.faceValue;
+      var buyAmountRub = computeTimelineAmountRub(ticker, qty, price, faceHint, bondMeta);
+      var buyDisplay = isBond
+        ? timelineBondBuyDisplayEconomics(g, qty, price, faceHint, bondMeta)
+        : null;
       ops.push({
         type: 'buy',
         date: g.date || '',
         ticker: ticker,
         qty: qty,
         price: price,
-        amountRub: computeTimelineAmountRub(ticker, qty, price, faceHint, bondMeta),
+        amountRub: buyAmountRub,
         fee: g.fee,
         source: g.source || '',
         lotId: g.lotId || '',
@@ -3550,6 +3596,9 @@
         note: g.note || '',
         quality: g.quality,
         isBond: isBond,
+        settlementNkdPerUnit: buyDisplay ? buyDisplay.settlementNkdPerUnit : null,
+        settlementNkdRub: buyDisplay ? buyDisplay.settlementNkdRub : null,
+        cashAmountRub: buyDisplay ? buyDisplay.cashAmountRub : null,
         _seq: g._seq
       });
     });
@@ -3688,7 +3737,10 @@
         remainingQtyAfter: op.remainingQtyAfter,
         note: op.note,
         quality: op.quality,
-        isBond: op.isBond
+        isBond: op.isBond,
+        settlementNkdPerUnit: op.settlementNkdPerUnit,
+        settlementNkdRub: op.settlementNkdRub,
+        cashAmountRub: op.cashAmountRub
       };
     });
   }
@@ -9581,6 +9633,395 @@
     return target;
   }
 
+  var OFZ_NKD_PREVIEW_ZERO_NOTE = 'На эту дату расчётов НКД к цене не прибавляется.';
+  var OFZ_NKD_PREVIEW_COUPON_NOTE = 'НКД на дату расчётов — 0 ₽, но сделка попадает на границу купонного периода. Право на купон и окончательные расчёты зависят от даты фиксации и клиринга.';
+  var OFZ_NKD_PREVIEW_MISSING_NOTE = 'НКД не удалось определить. Позицию можно сохранить, но итоговая сумма сделки у брокера может быть выше суммы по чистой цене, а справочный результат по ОФЗ может быть частичным.';
+  var OFZ_NKD_PREVIEW_UNSUPPORTED_NOTE = 'Для этого выпуска расчёт НКД в портфеле пока ограничен. Проверьте итоговую сумму сделки в отчёте брокера.';
+  var OFZ_NKD_PREVIEW_FEE_NOTE = 'Без учёта комиссии брокера.';
+  var OFZ_NKD_PREVIEW_DEBOUNCE_MS = 280;
+  var pfOfzNkdPreviewTimer = null;
+  var pfOfzNkdPreviewReq = 0;
+  var pfOfzNkdPreviewCache = { key: '', settlement: null, nkdStatus: '', loading: false };
+
+  /**
+   * Чистый расчёт стоимости покупки ОФЗ с НКД расчётов.
+   * Берёт только settlement snapshot, не ходит в DOM и сеть.
+   */
+  function buildBondPurchaseCashPreview(input) {
+    input = input || {};
+    var face = Number(input.faceValue);
+    if (!isFinite(face) || face <= 0) face = NKD_V1_FACE;
+    var pct = Number(input.cleanPricePct);
+    var qtyNum = input.qty == null || input.qty === '' ? NaN : Number(input.qty);
+    var hasQty = isFinite(qtyNum) && qtyNum > 0;
+    var econ = String(input.economicsStatus || '');
+    var avail = String(input.nkdStatus || input.availability || '');
+    var nkdRaw = input.settlementNkdPerUnit;
+    var out = {
+      cleanPerUnitRub: null,
+      cleanTotalRub: null,
+      settlementNkdPerUnit: null,
+      settlementNkdTotalRub: null,
+      dirtyPerUnitRub: null,
+      dirtyTotalRub: null,
+      settlementDate: input.settlementDate ? String(input.settlementDate) : '',
+      status: 'incomplete',
+      economicsStatus: econ,
+      warning: '',
+      nkdIsZero: false,
+      nkdIsKnown: false
+    };
+    if (!isFinite(pct) || !(pct > 0)) return out;
+    out.cleanPerUnitRub = asOfRoundRub((pct / 100) * face);
+    if (hasQty && out.cleanPerUnitRub != null) {
+      out.cleanTotalRub = asOfRoundRub(out.cleanPerUnitRub * qtyNum);
+    }
+    if (econ === 'unsupported' || avail === 'unsupported') {
+      out.status = 'unsupported';
+      out.warning = OFZ_NKD_PREVIEW_UNSUPPORTED_NOTE;
+      return out;
+    }
+    var nkdKnown = avail === 'known' ||
+      (avail !== 'missing' && nkdRaw != null && nkdRaw !== '' &&
+        isFinite(Number(nkdRaw)) && Number(nkdRaw) >= 0);
+    if (avail === 'missing' || !nkdKnown) {
+      out.status = 'missing';
+      out.warning = OFZ_NKD_PREVIEW_MISSING_NOTE;
+      return out;
+    }
+    var nkd = asOfRoundRub(Number(nkdRaw));
+    out.nkdIsKnown = true;
+    out.nkdIsZero = nkd === 0;
+    out.settlementNkdPerUnit = nkd;
+    if (hasQty) out.settlementNkdTotalRub = asOfRoundRub(nkd * qtyNum);
+    if (out.cleanPerUnitRub != null && nkd != null) {
+      out.dirtyPerUnitRub = asOfRoundRub(out.cleanPerUnitRub + nkd);
+    }
+    if (hasQty && out.cleanTotalRub != null && out.settlementNkdTotalRub != null) {
+      out.dirtyTotalRub = asOfRoundRub(out.cleanTotalRub + out.settlementNkdTotalRub);
+    }
+    out.status = 'known';
+    if (econ === 'coupon-transition') {
+      out.warning = OFZ_NKD_PREVIEW_COUPON_NOTE;
+    } else if (nkd === 0) {
+      out.warning = OFZ_NKD_PREVIEW_ZERO_NOTE;
+    }
+    return out;
+  }
+
+  function formatOfzCleanPricePctLabel(pct) {
+    var n = Number(pct);
+    if (!isFinite(n)) return '';
+    var s = String(n);
+    if (/e/i.test(s)) s = n.toFixed(6).replace(/\.?0+$/, '');
+    return s.replace('.', ',') + '% от номинала';
+  }
+
+  function formatOfzPreviewQtyLabel(qty) {
+    var n = Number(qty);
+    if (!isFinite(n) || !(n > 0)) return '';
+    if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+    return String(n).replace('.', ',');
+  }
+
+  function ofzNkdPreviewRowHtml(label, value, extra) {
+    var html = '<div class="pf-ofz-nkd-row">' +
+      '<span class="pf-ofz-nkd-lbl">' + escapeHtml(label) + '</span>' +
+      '<span class="pf-ofz-nkd-val">' + escapeHtml(value) + '</span>';
+    if (extra) html += '<span class="muted pf-ofz-nkd-pct">' + escapeHtml(extra) + '</span>';
+    html += '</div>';
+    return html;
+  }
+
+  function buildBondPurchaseNkdPreviewHtml(preview, input) {
+    preview = preview || {};
+    input = input || {};
+    var qty = Number(input.qty);
+    var hasQty = isFinite(qty) && qty > 0;
+    var parts = [];
+    if (preview.cleanPerUnitRub != null && isFinite(preview.cleanPerUnitRub)) {
+      parts.push(ofzNkdPreviewRowHtml(
+        'Цена без НКД:',
+        formatPortfolioRubAmount(preview.cleanPerUnitRub) + ' / шт.',
+        formatOfzCleanPricePctLabel(input.cleanPricePct)
+      ));
+    }
+    if (preview.status === 'known' && preview.settlementNkdPerUnit != null &&
+        isFinite(preview.settlementNkdPerUnit)) {
+      parts.push(ofzNkdPreviewRowHtml(
+        'НКД к расчётам:',
+        formatPortfolioRubAmount(preview.settlementNkdPerUnit) + ' / шт.'
+      ));
+      if (preview.dirtyPerUnitRub != null && isFinite(preview.dirtyPerUnitRub)) {
+        parts.push(ofzNkdPreviewRowHtml(
+          'К оплате с НКД:',
+          formatPortfolioRubAmount(preview.dirtyPerUnitRub) + ' / шт.'
+        ));
+      }
+      if (hasQty && preview.dirtyTotalRub != null && isFinite(preview.dirtyTotalRub)) {
+        parts.push(ofzNkdPreviewRowHtml(
+          'Для ' + formatOfzPreviewQtyLabel(qty) + ' шт.:',
+          formatPortfolioRubAmount(preview.dirtyTotalRub)
+        ));
+      }
+      parts.push('<p class="muted pf-ofz-nkd-fee">' + escapeHtml(OFZ_NKD_PREVIEW_FEE_NOTE) + '</p>');
+    }
+    if (preview.warning) {
+      parts.push('<p class="pf-ofz-nkd-warn muted">' + escapeHtml(preview.warning) + '</p>');
+    }
+    return parts.join('');
+  }
+
+  function formatTimelineBondBuyAmountHtml(op) {
+    if (!op || !op.isBond) {
+      return escapeHtml(formatPortfolioRubAmount(op && op.amountRub));
+    }
+    var main;
+    var hint;
+    if (op.cashAmountRub != null && isFinite(Number(op.cashAmountRub))) {
+      main = escapeHtml(formatPortfolioRubAmount(op.cashAmountRub)) +
+        ' <span class="pf-tl-nkd-tag">с НКД</span>';
+      if (op.settlementNkdRub === 0) {
+        hint = 'НКД 0 ₽';
+      } else {
+        hint = 'без НКД ' + formatPortfolioRubAmount(op.amountRub) +
+          ' · НКД ' + formatPortfolioRubAmount(op.settlementNkdRub);
+      }
+    } else {
+      main = escapeHtml(formatPortfolioRubAmount(op.amountRub));
+      hint = 'НКД не найден';
+    }
+    return '<span class="pf-tl-amount">' +
+      '<span class="pf-tl-amount-main">' + main + '</span>' +
+      '<span class="muted pf-tl-nkd-hint">' + escapeHtml(hint) + '</span>' +
+      '</span>';
+  }
+
+  function ofzNkdPreviewKey(ticker, date) {
+    return String(ticker || '') + '|' + String(date || '');
+  }
+
+  function readOfzNkdPreviewForm(tickerHint, item) {
+    var tickerEl = document.getElementById('pfAddTicker');
+    var dateEl = document.getElementById('pfAddDate');
+    var avgEl = document.getElementById('pfAddAvg');
+    var qtyEl = document.getElementById('pfAddQty');
+    var ticker = tickerHint;
+    if (!ticker) ticker = tickerEl ? tickerEl.value : '';
+    ticker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(ticker)
+      : String(ticker || '').trim().toUpperCase();
+    if (typeof normalizeBondTickerInput === 'function') {
+      var bondQuick = normalizeBondTickerInput(ticker);
+      if (bondQuick) ticker = bondQuick;
+    }
+    var date = dateEl && typeof normalizePortfolioDate === 'function'
+      ? normalizePortfolioDate(dateEl.value)
+      : String((dateEl && dateEl.value) || '').slice(0, 10);
+    var priceRaw = avgEl ? String(avgEl.value || '').trim().replace(',', '.') : '';
+    var qtyRaw = qtyEl ? String(qtyEl.value || '').trim().replace(',', '.') : '';
+    var price = priceRaw ? Number(priceRaw) : NaN;
+    var qty = qtyRaw ? Number(qtyRaw) : NaN;
+    return {
+      ticker: ticker,
+      item: item || null,
+      date: date || '',
+      cleanPricePct: isFinite(price) && price > 0 ? price : null,
+      qty: isFinite(qty) && qty > 0 ? qty : null,
+      isBond: isPortfolioFormBondTicker(ticker, item)
+    };
+  }
+
+  function ofzNkdPreviewFaceValue(form) {
+    if (state && state.pfEditLotId) {
+      var lot = typeof findPortfolioLot === 'function' ? findPortfolioLot(state.pfEditLotId) : null;
+      if (lot && lot.faceValue != null && isFinite(Number(lot.faceValue)) && Number(lot.faceValue) > 0) {
+        return Number(lot.faceValue);
+      }
+    }
+    return NKD_V1_FACE;
+  }
+
+  function ofzNkdPreviewFromSettlement(form, settlement, nkdStatus) {
+    var status = nkdStatus || (settlement && settlement.status) || 'missing';
+    var econ = settlement && settlement.economicsStatus
+      ? settlement.economicsStatus
+      : (form.date && settlement && settlement.settlementDate
+        ? classifyBondSettlementEconomics({
+          tradeDate: form.date,
+          settlementDate: settlement.settlementDate,
+          coupons: bondCouponsAlreadyLoaded(form.ticker) || [],
+          supported: status !== 'unsupported'
+        })
+        : '');
+    return buildBondPurchaseCashPreview({
+      cleanPricePct: form.cleanPricePct,
+      faceValue: ofzNkdPreviewFaceValue(form),
+      qty: form.qty,
+      settlementNkdPerUnit: settlement && settlement.settlementNkdPerUnit,
+      settlementDate: settlement && settlement.settlementDate,
+      economicsStatus: econ,
+      nkdStatus: status
+    });
+  }
+
+  function ofzNkdPreviewEditingSnapshot(form) {
+    if (!state || !state.pfEditLotId || !form || !form.ticker || !form.date) return null;
+    var lot = typeof findPortfolioLot === 'function' ? findPortfolioLot(state.pfEditLotId) : null;
+    if (!lot) return null;
+    var lotTicker = typeof normalizeTicker === 'function'
+      ? normalizeTicker(lot.ticker)
+      : String(lot.ticker || '').toUpperCase();
+    var lotDate = typeof normalizePortfolioDate === 'function'
+      ? normalizePortfolioDate(lot.buyDate)
+      : String(lot.buyDate || '').slice(0, 10);
+    if (lotTicker !== form.ticker || lotDate !== form.date) return null;
+    var snap = twpKnownSettlement(lot);
+    if (!snap) return null;
+    return {
+      status: 'known',
+      settlementNkdPerUnit: snap.perUnit,
+      settlementDate: snap.settlementDate,
+      settlementNkdSource: snap.source
+    };
+  }
+
+  function ofzNkdPreviewLookupReady(ticker, date) {
+    var pending = pfTxNkdPending;
+    if (pending && pending.ticker === ticker && pending.date === date && pending.attempted) return true;
+    var res = pfTxAnomalyState && pfTxAnomalyState.result;
+    return !!(res && res.ticker === ticker && res.transactionDate === date);
+  }
+
+  function paintOfzNkdPreviewBody(preview, form) {
+    var body = document.getElementById('pfAddOfzNkdPreviewBody');
+    if (!body) return;
+    if (!form || form.cleanPricePct == null) {
+      body.innerHTML = '';
+      body.hidden = true;
+      return;
+    }
+    var html = buildBondPurchaseNkdPreviewHtml(preview, form);
+    body.innerHTML = html;
+    body.hidden = !html;
+  }
+
+  function bindPortfolioOfzNkdPreviewUi() {
+    if (bindPortfolioOfzNkdPreviewUi._done) return;
+    bindPortfolioOfzNkdPreviewUi._done = true;
+    ['pfAddQty', 'pfAddAvg', 'pfAddDate'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el || typeof el.addEventListener !== 'function') return;
+      ['input', 'change'].forEach(function (evt) {
+        el.addEventListener(evt, function () {
+          schedulePortfolioOfzNkdPreview();
+        });
+      });
+    });
+  }
+
+  function schedulePortfolioOfzNkdPreview() {
+    if (pfOfzNkdPreviewTimer && typeof clearTimeout === 'function') {
+      clearTimeout(pfOfzNkdPreviewTimer);
+    }
+    if (typeof setTimeout !== 'function') {
+      updatePortfolioOfzNkdPreview();
+      return;
+    }
+    pfOfzNkdPreviewTimer = setTimeout(function () {
+      pfOfzNkdPreviewTimer = null;
+      updatePortfolioOfzNkdPreview();
+    }, 40);
+  }
+
+  function requestOfzNkdPreviewLookup(form) {
+    if (!form || !form.ticker || !form.date || typeof lookupBondTransactionNkd !== 'function') return;
+    var key = ofzNkdPreviewKey(form.ticker, form.date);
+    if (ofzNkdPreviewLookupReady(form.ticker, form.date)) return;
+    if (pfOfzNkdPreviewCache.key === key &&
+        (pfOfzNkdPreviewCache.nkdStatus || pfOfzNkdPreviewCache.loading)) return;
+    pfOfzNkdPreviewCache = { key: key, settlement: null, nkdStatus: '', loading: true };
+    if (pfOfzNkdPreviewTimer && typeof clearTimeout === 'function') {
+      clearTimeout(pfOfzNkdPreviewTimer);
+    }
+    var run = function () {
+      pfOfzNkdPreviewTimer = null;
+      var live = readOfzNkdPreviewForm();
+      if (!live.isBond || live.ticker !== form.ticker || live.date !== form.date) return;
+      var reqId = ++pfOfzNkdPreviewReq;
+      lookupBondTransactionNkd({
+        ticker: live.ticker,
+        date: live.date,
+        enteredPrice: live.cleanPricePct != null ? live.cleanPricePct : 1,
+        coupons: bondCouponsAlreadyLoaded(live.ticker) || undefined
+      }).then(function (res) {
+        if (reqId !== pfOfzNkdPreviewReq) return;
+        rememberBondTxMarketPending(live.ticker, live.date, res);
+        var settlement = res && res.settlement ? res.settlement : null;
+        var nkdStatus = settlement && settlement.status ? settlement.status : 'missing';
+        pfOfzNkdPreviewCache = { key: ofzNkdPreviewKey(live.ticker, live.date), settlement: settlement, nkdStatus: nkdStatus, loading: false };
+        paintOfzNkdPreviewBody(ofzNkdPreviewFromSettlement(live, settlement, nkdStatus), live);
+      }).catch(function () {
+        if (reqId !== pfOfzNkdPreviewReq) return;
+        rememberBondTxMarketPending(live.ticker, live.date, null);
+        pfOfzNkdPreviewCache = { key: ofzNkdPreviewKey(live.ticker, live.date), settlement: null, nkdStatus: 'missing', loading: false };
+        paintOfzNkdPreviewBody(ofzNkdPreviewFromSettlement(live, null, 'missing'), live);
+      });
+    };
+    if (typeof setTimeout !== 'function') {
+      run();
+      return;
+    }
+    pfOfzNkdPreviewTimer = setTimeout(run, OFZ_NKD_PREVIEW_DEBOUNCE_MS);
+  }
+
+  function updatePortfolioOfzNkdPreview(ticker, item) {
+    bindPortfolioOfzNkdPreviewUi();
+    var box = document.getElementById('pfAddOfzNkdPreview');
+    if (!box) return;
+    var form = readOfzNkdPreviewForm(ticker, item);
+    if (!form.isBond) {
+      box.hidden = true;
+      pfOfzNkdPreviewReq += 1;
+      return;
+    }
+    box.hidden = false;
+    if (form.cleanPricePct == null) {
+      paintOfzNkdPreviewBody(null, form);
+      return;
+    }
+    var key = ofzNkdPreviewKey(form.ticker, form.date);
+    var settlement = null;
+    var nkdStatus = '';
+    var editSnap = ofzNkdPreviewEditingSnapshot(form);
+    if (editSnap) {
+      settlement = editSnap;
+      nkdStatus = 'known';
+    } else if (ofzNkdPreviewLookupReady(form.ticker, form.date)) {
+      settlement = bondSettlementLookupFor(form.ticker, form.date);
+      nkdStatus = settlement && settlement.status ? settlement.status : 'missing';
+      pfOfzNkdPreviewCache = { key: key, settlement: settlement, nkdStatus: nkdStatus, loading: false };
+    } else if (pfOfzNkdPreviewCache.key === key && pfOfzNkdPreviewCache.nkdStatus) {
+      settlement = pfOfzNkdPreviewCache.settlement;
+      nkdStatus = pfOfzNkdPreviewCache.nkdStatus;
+    }
+    if (nkdStatus) {
+      paintOfzNkdPreviewBody(ofzNkdPreviewFromSettlement(form, settlement, nkdStatus), form);
+      if (editSnap) return;
+      return;
+    }
+    var pendingClean = buildBondPurchaseCashPreview({
+      cleanPricePct: form.cleanPricePct,
+      faceValue: ofzNkdPreviewFaceValue(form),
+      qty: form.qty,
+      nkdStatus: 'missing'
+    });
+    pendingClean.status = 'incomplete';
+    pendingClean.warning = '';
+    paintOfzNkdPreviewBody(pendingClean, form);
+    if (form.ticker && form.date) requestOfzNkdPreviewLookup(form);
+  }
+
   function resolveBondSettlementPersistChoice(lookup, previous, nextDate, nextTicker) {
     var date = typeof normalizePortfolioDate === 'function'
       ? (normalizePortfolioDate(nextDate) || '')
@@ -10428,6 +10869,7 @@
     var isBond = isPortfolioFormBondTicker(ticker, item);
     if (hint) hint.hidden = !isBond;
     updatePortfolioOfzAvgWarn(ticker, item);
+    updatePortfolioOfzNkdPreview(ticker, item);
   }
 
   /** Порог: значение > 200 для ОФЗ похоже на рубли, а не на % номинала. */
@@ -10471,6 +10913,7 @@
       avgEl.value = String(plan.avgPrice);
     }
     updatePortfolioOfzAvgWarn();
+    updatePortfolioOfzNkdPreview();
     return plan;
   }
 
@@ -10593,8 +11036,12 @@
     updatePortfolioFormChrome();
     var ofzHint = document.getElementById('pfAddOfzPriceHint');
     var ofzWarn = document.getElementById('pfAddOfzPriceWarn');
+    var ofzPreview = document.getElementById('pfAddOfzNkdPreview');
     if (ofzHint) ofzHint.hidden = true;
     if (ofzWarn) ofzWarn.hidden = true;
+    if (ofzPreview) ofzPreview.hidden = true;
+    pfOfzNkdPreviewReq += 1;
+    pfOfzNkdPreviewCache = { key: '', settlement: null, nkdStatus: '', loading: false };
     hideTxPriceAnomalyWarn('buy');
     prefillPortfolioNewLotDefaults('', {});
   }
@@ -12093,7 +12540,9 @@
             '<span><span class="lbl">Цена</span> ' +
               escapeHtml(formatPortfolioHistoryPrice(op.price, ticker, isBond)) + '</span>' +
             '<span><span class="lbl">Сумма</span> ' +
-              escapeHtml(formatPortfolioRubAmount(op.amountRub)) + '</span>' +
+              (isBuy && isBond
+                ? formatTimelineBondBuyAmountHtml(op)
+                : escapeHtml(formatPortfolioRubAmount(op.amountRub))) + '</span>' +
           '</div>';
         if (!isBuy) {
           html += '<div class="pf-timeline-card-result">' +
@@ -12136,7 +12585,9 @@
         '<td>' + escapeHtml(formatTimelineOpQty(op.qty, op.type)) +
           (isBuy ? '' : formatSaleOpsQtyHintHtml(timelineSplitUi, op.splitWriterMeta ? { qtyScale: 'sale-date' } : null)) + '</td>' +
         '<td>' + escapeHtml(formatPortfolioHistoryPrice(op.price, ticker, isBond)) + '</td>' +
-        '<td>' + escapeHtml(formatPortfolioRubAmount(op.amountRub)) + '</td>' +
+        '<td>' + (isBuy && isBond
+          ? formatTimelineBondBuyAmountHtml(op)
+          : escapeHtml(formatPortfolioRubAmount(op.amountRub))) + '</td>' +
         '<td>' + (isBuy ? '<span class="muted">—</span>' : formatSplitAwareRealizedHtml({
           realizedPnlRub: op.realizedPnlRub,
           confidence: op.realizedConfidence,
@@ -12384,7 +12835,18 @@
       (splitMetrics && splitMetrics.confidence === 'partial') || mustHide);
     var resultNull = !mustHide && row.resultWithPayoutsRub == null && !splitOk;
     var splitKpi = mustHide ? buildSplitAffectedPnlHtml('kpi') : '';
-    var marketValue = splitOk ? splitMetrics.currentMarketValueRub : row.currentMarketValueRub;
+    var showNkdCash = !!(isBond && !mustHide && !row.nkdIsPartial &&
+      row.purchaseNkdRub != null && isFinite(Number(row.purchaseNkdRub)) &&
+      row.saleNkdRub != null && isFinite(Number(row.saleNkdRub)) &&
+      row.currentNkdRub != null && isFinite(Number(row.currentNkdRub)) &&
+      row.purchaseCashRub != null && isFinite(Number(row.purchaseCashRub)) &&
+      row.saleCashRub != null && isFinite(Number(row.saleCashRub)) &&
+      row.dirtyCurrentValueRub != null && isFinite(Number(row.dirtyCurrentValueRub)));
+    var marketValue = showNkdCash
+      ? row.dirtyCurrentValueRub
+      : (splitOk ? splitMetrics.currentMarketValueRub : row.currentMarketValueRub);
+    var kpiPurchase = showNkdCash ? row.purchaseCashRub : row.purchaseCostRub;
+    var kpiSales = showNkdCash ? row.saleCashRub : row.saleProceedsRub;
     var resultWithout = splitOk
       ? twpResultRub(row.saleProceedsRub, marketValue, row.purchaseCostRub, 0)
       : row.resultWithoutPayoutsRub;
@@ -12407,11 +12869,24 @@
       : '';
 
     html += '<div class="pf-ticker-detail-summary pf-twp-kpis">' +
-      buildTwpKpiHtml('Вложено в покупки', escapeHtml(formatPortfolioRubAmount(row.purchaseCostRub))) +
-      buildTwpKpiHtml('Сумма продаж', escapeHtml(formatPortfolioRubAmount(row.saleProceedsRub))) +
+      buildTwpKpiHtml(
+        'Вложено в покупки',
+        escapeHtml(formatPortfolioRubAmount(kpiPurchase)),
+        '',
+        showNkdCash
+          ? '<span class="pf-twp-kpi-hint muted">' +
+            escapeHtml('включая НКД ' + formatPortfolioRubAmount(row.purchaseNkdRub)) + '</span>'
+          : ''
+      ) +
+      buildTwpKpiHtml('Сумма продаж', escapeHtml(formatPortfolioRubAmount(kpiSales))) +
       buildTwpKpiHtml(
         'Текущая стоимость остатка',
-        mustHide ? splitKpi : (escapeHtml(formatPortfolioRubAmount(marketValue)) + splitBadge)
+        mustHide ? splitKpi : (escapeHtml(formatPortfolioRubAmount(marketValue)) + splitBadge),
+        '',
+        showNkdCash
+          ? '<span class="pf-twp-kpi-hint muted">' +
+            escapeHtml('включая текущий НКД ' + formatPortfolioRubAmount(row.currentNkdRub)) + '</span>'
+          : ''
       ) +
       buildTwpKpiHtml(
         row.hasUnknownAmounts ? 'Найденные выплаты' + PAYOUT_KNOWN_TOTALS_SUFFIX : 'Найденные выплаты',
