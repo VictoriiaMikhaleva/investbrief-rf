@@ -405,14 +405,18 @@
     });
     var pfCancelEditBtn = document.getElementById('pfCancelEditBtn');
     if (pfCancelEditBtn) pfCancelEditBtn.addEventListener('click', cancelPortfolioEdit);
-    var pfAddAvg = document.getElementById('pfAddAvg');
-    if (pfAddAvg) {
+    ['pfAddAvg', 'pfAddQty', 'pfAddDate'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
       ['input', 'change'].forEach(function (evt) {
-        pfAddAvg.addEventListener(evt, function () {
-          if (typeof updatePortfolioOfzAvgWarn === 'function') updatePortfolioOfzAvgWarn();
+        el.addEventListener(evt, function () {
+          if (id === 'pfAddAvg' && typeof updatePortfolioOfzAvgWarn === 'function') {
+            updatePortfolioOfzAvgWarn();
+          }
+          if (typeof updatePortfolioOfzNkdPreview === 'function') updatePortfolioOfzNkdPreview();
         });
       });
-    }
+    });
     var pfAddTickerEl = document.getElementById('pfAddTicker');
     if (pfAddTickerEl) {
       ['input', 'change', 'blur'].forEach(function (evt) {

@@ -1963,6 +1963,101 @@ button.primary.brief-read-btn:active {
   display: none !important;
 }
 
+.pf-ofz-nkd-preview {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.pf-ofz-nkd-preview[hidden] {
+  display: none !important;
+}
+
+.pf-ofz-nkd-lead {
+  margin: 0;
+}
+
+.pf-ofz-nkd-body {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.pf-ofz-nkd-body[hidden] {
+  display: none !important;
+}
+
+.pf-ofz-nkd-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.45rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-ofz-nkd-lbl {
+  font-weight: 600;
+}
+
+.pf-ofz-nkd-pct,
+.pf-ofz-nkd-fee,
+.pf-ofz-nkd-warn {
+  margin: 0;
+  font-weight: 500;
+}
+
+.pf-ofz-nkd-warn {
+  line-height: 1.4;
+}
+
+.pf-ofz-nkd-edu {
+  margin: 0.08rem 0 0;
+}
+
+.pf-ofz-nkd-edu > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text-muted) 62%, #5a5348 38%);
+}
+
+.pf-ofz-nkd-edu > summary::-webkit-details-marker,
+.pf-ofz-nkd-edu > summary::marker {
+  display: none;
+  content: "";
+}
+
+.pf-ofz-nkd-edu > p {
+  margin: 0.35rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.pf-tl-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.08rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-tl-amount-main {
+  font-weight: 650;
+}
+
+.pf-tl-nkd-tag {
+  font-weight: 550;
+  color: var(--text-muted);
+}
+
+.pf-tl-nkd-hint {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
 .pf-field-warn {
   display: block;
   grid-column: 1 / -1;
@@ -5938,6 +6033,15 @@ table.portfolio-table tr.pf-split-scale-confirm-row.pf-ticker-group-end > td {
     padding: 0.42rem 0.6rem 0.42rem 0.65rem;
     font-size: 0.74rem;
     line-height: 1.4;
+  }
+
+  .pf-ofz-nkd-preview {
+    gap: 0.3rem;
+  }
+
+  .pf-ofz-nkd-edu > summary,
+  .pf-ofz-nkd-edu > p {
+    font-size: 0.72rem;
   }
 
   .header {

@@ -946,6 +946,16 @@
               <span class="pf-field-hint muted pf-field-hint--avg" id="pfAddAvgHintNew">По умолчанию подставляется текущая цена. Измените, если покупали по другой цене.</span>
               <span class="pf-field-hint muted pf-field-hint--avg" id="pfAddAvgHintEdit" hidden>Здесь указана сохранённая цена покупки. Измените её только если нужно исправить данные.</span>
               <span class="pf-field-hint pf-field-hint--ofz" id="pfAddOfzPriceHint" hidden>Для ОФЗ цена на бирже указывается в % от номинала.<br>Например, 81,33% ≈ 813 ₽ за облигацию с номиналом 1000 ₽. Цена 95,40 означает примерно 954 ₽ за одну ОФЗ.</span>
+              <div class="pf-field-hint pf-field-hint--ofz pf-ofz-nkd-preview" id="pfAddOfzNkdPreview" hidden>
+                <p class="pf-ofz-nkd-lead">В поле «Средняя цена» укажите биржевую цену ОФЗ без НКД, в % от номинала. НКД прибавлять вручную не нужно — ИнвестБриф показывает его отдельно по дате расчётов.</p>
+                <div class="pf-ofz-nkd-body" id="pfAddOfzNkdPreviewBody" hidden></div>
+                <details class="pf-ofz-nkd-edu">
+                  <summary>Когда НКД бывает минимальным?</summary>
+                  <p>После окончания купонного периода НКД начинает накапливаться заново, поэтому в начале нового периода он минимален и может быть равен 0 ₽.</p>
+                  <p>Но сделки ОФЗ рассчитываются T+1: ориентируйтесь на НКД на дату расчётов, а не только на календарную дату выплаты купона.</p>
+                  <p>Периодичность зависит от выпуска: у многих ОФЗ-ПД купон выплачивается дважды в год, у некоторых ОФЗ — чаще. Смотрите график выплат конкретного выпуска.</p>
+                </details>
+              </div>
               <span class="pf-field-warn" id="pfAddOfzPriceWarn" hidden role="status">Похоже, указана цена в рублях. Для ОФЗ обычно нужно ввести процент от номинала: например, 1112 ₽ ≈ 111,2%.</span>
               <div class="pf-field-warn pf-tx-anomaly-warn" id="pfAddPriceAnomalyWarn" hidden role="status">
                 <p class="pf-tx-anomaly-title">Цена сделки заметно отличается от рыночной оценки на эту дату.</p>

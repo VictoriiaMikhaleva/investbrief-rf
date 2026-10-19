@@ -562,7 +562,16 @@ function loadPortfolioCalcHelpers() {
       '\nthis.__twpDetail = buildPortfolioTickerDetailHtml;' +
       '\nthis.__resultSummary = buildPortfolioResultSummary;' +
       '\nthis.__resultSummaryHtml = buildPortfolioResultSummaryHtml;' +
-      '\nthis.__renderResultSummary = renderPortfolioResultSummary;',
+      '\nthis.__renderResultSummary = renderPortfolioResultSummary;' +
+      '\nthis.__bondCashPreview = buildBondPurchaseCashPreview;' +
+      '\nthis.__bondNkdPreviewHtml = buildBondPurchaseNkdPreviewHtml;' +
+      '\nthis.__tlBuyAmountHtml = formatTimelineBondBuyAmountHtml;' +
+      '\nthis.__ofzNkdPreview = updatePortfolioOfzNkdPreview;' +
+      '\nthis.__ofzNkdZeroNote = OFZ_NKD_PREVIEW_ZERO_NOTE;' +
+      '\nthis.__ofzNkdCouponNote = OFZ_NKD_PREVIEW_COUPON_NOTE;' +
+      '\nthis.__ofzNkdMissingNote = OFZ_NKD_PREVIEW_MISSING_NOTE;' +
+      '\nthis.__ofzNkdUnsupportedNote = OFZ_NKD_PREVIEW_UNSUPPORTED_NOTE;' +
+      '\nthis.__ofzNkdFeeNote = OFZ_NKD_PREVIEW_FEE_NOTE;',
     sandbox,
     { timeout: 15000 }
   );
@@ -752,6 +761,15 @@ function loadPortfolioCalcHelpers() {
     buildPortfolioResultSummary: sandbox.__resultSummary,
     buildPortfolioResultSummaryHtml: sandbox.__resultSummaryHtml,
     renderPortfolioResultSummary: sandbox.__renderResultSummary,
+    buildBondPurchaseCashPreview: sandbox.__bondCashPreview,
+    buildBondPurchaseNkdPreviewHtml: sandbox.__bondNkdPreviewHtml,
+    formatTimelineBondBuyAmountHtml: sandbox.__tlBuyAmountHtml,
+    updatePortfolioOfzNkdPreview: sandbox.__ofzNkdPreview,
+    OFZ_NKD_PREVIEW_ZERO_NOTE: sandbox.__ofzNkdZeroNote,
+    OFZ_NKD_PREVIEW_COUPON_NOTE: sandbox.__ofzNkdCouponNote,
+    OFZ_NKD_PREVIEW_MISSING_NOTE: sandbox.__ofzNkdMissingNote,
+    OFZ_NKD_PREVIEW_UNSUPPORTED_NOTE: sandbox.__ofzNkdUnsupportedNote,
+    OFZ_NKD_PREVIEW_FEE_NOTE: sandbox.__ofzNkdFeeNote,
     setSplitEventsCatalog: sandbox.setSplitEventsCatalog,
     getSplitEventsSync: sandbox.getSplitEventsSync,
     localStorage: sandbox.localStorage,
@@ -9046,7 +9064,7 @@ await (async () => {
     'portfolioAsOfBlock', 'portfolioCompareBlock', 'portfolioPayoutsBlock', 'portfolioUpcomingPayoutsBlock',
     'portfolioFolderSection', 'portfolioInsightsSection', 'portfolioSaleForm', 'portfolioTable',
     'portfolioCards', 'portfolioRecentSection', 'portfolioClosedSection',
-    'pfAddTicker', 'pfAddQty', 'pfAddAvg', 'pfAddDate', 'pfAddBtn', 'portfolioSubviewPositions'].forEach((id) => {
+    'pfAddTicker', 'pfAddQty', 'pfAddAvg', 'pfAddDate', 'pfAddBtn', 'pfAddOfzNkdPreview', 'portfolioSubviewPositions'].forEach((id) => {
     assert(countId(indexHtml, id) === 1, 'inner tabs: unique id ' + id);
   });
 
@@ -13189,6 +13207,247 @@ await (async () => {
   assert(econStart > 0 && !/nkdPerUnit/.test(econSlice), 'nkd2: economic helper does not read trade-date nkdPerUnit');
   assert(!/fetch\s*\(/.test(econSlice) && !/XMLHttpRequest/.test(econSlice) && !/\/api\//.test(econSlice),
     'nkd2: pure helper does not fetch and adds no endpoint');
+}
+
+{
+  const rub = (n) => Math.round(Number(n) * 100) / 100;
+  const HIST = calc.NKD_SETTLEMENT_HISTORY_SOURCE;
+  const golden = calc.buildBondPurchaseCashPreview({
+    cleanPricePct: 85.054,
+    faceValue: 1000,
+    qty: 233,
+    settlementNkdPerUnit: 25.64,
+    settlementDate: '2026-07-03',
+    nkdStatus: 'known',
+    economicsStatus: 'normal',
+    tradeNkdPerUnit: 25.29
+  });
+  assert(golden.cleanPerUnitRub === 850.54, 'preview: clean per unit 850.54');
+  assert(golden.cleanTotalRub === 198175.82, 'preview: clean total 198175.82');
+  assert(golden.settlementNkdPerUnit === 25.64, 'preview: uses settlement 25.64, not trade 25.29');
+  assert(golden.settlementNkdPerUnit !== 25.29, 'preview: trade-date 25.29 is not cash NKD');
+  assert(golden.settlementNkdTotalRub === 5974.12, 'preview: settlement NKD total 5974.12');
+  assert(golden.dirtyPerUnitRub === 876.18, 'preview: dirty per unit 876.18');
+  assert(golden.dirtyTotalRub === 204149.94, 'preview: dirty total 204149.94');
+  assert(golden.status === 'known' && !golden.warning, 'preview: positive NKD is known without warning');
+  const goldenHtml = calc.buildBondPurchaseNkdPreviewHtml(golden, { cleanPricePct: 85.054, qty: 233 });
+  assert(/Цена без НКД:/.test(goldenHtml) && /К оплате с НКД:/.test(goldenHtml), 'preview html: cash labels');
+  assert(/25,64/.test(goldenHtml) && !/25,29/.test(goldenHtml), 'preview html: settlement NKD not trade NKD');
+  assert(/Без учёта комиссии брокера/.test(goldenHtml), 'preview html: no broker fee');
+  assert(/85,054% от номинала/.test(goldenHtml), 'preview html: percent of face');
+
+  const zero = calc.buildBondPurchaseCashPreview({
+    cleanPricePct: 94.06,
+    faceValue: 1000,
+    qty: 1,
+    settlementNkdPerUnit: 0,
+    settlementDate: '2026-04-22',
+    nkdStatus: 'known',
+    economicsStatus: 'normal'
+  });
+  assert(zero.status === 'known' && zero.nkdIsKnown === true && zero.nkdIsZero === true, 'zero NKD is known, not missing');
+  assert(zero.settlementNkdPerUnit === 0 && zero.dirtyTotalRub === zero.cleanTotalRub, 'zero NKD: dirty total equals clean');
+  assert(zero.warning === calc.OFZ_NKD_PREVIEW_ZERO_NOTE, 'zero NKD: not added to price');
+  const zeroHtml = calc.buildBondPurchaseNkdPreviewHtml(zero, { cleanPricePct: 94.06, qty: 1 });
+  assert(/НКД к расчётам:/.test(zeroHtml) && /0,00 ₽ \/ шт\./.test(zeroHtml), 'zero html: shows 0, not missing');
+  assert(!/НКД не удалось определить/.test(zeroHtml), 'zero html: not treated as missing');
+
+  const transition = calc.buildBondPurchaseCashPreview({
+    cleanPricePct: 94.06,
+    faceValue: 1000,
+    qty: 1,
+    settlementNkdPerUnit: 0,
+    settlementDate: '2026-04-22',
+    nkdStatus: 'known',
+    economicsStatus: 'coupon-transition'
+  });
+  assert(transition.status === 'known' && transition.settlementNkdPerUnit === 0, 'coupon-transition 0 is still known');
+  assert(transition.warning === calc.OFZ_NKD_PREVIEW_COUPON_NOTE, 'coupon-transition gets advisory, not a buy-without-NKD hint');
+  assert(!/можно купить без НКД/.test(transition.warning), 'coupon-transition copy is not a buy-without-NKD claim');
+  const transHtml = calc.buildBondPurchaseNkdPreviewHtml(transition, { cleanPricePct: 94.06, qty: 1 });
+  assert(/границу купонного периода/.test(transHtml), 'coupon-transition html: boundary advisory');
+
+  const afterCoupon = calc.buildBondPurchaseCashPreview({
+    cleanPricePct: 94.06,
+    faceValue: 1000,
+    qty: 1,
+    settlementNkdPerUnit: 0.36,
+    settlementDate: '2026-04-23',
+    nkdStatus: 'known',
+    economicsStatus: 'normal'
+  });
+  assert(afterCoupon.settlementNkdPerUnit === 0.36 && afterCoupon.dirtyPerUnitRub === 940.96,
+    'coupon calendar date still uses settlement 0.36, not automatic 0');
+  assert(afterCoupon.warning === '', '0.36 settlement is not a zero-NKD purchase');
+
+  const missing = calc.buildBondPurchaseCashPreview({
+    cleanPricePct: 85.054,
+    faceValue: 1000,
+    qty: 233,
+    settlementNkdPerUnit: null,
+    nkdStatus: 'missing'
+  });
+  assert(missing.status === 'missing' && missing.dirtyTotalRub == null, 'missing: no invented dirty total');
+  assert(missing.settlementNkdPerUnit == null && missing.warning === calc.OFZ_NKD_PREVIEW_MISSING_NOTE, 'missing: warning, not 0');
+  const missingHtml = calc.buildBondPurchaseNkdPreviewHtml(missing, { cleanPricePct: 85.054, qty: 233 });
+  assert(/НКД не удалось определить/.test(missingHtml), 'missing html: warning');
+  assert(!/НКД к расчётам:/.test(missingHtml) && !/К оплате с НКД:/.test(missingHtml), 'missing html: no fake dirty cash');
+  assert(!/>0,00 ₽ \/ шт\.</.test(missingHtml) && !/НКД к расчётам:[\s\S]*0 ₽/.test(missingHtml),
+    'missing html: does not print NKD 0 ₽');
+
+  const unsupported = calc.buildBondPurchaseCashPreview({
+    cleanPricePct: 100,
+    faceValue: 1000,
+    qty: 10,
+    settlementNkdPerUnit: 5,
+    nkdStatus: 'unsupported',
+    economicsStatus: 'unsupported'
+  });
+  assert(unsupported.status === 'unsupported' && unsupported.dirtyTotalRub == null, 'unsupported: no dirty cash');
+  assert(unsupported.warning === calc.OFZ_NKD_PREVIEW_UNSUPPORTED_NOTE, 'unsupported warning');
+  const unHtml = calc.buildBondPurchaseNkdPreviewHtml(unsupported, { cleanPricePct: 100, qty: 10 });
+  assert(/расчёт НКД в портфеле пока ограничен/.test(unHtml) && !/К оплате с НКД:/.test(unHtml),
+    'unsupported html: no fake dirty total');
+
+  const buyFields = {
+    nkdPerUnit: 25.29,
+    nkdDate: '2026-07-02',
+    nkdSource: 'moex-history-accint',
+    settlementNkdPerUnit: 25.64,
+    settlementDate: '2026-07-03',
+    settlementNkdSource: HIST
+  };
+  const openLot = Object.assign({
+    ticker: 'OFZ_26254', lotId: 'B1', qty: 233, avgPrice: 85.054, currentPrice: 84,
+    buyDate: '2026-07-02', faceValue: 1000
+  }, buyFields);
+  const openTl = calc.buildTickerOperationTimeline('OFZ_26254', [openLot], [], { faceValue: 1000 });
+  assert(openTl.length === 1 && openTl[0].type === 'buy', 'timeline A: open buy');
+  assert(openTl[0].amountRub === 198175.82, 'timeline A: amountRub stays clean');
+  assert(openTl[0].settlementNkdPerUnit === 25.64 && openTl[0].settlementNkdRub === 5974.12, 'timeline A: settlement display NKD');
+  assert(openTl[0].cashAmountRub === 204149.94, 'timeline A: cash with NKD');
+  const openAmtHtml = calc.formatTimelineBondBuyAmountHtml(openTl[0]);
+  assert(/204/.test(openAmtHtml) && /с НКД/.test(openAmtHtml), 'timeline A html: dirty cash');
+  assert(/без НКД/.test(openAmtHtml) && /198/.test(openAmtHtml) && /5/.test(openAmtHtml), 'timeline A html: clean + NKD lines');
+  assert(!/25,29/.test(openAmtHtml), 'timeline A html: trade NKD is not shown as cash');
+
+  const partialAlloc = {
+    lotId: 'B1', qty: 100, buyPrice: 85.054, buyDate: '2026-07-02',
+    purchaseSettlementNkdPerUnit: 25.64,
+    purchaseSettlementDate: '2026-07-03',
+    purchaseSettlementNkdSource: HIST
+  };
+  const remainLot = Object.assign({}, openLot, { qty: 133 });
+  const partialSale = {
+    saleId: 'S1', ticker: 'OFZ_26254', qty: 100, buyPrice: 85.054, salePrice: 84,
+    saleDate: '2026-09-25', faceValue: 1000, allocations: [partialAlloc]
+  };
+  const partTl = calc.buildTickerOperationTimeline('OFZ_26254', [remainLot], [partialSale], { faceValue: 1000 });
+  const partBuy = partTl.filter((op) => op.type === 'buy')[0];
+  assert(partBuy.qty === 233 && partBuy.amountRub === 198175.82, 'timeline B: amountRub stays clean after partial sale');
+  assert(partBuy.settlementNkdPerUnit === 25.64 && partBuy.cashAmountRub === 204149.94,
+    'timeline B: purchase settlement survives partial sale');
+
+  const fullAlloc = {
+    lotId: 'B1', qty: 233, buyPrice: 85.054, buyDate: '2026-07-02',
+    purchaseSettlementNkdPerUnit: 25.64,
+    purchaseSettlementDate: '2026-07-03',
+    purchaseSettlementNkdSource: HIST
+  };
+  const fullSale = {
+    saleId: 'S2', ticker: 'OFZ_26254', qty: 233, buyPrice: 85.054, salePrice: 84,
+    saleDate: '2026-09-25', faceValue: 1000, allocations: [fullAlloc]
+  };
+  const closedTl = calc.buildTickerOperationTimeline('OFZ_26254', [], [fullSale], { faceValue: 1000 });
+  const closedBuy = closedTl.filter((op) => op.type === 'buy')[0];
+  assert(closedBuy.amountRub === 198175.82, 'timeline C: closed buy amountRub stays clean');
+  assert(closedBuy.settlementNkdPerUnit === 25.64 && closedBuy.cashAmountRub === 204149.94,
+    'timeline C: purchase settlement survives full close');
+  const zeroLot = {
+    ticker: 'OFZ_26254', lotId: 'Z1', qty: 1, avgPrice: 94.06, buyDate: '2026-04-21', faceValue: 1000,
+    settlementNkdPerUnit: 0, settlementDate: '2026-04-22', settlementNkdSource: HIST
+  };
+  const zeroTl = calc.buildTickerOperationTimeline('OFZ_26254', [zeroLot], [], { faceValue: 1000 });
+  const zeroTlHtml = calc.formatTimelineBondBuyAmountHtml(zeroTl[0]);
+  assert(zeroTl[0].amountRub === 940.6 && zeroTl[0].cashAmountRub === 940.6, 'timeline zero: cash equals clean');
+  assert(/с НКД/.test(zeroTlHtml) && /НКД 0 ₽/.test(zeroTlHtml), 'timeline zero html: known 0');
+  const missLot = {
+    ticker: 'OFZ_26254', lotId: 'M1', qty: 10, avgPrice: 95, currentPrice: 96,
+    buyDate: '2025-03-01', faceValue: 1000
+  };
+  const missTl = calc.buildTickerOperationTimeline('OFZ_26254', [missLot], [], { faceValue: 1000 });
+  assert(missTl[0].amountRub === 9500 && missTl[0].cashAmountRub == null, 'timeline missing: no invented cash');
+  const missHtml = calc.formatTimelineBondBuyAmountHtml(missTl[0]);
+  assert(/НКД не найден/.test(missHtml), 'timeline missing html');
+
+  const laterCoupon = [{ couponDate: '2026-10-21', recordDate: '2026-10-20', value: 64.82 }];
+  function ofzFeed(coupons) {
+    return { OFZ_26254: { kind: 'bond', source: 'bondization', faceValue: 1000, coupons: coupons } };
+  }
+  const fullRow = calc.buildTickerReturnWithPayouts('OFZ_26254', {
+    positions: [openLot],
+    sales: []
+  }, {
+    now: '2026-09-25',
+    bondMeta: { faceValue: 1000 },
+    payoutsByTicker: ofzFeed(laterCoupon),
+    currentAccruedByTicker: {
+      OFZ_26254: { accruedInterestPerUnit: 55.56, accruedInterestSettleDate: '2026-09-28' }
+    }
+  });
+  assert(fullRow.purchaseCostRub === 198175.82 && fullRow.purchaseCashRub === 204149.94,
+    'twp display: clean purchase field unchanged');
+  assert(fullRow.nkdIsPartial === false, 'twp display: full OFZ is complete');
+  const prevGet = calc.sandbox.getPortfolio;
+  const uiCache = calc.sandbox.getPfPayoutFeedsCache();
+  const prevCache = { status: uiCache.status, data: uiCache.data, tickersKey: uiCache.tickersKey };
+  calc.sandbox.getPortfolio = function () {
+    return { positions: [Object.assign({ currentPrice: 84 }, openLot)], sales: [] };
+  };
+  calc.sandbox.getBondQuoteAccruedRuntime = function () {
+    return { accruedInterestPerUnit: 55.56, accruedInterestSettleDate: '2026-09-28', faceValue: 1000, currency: 'RUB' };
+  };
+  uiCache.status = 'ready';
+  uiCache.data = { payoutsByTicker: ofzFeed(laterCoupon), warnings: [], isPartial: false };
+  uiCache.tickersKey = 'OFZ_26254';
+  const twpHtml = calc.buildTickerReturnWithPayoutsBlockHtml('OFZ_26254', true);
+  assert(/включая НКД/.test(twpHtml) && /включая текущий НКД/.test(twpHtml), 'twp ui: dirty KPI hints');
+  assert(/204/.test(twpHtml), 'twp ui: purchase KPI uses cash with NKD');
+  calc.sandbox.getPortfolio = function () {
+    return { positions: [missLot], sales: [] };
+  };
+  const partialHtml = calc.buildTickerReturnWithPayoutsBlockHtml('OFZ_26254', true);
+  assert(/Расчёт частичный: НКД/.test(partialHtml), 'twp ui partial: keeps warning');
+  assert(!/включая НКД/.test(partialHtml), 'twp ui partial: clean fallback, no dirty hint');
+  uiCache.status = prevCache.status;
+  uiCache.data = prevCache.data;
+  uiCache.tickersKey = prevCache.tickersKey;
+  calc.sandbox.getPortfolio = prevGet;
+  delete calc.sandbox.getBondQuoteAccruedRuntime;
+
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const pfJs = fs.readFileSync(path.join(__dirname, '..', 'portfolio.js'), 'utf8');
+  const formUi = indexHtml + '\n' + pfJs;
+  assert(/id="pfAddOfzNkdPreview"/.test(indexHtml), 'form: NKD preview container exists');
+  assert(/ОФЗ без НКД/.test(formUi) && /НКД прибавлять вручную не нужно/.test(formUi),
+    'form copy: clean price, do not add NKD by hand');
+  assert(/К оплате с НКД/.test(formUi) && /Без учёта комиссии брокера/.test(formUi),
+    'form copy: dirty cash and no broker fee');
+  assert(/T\+1/.test(formUi) && /периодичность зависит от выпуска/i.test(formUi),
+    'form copy: T+1 and coupon frequency depends on the issue');
+  assert(!/покупайте ОФЗ в день выплаты купона/i.test(formUi) &&
+    !/покупайте в день купона/i.test(formUi),
+    'form copy: no buy-on-coupon-date advice');
+  const previewFn = pfJs.slice(pfJs.indexOf('function requestOfzNkdPreviewLookup'),
+    pfJs.indexOf('function updatePortfolioOfzNkdPreview'));
+  assert(/lookupBondTransactionNkd/.test(previewFn), 'preview lookup reuses lookupBondTransactionNkd');
+  assert(!/\/iss\/engines\/stock\/markets\/bonds\/trades/.test(previewFn), 'preview adds no new trades endpoint');
+  const helperStart = pfJs.indexOf('function buildBondPurchaseCashPreview');
+  const helperEnd = pfJs.indexOf('function formatOfzCleanPricePctLabel');
+  const helperSlice = pfJs.slice(helperStart, helperEnd);
+  assert(helperStart > 0 && !/\.nkdPerUnit\b/.test(helperSlice) && !/input\.nkdPerUnit/.test(helperSlice),
+    'preview helper does not read trade-date NKD');
+  assert(!/document\./.test(helperSlice) && !/fetch\s*\(/.test(helperSlice), 'preview helper is pure');
 }
 
 if (errors.length) {
