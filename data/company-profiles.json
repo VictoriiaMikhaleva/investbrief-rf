@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-15",
+  "updatedAt": "2026-10-19",
   "notes": "Справочник компаний для блока «О компании» в аналитике. Поля sources — для внутренней проверки, в UI не показываются. sectors — канонический whitelist верхнего уровня. Дефолтный Agent берёт живой топ-20 TQBR по обороту; репозиторные снимки data/agent-signals.json и data/top-turnover.json — guard coverage при refresh.",
   "sectors": [
     "Финансы",
@@ -187,6 +187,30 @@
         {
           "label": "Устав ПАО Московская Биржа",
           "url": "https://www.moex.com/s1356"
+        }
+      ]
+    },
+    {
+      "companyId": "spb-exchange",
+      "tickers": ["SPBE"],
+      "fullName": "Публичное акционерное общество «СПБ Биржа»",
+      "shortName": "СПБ Биржа",
+      "sector": "Финансы",
+      "industry": "Биржи и рыночная инфраструктура",
+      "description": "Организатор торгов. Проводит организованные торги акциями, паями биржевых фондов, облигациями и срочными контрактами.",
+      "historyNote": "",
+      "sources": [
+        {
+          "label": "СПБ Биржа — о бирже",
+          "url": "https://spbexchange.ru/about/"
+        },
+        {
+          "label": "Банк России — ПАО «СПБ Биржа»",
+          "url": "https://www.cbr.ru/finorg/foinfo/?ogrn=1097800000440"
+        },
+        {
+          "label": "Мосбиржа — SPBE",
+          "url": "https://www.moex.com/ru/issue.aspx?code=SPBE"
         }
       ]
     },
@@ -419,6 +443,30 @@
         {
           "label": "Магнит — акции",
           "url": "https://www.magnit.com/ru/shareholders-and-investors/shares-and-gdrs/"
+        }
+      ]
+    },
+    {
+      "companyId": "x5",
+      "tickers": ["X5", "FIVE"],
+      "fullName": "Публичное акционерное общество «Корпоративный центр ИКС 5»",
+      "shortName": "X5",
+      "sector": "Потребительский сектор",
+      "industry": "Розничная торговля",
+      "description": "Розничная сеть. Управляет магазинами продуктов питания и сопутствующих товаров, включая сети «Пятёрочка», «Перекрёсток» и «Чижик».",
+      "historyNote": "С 9 января 2025 года на Мосбирже торгуются обыкновенные акции ПАО «Корпоративный центр ИКС 5» (тикер X5). Ранее на Мосбирже обращались ГДР X5 Retail Group N.V. (тикер FIVE).",
+      "sources": [
+        {
+          "label": "X5 — ПАО «Корпоративный центр ИКС 5»",
+          "url": "https://www.x5.ru/ru/investors/x5-retail-group-nv/"
+        },
+        {
+          "label": "X5 — акции и акционерный капитал",
+          "url": "https://www.x5.ru/ru/investors/shares/"
+        },
+        {
+          "label": "Мосбиржа — X5",
+          "url": "https://www.moex.com/ru/issue.aspx?code=X5"
         }
       ]
     },

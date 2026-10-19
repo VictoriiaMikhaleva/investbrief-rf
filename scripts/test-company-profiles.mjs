@@ -115,6 +115,23 @@ assert(
 assert(CompanyProfiles.getCompanyIdForTicker('TATN') === CompanyProfiles.getCompanyIdForTicker('TATNP'), 'TATN/TATNP same company');
 assert(CompanyProfiles.getCompanyIdForTicker('SNGS') === CompanyProfiles.getCompanyIdForTicker('SNGSP'), 'SNGS/SNGSP same company');
 assert(CompanyProfiles.getCompanyIdForTicker('T') === CompanyProfiles.getCompanyIdForTicker('TCSG'), 'T/TCSG same company');
+assert(CompanyProfiles.getCompanyIdForTicker('X5') === 'x5', 'X5 → x5');
+assert(CompanyProfiles.getCompanyIdForTicker('FIVE') === 'x5', 'FIVE → x5');
+assert(
+  CompanyProfiles.getCompanyIdForTicker('X5') === CompanyProfiles.getCompanyIdForTicker('FIVE'),
+  'X5/FIVE same company'
+);
+assert(CompanyProfiles.getCompanyIdForTicker('SPBE') === 'spb-exchange', 'SPBE → spb-exchange');
+assert(!CompanyProfiles.isNonCompanyInstrument('X5'), 'X5 is a company');
+assert(!CompanyProfiles.isNonCompanyInstrument('SPBE'), 'SPBE is a company');
+assert(
+  CompanyProfiles.getCompanyIdForTicker('X5') !== CompanyProfiles.getCompanyIdForTicker('MGNT'),
+  'X5 is not Magnit'
+);
+assert(
+  CompanyProfiles.getCompanyIdForTicker('SPBE') !== CompanyProfiles.getCompanyIdForTicker('MOEX'),
+  'SPBE is not MOEX'
+);
 
 assert(CompanyProfiles.getCompanyProfile('XXXXZZ') == null, 'missing profile is null');
 assert(CompanyProfiles.isNonCompanyInstrument('AKMM'), 'AKMM is non-company');
@@ -236,6 +253,17 @@ assert(!CompanyProfiles.isNonCompanyInstrument('MAGN'), 'MAGN is a company');
   assert(!/undefined/.test(fakeEl.innerHTML) && !/>—</.test(fakeEl.innerHTML), 'no empty placeholders');
   sandbox.renderCompanyAbout('SBERP');
   assert(/Сбербанк/.test(fakeEl.innerHTML), 'SBERP uses same Sber profile');
+  sandbox.renderCompanyAbout('X5');
+  assert(fakeEl.hidden === false, 'X5 shows company block');
+  assert(/Корпоративный центр ИКС 5/.test(fakeEl.innerHTML), 'X5 shows official name');
+  assert(/Потребительский сектор · Розничная торговля/.test(fakeEl.innerHTML), 'X5 shows sector · industry');
+  sandbox.renderCompanyAbout('FIVE');
+  assert(fakeEl.hidden === false, 'FIVE shows company block');
+  assert(/Корпоративный центр ИКС 5/.test(fakeEl.innerHTML), 'FIVE uses same X5 profile');
+  sandbox.renderCompanyAbout('SPBE');
+  assert(fakeEl.hidden === false, 'SPBE shows company block');
+  assert(/СПБ Биржа/.test(fakeEl.innerHTML), 'SPBE shows official name');
+  assert(/Финансы · Биржи и рыночная инфраструктура/.test(fakeEl.innerHTML), 'SPBE shows sector · industry');
 
   let resolveLate;
   let loadCalls = 0;
