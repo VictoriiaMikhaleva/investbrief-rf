@@ -1,8 +1,8 @@
 {
-  "status": "ok",
+  "status": "stale",
   "updatedAt": "2026-11-08T02:19:25.539Z",
   "source": "MOEX ISS",
-  "message": "Данные обновлены",
+  "message": "HTTP 500 for https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json?iss.meta=off&securities.columns=SECID,SHORTNAME&marketdata.columns=SECID,LAST,VALTODAY,LASTTOPREVPRICE&sort_column=VALTODAY&sort_order=desc&limit=80",
   "data": {
     "top": [
       {
@@ -189,5 +189,6 @@
         "live": true
       }
     ]
-  }
+  },
+  "lastErrorAt": "2026-11-08T09:12:17.498Z"
 }
