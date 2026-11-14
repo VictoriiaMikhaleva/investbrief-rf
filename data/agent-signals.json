@@ -1,22 +1,22 @@
 {
   "status": "ok",
-  "updatedAt": "2026-11-14T16:01:32.008Z",
+  "updatedAt": "2026-11-14T20:37:12.284Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
     "tickers": [
       "FIXR",
       "AKMM",
-      "VTBR",
       "GAZP",
+      "VTBR",
       "T",
       "LQDT",
       "SBMM",
       "SBER",
       "VKCO",
       "BELU",
-      "SBFR",
       "SVCB",
+      "SBFR",
       "POSI",
       "TRNFP",
       "AKFB",
@@ -24,7 +24,7 @@
       "LKOH",
       "PHOR",
       "PLZL",
-      "SAFE"
+      "X5"
     ],
     "thresholds": {
       "dayMoveThreshold": 3,
@@ -37,8 +37,8 @@
         "ticker": "FIXR",
         "name": "Фикс Прайс",
         "insufficient": false,
-        "currentPrice": 0.683,
-        "dayChangePct": 2.97,
+        "currentPrice": 0.6814,
+        "dayChangePct": 2.73,
         "signals": [
           {
             "id": "week-up",
@@ -72,11 +72,27 @@
         "status": "Зона внимания"
       },
       {
+        "ticker": "GAZP",
+        "name": "ГАЗПРОМ ао",
+        "insufficient": false,
+        "currentPrice": 117.46,
+        "dayChangePct": 0.39,
+        "signals": [
+          {
+            "id": "month-high",
+            "title": "Близко к верхней границе месяца",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
+      },
+      {
         "ticker": "VTBR",
         "name": "ВТБ ао",
         "insufficient": false,
-        "currentPrice": 62.095,
-        "dayChangePct": -0.32,
+        "currentPrice": 62.11,
+        "dayChangePct": -0.3,
         "signals": [
           {
             "id": "week-up",
@@ -94,27 +110,11 @@
         "status": "Зона внимания"
       },
       {
-        "ticker": "GAZP",
-        "name": "ГАЗПРОМ ао",
-        "insufficient": false,
-        "currentPrice": 117.4,
-        "dayChangePct": 0.34,
-        "signals": [
-          {
-            "id": "month-high",
-            "title": "Близко к верхней границе месяца",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Зона внимания"
-      },
-      {
         "ticker": "T",
         "name": "Т-Техно ао",
         "insufficient": false,
-        "currentPrice": 293.58,
-        "dayChangePct": -0.03,
+        "currentPrice": 293.52,
+        "dayChangePct": -0.05,
         "signals": [
           {
             "id": "month-high",
@@ -145,7 +145,7 @@
         "ticker": "SBMM",
         "name": "SBMM ETF",
         "insufficient": false,
-        "currentPrice": 19.86,
+        "currentPrice": 19.8595,
         "dayChangePct": 0.04,
         "signals": [
           {
@@ -161,8 +161,8 @@
         "ticker": "SBER",
         "name": "Сбербанк",
         "insufficient": false,
-        "currentPrice": 299.81,
-        "dayChangePct": -0.01,
+        "currentPrice": 299.88,
+        "dayChangePct": 0.02,
         "signals": [
           {
             "id": "month-high",
@@ -177,8 +177,8 @@
         "ticker": "VKCO",
         "name": "iМКПАО ВК",
         "insufficient": false,
-        "currentPrice": 235.65,
-        "dayChangePct": -0.55,
+        "currentPrice": 235.35,
+        "dayChangePct": -0.68,
         "signals": [
           {
             "id": "month-high",
@@ -212,11 +212,11 @@
         "status": "Зона внимания"
       },
       {
-        "ticker": "SBFR",
-        "name": "SBFR ETF",
+        "ticker": "SVCB",
+        "name": "Совкомбанк",
         "insufficient": false,
-        "currentPrice": 15.868,
-        "dayChangePct": 0.08,
+        "currentPrice": 10.875,
+        "dayChangePct": 0.23,
         "signals": [
           {
             "id": "month-high",
@@ -228,11 +228,11 @@
         "status": "Зона внимания"
       },
       {
-        "ticker": "SVCB",
-        "name": "Совкомбанк",
+        "ticker": "SBFR",
+        "name": "SBFR ETF",
         "insufficient": false,
-        "currentPrice": 10.865,
-        "dayChangePct": 0.14,
+        "currentPrice": 15.872,
+        "dayChangePct": 0.1,
         "signals": [
           {
             "id": "month-high",
@@ -247,8 +247,8 @@
         "ticker": "POSI",
         "name": "iПозитив",
         "insufficient": false,
-        "currentPrice": 1243.8,
-        "dayChangePct": -0.81,
+        "currentPrice": 1242.4,
+        "dayChangePct": -0.93,
         "signals": [
           {
             "id": "week-down",
@@ -263,8 +263,8 @@
         "ticker": "TRNFP",
         "name": "Транснф ап",
         "insufficient": false,
-        "currentPrice": 1088.8,
-        "dayChangePct": 0.85,
+        "currentPrice": 1088,
+        "dayChangePct": 0.78,
         "signals": [
           {
             "id": "month-high",
@@ -279,8 +279,8 @@
         "ticker": "AKFB",
         "name": "AKFB ETF",
         "insufficient": false,
-        "currentPrice": 144.23,
-        "dayChangePct": -0.02,
+        "currentPrice": 144.21,
+        "dayChangePct": -0.03,
         "signals": [
           {
             "id": "month-high",
@@ -295,8 +295,8 @@
         "ticker": "NVTK",
         "name": "Новатэк ао",
         "insufficient": false,
-        "currentPrice": 1131.8,
-        "dayChangePct": 0.25,
+        "currentPrice": 1132,
+        "dayChangePct": 0.27,
         "signals": [],
         "status": "Спокойно"
       },
@@ -304,8 +304,8 @@
         "ticker": "LKOH",
         "name": "ЛУКОЙЛ",
         "insufficient": false,
-        "currentPrice": 6050,
-        "dayChangePct": 0.07,
+        "currentPrice": 6052,
+        "dayChangePct": 0.11,
         "signals": [],
         "status": "Спокойно"
       },
@@ -313,8 +313,8 @@
         "ticker": "PHOR",
         "name": "ФосАгро ао",
         "insufficient": false,
-        "currentPrice": 5347,
-        "dayChangePct": 1.17,
+        "currentPrice": 5359,
+        "dayChangePct": 1.4,
         "signals": [],
         "status": "Спокойно"
       },
@@ -322,17 +322,17 @@
         "ticker": "PLZL",
         "name": "Полюс",
         "insufficient": false,
-        "currentPrice": 1109.4,
-        "dayChangePct": 0.22,
+        "currentPrice": 1109.2,
+        "dayChangePct": 0.2,
         "signals": [],
         "status": "Спокойно"
       },
       {
-        "ticker": "SAFE",
-        "name": "SAFE ETF",
+        "ticker": "X5",
+        "name": "КЦ ИКС 5",
         "insufficient": false,
-        "currentPrice": 18.875,
-        "dayChangePct": 0.08,
+        "currentPrice": 2402,
+        "dayChangePct": 0.38,
         "signals": [
           {
             "id": "month-high",
