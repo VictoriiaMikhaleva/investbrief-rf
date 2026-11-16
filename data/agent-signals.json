@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-11-15T23:35:08.413Z",
+  "updatedAt": "2026-11-16T03:03:12.712Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -301,18 +301,11 @@
       {
         "ticker": "SBFR",
         "name": "SBFR ETF",
-        "insufficient": false,
+        "insufficient": true,
         "currentPrice": 15.868,
         "dayChangePct": 0.08,
-        "signals": [
-          {
-            "id": "month-high",
-            "title": "Близко к верхней границе месяца",
-            "reasons": [],
-            "checklist": []
-          }
-        ],
-        "status": "Зона внимания"
+        "signals": [],
+        "status": "Спокойно"
       },
       {
         "ticker": "NVTK",
