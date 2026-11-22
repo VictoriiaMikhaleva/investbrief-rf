@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-11-21T22:19:58.969Z",
+  "updatedAt": "2026-11-22T02:21:35.720Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -43,6 +43,12 @@
           {
             "id": "week-down",
             "title": "Снижение за неделю",
+            "reasons": [],
+            "checklist": []
+          },
+          {
+            "id": "month-low",
+            "title": "Близко к нижней границе месяца",
             "reasons": [],
             "checklist": []
           }
@@ -121,7 +127,7 @@
       {
         "ticker": "SBER",
         "name": "Сбербанк",
-        "insufficient": true,
+        "insufficient": false,
         "currentPrice": 286.53,
         "dayChangePct": -0.42,
         "signals": [],
@@ -309,6 +315,12 @@
             "title": "Снижение за неделю",
             "reasons": [],
             "checklist": []
+          },
+          {
+            "id": "month-low",
+            "title": "Близко к нижней границе месяца",
+            "reasons": [],
+            "checklist": []
           }
         ],
         "status": "Зона внимания"
@@ -348,6 +360,12 @@
           {
             "id": "week-down",
             "title": "Снижение за неделю",
+            "reasons": [],
+            "checklist": []
+          },
+          {
+            "id": "month-low",
+            "title": "Близко к нижней границе месяца",
             "reasons": [],
             "checklist": []
           }
