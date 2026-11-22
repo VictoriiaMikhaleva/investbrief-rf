@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "updatedAt": "2026-11-22T17:40:15.263Z",
+  "updatedAt": "2026-11-22T22:48:08.919Z",
   "source": "MOEX ISS",
   "message": "Данные обновлены",
   "data": {
@@ -306,11 +306,18 @@
       {
         "ticker": "SPBE",
         "name": "СПБ Биржа",
-        "insufficient": true,
+        "insufficient": false,
         "currentPrice": 162.1,
         "dayChangePct": 1.57,
-        "signals": [],
-        "status": "Спокойно"
+        "signals": [
+          {
+            "id": "week-down",
+            "title": "Снижение за неделю",
+            "reasons": [],
+            "checklist": []
+          }
+        ],
+        "status": "Зона внимания"
       },
       {
         "ticker": "AFKS",
